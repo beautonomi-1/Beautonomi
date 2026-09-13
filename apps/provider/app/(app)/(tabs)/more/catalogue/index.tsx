@@ -9,6 +9,7 @@ import {
   DeviceEventEmitter,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -59,6 +60,12 @@ interface CategoriesResponse {
 /* ------------------------------------------------------------------ */
 
 export default function CatalogueScreen() {
+  const { t } = useTranslation();
+  const cat = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.catalogue.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
@@ -129,15 +136,15 @@ export default function CatalogueScreen() {
     setCatSheetOpen(true);
   }
 
-  function openEditCategory(cat: CategoryOption) {
-    setCatForm({ name: cat.name, color: cat.color ?? "#6366f1", description: cat.description ?? "" });
-    setEditingCatId(cat.id);
+  function openEditCategory(category: CategoryOption) {
+    setCatForm({ name: category.name, color: category.color ?? "#6366f1", description: category.description ?? "" });
+    setEditingCatId(category.id);
     setCatSheetOpen(true);
   }
 
   async function handleSaveCategory() {
     if (!catForm.name.trim()) {
-      Alert.alert("Validation", "Category name is required.");
+      Alert.alert(cat("validationTitle"), cat("categoryNameRequired"));
       return;
     }
     if (editingCatId) {
@@ -145,41 +152,41 @@ export default function CatalogueScreen() {
         `/api/provider/categories/${editingCatId}`,
         { name: catForm.name.trim(), color: catForm.color || null, description: catForm.description.trim() || null },
       );
-      if (err) { Alert.alert("Error", err); return; }
+      if (err) { Alert.alert(cat("errorTitle"), err); return; }
     } else {
       const { error: err } = await createCategory({
         name: catForm.name.trim(),
         color: catForm.color || null,
         description: catForm.description.trim() || null,
       });
-      if (err) { Alert.alert("Error", err); return; }
+      if (err) { Alert.alert(cat("errorTitle"), err); return; }
     }
     setCatSheetOpen(false);
     refreshCategories();
     refresh();
   }
 
-  function handleDeleteCategory(cat: CategoryOption) {
-    Alert.alert("Delete Category", `Delete "${cat.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+  function handleDeleteCategory(category: CategoryOption) {
+    Alert.alert(cat("deleteCategoryTitle"), cat("deleteCategoryBody", { name: category.name }), [
+      { text: cat("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: cat("delete"),
         style: "destructive",
         onPress: async () => {
-          const result = (await deleteCategory(`/api/provider/categories/${cat.id}`, {})) as {
+          const result = (await deleteCategory(`/api/provider/categories/${category.id}`, {})) as {
             error?: string;
             errorCode?: string;
             data?: { services?: { id: string; name: string }[] };
           };
           if (result.error) {
             if (result.errorCode === "CATEGORY_HAS_SERVICES" || result.error.includes("services")) {
-              const names = result.data?.services?.map((s) => s.name).join(", ") ?? "assigned services";
+              const names = result.data?.services?.map((s) => s.name).join(", ") ?? cat("assignedServicesFallback");
               Alert.alert(
-                "Category has services",
-                `Reassign or delete these services first: ${names}`,
+                cat("categoryHasServicesTitle"),
+                cat("categoryHasServicesBody", { names }),
               );
             } else {
-              Alert.alert("Error", result.error);
+              Alert.alert(cat("errorTitle"), result.error);
             }
             return;
           }
@@ -193,7 +200,7 @@ export default function CatalogueScreen() {
   async function handleReorderCategory(catId: string, direction: "up" | "down") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { error: err } = await reorderCategory(`/api/provider/categories/${catId}`, { direction });
-    if (err) Alert.alert("Error", err);
+    if (err) Alert.alert(cat("errorTitle"), err);
     else refreshCategories();
   }
 
@@ -216,10 +223,10 @@ export default function CatalogueScreen() {
   );
 
   function handleDeleteServiceItem(service: ServiceItem) {
-    Alert.alert("Delete service", `Remove "${service.title}"? This cannot be undone.`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(cat("deleteServiceTitle"), cat("deleteServiceBody", { title: service.title }), [
+      { text: cat("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: cat("delete"),
         style: "destructive",
         onPress: async () => {
           const previous = services ?? [];
@@ -227,7 +234,7 @@ export default function CatalogueScreen() {
           const { error } = await deleteService(`/api/provider/services/${service.id}`);
           if (error) {
             mutate(previous);
-            Alert.alert("Error", error);
+            Alert.alert(cat("errorTitle"), error);
           }
         },
       },
@@ -237,19 +244,19 @@ export default function CatalogueScreen() {
   function openServiceKebab(service: ServiceItem) {
     Alert.alert(service.title, undefined, [
       {
-        text: "Edit",
+        text: cat("edit"),
         onPress: () => router.push(`/(app)/(tabs)/more/service-form?id=${service.id}` as never),
       },
       {
-        text: service.is_active ? "Deactivate" : "Activate",
+        text: service.is_active ? cat("deactivate") : cat("activate"),
         onPress: () => handleToggleActive(service),
       },
       {
-        text: "Delete",
+        text: cat("delete"),
         style: "destructive",
         onPress: () => handleDeleteServiceItem(service),
       },
-      { text: "Cancel", style: "cancel" },
+      { text: cat("cancel"), style: "cancel" },
     ]);
   }
 
@@ -267,7 +274,7 @@ export default function CatalogueScreen() {
       `/api/provider/services/${service.id}`,
       { is_active: !service.is_active },
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(cat("errorTitle"), error);
     else refresh();
   }
 
@@ -291,7 +298,7 @@ export default function CatalogueScreen() {
     );
     if (error) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Could not reorder", error);
+      Alert.alert(cat("couldNotReorder"), error);
     } else {
       refresh();
     }
@@ -318,17 +325,16 @@ export default function CatalogueScreen() {
   async function handleBulkToggle(activate: boolean) {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
-      Alert.alert("No Selection", "Select services to update.");
+      Alert.alert(cat("noSelectionTitle"), cat("noSelectionBody"));
       return;
     }
-    const label = activate ? "activate" : "deactivate";
     Alert.alert(
-      `Bulk ${activate ? "Activate" : "Deactivate"}`,
-      `${label.charAt(0).toUpperCase() + label.slice(1)} ${ids.length} service(s)?`,
+      activate ? cat("bulkActivateTitle") : cat("bulkDeactivateTitle"),
+      cat("bulkConfirmBody", { action: activate ? cat("activate") : cat("deactivate"), count: ids.length }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cat("cancel"), style: "cancel" },
         {
-          text: "Confirm",
+          text: cat("confirm"),
           onPress: async () => {
             const failures: string[] = [];
             for (const id of ids) {
@@ -341,7 +347,7 @@ export default function CatalogueScreen() {
             setBulkMode(false);
             refresh();
             if (failures.length > 0) {
-              Alert.alert("Partial failure", `${failures.length} service(s) could not be updated. Please try again.`);
+              Alert.alert(cat("partialFailureTitle"), cat("partialFailureBody", { count: failures.length }));
             }
           },
         },
@@ -359,18 +365,18 @@ export default function CatalogueScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Catalogue"
+        title={cat("title")}
         showBack
-        subtitle={`${services?.length ?? 0} services`}
+        subtitle={cat("subtitle", { count: services?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             onPress={openAddSheet}
             style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 16, paddingVertical: 8 }}
-            accessibilityLabel="Add service"
+            accessibilityLabel={cat("addServiceA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "600", color: Colors.white }}>Add</Text>
+            <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "600", color: Colors.white }}>{cat("add")}</Text>
           </TouchableOpacity>
         }
       />
@@ -390,10 +396,10 @@ export default function CatalogueScreen() {
             backgroundColor: Colors.gray[50],
           }}
           accessibilityRole="text"
-          accessibilityLabel="Services catalogue, current section"
+          accessibilityLabel={cat("sectionServicesA11y")}
         >
           <Ionicons name="cut-outline" size={18} color={Colors.gray[900]} />
-          <Text style={{ fontWeight: "700", fontSize: 13, color: Colors.gray[900] }}>Services</Text>
+          <Text style={{ fontWeight: "700", fontSize: 13, color: Colors.gray[900] }}>{cat("services")}</Text>
         </View>
         <TouchableOpacity
           onPress={() => {
@@ -413,10 +419,10 @@ export default function CatalogueScreen() {
             backgroundColor: Colors.white,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Open products and variants"
+          accessibilityLabel={cat("openProductsA11y")}
         >
           <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
-          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>Products</Text>
+          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>{cat("products")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
@@ -436,22 +442,22 @@ export default function CatalogueScreen() {
             backgroundColor: Colors.white,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Open packages"
+          accessibilityLabel={cat("openPackagesA11y")}
         >
           <Ionicons name="layers-outline" size={18} color="#4f46e5" />
-          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>Packages</Text>
+          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>{cat("packages")}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={{ marginBottom: 12 }}>
-        <SearchBar placeholder="Search services..." value={search} onChangeText={setSearch} />
+        <SearchBar placeholder={cat("searchPlaceholder")} value={search} onChangeText={setSearch} />
       </View>
       <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <FilterChipGroup
           options={[
-            { label: "All", value: "all" },
-            { label: "Active", value: "active" },
-            { label: "Inactive", value: "inactive" },
+            { label: cat("filterAll"), value: "all" },
+            { label: cat("filterActive"), value: "active" },
+            { label: cat("filterInactive"), value: "inactive" },
           ]}
           selected={filter}
           onSelect={setFilter}
@@ -462,7 +468,7 @@ export default function CatalogueScreen() {
             setSelectedIds(new Set());
           }}
           hitSlop={8}
-          accessibilityLabel="Toggle bulk mode"
+          accessibilityLabel={cat("bulkModeA11y")}
         >
           <Ionicons
             name={bulkMode ? "close-circle" : "checkbox-outline"}
@@ -476,53 +482,53 @@ export default function CatalogueScreen() {
         <View style={{ marginBottom: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
             <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }}>
-              Categories
+              {cat("categories")}
             </Text>
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], paddingHorizontal: 10, paddingVertical: 4 }}
               onPress={openAddCategory}
-              accessibilityLabel="Add category"
+              accessibilityLabel={cat("addCategoryA11y")}
             >
               <Ionicons name="add" size={14} color="#6b7280" />
-              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Add</Text>
+              <Text style={{ marginStart: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{cat("add")}</Text>
             </TouchableOpacity>
           </View>
-          {categories.map((cat, idx) => (
+          {categories.map((category, idx) => (
             <View
-              key={cat.id}
+              key={category.id}
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6 }}
             >
               {/* Colour dot */}
-              {cat.color ? (
-                <View style={{ height: 12, width: 12, borderRadius: 9999, backgroundColor: cat.color, marginRight: 10 }} />
+              {category.color ? (
+                <View style={{ height: 12, width: 12, borderRadius: 9999, backgroundColor: category.color, marginEnd: 10 }} />
               ) : (
-                <Ionicons name="folder-outline" size={14} color="#9ca3af" style={{ marginRight: 10 }} />
+                <Ionicons name="folder-outline" size={14} color="#9ca3af" style={{ marginEnd: 10 }} />
               )}
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{cat.name}</Text>
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{category.name}</Text>
               {/* Up / Down reorder */}
               <TouchableOpacity
                 hitSlop={6}
-                onPress={() => handleReorderCategory(cat.id, "up")}
+                onPress={() => handleReorderCategory(category.id, "up")}
                 disabled={idx === 0}
-                accessibilityLabel={`Move ${cat.name} up`}
-                style={{ marginRight: 4, opacity: idx === 0 ? 0.3 : 1 }}
+                accessibilityLabel={cat("moveUpA11y", { name: category.name })}
+                style={{ marginEnd: 4, opacity: idx === 0 ? 0.3 : 1 }}
               >
                 <Ionicons name="chevron-up" size={18} color="#6b7280" />
               </TouchableOpacity>
               <TouchableOpacity
                 hitSlop={6}
-                onPress={() => handleReorderCategory(cat.id, "down")}
+                onPress={() => handleReorderCategory(category.id, "down")}
                 disabled={idx === categories.length - 1}
-                accessibilityLabel={`Move ${cat.name} down`}
-                style={{ marginRight: 10, opacity: idx === categories.length - 1 ? 0.3 : 1 }}
+                accessibilityLabel={cat("moveDownA11y", { name: category.name })}
+                style={{ marginEnd: 10, opacity: idx === categories.length - 1 ? 0.3 : 1 }}
               >
                 <Ionicons name="chevron-down" size={18} color="#6b7280" />
               </TouchableOpacity>
               {/* Edit */}
               <TouchableOpacity
                 hitSlop={6}
-                onPress={() => openEditCategory(cat)}
-                accessibilityLabel={`Edit ${cat.name}`}
+                onPress={() => openEditCategory(category)}
+                accessibilityLabel={cat("editNameA11y", { name: category.name })}
               >
                 <Ionicons name="pencil-outline" size={16} color="#6b7280" />
               </TouchableOpacity>
@@ -534,29 +540,29 @@ export default function CatalogueScreen() {
         <TouchableOpacity
           style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], padding: 12 }}
           onPress={openAddCategory}
-          accessibilityLabel="Add first category"
+          accessibilityLabel={cat("addFirstCategoryA11y")}
         >
           <Ionicons name="folder-open-outline" size={18} color="#6b7280" />
-          <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[500] }}>Add your first category to organize services</Text>
+          <Text style={{ marginStart: 8, fontSize: 14, color: Colors.gray[500] }}>{cat("addFirstCategory")}</Text>
         </TouchableOpacity>
       )}
 
       {bulkMode && selectedIds.size > 0 && (
         <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
-          <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }}>{selectedIds.size} selected</Text>
+          <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }}>{cat("selectedCount", { count: selectedIds.size })}</Text>
           <TouchableOpacity
-            style={{ borderRadius: 8, backgroundColor: "#22c55e", paddingHorizontal: 12, paddingVertical: 6, marginRight: 12 }}
+            style={{ borderRadius: 8, backgroundColor: "#22c55e", paddingHorizontal: 12, paddingVertical: 6, marginEnd: 12 }}
             onPress={() => handleBulkToggle(true)}
-            accessibilityLabel="Bulk activate"
+            accessibilityLabel={cat("bulkActivateA11y")}
           >
-            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>Activate</Text>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>{cat("activate")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={{ borderRadius: 8, backgroundColor: Colors.gray[400], paddingHorizontal: 12, paddingVertical: 6 }}
             onPress={() => handleBulkToggle(false)}
-            accessibilityLabel="Bulk deactivate"
+            accessibilityLabel={cat("bulkDeactivateA11y")}
           >
-            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>Deactivate</Text>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>{cat("deactivate")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -569,9 +575,9 @@ export default function CatalogueScreen() {
       ) : !hasServices || grouped.length === 0 ? (
         <EmptyState
           icon="layers-outline"
-          title="No services"
-          description="Add services to your catalogue so clients can book them online."
-          actionLabel="Add service"
+          title={cat("emptyTitle")}
+          description={cat("emptyDescription")}
+          actionLabel={cat("emptyAction")}
           onAction={openAddSheet}
         />
       ) : (
@@ -592,7 +598,7 @@ export default function CatalogueScreen() {
                 <TouchableOpacity
                   style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                   onPress={() => toggleCollapse(sectionKey)}
-                  accessibilityLabel={`${isCollapsed ? "Expand" : "Collapse"} ${title}`}
+                  accessibilityLabel={cat(isCollapsed ? "expandA11y" : "collapseA11y", { title })}
                 >
                   <View
                     style={{
@@ -601,14 +607,14 @@ export default function CatalogueScreen() {
                       alignItems: "center",
                       borderLeftWidth: 4,
                       borderLeftColor: accent,
-                      paddingLeft: 10,
-                      marginRight: 8,
+                      paddingStart: 10,
+                      marginEnd: 8,
                     }}
                   >
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }} numberOfLines={1}>
                       {title}
                     </Text>
-                    <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>
+                    <Text style={{ marginStart: 8, fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>
                       ({items.length})
                     </Text>
                   </View>
@@ -622,7 +628,7 @@ export default function CatalogueScreen() {
                         key={service.id}
                         style={[
                           { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
-                          isTablet ? { width: "48.5%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+                          isTablet ? { width: "48.5%", marginEnd: 12, marginBottom: 12 } : { marginBottom: 8 },
                           !service.is_active && { opacity: 0.6 },
                         ]}
                       >
@@ -632,14 +638,14 @@ export default function CatalogueScreen() {
                             if (bulkMode) toggleSelected(service.id);
                             else router.push(`/(app)/(tabs)/more/catalogue/${service.id}` as never);
                           }}
-                          accessibilityLabel={`${bulkMode ? "Select" : "View"} ${service.title}`}
+                          accessibilityLabel={cat(bulkMode ? "selectA11y" : "viewA11y", { title: service.title })}
                         >
                           {bulkMode && (
                             <Ionicons
                               name={selectedIds.has(service.id) ? "checkbox" : "square-outline"}
                               size={20}
                               color={selectedIds.has(service.id) ? "#6366f1" : "#9ca3af"}
-                              style={{ marginRight: 8, marginTop: 2 }}
+                              style={{ marginEnd: 8, marginTop: 2 }}
                             />
                           )}
                           <View style={{ flex: 1 }}>
@@ -648,31 +654,31 @@ export default function CatalogueScreen() {
                                 {service.title}
                               </Text>
                               {service.service_type === "addon" ? (
-                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
-                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>Add-on</Text>
+                                <View style={{ marginStart: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>{cat("addon")}</Text>
                                 </View>
                               ) : null}
                               {service.service_type === "package" ? (
-                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 2 }}>
-                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>Package</Text>
+                                <View style={{ marginStart: 8, borderRadius: 9999, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>{cat("package")}</Text>
                                 </View>
                               ) : null}
                               {(service.variants?.length ?? 0) > 0 ? (
-                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#f3f4f6", paddingHorizontal: 8, paddingVertical: 2 }}>
-                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4b5563" }}>{service.variants!.length} variants</Text>
+                                <View style={{ marginStart: 8, borderRadius: 9999, backgroundColor: "#f3f4f6", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4b5563" }}>{cat("variantsCount", { count: service.variants!.length })}</Text>
                                 </View>
                               ) : null}
                               {service.is_onboarding_auto_generated ? (
                                 <View
                                   style={{
-                                    marginLeft: 8,
+                                    marginStart: 8,
                                     borderRadius: 9999,
                                     backgroundColor: "#e0f2fe",
                                     paddingHorizontal: 8,
                                     paddingVertical: 2,
                                   }}
                                 >
-                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1" }}>Starter</Text>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1" }}>{cat("starter")}</Text>
                                 </View>
                               ) : null}
                             </View>
@@ -680,27 +686,27 @@ export default function CatalogueScreen() {
                               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>{service.description}</Text>
                             ) : null}
                           </View>
-                          <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                          <Text style={{ marginStart: 8, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                             {formatCurrency(service.price, service.currency)}
                           </Text>
                         </TouchableOpacity>
 
                         <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginEnd: 12 }}>
                               <Ionicons name="time-outline" size={12} color="#9ca3af" />
-                              <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>{formatDuration(service.duration_minutes)}</Text>
+                              <Text style={{ marginStart: 4, fontSize: 12, color: Colors.gray[500] }}>{formatDuration(service.duration_minutes)}</Text>
                             </View>
                             {service.supports_at_home && (
                               <View style={{ flexDirection: "row", alignItems: "center" }}>
                                 <Ionicons name="home-outline" size={12} color="#9ca3af" />
-                                <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>Home</Text>
+                                <Text style={{ marginStart: 4, fontSize: 12, color: Colors.gray[500] }}>{cat("home")}</Text>
                               </View>
                             )}
                             {service.supports_at_salon && (
                               <View style={{ flexDirection: "row", alignItems: "center" }}>
                                 <Ionicons name="business-outline" size={12} color="#9ca3af" />
-                                <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>Salon</Text>
+                                <Text style={{ marginStart: 4, fontSize: 12, color: Colors.gray[500] }}>{cat("salon")}</Text>
                               </View>
                             )}
                           </View>
@@ -712,8 +718,8 @@ export default function CatalogueScreen() {
                                   hitSlop={6}
                                   onPress={() => handleReorder(service.id, "up")}
                                   disabled={!canReorderInSection(items as ServiceItem[], service.id, "up")}
-                                  accessibilityLabel={`Move ${service.title} up`}
-                                  style={{ marginRight: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "up") ? 1 : 0.3 }}
+                                  accessibilityLabel={cat("moveUpA11y", { name: service.title })}
+                                  style={{ marginEnd: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "up") ? 1 : 0.3 }}
                                 >
                                   <Ionicons name="arrow-up-circle-outline" size={20} color="#9ca3af" />
                                 </TouchableOpacity>
@@ -721,22 +727,22 @@ export default function CatalogueScreen() {
                                   hitSlop={6}
                                   onPress={() => handleReorder(service.id, "down")}
                                   disabled={!canReorderInSection(items as ServiceItem[], service.id, "down")}
-                                  accessibilityLabel={`Move ${service.title} down`}
-                                  style={{ marginRight: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "down") ? 1 : 0.3 }}
+                                  accessibilityLabel={cat("moveDownA11y", { name: service.title })}
+                                  style={{ marginEnd: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "down") ? 1 : 0.3 }}
                                 >
                                   <Ionicons name="arrow-down-circle-outline" size={20} color="#9ca3af" />
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                   hitSlop={8}
                                   onPress={() => openServiceKebab(service)}
-                                  accessibilityLabel={`Actions for ${service.title}`}
-                                  style={{ marginRight: 8 }}
+                                  accessibilityLabel={cat("actionsA11y", { title: service.title })}
+                                  style={{ marginEnd: 8 }}
                                 >
                                   <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
                                 </TouchableOpacity>
                               </>
                             )}
-                            <TouchableOpacity hitSlop={8} onPress={() => handleToggleActive(service)} accessibilityLabel={`Toggle ${service.title} active`}>
+                            <TouchableOpacity hitSlop={8} onPress={() => handleToggleActive(service)} accessibilityLabel={cat("toggleActiveA11y", { title: service.title })}>
                               <View style={{ height: 24, width: 40, borderRadius: 9999, backgroundColor: service.is_active ? "#22c55e" : Colors.gray[300], justifyContent: "center", paddingHorizontal: 2 }}>
                                 <View style={{ height: 20, width: 20, borderRadius: 9999, backgroundColor: Colors.white, alignSelf: service.is_active ? "flex-end" : "flex-start" }} />
                               </View>
@@ -755,8 +761,8 @@ export default function CatalogueScreen() {
                                 size={14}
                                 color="#6b7280"
                               />
-                              <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[600] }}>
-                                {expandedVariants.has(service.id) ? "Hide variants" : "Show variants"}
+                              <Text style={{ marginStart: 4, fontSize: 12, color: Colors.gray[600] }}>
+                                {expandedVariants.has(service.id) ? cat("hideVariants") : cat("showVariants")}
                               </Text>
                             </TouchableOpacity>
                             {expandedVariants.has(service.id)
@@ -765,10 +771,10 @@ export default function CatalogueScreen() {
                                     key={variant.id}
                                     style={{
                                       marginTop: 6,
-                                      marginLeft: 12,
+                                      marginStart: 12,
                                       borderLeftWidth: 2,
                                       borderLeftColor: Colors.gray[200],
-                                      paddingLeft: 10,
+                                      paddingStart: 10,
                                     }}
                                   >
                                     <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[800] }}>
@@ -799,23 +805,23 @@ export default function CatalogueScreen() {
       <BottomSheet
         visible={catSheetOpen}
         onClose={() => setCatSheetOpen(false)}
-        title={editingCatId ? "Edit Category" : "New Category"}
+        title={editingCatId ? cat("editCategory") : cat("newCategory")}
       >
         <FormField
-          label="Category Name *"
+          label={cat("categoryNameLabel")}
           value={catForm.name}
-          onChangeText={(t) => setCatForm((p) => ({ ...p, name: t }))}
-          placeholder="e.g. Hair, Nails, Skincare"
+          onChangeText={(text) => setCatForm((p) => ({ ...p, name: text }))}
+          placeholder={cat("categoryNamePlaceholder")}
         />
         <FormField
-          label="Description"
+          label={cat("descriptionLabel")}
           value={catForm.description}
-          onChangeText={(t) => setCatForm((p) => ({ ...p, description: t }))}
-          placeholder="Optional description..."
+          onChangeText={(text) => setCatForm((p) => ({ ...p, description: text }))}
+          placeholder={cat("descriptionPlaceholder")}
           multiline
         />
 
-        <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Color</Text>
+        <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cat("colorLabel")}</Text>
         <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap" }}>
           {["#6366f1", "#ef4444", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#f97316"].map((c) => (
             <TouchableOpacity
@@ -829,11 +835,11 @@ export default function CatalogueScreen() {
                 borderWidth: catForm.color === c ? 2 : 1,
                 borderColor: catForm.color === c ? Colors.gray[900] : Colors.gray[200],
                 backgroundColor: c,
-                marginRight: 8,
+                marginEnd: 8,
                 marginBottom: 8,
               }}
               onPress={() => setCatForm((p) => ({ ...p, color: c }))}
-              accessibilityLabel={`Color ${c}`}
+              accessibilityLabel={cat("colorA11y", { color: c })}
             >
               {catForm.color === c && <Ionicons name="checkmark" size={18} color="#fff" />}
             </TouchableOpacity>
@@ -842,13 +848,13 @@ export default function CatalogueScreen() {
 
         <View style={{ flexDirection: "row" }}>
           {editingCatId && (
-            <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flex: 1, marginEnd: 12 }}>
               <ActionButton
-                label="Delete"
+                label={cat("delete")}
                 variant="danger"
                 onPress={() => {
-                  const cat = categories.find((c) => c.id === editingCatId);
-                  if (cat) { setCatSheetOpen(false); handleDeleteCategory(cat); }
+                  const category = categories.find((c) => c.id === editingCatId);
+                  if (category) { setCatSheetOpen(false); handleDeleteCategory(category); }
                 }}
                 fullWidth
               />
@@ -856,7 +862,7 @@ export default function CatalogueScreen() {
           )}
           <View style={{ flex: 1 }}>
             <ActionButton
-              label={editingCatId ? "Save" : "Create"}
+              label={editingCatId ? cat("save") : cat("create")}
               onPress={handleSaveCategory}
               loading={creatingCat}
               fullWidth

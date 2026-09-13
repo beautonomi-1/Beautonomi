@@ -26,6 +26,8 @@ import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { loyaltyHistoryRowsForDisplay } from "@/lib/loyalty-history-rows";
+import { endTextAlign } from "@/lib/rtlText";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 interface Milestone {
   id: string;
@@ -205,7 +207,7 @@ export default function LoyaltyScreen() {
   function formatDate(iso: string) {
     const parsed = parseValidDate(iso);
     if (!parsed) return "—";
-    return parsed.toLocaleDateString("en-US", {
+    return parsed.toLocaleDateString(getTenantLocaleTag(), {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -233,10 +235,10 @@ export default function LoyaltyScreen() {
       <View style={{ flex: 1 }}>
         {/* Hero card: warm amber for value/achievement (color psychology). Strong contrast for accessibility. */}
         <View style={{ borderRadius: 16, backgroundColor: "#FFFBEB", padding: 24, alignItems: "center", marginBottom: 16, borderWidth: 1, borderColor: "#FDE68A" }}>
-          <Text style={{ fontSize: 14, color: "#78350F", fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Your Points</Text>
+          <Text style={{ fontSize: 14, color: "#78350F", fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>{lp("yourPointsLabel")}</Text>
           <Text style={{ fontSize: 36, fontWeight: "700", color: "#78350F", marginTop: 4 }}>{points.toLocaleString()}</Text>
           {rate > 0 && (
-            <Text style={{ fontSize: 14, color: "#92400E", marginTop: 4 }}>Worth {currency} {redemptionValue.toFixed(2)}</Text>
+            <Text style={{ fontSize: 14, color: "#92400E", marginTop: 4 }}>{lp("worthValue", { currency, amount: redemptionValue.toFixed(2) })}</Text>
           )}
           <Text style={{ fontSize: 13, color: "#92400E", marginTop: 8 }}>{earnDesc}</Text>
           <TouchableOpacity
@@ -244,23 +246,23 @@ export default function LoyaltyScreen() {
             disabled={!canRedeem || redeeming}
             style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 9999, backgroundColor: canRedeem ? "#B45309" : "#FEF3C7", borderWidth: canRedeem ? 0 : 1, borderColor: "#FCD34D" }}
             accessibilityRole="button"
-            accessibilityLabel="Redeem points"
+            accessibilityLabel={lp("redeemPointsA11y")}
             accessibilityState={{ disabled: !canRedeem }}
           >
             {redeeming ? (
               <ActivityIndicator color={Colors.white} size="small" />
             ) : (
-              <Text style={{ color: canRedeem ? Colors.white : "#92400E", fontWeight: "600", fontSize: 14 }}>{canRedeem ? "Redeem to Wallet" : `Need ${minRedeem}+ to redeem`}</Text>
+              <Text style={{ color: canRedeem ? Colors.white : "#92400E", fontWeight: "600", fontSize: 14 }}>{canRedeem ? lp("redeemToWallet") : lp("needMinToRedeem", { min: String(minRedeem) })}</Text>
             )}
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: "row", marginBottom: 16 }}>
-          <View style={{ flex: 1, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 14, alignItems: "center", marginRight: 12, borderWidth: 1, borderColor: Colors.gray[200] }}>
-            <Text style={{ fontSize: 12, color: Colors.gray[600], fontWeight: "500" }}>Lifetime Earned</Text>
+          <View style={{ flex: 1, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 14, alignItems: "center", marginEnd: 12, borderWidth: 1, borderColor: Colors.gray[200] }}>
+            <Text style={{ fontSize: 12, color: Colors.gray[600], fontWeight: "500" }}>{lp("lifetimeEarnedLabel")}</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginTop: 2 }}>{lifetimePoints.toLocaleString()}</Text>
           </View>
           <View style={{ flex: 1, borderRadius: 12, backgroundColor: "#FFFBEB", padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#FDE68A" }}>
-            <Text style={{ fontSize: 12, color: "#92400E", fontWeight: "500" }}>Available</Text>
+            <Text style={{ fontSize: 12, color: "#92400E", fontWeight: "500" }}>{lp("availableLabel")}</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#78350F", marginTop: 2 }}>{points.toLocaleString()}</Text>
           </View>
         </View>
@@ -268,10 +270,10 @@ export default function LoyaltyScreen() {
           onPress={handleShareReferral}
           style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#E0E7FF", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "#A5B4FC" }}
           accessibilityRole="button"
-          accessibilityLabel="Share referral code and earn bonus points"
+          accessibilityLabel={lp("shareReferralA11y")}
         >
           <Ionicons name="share-social-outline" size={18} color="#4338CA" />
-          <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#3730A3" }}>Share & Earn Bonus Points</Text>
+          <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: "#3730A3" }}>{lp("shareEarnBonus")}</Text>
         </TouchableOpacity>
         <View style={{ flexDirection: "row", marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
           {tabs.map((row) => (
@@ -295,28 +297,28 @@ export default function LoyaltyScreen() {
               const rewardDesc = next.reward_description ?? next.description ?? next.name ?? "";
               return pointsRequired > 0 ? (
                 <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#FCD34D", backgroundColor: "#FFFBEB", padding: 16 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#78350F", marginBottom: 4 }}>Next Milestone</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#78350F", marginBottom: 4 }}>{lp("nextMilestoneLabel")}</Text>
                   <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{next.name}</Text>
                   <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 2 }}>{rewardDesc}</Text>
                   <View style={{ marginTop: 12 }}>
                     <AnimatedProgressBar progress={(lifetimePoints / pointsRequired) * 100} />
                   </View>
-                  <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4, textAlign: "right" }}>{lifetimePoints} / {pointsRequired} pts</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4, textAlign: endTextAlign() }}>{lp("ptsRatio", { earned: String(lifetimePoints), required: String(pointsRequired) })}</Text>
                 </View>
               ) : null;
             })())}
             <View style={{ borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16, marginTop: 12, borderWidth: 1, borderColor: Colors.gray[200] }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>How to Earn Points</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>{lp("howToEarnTitle")}</Text>
               {[
-                { icon: "calendar-outline" as const, label: "Complete a booking", desc: "Earn points on every visit" },
-                { icon: "star-outline" as const, label: "Leave a review", desc: "Share your experience" },
-                { icon: "people-outline" as const, label: "Refer a friend", desc: "Both of you earn bonus points" },
+                { icon: "calendar-outline" as const, label: lp("earnCompleteBookingLabel"), desc: lp("earnCompleteBookingDesc") },
+                { icon: "star-outline" as const, label: lp("earnReviewLabel"), desc: lp("earnReviewDesc") },
+                { icon: "people-outline" as const, label: lp("earnReferLabel"), desc: lp("earnReferDesc") },
               ].map((item, i) => (
                 <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: i < 2 ? 12 : 0 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FDE68A" }}>
                     <Ionicons name={item.icon} size={18} color="#78350F" />
                   </View>
-                  <View style={{ marginLeft: 12, flex: 1 }}>
+                  <View style={{ marginStart: 12, flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{item.label}</Text>
                     <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{item.desc}</Text>
                   </View>
@@ -331,20 +333,20 @@ export default function LoyaltyScreen() {
             {loyaltyHistoryRowsForDisplay(data).length === 0 ? (
               <View style={{ paddingVertical: 48, alignItems: "center" }}>
                 <Ionicons name="receipt-outline" size={40} color={Colors.gray[400]} />
-                <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>No transactions yet</Text>
-                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>Points will appear here after your first booking</Text>
+                <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>{lp("noTransactionsTitle")}</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>{lp("noTransactionsBody")}</Text>
               </View>
             ) : (
               loyaltyHistoryRowsForDisplay(data).map((tx: any) => {
                 const txType = tx.type ?? (tx.transaction_type === "earned" ? "earn" : tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : "earn");
-                const desc = tx.description ?? (txType === "earn" ? "Points earned" : txType === "redeem" ? "Points redeemed" : "Points expired");
+                const desc = tx.description ?? (txType === "earn" ? lp("pointsEarned") : txType === "redeem" ? lp("pointsRedeemed") : lp("pointsExpired"));
                 const pts = Number(tx.points ?? tx.points_amount ?? 0) || 0;
                 return (
                   <View key={tx.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
                     <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: txType === "earn" ? "#FEF3C7" : txType === "redeem" ? "#DBEAFE" : "#FEE2E2" }}>
                       <Ionicons name={txType === "earn" ? "add" : txType === "redeem" ? "gift-outline" : "time-outline"} size={16} color={txType === "earn" ? "#B45309" : txType === "redeem" ? "#1D4ED8" : "#B91C1C"} />
                     </View>
-                    <View style={{ marginLeft: 12, flex: 1 }}>
+                    <View style={{ marginStart: 12, flex: 1 }}>
                       <Text style={{ fontSize: 14, color: Colors.gray[900], fontWeight: "500" }}>{desc}</Text>
                       <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{formatDate(tx.created_at)}</Text>
                     </View>
@@ -361,7 +363,7 @@ export default function LoyaltyScreen() {
             {(!data?.milestones && !data?.available_milestones) || ((data?.milestones?.length ?? 0) === 0 && (data?.available_milestones?.length ?? 0) === 0) ? (
               <View style={{ paddingVertical: 48, alignItems: "center" }}>
                 <Ionicons name="trophy-outline" size={40} color={Colors.gray[400]} />
-                <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>No milestones available</Text>
+                <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>{lp("noMilestonesTitle")}</Text>
               </View>
             ) : (
               (data?.milestones ?? data?.available_milestones ?? []).map((m: any) => {
@@ -375,14 +377,14 @@ export default function LoyaltyScreen() {
                       <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: completed ? "#FEF3C7" : Colors.gray[100], borderWidth: completed ? 1 : 0, borderColor: "#FDE68A" }}>
                         {completed ? <Ionicons name="checkmark-circle" size={20} color="#B45309" /> : <Ionicons name="trophy-outline" size={18} color={Colors.gray[500]} />}
                       </View>
-                      <View style={{ marginLeft: 12, flex: 1 }}>
+                      <View style={{ marginStart: 12, flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: "600", color: completed ? "#78350F" : Colors.gray[900] }}>{m.name}</Text>
                         <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{rewardDesc}</Text>
-                        <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{completed ? "Completed" : `${pointsRequired.toLocaleString()} pts required`}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{completed ? lp("completedLabel") : lp("ptsRequired", { count: pointsRequired.toLocaleString() })}</Text>
                       </View>
                     </View>
                     {!completed && (
-                      <View style={{ marginTop: 8, marginLeft: 52 }}>
+                      <View style={{ marginTop: 8, marginStart: 52 }}>
                         <AnimatedProgressBar progress={milestoneProgress} color="#B45309" />
                       </View>
                     )}

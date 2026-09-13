@@ -3,9 +3,16 @@ const fs = require("fs");
 const path = require("path");
 
 // Load .env.local and use parsed values directly (bypass process.env to avoid Expo placeholders)
+//
+// NEVER when publishing: `.env.local` holds dev values (localhost API URL, screenshot mode).
+// `eas update` runs locally, so without this guard those values are baked into production
+// OTA bundles and every API call on customers' phones fails. Publish with
+// `EXPO_NO_DOTENV=1 eas update --environment production` (see `pnpm update:production`)
+// so all EXPO_PUBLIC_* come from the EAS environment instead — same source EAS Build uses.
+const skipLocalEnv = process.env.EXPO_NO_DOTENV === "1";
 const envPath = path.join(__dirname, ".env.local");
 const envFromFile = {};
-if (fs.existsSync(envPath)) {
+if (!skipLocalEnv && fs.existsSync(envPath)) {
   const content = fs.readFileSync(envPath, "utf8");
   for (const line of content.split("\n")) {
     const m = line.match(/^([^#=]+)=(.*)$/);

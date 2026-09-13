@@ -141,6 +141,11 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
   "membership_win_back",
   "provider_membership_cancelled",
   "abandoned_booking_reminder",
+  "provider_closeout_reminder",
+  "provider_booking_request_reminder",
+  "customer_running_late_ack",
+  "provider_customer_running_late",
+  "booking_checkout_not_completed",
 ] as const;
 
 /** Explicit opt-in marketing / broadcast keys only */

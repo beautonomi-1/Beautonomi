@@ -17,6 +17,7 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { ProviderBankAccountModal } from "../ProviderBankAccountModal";
 import { ProviderMarketingCreditsPanel } from "@/components/marketing/ProviderMarketingCreditsPanel";
 import { str } from "./types";
@@ -140,7 +141,7 @@ export function ProviderFinanceTab({
     onError: (e: Error) => adminToast.error(`Failed to update subscription: ${e.message}`),
   });
 
-  const cur = new Intl.NumberFormat(undefined, { style: "currency", currency: "ZAR", maximumFractionDigits: 2 }).format;
+  const cur = (n: number) => formatAdminCurrency(n, "ZAR");
 
   return (
     <div className="space-y-6">

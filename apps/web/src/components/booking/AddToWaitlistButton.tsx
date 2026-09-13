@@ -25,6 +25,7 @@ import { Clock, Loader2 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AddToWaitlistButtonProps {
   providerId: string;
@@ -51,6 +52,7 @@ export default function AddToWaitlistButton({
   size = "default",
   className,
 }: AddToWaitlistButtonProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -69,17 +71,17 @@ export default function AddToWaitlistButton({
     e.preventDefault();
     
     if (!formData.name) {
-      toast.error("Please enter your name");
+      toast.error(t("web.booking.addToWaitlist.enterName"));
       return;
     }
 
     if (!formData.service_id) {
-      toast.error("Please select a service");
+      toast.error(t("web.booking.addToWaitlist.selectService"));
       return;
     }
 
     if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.booking.addToWaitlist.invalidPhone"));
       return;
     }
 
@@ -91,7 +93,7 @@ export default function AddToWaitlistButton({
         phone: formData.phone?.trim() || "",
       });
 
-      toast.success("Added to waitlist! We'll notify you when a spot becomes available.");
+      toast.success(t("web.booking.addToWaitlist.addedSuccess"));
       setIsOpen(false);
       setFormData({
         name: "",
@@ -106,7 +108,7 @@ export default function AddToWaitlistButton({
       });
       onSuccess?.();
     } catch (error: any) {
-      toast.error(error.message || "Failed to add to waitlist. Please try again.");
+      toast.error(error.message || t("web.booking.addToWaitlist.addFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -120,74 +122,74 @@ export default function AddToWaitlistButton({
         onClick={() => setIsOpen(true)}
         className={className}
       >
-        <Clock className="w-4 h-4 mr-2" />
-        Join Waitlist
+        <Clock className="w-4 h-4 me-2" />
+        {t("web.booking.addToWaitlist.joinWaitlist")}
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Join Waitlist</DialogTitle>
+            <DialogTitle>{t("web.booking.addToWaitlist.title")}</DialogTitle>
             <DialogDescription>
-              We'll notify you when a spot becomes available for this service.
+              {t("web.booking.addToWaitlist.description")}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
+              <Label htmlFor="name">{t("web.booking.addToWaitlist.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Your name"
+                placeholder={t("web.booking.addToWaitlist.namePlaceholder")}
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("web.booking.addToWaitlist.email")}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="your@email.com"
+                  placeholder={t("web.booking.addToWaitlist.emailPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
                 <PhoneInput
                   inputId="public-waitlist-phone"
-                  label="Phone"
+                  label={t("web.booking.addToWaitlist.phone")}
                   value={formData.phone}
                   onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-                  placeholder="Phone number"
+                  placeholder={t("web.booking.addToWaitlist.phonePlaceholder")}
                 />
               </div>
             </div>
 
             {!serviceId && (
               <div className="space-y-2">
-                <Label htmlFor="service">Service *</Label>
+                <Label htmlFor="service">{t("web.booking.addToWaitlist.serviceRequired")}</Label>
                 <Select
                   value={formData.service_id}
                   onValueChange={(value) => setFormData({ ...formData, service_id: value })}
                   required
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a service" />
+                    <SelectValue placeholder={t("web.booking.addToWaitlist.selectAService")} />
                   </SelectTrigger>
                   <SelectContent>
                     {/* Services will be loaded from API */}
-                    <SelectItem value="placeholder">Loading services...</SelectItem>
+                    <SelectItem value="placeholder">{t("web.booking.addToWaitlist.loadingServices")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="preferred_date">Preferred Date</Label>
+              <Label htmlFor="preferred_date">{t("web.booking.addToWaitlist.preferredDate")}</Label>
               <Input
                 id="preferred_date"
                 type="date"
@@ -199,7 +201,7 @@ export default function AddToWaitlistButton({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="preferred_time_start">Preferred Time Start</Label>
+                <Label htmlFor="preferred_time_start">{t("web.booking.addToWaitlist.preferredTimeStart")}</Label>
                 <Input
                   id="preferred_time_start"
                   type="time"
@@ -208,7 +210,7 @@ export default function AddToWaitlistButton({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="preferred_time_end">Preferred Time End</Label>
+                <Label htmlFor="preferred_time_end">{t("web.booking.addToWaitlist.preferredTimeEnd")}</Label>
                 <Input
                   id="preferred_time_end"
                   type="time"
@@ -219,12 +221,12 @@ export default function AddToWaitlistButton({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Label htmlFor="notes">{t("web.booking.addToWaitlist.notesOptional")}</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Any special requests or notes..."
+                placeholder={t("web.booking.addToWaitlist.notesPlaceholder")}
                 rows={3}
               />
             </div>
@@ -237,7 +239,7 @@ export default function AddToWaitlistButton({
                 className="flex-1"
                 disabled={isSubmitting}
               >
-                Cancel
+                {t("web.booking.addToWaitlist.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -246,13 +248,13 @@ export default function AddToWaitlistButton({
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Adding...
+                    <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                    {t("web.booking.addToWaitlist.adding")}
                   </>
                 ) : (
                   <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    Join Waitlist
+                    <Clock className="w-4 h-4 me-2" />
+                    {t("web.booking.addToWaitlist.joinWaitlist")}
                   </>
                 )}
               </Button>

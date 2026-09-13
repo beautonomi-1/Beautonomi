@@ -38,6 +38,7 @@ import {
   type PaymentSuccessSummaryRow,
 } from "@/components/payment/PaymentSuccessOverlay";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
 
@@ -202,7 +203,7 @@ export default function CustomOfferCheckoutScreen() {
 
   const loadOffer = useCallback(async () => {
     if (!offerId) {
-      setLoadError("Missing offer");
+      setLoadError(coc("missingOffer", undefined, "Missing offer"));
       setLoading(false);
       return;
     }
@@ -210,21 +211,25 @@ export default function CustomOfferCheckoutScreen() {
     setLoadError(null);
     const res = await api.get<OfferPayload>(`/api/me/custom-offers/${offerId}`);
     if (res.error) {
-      setLoadError(getApiErrorMessage(res.error, "Could not load offer"));
+      setLoadError(getApiErrorMessage(res.error, coc("couldNotLoadOffer", undefined, "Could not load offer")));
       setOffer(null);
       setLoading(false);
       return;
     }
     const row = res.data;
     if (!row) {
-      setLoadError("Offer not found");
+      setLoadError(coc("offerNotFound", undefined, "Offer not found"));
       setOffer(null);
       setLoading(false);
       return;
     }
     if (row.status === "finalize_failed") {
       setLoadError(
-        "We received your payment but could not finish creating the booking. Please contact support with your payment reference."
+        coc(
+          "finalizeFailed",
+          undefined,
+          "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+        )
       );
       setOffer(null);
       setQuote(null);
@@ -238,7 +243,7 @@ export default function CustomOfferCheckoutScreen() {
     if (!q.error && q.data) setQuote(q.data);
     else setQuote(null);
     setLoading(false);
-  }, [offerId]);
+  }, [coc, offerId]);
 
   useEffect(() => {
     void loadOffer();
@@ -353,12 +358,21 @@ export default function CustomOfferCheckoutScreen() {
             return;
           }
           if (latestStatus === "payment_pending") {
-            setPayError("Payment is still processing. Check Bookings in a moment or tap Pay to retry.");
+            setPayError(
+              coc(
+                "paymentStillProcessing",
+                undefined,
+                "Payment is still processing. Check Bookings in a moment or tap Pay to retry.",
+              ),
+            );
             return;
           }
-          const msg = getApiErrorMessage(res.error, "Could not start payment");
+          const msg = getApiErrorMessage(
+            res.error,
+            coc("couldNotStartPayment", undefined, "Could not start payment"),
+          );
           setPayError(msg);
-          Alert.alert("Payment failed", msg);
+          Alert.alert(coc("paymentFailedTitle", undefined, "Payment failed"), msg);
           return;
         }
 
@@ -378,9 +392,13 @@ export default function CustomOfferCheckoutScreen() {
             }, 2200);
           } else {
             Alert.alert(
-              "Payment received",
-              "Your payment was received. Your booking may take a moment to appear.",
-              [{ text: "OK", onPress: () => router.back() }]
+              coc("paymentReceivedTitle", undefined, "Payment received"),
+              coc(
+                "paymentReceivedBody",
+                undefined,
+                "Your payment was received. Your booking may take a moment to appear.",
+              ),
+              [{ text: coc("ok", undefined, "OK"), onPress: () => router.back() }]
             );
           }
           return;
@@ -389,9 +407,13 @@ export default function CustomOfferCheckoutScreen() {
         const url = data?.paymentUrl || data?.payment_url;
         if (!url) {
           setProcessingPayment(false);
-          const msg = "No payment link returned from server. Please try again.";
+          const msg = coc(
+            "noPaymentLink",
+            undefined,
+            "No payment link returned from server. Please try again.",
+          );
           setPayError(msg);
-          Alert.alert("Payment failed", msg);
+          Alert.alert(coc("paymentFailedTitle", undefined, "Payment failed"), msg);
           return;
         }
 
@@ -422,7 +444,9 @@ export default function CustomOfferCheckoutScreen() {
           // Reset server state so a retry gets a fresh Paystack session.
           await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
           await loadOffer();
-          setPayError("You cancelled the payment. Tap Pay to try again.");
+          setPayError(
+            coc("paymentCancelled", undefined, "You cancelled the payment. Tap Pay to try again."),
+          );
           return;
         }
 
@@ -448,7 +472,11 @@ export default function CustomOfferCheckoutScreen() {
           await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
           await loadOffer();
           setPayError(
-            "The payment window closed before we could confirm. If you completed payment, your booking will appear in a moment — otherwise tap Pay to try again."
+            coc(
+              "paymentWindowClosed",
+              undefined,
+              "The payment window closed before we could confirm. If you completed payment, your booking will appear in a moment — otherwise tap Pay to try again.",
+            )
           );
           return;
         }
@@ -457,7 +485,9 @@ export default function CustomOfferCheckoutScreen() {
         if (pr.outcome === "success" && pr.url) {
           if (isCancelledPaystackUrl(pr.url)) {
             setProcessingPayment(false);
-            setPayError("You cancelled the payment. Tap Pay to try again.");
+            setPayError(
+              coc("paymentCancelled", undefined, "You cancelled the payment. Tap Pay to try again."),
+            );
             return;
           }
           reference = extractPaystackReferenceFromUrl(pr.url);
@@ -488,9 +518,13 @@ export default function CustomOfferCheckoutScreen() {
           }, 2200);
         } else {
           Alert.alert(
-            "Processing",
-            "If you completed payment, your booking will appear shortly. You can check Bookings in your profile.",
-            [{ text: "OK", onPress: () => router.back() }]
+            coc("processingTitle", undefined, "Processing"),
+            coc(
+              "processingBookingBody",
+              undefined,
+              "If you completed payment, your booking will appear shortly. You can check Bookings in your profile.",
+            ),
+            [{ text: coc("ok", undefined, "OK"), onPress: () => router.back() }]
           );
         }
       } catch (e) {
@@ -510,15 +544,21 @@ export default function CustomOfferCheckoutScreen() {
           return;
         }
         if (latestStatus === "payment_pending") {
-          setPayError("Payment may still be processing. Check Bookings shortly.");
+          setPayError(
+            coc(
+              "paymentMayStillBeProcessing",
+              undefined,
+              "Payment may still be processing. Check Bookings shortly.",
+            ),
+          );
           await loadOffer().catch(() => {});
           return;
         }
         await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
         await loadOffer().catch(() => {});
-        const msg = e instanceof Error ? e.message : "Payment failed";
+        const msg = e instanceof Error ? e.message : coc("paymentFailedTitle", undefined, "Payment failed");
         setPayError(msg);
-        Alert.alert("Error", msg);
+        Alert.alert(coc("errorTitle", undefined, "Error"), msg);
       } finally {
         payInFlightRef.current = false;
       }
@@ -531,13 +571,18 @@ export default function CustomOfferCheckoutScreen() {
       loadOffer,
       router,
       paystackHostedCheckout,
+      coc,
+      buildOfferSuccessRows,
     ]
   );
 
   const handlePay = useCallback(async () => {
     if (payInFlightRef.current) return;
     if (!offer || !user?.email) {
-      Alert.alert("Sign in required", "Please sign in to pay.");
+      Alert.alert(
+        coc("signInRequiredTitle", undefined, "Sign in required"),
+        coc("signInRequiredBody", undefined, "Please sign in to pay."),
+      );
       return;
     }
     if (offer.status === "paid" || offer.booking_id) {
@@ -593,6 +638,7 @@ export default function CustomOfferCheckoutScreen() {
     runAcceptThenNavigate,
     router,
     saveCard,
+    coc,
   ]);
 
   const header = useMemo(
@@ -610,17 +656,17 @@ export default function CustomOfferCheckoutScreen() {
       >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{ marginRight: 12 }}
+          style={{ marginEnd: 12 }}
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <DirectionalIcon name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
-          Pay custom offer
+          {coc("title", undefined, "Pay custom offer")}
         </Text>
       </View>
     ),
-    [contentPadding, router]
+    [contentPadding, router, coc]
   );
 
   if (loading) {
@@ -629,8 +675,8 @@ export default function CustomOfferCheckoutScreen() {
         {header}
         <PaymentProcessingOverlay
           visible
-          message="Loading your offer…"
-          hint="Fetching price, taxes, and payment options."
+          message={coc("loadingOffer", undefined, "Loading your offer…")}
+          hint={coc("loadingOfferHint", undefined, "Fetching price, taxes, and payment options.")}
         />
       </SafeAreaView>
     );
@@ -642,7 +688,7 @@ export default function CustomOfferCheckoutScreen() {
         {header}
         <View style={{ flex: 1, padding: contentPadding, justifyContent: "center" }}>
           <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>
-            {loadError || "Offer unavailable"}
+            {loadError || coc("offerUnavailable", undefined, "Offer unavailable")}
           </Text>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -655,7 +701,9 @@ export default function CustomOfferCheckoutScreen() {
               borderRadius: 12,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Go back</Text>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>
+              {coc("goBack", undefined, "Go back")}
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -668,7 +716,8 @@ export default function CustomOfferCheckoutScreen() {
         {header}
         <View style={{ flex: 1, padding: contentPadding, justifyContent: "center" }}>
           <Text style={{ fontSize: 16, color: "#374151", textAlign: "center" }}>
-            This offer is already paid.{"\n"}Open your booking to view details.
+            {coc("alreadyPaid", undefined, "This offer is already paid.")}{"\n"}
+            {coc("alreadyPaidHint", undefined, "Open your booking to view details.")}
           </Text>
           <TouchableOpacity
             onPress={() =>
@@ -686,7 +735,9 @@ export default function CustomOfferCheckoutScreen() {
               borderRadius: 12,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>View booking</Text>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>
+              {coc("viewBooking", undefined, "View booking")}
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -706,19 +757,26 @@ export default function CustomOfferCheckoutScreen() {
             style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 }}>
-              {offer.request?.service_name || "Custom offer"}
+              {offer.request?.service_name ||
+                coc("customOfferFallback", undefined, "Custom offer")}
             </Text>
             <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
               {quote
-                ? "Full payment summary — same taxes and platform fee as a standard booking."
-                : "Final total includes taxes & fees."}
+                ? coc(
+                    "quoteSummaryHint",
+                    undefined,
+                    "Full payment summary — same taxes and platform fee as a standard booking.",
+                  )
+                : coc("estimateHint", undefined, "Final total includes taxes & fees.")}
             </Text>
             {quote?.pricing ? (
               <>
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ color: "#6B7280" }}>Service subtotal</Text>
+                  <Text style={{ color: "#6B7280" }}>
+                    {coc("serviceSubtotal", undefined, "Service subtotal")}
+                  </Text>
                   <Text style={{ fontWeight: "600", color: "#111827" }}>
                     {fmt(Number(quote.pricing.subtotal ?? 0))}
                   </Text>
@@ -731,7 +789,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#6B7280" }}>Travel</Text>
+                    <Text style={{ color: "#6B7280" }}>
+                      {coc("travel", undefined, "Travel")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>
                       {fmt(Number(quote.pricing.travelFee))}
                     </Text>
@@ -745,7 +805,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#047857" }}>Promotion</Text>
+                    <Text style={{ color: "#047857" }}>
+                      {coc("promotion", undefined, "Promotion")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#047857" }}>
                       −{fmt(Number(quote.pricing.promotionDiscountAmount))}
                     </Text>
@@ -759,7 +821,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#047857" }}>Membership discount</Text>
+                    <Text style={{ color: "#047857" }}>
+                      {coc("membershipDiscount", undefined, "Membership discount")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#047857" }}>
                       −{fmt(Number(quote.pricing.membershipDiscountAmount))}
                     </Text>
@@ -773,7 +837,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#047857" }}>Loyalty discount</Text>
+                    <Text style={{ color: "#047857" }}>
+                      {coc("loyaltyDiscount", undefined, "Loyalty discount")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#047857" }}>
                       −{fmt(Number(quote.pricing.loyaltyDiscountAmount))}
                     </Text>
@@ -788,7 +854,9 @@ export default function CustomOfferCheckoutScreen() {
                     }}
                   >
                     <Text style={{ color: "#6B7280" }}>
-                      Tax{Number(quote.pricing.taxRate) > 0 ? ` (${quote.pricing.taxRate}%)` : ""}
+                      {Number(quote.pricing.taxRate) > 0
+                        ? coc("taxWithRate", { rate: quote.pricing.taxRate }, "Tax ({{rate}}%)")
+                        : coc("tax", undefined, "Tax")}
                     </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>
                       {fmt(Number(quote.pricing.taxAmount))}
@@ -803,7 +871,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#6B7280" }}>Platform fee</Text>
+                    <Text style={{ color: "#6B7280" }}>
+                      {coc("platformFee", undefined, "Platform fee")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>
                       {fmt(Number(quote.pricing.serviceFeeAmount))}
                     </Text>
@@ -817,7 +887,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#6B7280" }}>Tip</Text>
+                    <Text style={{ color: "#6B7280" }}>
+                      {coc("tip", undefined, "Tip")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>
                       {fmt(Number(quote.pricing.tipAmount))}
                     </Text>
@@ -833,22 +905,32 @@ export default function CustomOfferCheckoutScreen() {
                     borderTopColor: "#E5E7EB",
                   }}
                 >
-                  <Text style={{ fontWeight: "700", color: "#111827" }}>Booking total</Text>
+                  <Text style={{ fontWeight: "700", color: "#111827" }}>
+                    {coc("bookingTotal", undefined, "Booking total")}
+                  </Text>
                   <Text style={{ fontWeight: "700", color: PRIMARY }}>
                     {fmt(Number(quote.pricing.totalAmount ?? 0))}
                   </Text>
                 </View>
                 {quote.deposit?.required && typeof quote.deposit.deposit_amount === "number" ? (
                   <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
-                    Deposit option: {fmt(quote.deposit.deposit_amount)} (pay now) · Full balance{" "}
-                    {fmt(Number(quote.deposit.full_total ?? quote.pricing.totalAmount))}.
+                    {coc(
+                      "depositOptionLine",
+                      {
+                        deposit: fmt(quote.deposit.deposit_amount),
+                        full: fmt(Number(quote.deposit.full_total ?? quote.pricing.totalAmount)),
+                      },
+                      "Deposit option: {{deposit}} (pay now) · Full balance {{full}}.",
+                    )}
                   </Text>
                 ) : null}
                 {quote.splits ? (
                   <View style={{ marginTop: 10, gap: 6 }}>
                     {quote.splits.loyaltyDiscountAmount > 0 ? (
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ color: "#047857" }}>Loyalty discount</Text>
+                        <Text style={{ color: "#047857" }}>
+                          {coc("loyaltyDiscount", undefined, "Loyalty discount")}
+                        </Text>
                         <Text style={{ fontWeight: "600", color: "#047857" }}>
                           −{fmt(quote.splits.loyaltyDiscountAmount)}
                         </Text>
@@ -856,7 +938,9 @@ export default function CustomOfferCheckoutScreen() {
                     ) : null}
                     {quote.splits.giftCardAmount > 0 ? (
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ color: "#6B7280" }}>Gift card tender</Text>
+                        <Text style={{ color: "#6B7280" }}>
+                          {coc("giftCardTender", undefined, "Gift card tender")}
+                        </Text>
                         <Text style={{ fontWeight: "600", color: "#111827" }}>
                           −{fmt(quote.splits.giftCardAmount)}
                         </Text>
@@ -864,7 +948,9 @@ export default function CustomOfferCheckoutScreen() {
                     ) : null}
                     {quote.splits.walletAmount > 0 ? (
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ color: "#6B7280" }}>Wallet tender</Text>
+                        <Text style={{ color: "#6B7280" }}>
+                          {coc("walletTender", undefined, "Wallet tender")}
+                        </Text>
                         <Text style={{ fontWeight: "600", color: "#111827" }}>
                           −{fmt(quote.splits.walletAmount)}
                         </Text>
@@ -880,7 +966,9 @@ export default function CustomOfferCheckoutScreen() {
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}
                 >
-                  <Text style={{ fontWeight: "700", color: "#111827" }}>Pay now</Text>
+                  <Text style={{ fontWeight: "700", color: "#111827" }}>
+                    {coc("payNow", undefined, "Pay now")}
+                  </Text>
                   <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(paystackDueNow)}</Text>
                 </View>
               </>
@@ -889,7 +977,9 @@ export default function CustomOfferCheckoutScreen() {
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ color: "#6B7280" }}>Service</Text>
+                  <Text style={{ color: "#6B7280" }}>
+                    {coc("service", undefined, "Service")}
+                  </Text>
                   <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(basePrice)}</Text>
                 </View>
                 {travel > 0 ? (
@@ -900,7 +990,9 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={{ color: "#6B7280" }}>Travel</Text>
+                    <Text style={{ color: "#6B7280" }}>
+                      {coc("travel", undefined, "Travel")}
+                    </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(travel)}</Text>
                   </View>
                 ) : null}
@@ -914,7 +1006,9 @@ export default function CustomOfferCheckoutScreen() {
                     borderTopColor: "#E5E7EB",
                   }}
                 >
-                  <Text style={{ fontWeight: "700", color: "#111827" }}>Subtotal (estimate)</Text>
+                  <Text style={{ fontWeight: "700", color: "#111827" }}>
+                    {coc("subtotalEstimate", undefined, "Subtotal (estimate)")}
+                  </Text>
                   <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(subtotalPreview)}</Text>
                 </View>
               </>
@@ -924,7 +1018,7 @@ export default function CustomOfferCheckoutScreen() {
           {providerRequiresDeposit ? (
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
-                Payment amount
+                {coc("paymentAmount", undefined, "Payment amount")}
               </Text>
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity
@@ -947,10 +1041,10 @@ export default function CustomOfferCheckoutScreen() {
                       marginBottom: 4,
                     }}
                   >
-                    Recommended
+                    {coc("recommended", undefined, "Recommended")}
                   </Text>
                   <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>
-                    Pay in full
+                    {coc("payInFull", undefined, "Pay in full")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -965,7 +1059,7 @@ export default function CustomOfferCheckoutScreen() {
                   }}
                 >
                   <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>
-                    Deposit ({depositPct}%)
+                    {coc("depositPct", { pct: depositPct }, "Deposit ({{pct}}%)")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -977,7 +1071,7 @@ export default function CustomOfferCheckoutScreen() {
               style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
             >
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-                Split payment
+                {coc("splitPayment", undefined, "Split payment")}
               </Text>
               <View
                 style={{
@@ -987,10 +1081,16 @@ export default function CustomOfferCheckoutScreen() {
                   marginBottom: 12,
                 }}
               >
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={{ fontWeight: "700", color: "#111827" }}>Use wallet balance</Text>
+                <View style={{ flex: 1, paddingEnd: 12 }}>
+                  <Text style={{ fontWeight: "700", color: "#111827" }}>
+                    {coc("useWalletBalance", undefined, "Use wallet balance")}
+                  </Text>
                   <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                    Available {fmt(Number(quote.wallet_balance ?? 0))}
+                    {coc(
+                      "walletAvailable",
+                      { amount: fmt(Number(quote.wallet_balance ?? 0)) },
+                      "Available {{amount}}",
+                    )}
                   </Text>
                 </View>
                 <Switch
@@ -1002,13 +1102,13 @@ export default function CustomOfferCheckoutScreen() {
                 />
               </View>
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
-                Gift card code
+                {coc("giftCardCode", undefined, "Gift card code")}
               </Text>
               <TextInput
                 value={giftCardCode}
                 onChangeText={setGiftCardCode}
                 autoCapitalize="characters"
-                placeholder="Optional gift card code"
+                placeholder={coc("giftCardPlaceholder", undefined, "Optional gift card code")}
                 placeholderTextColor="#9CA3AF"
                 style={{
                   borderWidth: 1,
@@ -1021,13 +1121,13 @@ export default function CustomOfferCheckoutScreen() {
                 }}
               />
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
-                Loyalty points
+                {coc("loyaltyPoints", undefined, "Loyalty points")}
               </Text>
               <TextInput
                 value={loyaltyPointsToRedeem}
                 onChangeText={(value) => setLoyaltyPointsToRedeem(value.replace(/[^0-9]/g, ""))}
                 keyboardType="number-pad"
-                placeholder="Optional points to redeem"
+                placeholder={coc("loyaltyPointsPlaceholder", undefined, "Optional points to redeem")}
                 placeholderTextColor="#9CA3AF"
                 style={{
                   borderWidth: 1,
@@ -1045,7 +1145,7 @@ export default function CustomOfferCheckoutScreen() {
             style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
           >
             <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-              Payment method
+              {coc("paymentMethod", undefined, "Payment method")}
             </Text>
             {savedCards.map((c) => {
               const active = !useNewCard && selectedCardId === c.id;
@@ -1062,7 +1162,14 @@ export default function CustomOfferCheckoutScreen() {
                     setUseNewCard(false);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Pay with saved ${c.card_type ?? "card"} ending ${c.last4}`}
+                  accessibilityLabel={coc(
+                    "payWithSavedA11y",
+                    {
+                      brand: c.card_type ?? coc("cardBrandFallback", undefined, "card"),
+                      last4: c.last4 ?? "",
+                    },
+                    "Pay with saved {{brand}} ending {{last4}}",
+                  )}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -1077,40 +1184,47 @@ export default function CustomOfferCheckoutScreen() {
                     name="card-outline"
                     size={20}
                     color="#6B7280"
-                    style={{ marginRight: 10 }}
+                    style={{ marginEnd: 10 }}
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: "600", color: "#374151" }}>
-                      {c.card_type ?? "Card"} ··· {c.last4}
+                      {c.card_type ?? coc("cardFallback", undefined, "Card")} ··· {c.last4}
                     </Text>
                     {expiry ? (
                       <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                        Expires {expiry}
+                        {coc("expires", { expiry }, "Expires {{expiry}}")}
                       </Text>
                     ) : null}
                   </View>
                   {c.is_default ? (
                     <Text style={{ fontSize: 11, color: PRIMARY, fontWeight: "700" }}>
-                      DEFAULT
+                      {coc("defaultBadge", undefined, "DEFAULT")}
                     </Text>
                   ) : null}
                   <TouchableOpacity
                     onPress={(e) => {
                       e.stopPropagation();
                       Alert.alert(
-                        "Remove this card?",
-                        "It will be removed from your saved cards.",
+                        coc("removeCardTitle", undefined, "Remove this card?"),
+                        coc("removeCardBody", undefined, "It will be removed from your saved cards."),
                         [
-                          { text: "Cancel", style: "cancel" },
+                          { text: coc("cancel", undefined, "Cancel"), style: "cancel" },
                           {
-                            text: "Remove",
+                            text: coc("remove", undefined, "Remove"),
                             style: "destructive",
                             onPress: async () => {
                               setRemovingCardId(c.id);
                               const ok = await removeSavedCard(c.id);
                               setRemovingCardId(null);
                               if (!ok) {
-                                Alert.alert("Error", "Could not remove card. Please try again.");
+                                Alert.alert(
+                                  coc("errorTitle", undefined, "Error"),
+                                  coc(
+                                    "removeCardFailed",
+                                    undefined,
+                                    "Could not remove card. Please try again.",
+                                  ),
+                                );
                                 return;
                               }
                               if (selectedCardId === c.id) {
@@ -1135,10 +1249,14 @@ export default function CustomOfferCheckoutScreen() {
                     style={{
                       paddingVertical: 4,
                       paddingHorizontal: 6,
-                      marginLeft: 6,
+                      marginStart: 6,
                       opacity: removingCardId === c.id ? 0.4 : 1,
                     }}
-                    accessibilityLabel={`Remove card ending in ${c.last4 ?? "****"}`}
+                    accessibilityLabel={coc(
+                      "removeCardA11y",
+                      { last4: c.last4 ?? "****" },
+                      "Remove card ending in {{last4}}",
+                    )}
                     accessibilityRole="button"
                   >
                     {removingCardId === c.id ? (
@@ -1156,10 +1274,10 @@ export default function CustomOfferCheckoutScreen() {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ paddingVertical: 6, alignSelf: "flex-start" }}
                 accessibilityRole="link"
-                accessibilityLabel="Manage saved cards"
+                accessibilityLabel={coc("manageSavedCards", undefined, "Manage saved cards")}
               >
                 <Text style={{ fontSize: 12, color: PRIMARY, fontWeight: "600" }}>
-                  Manage saved cards
+                  {coc("manageSavedCards", undefined, "Manage saved cards")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1169,7 +1287,7 @@ export default function CustomOfferCheckoutScreen() {
                 setSelectedCardId(null);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Pay with a new card"
+              accessibilityLabel={coc("payWithNewCardA11y", undefined, "Pay with a new card")}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -1184,16 +1302,20 @@ export default function CustomOfferCheckoutScreen() {
                 name="globe-outline"
                 size={20}
                 color="#6B7280"
-                style={{ marginRight: 10 }}
+                style={{ marginEnd: 10 }}
               />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: "#374151" }}>
                   {savedCards.length > 0
-                    ? "Pay with a new card (secure browser)"
-                    : "Pay with a new card"}
+                    ? coc("payWithNewCardSecure", undefined, "Pay with a new card (secure browser)")
+                    : coc("payWithNewCard", undefined, "Pay with a new card")}
                 </Text>
                 <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
-                  Opens a secure Paystack window. We never see your card details.
+                  {coc(
+                    "paystackSecurityCopy",
+                    undefined,
+                    "Opens a secure Paystack window. We never see your card details.",
+                  )}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1207,12 +1329,16 @@ export default function CustomOfferCheckoutScreen() {
                   paddingHorizontal: 4,
                 }}
               >
-                <View style={{ flex: 1, paddingRight: 12 }}>
+                <View style={{ flex: 1, paddingEnd: 12 }}>
                   <Text style={{ fontWeight: "600", color: "#374151" }}>
-                    Save this card for next time
+                    {coc("saveThisCard", undefined, "Save this card for next time")}
                   </Text>
                   <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
-                    Pay one-tap on your next booking. We store a secure token, never the full card.
+                    {coc(
+                      "saveThisCardHint",
+                      undefined,
+                      "Pay one-tap on your next booking. We store a secure token, never the full card.",
+                    )}
                   </Text>
                 </View>
                 <Switch
@@ -1220,7 +1346,7 @@ export default function CustomOfferCheckoutScreen() {
                   onValueChange={setSaveCard}
                   trackColor={{ false: "#E5E7EB", true: "rgba(255,0,119,0.35)" }}
                   thumbColor={saveCard ? PRIMARY : "#F9FAFB"}
-                  accessibilityLabel="Save this card for next time"
+                  accessibilityLabel={coc("saveThisCard", undefined, "Save this card for next time")}
                 />
               </View>
             ) : null}
@@ -1266,7 +1392,7 @@ export default function CustomOfferCheckoutScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
-                Pay {fmt(paystackDueNow)}
+                {coc("payAmountCta", { amount: fmt(paystackDueNow) }, "Pay {{amount}}")}
               </Text>
             )}
           </TouchableOpacity>
@@ -1276,8 +1402,13 @@ export default function CustomOfferCheckoutScreen() {
           visible={processingPayment}
           message={processingMessage}
           hint={
-            processingMessage.includes("Opening")
-              ? "You may switch to your bank app — we will bring you back here when payment completes."
+            processingMessage ===
+            coc("openingSecurePayment", undefined, "Opening secure payment…")
+              ? coc(
+                  "openingSecureHint",
+                  undefined,
+                  "You may switch to your bank app — we will bring you back here when payment completes.",
+                )
               : undefined
           }
         />

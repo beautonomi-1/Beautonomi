@@ -29,6 +29,8 @@ function buildBookingRow(overrides: Record<string, unknown> = {}) {
     status: "confirmed",
     payment_status: "paid",
     scheduled_at: "2026-06-20T10:00:00.000Z",
+    created_at: "2026-06-18T08:00:00.000Z",
+    location_id: "loc-1",
     location_type: "at_salon",
     total_amount: 300,
     currency: "ZAR",
@@ -44,17 +46,41 @@ function buildBookingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function chainableQuery(resolved: { data: unknown; error: unknown }) {
+  const query: {
+    select: ReturnType<typeof vi.fn>;
+    eq: ReturnType<typeof vi.fn>;
+    order: ReturnType<typeof vi.fn>;
+    limit: ReturnType<typeof vi.fn>;
+    single: ReturnType<typeof vi.fn>;
+    maybeSingle: ReturnType<typeof vi.fn>;
+    then: (resolve: (value: unknown) => void, reject?: (reason: unknown) => void) => Promise<unknown>;
+  } = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    single: vi.fn().mockResolvedValue(resolved),
+    maybeSingle: vi.fn().mockResolvedValue(resolved),
+    then: (resolve, reject) => Promise.resolve(resolved).then(resolve, reject),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  query.order.mockReturnValue(query);
+  query.limit.mockReturnValue(query);
+  return query;
+}
+
 function buildSupabaseMock(booking: Record<string, unknown> | null) {
   return {
-    from: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: booking,
-            error: booking ? null : { message: "not found" },
-          }),
-        }),
-      }),
+    from: vi.fn((table: string) => {
+      if (table === "bookings") {
+        return chainableQuery({
+          data: booking,
+          error: booking ? null : { message: "not found" },
+        });
+      }
+      return chainableQuery({ data: {}, error: null });
     }),
   };
 }
@@ -84,5 +110,33 @@ describe("GET /api/me/bookings/[id]", () => {
     expect(json.data.is_group_booking).toBe(true);
     expect(json.data.group_booking_id).toBe(GROUP_ID);
     expect(json.data.group_booking_ref).toBe("GRP-001");
+    expect(json.data.lifecycle_hint).toBeDefined();
+    expect(json.data.pending_confirmation_sla).toEqual(
+      expect.objectContaining({ body: expect.any(String) }),
+    );
+    expect(json.data.created_at).toBe("2026-06-18T08:00:00.000Z");
+    expect(json.data.location_id).toBe("loc-1");
+  });
+
+  it("omits pending-confirmation SLA copy for recurring series visits", async () => {
+    mockGetSupabaseAdmin.mockReturnValue(
+      buildSupabaseMock(
+        buildBookingRow({
+          status: "pending",
+          payment_status: "paid",
+          recurring_series_id: "series-1",
+        }),
+      ),
+    );
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/api/me/bookings/" + BOOKING_ID), {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data.pending_confirmation_sla).toBeNull();
+    expect(json.data.recurring_series_id).toBe("series-1");
   });
 });

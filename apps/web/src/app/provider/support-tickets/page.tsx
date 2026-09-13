@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ type Ticket = {
 };
 
 export default function ProviderSupportTicketsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,31 +51,31 @@ export default function ProviderSupportTicketsPage() {
   return (
     <div>
       <PageHeader
-        title="Support tickets"
-        subtitle="All tickets, replies & status"
+title={t("web.provider.pages.support-tickets.title")}
+subtitle={t("web.provider.pages.support-tickets.subtitle")}
         breadcrumbs={[
-          { label: "More", href: "/provider/more" },
-          { label: "Support tickets" },
+{ label: t("web.provider.moreHub.title"), href: "/provider/more" },
+{ label: t("web.provider.pages.support-tickets.title") },
         ]}
         actions={
           <Button asChild>
             <Link href="/provider/support-tickets/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New ticket
+              <Plus className="h-4 w-4 me-2" />
+{t("web.provider.pages.support-tickets/new.newTicket")}
             </Link>
           </Button>
         }
       />
 
       {loading ? (
-        <LoadingTimeout loadingMessage="Loading tickets…" />
+<LoadingTimeout loadingMessage={t("web.provider.pages.support-tickets.loading")} />
       ) : tickets.length === 0 ? (
         <EmptyState
           icon={LifeBuoy}
-          title="No support tickets"
-          description="Need help? Contact our support team."
+title={t("web.provider.pages.support-tickets.emptyTitle")}
+description={t("web.provider.pages.support-tickets.emptyDesc")}
           action={{
-            label: "Contact support",
+label: t("web.provider.pages.support-tickets/new.title"),
             onClick: () => router.push("/provider/support-tickets/new"),
           }}
         />
@@ -90,7 +92,7 @@ export default function ProviderSupportTicketsPage() {
                     <span className="font-medium text-gray-900 truncate">{ticket.subject}</span>
                     {ticket.has_unread_staff_reply ? (
                       <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                        New reply
+{t("web.provider.pages.support-tickets.newReply")}
                       </span>
                     ) : null}
                   </div>

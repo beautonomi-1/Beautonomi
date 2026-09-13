@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BookingStatusChip } from "../ui/BookingStatusChip";
@@ -17,6 +19,8 @@ export interface HubScheduleBooking {
   customer_name?: string | null;
   total_amount?: number | null;
   payment_status?: string | null;
+  customer_running_late_minutes?: number | null;
+  customer_running_late_at?: string | null;
   services?: { offering_name?: string; service_name?: string; name?: string }[];
 }
 
@@ -29,10 +33,10 @@ interface BookingScheduleCardProps {
   onPrimaryAction?: (booking: HubScheduleBooking, action: ProviderBookingAction) => void;
 }
 
-function serviceLabel(booking: HubScheduleBooking): string {
+function serviceLabel(booking: HubScheduleBooking, bookingFallback: string, serviceFallback: string): string {
   const services = booking.services ?? [];
-  if (services.length === 0) return "Booking";
-  const first = services[0]?.offering_name ?? services[0]?.service_name ?? services[0]?.name ?? "Service";
+  if (services.length === 0) return bookingFallback;
+  const first = services[0]?.offering_name ?? services[0]?.service_name ?? services[0]?.name ?? serviceFallback;
   return services.length > 1 ? `${first} +${services.length - 1}` : first;
 }
 
@@ -51,7 +55,8 @@ export function BookingScheduleCard({
   onOpen,
   onPrimaryAction,
 }: BookingScheduleCardProps) {
-  const customer = booking.customer_name?.trim() || "Customer";
+  const { t } = useTranslation();
+  const customer = booking.customer_name?.trim() || t("web.provider.common.customer");
 
   return (
     <div
@@ -63,7 +68,7 @@ export function BookingScheduleCard({
       <button
         type="button"
         onClick={() => onOpen(booking)}
-        className={cn("w-full text-left touch-manipulation", MIN_TAP)}
+        className={cn("w-full text-start touch-manipulation", MIN_TAP)}
         data-schedule-card={booking.id}
       >
         <div className="flex items-start gap-3">
@@ -77,8 +82,16 @@ export function BookingScheduleCard({
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold text-gray-900 truncate">{customer}</p>
               <BookingStatusChip status={booking.status} />
+              {booking.customer_running_late_at ? (
+                <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full bg-amber-100 text-amber-900 px-2 py-0.5">
+                  {t("web.provider.waitingRoomPanel.runningLate")}
+                  {booking.customer_running_late_minutes
+                    ? ` ${booking.customer_running_late_minutes}m`
+                    : ""}
+                </span>
+              ) : null}
             </div>
-            <p className="text-sm text-gray-600 mt-0.5 truncate">{serviceLabel(booking)}</p>
+            <p className="text-sm text-gray-600 mt-0.5 truncate">{serviceLabel(booking, t("web.provider.bookings.detail.leftoverCopy.bookingFallback"), t("web.provider.common.service"))}</p>
             {booking.total_amount != null && booking.total_amount > 0 ? (
               <p className="text-xs text-gray-500 mt-1">
                 <Money amount={booking.total_amount} />
@@ -98,8 +111,8 @@ export function BookingScheduleCard({
           >
             {pending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating…
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                {t("web.provider.bookings.statusActions.updating")}
               </>
             ) : (
               primaryAction.label

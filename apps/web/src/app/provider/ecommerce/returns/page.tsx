@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
@@ -33,16 +34,23 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-600",
 };
 
-const ACTIONS: Record<string, { action: string; label: string; color: string }[]> = {
+const ACTION_LABEL_KEYS: Record<string, string> = {
+  approve: "web.provider.pages.ecommerce/returns.approve",
+  reject: "web.provider.pages.ecommerce/returns.reject",
+  mark_received: "web.provider.pages.ecommerce/returns.itemReceived",
+  process_refund: "web.provider.pages.ecommerce/returns.processRefund",
+};
+
+const ACTIONS: Record<string, { action: string; color: string }[]> = {
   pending: [
-    { action: "approve", label: "Approve", color: "bg-blue-600 hover:bg-blue-700" },
-    { action: "reject", label: "Reject", color: "bg-red-600 hover:bg-red-700" },
+    { action: "approve", color: "bg-blue-600 hover:bg-blue-700" },
+    { action: "reject", color: "bg-red-600 hover:bg-red-700" },
   ],
   approved: [
-    { action: "mark_received", label: "Item Received", color: "bg-purple-600 hover:bg-purple-700" },
+    { action: "mark_received", color: "bg-purple-600 hover:bg-purple-700" },
   ],
   item_received: [
-    { action: "process_refund", label: "Process Refund", color: "bg-green-600 hover:bg-green-700" },
+    { action: "process_refund", color: "bg-green-600 hover:bg-green-700" },
   ],
 };
 
@@ -53,6 +61,7 @@ interface ActionDialog {
 }
 
 export default function ProviderReturnsPage() {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
@@ -85,7 +94,7 @@ export default function ProviderReturnsPage() {
         setTotalPages(res.data.pagination.totalPages);
       }
     } catch {
-      setError("Failed to load returns");
+      setError(t("web.provider.pages.ecommerce/returns.failedToLoad"));
     }
     setLoading(false);
   }, [page, statusFilter]);
@@ -120,7 +129,7 @@ export default function ProviderReturnsPage() {
       await fetcher.patch(`/api/provider/returns/${dialog.returnId}`, payload);
       fetchReturns();
     } catch {
-      setError("Failed to update return");
+      setError(t("web.provider.pages.ecommerce/returns.failedToUpdate"));
     }
     setUpdating(null);
     setDialog(null);
@@ -129,8 +138,8 @@ export default function ProviderReturnsPage() {
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Returns & Refunds</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage customer return requests and process refunds</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t("web.provider.pages.ecommerce/returns.title")}</h1>
+        <p className="text-sm text-gray-500 mt-1">{t("web.provider.pages.ecommerce/returns.subtitle")}</p>
       </div>
 
       {error && (
@@ -152,7 +161,7 @@ export default function ProviderReturnsPage() {
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              {s ? s.replace(/_/g, " ") : "All"}
+              {s ? s.replace(/_/g, " ") : t("web.provider.common.all")}
             </button>
           ),
         )}
@@ -160,11 +169,11 @@ export default function ProviderReturnsPage() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-gray-500">Loading...</div>
+          <div className="p-12 text-center text-gray-500">{t("web.provider.pages.ecommerce/returns.loading")}</div>
         ) : returns.length === 0 ? (
           <div className="p-12 text-center">
             <Undo2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No return requests</p>
+            <p className="text-gray-500">{t("web.provider.pages.ecommerce/returns.empty")}</p>
           </div>
         ) : (
           <div className="divide-y">
@@ -187,23 +196,23 @@ export default function ProviderReturnsPage() {
                           href={`/provider/ecommerce/orders?order=${encodeURIComponent(r.order_id)}`}
                           className="text-xs font-medium text-pink-600 hover:underline"
                         >
-                          View order
+                          {t("web.provider.pages.ecommerce/returns.viewOrder")}
                         </Link>
                       </div>
                       <p className="text-sm text-gray-700 break-words">{r.product_name}</p>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
                         <span>{r.customer?.full_name}</span>
-                        <span>Reason: {r.reason.replace(/_/g, " ")}</span>
-                        <span>Qty: {r.quantity}</span>
+                        <span>{t("web.provider.pages.ecommerce/returns.reason", { reason: r.reason.replace(/_/g, " ") })}</span>
+                        <span>{t("web.provider.pages.ecommerce/returns.qty", { count: r.quantity })}</span>
                       </div>
                       {r.description && (
                         <p className="text-xs text-gray-400 mt-2 italic">&quot;{r.description}&quot;</p>
                       )}
                       {r.provider_notes && (
-                        <p className="text-xs text-blue-600 mt-1">Notes: {r.provider_notes}</p>
+                        <p className="text-xs text-blue-600 mt-1">{t("web.provider.pages.ecommerce/returns.notes", { notes: r.provider_notes })}</p>
                       )}
                     </div>
-                    <div className="text-left sm:text-right shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
+                    <div className="text-start sm:text-end shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
                       <p className="text-lg font-bold text-gray-900">{formatMoney(Number(r.refund_amount))}</p>
                       <p className="text-xs text-gray-500">
                         {new Date(r.created_at).toLocaleDateString()}
@@ -213,11 +222,11 @@ export default function ProviderReturnsPage() {
                           {actions.map((a) => (
                             <button
                               key={a.action}
-                              onClick={() => openActionDialog(r.id, a.action, a.label)}
+                              onClick={() => openActionDialog(r.id, a.action, t(ACTION_LABEL_KEYS[a.action]))}
                               disabled={updating === r.id}
                               className={`px-3 py-1.5 text-xs font-medium text-white rounded-lg ${a.color} disabled:opacity-50`}
                             >
-                              {updating === r.id ? "..." : a.label}
+                              {updating === r.id ? "..." : t(`web.provider.pages.ecommerce/returns.${a.action === "mark_received" ? "itemReceived" : a.action === "process_refund" ? "processRefund" : a.action}`)}
                             </button>
                           ))}
                         </div>
@@ -236,7 +245,7 @@ export default function ProviderReturnsPage() {
           <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+          <span className="text-sm text-gray-600">{t("web.provider.pages.ecommerce/returns.pageOf", { page, total: totalPages })}</span>
           <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -251,12 +260,12 @@ export default function ProviderReturnsPage() {
 
             {dialog.action === "approve" && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Return Method</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t("web.provider.pages.ecommerce/returns.returnMethod")}</label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
-                    { value: "drop_off", label: "Drop Off" },
-                    { value: "courier", label: "Courier" },
-                    { value: "not_required", label: "Not Required" },
+                    { value: "drop_off", label: t("web.provider.pages.ecommerce/returns.dropOff") },
+                    { value: "courier", label: t("web.provider.pages.ecommerce/returns.courier") },
+                    { value: "not_required", label: t("web.provider.pages.ecommerce/returns.notRequired") },
                   ].map((m) => (
                     <button
                       key={m.value}
@@ -276,11 +285,11 @@ export default function ProviderReturnsPage() {
 
             {dialog.action === "process_refund" && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Refund Method</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t("web.provider.pages.ecommerce/returns.refundMethod")}</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {[
-                    { value: "store_credit", label: "Wallet credit" },
-                    { value: "cash", label: "Cash in person" },
+                    { value: "store_credit", label: t("web.provider.pages.ecommerce/returns.walletCredit") },
+                    { value: "cash", label: t("web.provider.pages.ecommerce/returns.cashInPerson") },
                   ].map((m) => (
                     <button
                       key={m.value}
@@ -300,11 +309,11 @@ export default function ProviderReturnsPage() {
             )}
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t("web.provider.pages.ecommerce/returns.notesOptional")}</label>
               <textarea
                 value={dialogNotes}
                 onChange={(e) => setDialogNotes(e.target.value)}
-                placeholder="Add any notes for the customer..."
+                placeholder={t("web.provider.pages.ecommerce/returns.notesPlaceholder")}
                 rows={3}
                 className="w-full border rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
               />
@@ -315,14 +324,14 @@ export default function ProviderReturnsPage() {
                 onClick={() => setDialog(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 border rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                {t("web.provider.common.cancel")}
               </button>
               <button
                 onClick={submitAction}
                 disabled={!!updating}
                 className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
               >
-                {updating ? "Processing..." : "Confirm"}
+                {updating ? t("web.provider.pages.ecommerce/returns.processing") : t("web.provider.pages.ecommerce/returns.confirm")}
               </button>
             </div>
           </div>

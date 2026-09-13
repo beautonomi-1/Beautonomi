@@ -28,6 +28,8 @@ import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ServiceDetail {
   id: string;
@@ -107,6 +109,12 @@ function initForm(service: ServiceDetail): FormState {
 }
 
 export default function ServiceDetailScreen() {
+  const { t } = useTranslation();
+  const cd = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.catalogueDetail.${key}`, opts) as string,
+    [t],
+  );
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isTablet } = useResponsive();
@@ -153,7 +161,7 @@ export default function ServiceDetailScreen() {
       if (!trimmed) return null;
       const { data, error } = await createCategoryApi({ name: trimmed });
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(cd("errorTitle"), error);
         return null;
       }
       await refreshCategories();
@@ -164,7 +172,7 @@ export default function ServiceDetailScreen() {
           : null;
       return newId ? { value: newId, label: trimmed } : null;
     },
-    [createCategoryApi, refreshCategories],
+    [createCategoryApi, refreshCategories, cd],
   );
 
   const [form, setForm] = useState<FormState | null>(null);
@@ -183,8 +191,8 @@ export default function ServiceDetailScreen() {
         quality: 0.8,
       },
       {
-        title: "Permission Required",
-        message: "Please allow access to your photo library to upload images.",
+        title: cd("permissionRequiredTitle"),
+        message: cd("permissionRequiredBody"),
       },
     );
 
@@ -207,7 +215,7 @@ export default function ServiceDetailScreen() {
 
       const base = getBackendUrl().replace(/\/$/, "");
       if (!base) {
-        Alert.alert("Upload Error", "API URL is not configured (EXPO_PUBLIC_APP_URL).");
+        Alert.alert(cd("uploadErrorTitle"), cd("apiUrlNotConfigured"));
         return;
       }
       const uploadRes = await fetch(
@@ -223,27 +231,27 @@ export default function ServiceDetailScreen() {
 
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => null);
-        throw new Error(err?.error?.message ?? "Upload failed");
+        throw new Error(err?.error?.message ?? cd("uploadFailed"));
       }
 
       const uploadJson = await uploadRes.json();
       const imageUrl = uploadJson.data?.url;
 
-      if (!imageUrl) throw new Error("No URL returned from upload");
+      if (!imageUrl) throw new Error(cd("noUrlReturned"));
 
       const { error: patchErr } = await updateService(`/api/provider/services/${id}`, {
         image_url: imageUrl,
       });
 
       if (patchErr) {
-        Alert.alert("Error", "Image uploaded but could not update service. Please try again.");
+        Alert.alert(cd("errorTitle"), cd("imageUpdateFailed"));
         return;
       }
 
       refresh();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
-      Alert.alert("Upload Error", err.message ?? "Failed to upload image");
+      Alert.alert(cd("uploadErrorTitle"), err.message ?? cd("uploadFailedGeneric"));
     } finally {
       setUploadingImage(false);
     }
@@ -264,11 +272,11 @@ export default function ServiceDetailScreen() {
   if (!service) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Service" showBack />
+        <ScreenHeader title={cd("serviceTitle")} showBack />
         {serviceError ? (
-          <ErrorState message="Could not load service. Please try again." onRetry={refresh} />
+          <ErrorState message={cd("loadFailed")} onRetry={refresh} />
         ) : (
-          <EmptyState title="Service not found" />
+          <EmptyState title={cd("notFound")} />
         )}
       </ScreenContainer>
     );
@@ -287,21 +295,21 @@ export default function ServiceDetailScreen() {
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
-    if (!form!.title.trim()) newErrors.title = "Title is required";
+    if (!form!.title.trim()) newErrors.title = cd("titleRequired");
 
     const priceNum = Number(form!.price?.toString().trim());
     if (!form!.price?.toString().trim() || !Number.isFinite(priceNum) || priceNum < 0) {
-      newErrors.price = "Enter a valid price (e.g. 150 or 0 for free)";
+      newErrors.price = cd("invalidPrice");
     }
 
     const durationNum = Number(form!.duration_minutes?.toString().trim());
     if (!form!.duration_minutes?.toString().trim() || !Number.isFinite(durationNum) || durationNum <= 0) {
-      newErrors.duration_minutes = "Enter duration in minutes (e.g. 60)";
+      newErrors.duration_minutes = cd("invalidDuration");
     }
 
-    if (!form!.category_id.trim()) newErrors.category_id = "Category is required";
+    if (!form!.category_id.trim()) newErrors.category_id = cd("categoryRequired");
     if (!form!.supports_at_home && !form!.supports_at_salon)
-      newErrors.location = "Select at least one location type";
+      newErrors.location = cd("locationRequired");
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }
@@ -312,7 +320,7 @@ export default function ServiceDetailScreen() {
     const priceNum = Number(form.price?.toString().trim());
     const durationNum = Number(form.duration_minutes?.toString().trim());
     if (!Number.isFinite(priceNum) || !Number.isFinite(durationNum) || durationNum <= 0) {
-      Alert.alert("Invalid values", "Price and duration must be valid numbers before saving.");
+      Alert.alert(cd("invalidValuesTitle"), cd("invalidValuesBody"));
       return;
     }
 
@@ -356,11 +364,11 @@ export default function ServiceDetailScreen() {
       payload
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(cd("errorTitle"), error);
     } else {
       setEditing(false);
       await refresh();
-      Alert.alert("Success", "Service updated successfully");
+      Alert.alert(cd("successTitle"), cd("successBody"));
     }
   }
 
@@ -373,12 +381,12 @@ export default function ServiceDetailScreen() {
   function handleDeleteService() {
     if (!id || !service) return;
     Alert.alert(
-      "Delete service",
-      `Remove "${service.title}" from your catalogue? This cannot be undone.`,
+      cd("deleteTitle"),
+      cd("deleteBody", { title: service.title }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cd("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: cd("delete"),
           style: "destructive",
           onPress: async () => {
             setDeletingService(true);
@@ -386,7 +394,7 @@ export default function ServiceDetailScreen() {
               const { error } = await deleteItem(`/api/provider/services/${id}`);
               if (error) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                Alert.alert("Could not delete", error);
+                Alert.alert(cd("couldNotDelete"), error);
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -428,7 +436,7 @@ export default function ServiceDetailScreen() {
             accessibilityLabel={label}
           />
           {suffix && (
-            <Text style={twStyle("ml-2 text-sm text-gray-500")}>{suffix}</Text>
+            <Text style={twStyle("ms-2 text-sm text-gray-500")}>{suffix}</Text>
           )}
         </View>
         {errors[field] && (
@@ -447,24 +455,24 @@ export default function ServiceDetailScreen() {
           editing ? (
             <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                style={[twStyle("rounded-full bg-gray-100 px-3 py-2"), { marginRight: 8 }]}
+                style={[twStyle("rounded-full bg-gray-100 px-3 py-2"), { marginEnd: 8 }]}
                 onPress={handleCancelEdit}
-                accessibilityLabel="Cancel editing"
+                accessibilityLabel={cd("cancelEditingA11y")}
                 accessibilityRole="button"
               >
                 <Text style={twStyle("text-sm font-medium text-gray-600")}>
-                  Cancel
+                  {cd("cancel")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={twStyle("rounded-full bg-indigo-600 px-3 py-2")}
                 onPress={handleSave}
                 disabled={saving}
-                accessibilityLabel="Save service changes"
+                accessibilityLabel={cd("saveServiceA11y")}
                 accessibilityRole="button"
               >
                 <Text style={twStyle("text-sm font-medium text-white")}>
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? cd("saving") : cd("save")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -472,7 +480,7 @@ export default function ServiceDetailScreen() {
             <TouchableOpacity
               style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
               onPress={() => setEditing(true)}
-              accessibilityLabel="Edit service"
+              accessibilityLabel={cd("editServiceA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="pencil-outline" size={18} color="#111" />
@@ -482,7 +490,7 @@ export default function ServiceDetailScreen() {
       />
 
       <View style={twStyle(isTablet ? "flex-row" : "")}>
-        <View style={[twStyle(isTablet ? "flex-1" : ""), isTablet && { marginRight: 24 }]}>
+        <View style={[twStyle(isTablet ? "flex-1" : ""), isTablet && { marginEnd: 24 }]}>
           {/* Service Image */}
           <TouchableOpacity
             style={twStyle("mb-4 h-48 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50")}
@@ -490,8 +498,8 @@ export default function ServiceDetailScreen() {
             disabled={!editing || uploadingImage}
             accessibilityLabel={
               service.image_url
-                ? "Service image — tap to change"
-                : "Tap to upload service image"
+                ? cd("changeImageA11y")
+                : cd("uploadImageA11y")
             }
             accessibilityRole="button"
           >
@@ -499,7 +507,7 @@ export default function ServiceDetailScreen() {
               <View style={twStyle("items-center")}>
                 <ActivityIndicator size="large" color="#111" />
                 <Text style={twStyle("mt-2 text-sm text-gray-500")}>
-                  Uploading…
+                  {cd("uploading")}
                 </Text>
               </View>
             ) : service.image_url ? (
@@ -520,14 +528,14 @@ export default function ServiceDetailScreen() {
               <>
                 <Ionicons name="camera-outline" size={32} color="#9ca3af" />
                 <Text style={twStyle("mt-2 text-sm text-gray-400")}>
-                  {editing ? "Tap to upload image" : "No image"}
+                  {editing ? cd("tapToUpload") : cd("noImage")}
                 </Text>
               </>
             )}
           </TouchableOpacity>
 
           {/* Service Form */}
-          <SectionHeader title="Service Details" />
+          <SectionHeader title={cd("serviceDetails")} />
           {!editing && typeof id === "string" && id ? (
             <TouchableOpacity
               onPress={() =>
@@ -535,23 +543,23 @@ export default function ServiceDetailScreen() {
               }
               style={twStyle("mb-3 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3")}
               accessibilityRole="button"
-              accessibilityLabel="Open full service editor"
+              accessibilityLabel={cd("openFullEditorA11y")}
             >
-              <Ionicons name="create-outline" size={20} color="#4f46e5" style={{ marginRight: 10 }} />
+              <Ionicons name="create-outline" size={20} color="#4f46e5" style={{ marginEnd: 10 }} />
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-sm font-semibold text-indigo-950")}>Full editor</Text>
+                <Text style={twStyle("text-sm font-semibold text-indigo-950")}>{cd("fullEditor")}</Text>
                 <Text style={twStyle("text-xs text-indigo-800 mt-0.5")}>
-                  Category, staff, tax, online booking, aftercare, and more
+                  {cd("fullEditorHint")}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#6366f1" />
             </TouchableOpacity>
           ) : null}
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
             {editing && form ? (
               <>
                 <View style={twStyle("mb-4")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cd("category")}</Text>
                   <ChipCombobox
                     singleSelect
                     value={form.category_id || null}
@@ -560,12 +568,12 @@ export default function ServiceDetailScreen() {
                     }
                     staticSuggestions={categories.map((c) => ({ value: c.id, label: c.name }))}
                     onCreateNew={handleCreateCategory}
-                    placeholder="Select or add category"
-                    accessibilityLabel="Service category"
+                    placeholder={cd("selectOrAddCategory")}
+                    accessibilityLabel={cd("serviceCategoryA11y")}
                   />
                 </View>
                 <View style={twStyle("mb-4")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cd("teamMembers")}</Text>
                   <ChipCombobox
                     value={form.team_member_ids}
                     onChange={(ids) => {
@@ -576,23 +584,23 @@ export default function ServiceDetailScreen() {
                       });
                     }}
                     staticSuggestions={[
-                      { value: "__any__", label: "Any team member" },
+                      { value: "__any__", label: cd("anyTeamMember") },
                       ...staff.map((m) => ({ value: m.id, label: m.name })),
                     ]}
-                    placeholder="Any or select staff"
-                    accessibilityLabel="Staff for this service"
+                    placeholder={cd("anyOrSelectStaff")}
+                    accessibilityLabel={cd("staffForServiceA11y")}
                   />
                 </View>
               </>
             ) : null}
-            {renderFormField("Title", "title")}
-            {renderFormField("Description", "description", "default", true)}
+            {renderFormField(cd("titleLabel"), "title")}
+            {renderFormField(cd("descriptionLabel"), "description", "default", true)}
             {(service.pricing_options?.length ?? 0) > 1 && (
               <TouchableOpacity
                 onPress={() => router.push(`/(app)/(tabs)/more/service-form?id=${service.id}` as never)}
                 style={twStyle("mb-3 overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/90")}
                 accessibilityRole="button"
-                accessibilityLabel={`${service.pricing_options!.length} booking options configured. Open full editor.`}
+                accessibilityLabel={cd("bookingOptionsA11y", { count: service.pricing_options!.length })}
               >
                 <View style={twStyle("flex-row items-start gap-3 px-4 py-3.5")}>
                   <View style={twStyle("rounded-full bg-indigo-100 p-2")}>
@@ -600,28 +608,27 @@ export default function ServiceDetailScreen() {
                   </View>
                   <View style={twStyle("flex-1")}>
                     <Text style={twStyle("text-sm font-semibold text-indigo-900")}>
-                      {service.pricing_options!.length} booking options
+                      {cd("bookingOptions", { count: service.pricing_options!.length })}
                     </Text>
                     <Text style={twStyle("mt-1 text-xs leading-5 text-indigo-700/90")}>
-                      Quick edit updates the default option only. Open the full editor to manage every
-                      price customers see at booking.
+                      {cd("bookingOptionsHint")}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+                  <DirectionalIcon name="chevron-forward" size={18} color="#6366f1" />
                 </View>
               </TouchableOpacity>
             )}
             <View style={twStyle("flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                {renderFormField("Price", "price", "numeric", false, service.currency)}
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                {renderFormField(cd("price"), "price", "numeric", false, service.currency)}
               </View>
               <View style={twStyle("flex-1")}>
                 {renderFormField(
-                  "Duration",
+                  cd("duration"),
                   "duration_minutes",
                   "numeric",
                   false,
-                  "min"
+                  cd("durationSuffix")
                 )}
               </View>
             </View>
@@ -631,40 +638,40 @@ export default function ServiceDetailScreen() {
           </View>
 
           {/* Location Types */}
-          <SectionHeader title="Location Types" />
+          <SectionHeader title={cd("locationTypes")} />
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
               <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="business-outline" size={18} color="#6b7280" />
-                <Text style={twStyle("ml-3 text-sm text-gray-700")}>At Salon</Text>
+                <Text style={twStyle("ms-3 text-sm text-gray-700")}>{cd("atSalon")}</Text>
               </View>
               <Switch
                 value={form?.supports_at_salon ?? false}
                 onValueChange={(v) => updateForm("supports_at_salon", v)}
                 disabled={!editing}
                 trackColor={{ false: "#d1d5db", true: "#6366f1" }}
-                accessibilityLabel="Toggle at salon"
+                accessibilityLabel={cd("toggleAtSalonA11y")}
               />
             </View>
             <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
               <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="home-outline" size={18} color="#6b7280" />
-                <Text style={twStyle("ml-3 text-sm text-gray-700")}>At Home</Text>
+                <Text style={twStyle("ms-3 text-sm text-gray-700")}>{cd("atHome")}</Text>
               </View>
               <Switch
                 value={form?.supports_at_home ?? false}
                 onValueChange={(v) => updateForm("supports_at_home", v)}
                 disabled={!editing}
                 trackColor={{ false: "#d1d5db", true: "#6366f1" }}
-                accessibilityLabel="Toggle at home"
+                accessibilityLabel={cd("toggleAtHomeA11y")}
               />
             </View>
             {form?.supports_at_home && (
               <View style={twStyle("px-4 py-3")}>
                 <View style={twStyle("flex-row")}>
-                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                  <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
                     <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-                      Home Price Adjustment
+                      {cd("homePriceAdjustment")}
                     </Text>
                     <TextInput
                       style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
@@ -674,12 +681,12 @@ export default function ServiceDetailScreen() {
                       }
                       keyboardType="numeric"
                       editable={editing}
-                      accessibilityLabel="Home visit price adjustment"
+                      accessibilityLabel={cd("homePriceA11y")}
                     />
                   </View>
                   <View style={twStyle("flex-1")}>
                     <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-                      Radius (km)
+                      {cd("radiusKm")}
                     </Text>
                     <TextInput
                       style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
@@ -687,7 +694,7 @@ export default function ServiceDetailScreen() {
                       onChangeText={(v) => updateForm("at_home_radius_km", v)}
                       keyboardType="numeric"
                       editable={editing}
-                      accessibilityLabel="Home visit radius in kilometers"
+                      accessibilityLabel={cd("radiusA11y")}
                     />
                   </View>
                 </View>
@@ -701,16 +708,16 @@ export default function ServiceDetailScreen() {
           </View>
 
           {/* Status Toggle */}
-          <SectionHeader title="Status" />
+          <SectionHeader title={cd("status")} />
           <View style={twStyle("flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-4")}>
             <View style={twStyle("flex-row items-center")}>
               <View
-                style={twStyle(`mr-2 h-3 w-3 rounded-full ${
+                style={twStyle(`me-2 h-3 w-3 rounded-full ${
                   form?.is_active ? "bg-green-500" : "bg-gray-300"
                 }`)}
               />
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                {form?.is_active ? "Active" : "Inactive"}
+                {form?.is_active ? cd("active") : cd("inactive")}
               </Text>
             </View>
             <Switch
@@ -718,7 +725,7 @@ export default function ServiceDetailScreen() {
               onValueChange={(v) => updateForm("is_active", v)}
               disabled={!editing}
               trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-              accessibilityLabel="Toggle service active status"
+              accessibilityLabel={cd("toggleActiveA11y")}
             />
           </View>
         </View>
@@ -727,7 +734,7 @@ export default function ServiceDetailScreen() {
           {/* Category */}
           {service.provider_categories?.[0] && (
             <>
-              <SectionHeader title="Category" />
+              <SectionHeader title={cd("category")} />
               <View style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}>
                 <View style={twStyle("self-start rounded-full bg-indigo-50 px-3 py-1")}>
                   <Text style={twStyle("text-sm font-medium text-indigo-700")}>
@@ -755,15 +762,15 @@ export default function ServiceDetailScreen() {
                 onPress={handleDeleteService}
                 style={twStyle("rounded-xl border border-red-200 bg-red-50 py-3")}
                 accessibilityRole="button"
-                accessibilityLabel="Delete service"
+                accessibilityLabel={cd("deleteServiceA11y")}
                 disabled={deletingService}
               >
                 <Text style={twStyle("text-center text-sm font-semibold text-red-600")}>
-                  {deletingService ? "Deleting…" : "Delete service"}
+                  {deletingService ? cd("deleting") : cd("deleteService")}
                 </Text>
               </TouchableOpacity>
               <Text style={twStyle("mt-2 text-center text-xs text-gray-500")}>
-                Permanently removes this service. Use the full editor to manage variants and add-ons.
+                {cd("deleteHint")}
               </Text>
             </View>
           )}

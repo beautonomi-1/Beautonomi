@@ -7,6 +7,7 @@ import {
   RefreshControl,
   DeviceEventEmitter,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -21,6 +22,7 @@ import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ServiceCategory {
   id: string;
@@ -46,6 +48,12 @@ interface CategoriesResponse {
 }
 
 export default function ServicesCatalogueScreen() {
+  const { t } = useTranslation();
+  const sc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.servicesCatalogue.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -132,13 +140,13 @@ export default function ServicesCatalogueScreen() {
   const uncategorized = byCategory.get("__none__") ?? [];
   if (uncategorized.length > 0) {
     sections.push({
-      category: { id: "__none__", name: "Uncategorized", color: "#9ca3af" },
+      category: { id: "__none__", name: sc("uncategorized"), color: "#9ca3af" },
       services: uncategorized,
     });
   }
   if (categories.length === 0 && servicesList.length > 0) {
     sections.push({
-      category: { id: "all", name: "All services", color: Colors.primary },
+      category: { id: "all", name: sc("allServices"), color: Colors.primary },
       services: servicesList,
     });
   }
@@ -148,35 +156,35 @@ export default function ServicesCatalogueScreen() {
       key={item.id}
       style={twStyle("flex-row items-center border-b border-gray-100 py-3.5")}
       onPress={() => handleEditService(item)}
-      accessibilityLabel={`Edit ${item.title || item.name}`}
+      accessibilityLabel={sc("editA11y", { name: item.title || item.name })}
     >
       <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-gray-100")}>
         <Ionicons name="cut-outline" size={20} color="#6b7280" />
       </View>
-      <View style={twStyle("ml-3 flex-1")}>
+      <View style={twStyle("ms-3 flex-1")}>
         <Text style={twStyle("text-base font-medium text-gray-900")} numberOfLines={1}>
-          {item.title || item.name || "Unnamed service"}
+          {item.title || item.name || sc("unnamed")}
         </Text>
         <View style={twStyle("mt-0.5 flex-row items-center")}>
-          <Text style={[twStyle("text-sm font-medium text-indigo-600"), { marginRight: 8 }]}>
+          <Text style={[twStyle("text-sm font-medium text-indigo-600"), { marginEnd: 8 }]}>
             {formatCurrency(item.price ?? 0)}
           </Text>
-          <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>
-            {item.duration_minutes ?? 0} min
+          <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 8 }]}>
+            {sc("durationMin", { count: item.duration_minutes ?? 0 })}
           </Text>
           {item.service_type && item.service_type !== "basic" && (
             <Text style={twStyle("text-xs text-gray-500 capitalize")}>{item.service_type}</Text>
           )}
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+      <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
     </TouchableOpacity>
   );
 
   if (loading && !categories.length && !servicesList.length) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Services" subtitle="Catalogue & pricing" onBack={() => router.back()} />
+        <ScreenHeader title={sc("title")} subtitle={sc("subtitle")} onBack={() => router.back()} />
         <SkeletonList rows={8} />
       </ScreenContainer>
     );
@@ -185,7 +193,7 @@ export default function ServicesCatalogueScreen() {
   if (error && !categories.length && !servicesList.length) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Services" subtitle="Catalogue & pricing" onBack={() => router.back()} />
+        <ScreenHeader title={sc("title")} subtitle={sc("subtitle")} onBack={() => router.back()} />
         <ErrorState message={error} onRetry={handleRefresh} />
       </ScreenContainer>
     );
@@ -194,15 +202,15 @@ export default function ServicesCatalogueScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Services"
-        subtitle="Catalogue & pricing"
+        title={sc("title")}
+        subtitle={sc("subtitle")}
         onBack={() => router.back()}
         rightAction={
           <View style={twStyle("flex-row items-center")}>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/catalogue" as never)}
-              style={[twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-gray-100 px-3"), { marginRight: 8 }]}
-              accessibilityLabel="Advanced pricing rules"
+              style={[twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-gray-100 px-3"), { marginEnd: 8 }]}
+              accessibilityLabel={sc("advancedPricingA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="pricetags-outline" size={18} color="#111827" />
@@ -210,7 +218,7 @@ export default function ServicesCatalogueScreen() {
             <TouchableOpacity
               onPress={handleAddService}
               style={twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3")}
-              accessibilityLabel="Add service"
+              accessibilityLabel={sc("addServiceA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="add" size={22} color="#fff" />
@@ -222,9 +230,9 @@ export default function ServicesCatalogueScreen() {
       {sections.length === 0 && servicesList.length === 0 ? (
         <EmptyState
           icon="grid-outline"
-          title="No services"
-          description="Add your first service to appear in bookings and on your profile"
-          actionLabel="Add service"
+          title={sc("emptyTitle")}
+          description={sc("emptyDesc")}
+          actionLabel={sc("addService")}
           onAction={handleAddService}
         />
       ) : (
@@ -242,14 +250,14 @@ export default function ServicesCatalogueScreen() {
                 style={[twStyle("mb-2 flex-row items-center px-1"), {
                   borderLeftWidth: 4,
                   borderLeftColor: (section.category?.color as string) || "#ec4899",
-                  paddingLeft: 8,
+                  paddingStart: 8,
                 }]}
               >
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                  {section.category?.name ?? "Services"}
+                  {section.category?.name ?? sc("title")}
                 </Text>
-                <Text style={twStyle("ml-2 text-xs text-gray-500")}>
-                  {section.services.length} service{section.services.length !== 1 ? "s" : ""}
+                <Text style={twStyle("ms-2 text-xs text-gray-500")}>
+                  {sc("serviceCount", { count: section.services.length })}
                 </Text>
               </View>
               <View style={twStyle("rounded-xl border border-gray-100 bg-white overflow-hidden")}>

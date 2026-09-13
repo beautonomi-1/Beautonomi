@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Input } from "@/components/ui/input";
 
@@ -14,13 +16,13 @@ interface OperatingHoursEditorProps {
 }
 
 const DAYS = [
-  { key: "monday", label: "Monday" },
-  { key: "tuesday", label: "Tuesday" },
-  { key: "wednesday", label: "Wednesday" },
-  { key: "thursday", label: "Thursday" },
-  { key: "friday", label: "Friday" },
-  { key: "saturday", label: "Saturday" },
-  { key: "sunday", label: "Sunday" },
+  { key: "monday" },
+  { key: "tuesday" },
+  { key: "wednesday" },
+  { key: "thursday" },
+  { key: "friday" },
+  { key: "saturday" },
+  { key: "sunday" },
 ];
 
 function toDayB(raw: Record<string, any> | undefined): { open: string; close: string; closed: boolean } {
@@ -39,6 +41,7 @@ export function OperatingHoursEditor({
   onChange,
   className = "",
 }: OperatingHoursEditorProps) {
+  const { t } = useTranslation();
   const updateHours = (
     day: string,
     field: "open" | "close" | "closed",
@@ -64,7 +67,7 @@ export function OperatingHoursEditor({
             className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg"
           >
             <div className="w-full sm:w-24 font-medium text-sm sm:text-base">
-              {day.label}
+              {t(`web.provider.portal.editWorkHours.${day.key}`)}
             </div>
             <label className="flex items-center gap-2">
               <input
@@ -75,7 +78,7 @@ export function OperatingHoursEditor({
                 }
                 className="w-4 h-4"
               />
-              <span className="text-sm">Open</span>
+              <span className="text-sm">{t("web.booking.stepCalendar.legendOpen")}</span>
             </label>
             {!dayHours.closed && (
               <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
@@ -85,7 +88,7 @@ export function OperatingHoursEditor({
                   onChange={(e) => updateHours(day.key, "open", e.target.value)}
                   className="w-full sm:w-32 text-sm sm:text-base"
                 />
-                <span className="text-sm sm:text-base">to</span>
+                <span className="text-sm sm:text-base">{t("web.provider.portal.editWorkHours.to")}</span>
                 <Input
                   type="time"
                   value={dayHours.close || "18:00"}

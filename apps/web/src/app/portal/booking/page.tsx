@@ -249,7 +249,7 @@ export default function PortalBookingPage() {
                     size="sm"
                     onClick={() => window.open(getGoogleCalendarUrl(calendarEvent), '_blank')}
                   >
-                    <Plus className="h-4 w-4 mr-1" />
+                    <Plus className="h-4 w-4 me-1" />
                     Google
                   </Button>
                   <Button
@@ -269,7 +269,7 @@ export default function PortalBookingPage() {
                 </div>
               )}
               <Button variant="outline" size="sm" onClick={handlePrint}>
-                <Printer className="h-4 w-4 mr-1" />
+                <Printer className="h-4 w-4 me-1" />
                 Print
               </Button>
             </div>

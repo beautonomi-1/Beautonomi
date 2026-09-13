@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -36,6 +37,7 @@ interface TwilioIntegration {
 }
 
 export default function TwilioIntegrationPage() {
+  const { t } = useTranslation();
   const [integration, setIntegration] = useState<TwilioIntegration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -78,7 +80,7 @@ export default function TwilioIntegrationPage() {
       console.error("Failed to load Twilio integration:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load Twilio integration";
+        : error?.error?.message || t("web.provider.settings.pages.integrations/twilio.failedToLoadTwilioIntegration");
       if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         setSubscriptionRequired(true);
       } else {
@@ -92,30 +94,30 @@ export default function TwilioIntegrationPage() {
   const handleSave = async () => {
     // Validate required fields
     if (!formData.account_sid || !formData.auth_token) {
-      toast.error("Please fill in Account SID and Auth Token");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseFillInAccountSidAnd"));
       return;
     }
 
     // Validate credentials are not masked when saving new
     if (!integration && (formData.account_sid === "••••••••" || formData.auth_token === "••••••••")) {
-      toast.error("Please enter valid credentials");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseEnterValidCredentials"));
       return;
     }
 
     // Validate Account SID format
     if (formData.account_sid !== "••••••••" && !formData.account_sid.startsWith("AC")) {
-      toast.error("Account SID must start with 'AC'");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.accountSidMustStartWithAc"));
       return;
     }
 
     const smsFrom = formData.sms_from_number?.trim() || "";
     const waFrom = formData.whatsapp_from_number?.trim() || "";
     if (smsFrom && !isCompleteE164(smsFrom)) {
-      toast.error("SMS From Number must be a valid E.164 phone (e.g. +1234567890).");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.smsFromNumberMustBeA"));
       return;
     }
     if (waFrom && !isCompleteE164(waFrom)) {
-      toast.error("WhatsApp From Number must be a valid E.164 phone.");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.whatsappFromNumberMustBeA"));
       return;
     }
 
@@ -131,14 +133,14 @@ export default function TwilioIntegrationPage() {
       );
       
       setIntegration(response.data);
-      toast.success("Twilio integration saved successfully");
+      toast.success(t("web.provider.settings.pages.integrations/twilio.twilioIntegrationSavedSuccessfully"));
       setShowKeys(false);
       await loadData();
     } catch (error: any) {
       console.error("Failed to save integration:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save Twilio integration";
+        : error?.error?.message || t("web.provider.settings.pages.integrations/twilio.failedToSaveTwilioIntegration");
       if (toastPlanGateError(error, errorMessage)) {
         setSubscriptionRequired(true);
       }
@@ -149,18 +151,18 @@ export default function TwilioIntegrationPage() {
 
   const handleToggle = async (channel: "sms" | "whatsapp", enabled: boolean) => {
     if (!integration) {
-      toast.error("Please configure the integration first");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseConfigureTheIntegrationFirst"));
       return;
     }
 
     // Validate required fields for the channel
     if (enabled) {
       if (channel === "sms" && !formData.sms_from_number) {
-        toast.error("Please configure SMS from number first");
+        toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseConfigureSmsFromNumberFirst"));
         return;
       }
       if (channel === "whatsapp" && !formData.whatsapp_from_number) {
-        toast.error("Please configure WhatsApp from number first");
+        toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseConfigureWhatsappFromNumberFirst"));
         return;
       }
     }
@@ -181,7 +183,7 @@ export default function TwilioIntegrationPage() {
       console.error("Failed to update integration:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to update integration";
+        : error?.error?.message || t("web.provider.settings.pages.integrations/twilio.failedToUpdateIntegration");
       if (toastPlanGateError(error, errorMessage)) {
         setSubscriptionRequired(true);
       }
@@ -192,26 +194,26 @@ export default function TwilioIntegrationPage() {
 
   const handleTest = async () => {
     if (!testPhone?.trim()) {
-      toast.error("Please enter a test phone number");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseEnterATestPhoneNumber"));
       return;
     }
     if (!isCompleteE164(testPhone)) {
-      toast.error("Please enter a valid phone number in E.164 format (e.g., +1234567890)");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseEnterAValidPhoneNumber"));
       return;
     }
 
     if (!integration) {
-      toast.error("Please configure the integration first");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseConfigureTheIntegrationFirst"));
       return;
     }
 
     if (testChannel === "sms" && (!integration.is_sms_enabled || !integration.sms_from_number)) {
-      toast.error("Please enable and configure SMS first");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseEnableAndConfigureSmsFirst"));
       return;
     }
 
     if (testChannel === "whatsapp" && (!integration.is_whatsapp_enabled || !integration.whatsapp_from_number)) {
-      toast.error("Please enable and configure WhatsApp first");
+      toast.error(t("web.provider.settings.pages.integrations/twilio.pleaseEnableAndConfigureWhatsappFirst"));
       return;
     }
 
@@ -227,7 +229,7 @@ export default function TwilioIntegrationPage() {
       console.error("Failed to send test message:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to send test message";
+        : error?.error?.message || t("web.provider.settings.pages.integrations/twilio.failedToSendTestMessage");
       toast.error(errorMessage);
     } finally {
       setIsTesting(false);
@@ -235,28 +237,28 @@ export default function TwilioIntegrationPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Marketing Integrations", href: "/provider/settings/marketing-integrations" },
-    { label: "Twilio" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.integrations/twilio.marketingIntegrations"), href: "/provider/settings/marketing-integrations" },
+    { label: t("web.provider.settings.pages.integrations/twilio.twilio") },
   ];
 
   if (isLoading) {
     return (
-      <SettingsDetailLayout title="SMS & WhatsApp Marketing Integration" subtitle="Connect Twilio to run effective SMS and WhatsApp marketing campaigns" breadcrumbs={breadcrumbs}>
+      <SettingsDetailLayout title={t("web.provider.settings.categories.marketingIntegrations.items.twilioIntegration.title")} subtitle={t("web.provider.settings.categories.marketingIntegrations.items.twilioIntegration.description")} breadcrumbs={breadcrumbs}>
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading Twilio integration settings..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.integrations/twilio.loadingTwilioIntegrationSettings")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
   }
 
   return (
-    <SettingsDetailLayout title="Twilio Integration" subtitle="Connect Twilio for SMS and WhatsApp campaigns">
+    <SettingsDetailLayout title={t("web.provider.settings.categories.marketingIntegrations.items.twilioIntegration.title")} subtitle={t("web.provider.settings.categories.marketingIntegrations.items.twilioIntegration.description")}>
       <PageHeader
-        title="SMS & WhatsApp Marketing Integration"
-        subtitle="Connect Twilio to run effective SMS and WhatsApp marketing campaigns"
+        title={t("web.provider.settings.pages.integrations/twilio.smsWhatsappMarketingIntegration")}
+        subtitle={t("web.provider.settings.pages.integrations/twilio.connectTwilioToRunEffectiveSms")}
         breadcrumbs={breadcrumbs}
       />
 
@@ -264,7 +266,7 @@ export default function TwilioIntegrationPage() {
         {/* Subscription Gate */}
         {subscriptionRequired && (
           <SubscriptionGate
-            feature="Custom SMS & WhatsApp"
+            feature={t("web.provider.settings.pages.integrations/twilio.customSmsWhatsapp")}
             message={getUpgradeMessage("integrations.custom")}
           />
         )}
@@ -273,21 +275,21 @@ export default function TwilioIntegrationPage() {
         <SectionCard>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">SMS Marketing Integration</h3>
+              <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.integrations/twilio.smsMarketingIntegration")}</h3>
               <p className="text-sm text-gray-600">
-                Enable SMS marketing campaigns using Twilio
+                {t("web.provider.settings.pages.integrations/twilio.enableSmsCampaigns")}
               </p>
             </div>
             <div className="flex items-center gap-3">
               {integration?.is_sms_enabled ? (
                 <Badge variant="default" className="bg-green-500">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Enabled
+                  <CheckCircle2 className="w-3 h-3 me-1" />
+                  {t("web.provider.settings.pages.integrations/twilio.enabledBadge")}
                 </Badge>
               ) : (
                 <Badge variant="secondary">
-                  <XCircle className="w-3 h-3 mr-1" />
-                  Disabled
+                  <XCircle className="w-3 h-3 me-1" />
+                  {t("web.provider.settings.pages.integrations/twilio.disabledBadge")}
                 </Badge>
               )}
               <Switch
@@ -303,21 +305,21 @@ export default function TwilioIntegrationPage() {
         <SectionCard>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">WhatsApp Marketing Integration</h3>
+              <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.integrations/twilio.whatsappMarketingIntegration")}</h3>
               <p className="text-sm text-gray-600">
-                Enable WhatsApp marketing campaigns using Twilio
+                {t("web.provider.settings.pages.integrations/twilio.enableWhatsappCampaigns")}
               </p>
             </div>
             <div className="flex items-center gap-3">
               {integration?.is_whatsapp_enabled ? (
                 <Badge variant="default" className="bg-green-500">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Enabled
+                  <CheckCircle2 className="w-3 h-3 me-1" />
+                  {t("web.provider.settings.pages.integrations/twilio.enabledBadge")}
                 </Badge>
               ) : (
                 <Badge variant="secondary">
-                  <XCircle className="w-3 h-3 mr-1" />
-                  Disabled
+                  <XCircle className="w-3 h-3 me-1" />
+                  {t("web.provider.settings.pages.integrations/twilio.disabledBadge")}
                 </Badge>
               )}
               <Switch
@@ -333,9 +335,9 @@ export default function TwilioIntegrationPage() {
         <SectionCard>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Twilio Credentials</h3>
+              <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.integrations/twilio.twilioCredentials")}</h3>
               <p className="text-sm text-gray-600">
-                Configure your Twilio API credentials
+                {t("web.provider.settings.pages.integrations/twilio.configureTwilioCredentials")}
               </p>
             </div>
             <Button
@@ -343,18 +345,18 @@ export default function TwilioIntegrationPage() {
               size="sm"
               onClick={() => setShowKeys(!showKeys)}
             >
-              {showKeys ? "Hide" : "Show"} Credentials
+              {showKeys ? t("web.provider.settings.pages.integrations/twilio.hideCredentials") : t("web.provider.settings.pages.integrations/twilio.showCredentials")}
             </Button>
           </div>
 
           {showKeys ? (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="account_sid">Account SID</Label>
+                <Label htmlFor="account_sid">{t("web.provider.settings.pages.integrations/twilio.accountSid")}</Label>
                 <Input
                   id="account_sid"
                   type="text"
-                  placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  placeholder={t("web.provider.settings.pages.integrations/twilio.acxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")}
                   value={formData.account_sid}
                   onChange={(e) =>
                     setFormData({ ...formData, account_sid: e.target.value })
@@ -362,16 +364,16 @@ export default function TwilioIntegrationPage() {
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Found in your Twilio Console dashboard. Starts with "AC".
+                  {t("web.provider.settings.pages.integrations/twilio.accountSidHint")}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="auth_token">Auth Token</Label>
+                <Label htmlFor="auth_token">{t("web.provider.settings.pages.integrations/twilio.authToken")}</Label>
                 <Input
                   id="auth_token"
                   type="password"
-                  placeholder="Your Auth Token"
+                  placeholder={t("web.provider.settings.pages.integrations/twilio.yourAuthToken")}
                   value={formData.auth_token}
                   onChange={(e) =>
                     setFormData({ ...formData, auth_token: e.target.value })
@@ -379,15 +381,15 @@ export default function TwilioIntegrationPage() {
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Found in your Twilio Console dashboard. Keep this token secure. Never share it publicly.
+                  {t("web.provider.settings.pages.integrations/twilio.authTokenHint")}
                 </p>
               </div>
 
               <div>
                 <PhoneInput
                   inputId="twilio-sms-from"
-                  label="SMS From Number"
-                  placeholder="Phone number"
+                  label={t("web.provider.settings.pages.integrations/twilio.smsFromNumber")}
+                  placeholder={t("web.provider.settings.pages.integrations/twilio.phoneNumber")}
                   value={formData.sms_from_number}
                   onChange={(e164) =>
                     setFormData({ ...formData, sms_from_number: e164 })
@@ -395,16 +397,15 @@ export default function TwilioIntegrationPage() {
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Your Twilio phone number for sending SMS. Must be in E.164 format (e.g., +1234567890). 
-                  Get a number from Twilio Console → Phone Numbers.
+                  {t("web.provider.settings.pages.integrations/twilio.smsFromNumberHint")}
                 </p>
               </div>
 
               <div>
                 <PhoneInput
                   inputId="twilio-whatsapp-from"
-                  label="WhatsApp From Number"
-                  placeholder="Phone number"
+                  label={t("web.provider.settings.pages.integrations/twilio.whatsappFromNumber")}
+                  placeholder={t("web.provider.settings.pages.integrations/twilio.phoneNumber")}
                   value={formData.whatsapp_from_number}
                   onChange={(e164) =>
                     setFormData({ ...formData, whatsapp_from_number: e164 })
@@ -412,16 +413,14 @@ export default function TwilioIntegrationPage() {
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Your Twilio WhatsApp number in E.164 format (e.g., +14155238886). 
-                  For sandbox testing, use +14155238886. For production, you need a verified WhatsApp Business number.
-                  The system will automatically add the "whatsapp:" prefix.
+                  {t("web.provider.settings.pages.integrations/twilio.whatsappFromNumberHint")}
                 </p>
               </div>
 
               <div className="flex gap-3">
                 <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Save Credentials
+                  {isSaving ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : null}
+                  {t("web.provider.settings.pages.integrations/twilio.saveCredentials")}
                 </Button>
                 <Button
                   variant="outline"
@@ -436,16 +435,16 @@ export default function TwilioIntegrationPage() {
                     }
                   }}
                 >
-                  Reset
+                  {t("web.provider.settings.pages.integrations/twilio.reset")}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="text-sm text-gray-600">
               {integration ? (
-                <p>Credentials saved. Click "Show Credentials" to view or update them.</p>
+                <p>{t("web.provider.settings.pages.integrations/twilio.credentialsSavedHint")}</p>
               ) : (
-                <p>No credentials configured. Add your Twilio credentials to get started.</p>
+                <p>{t("web.provider.settings.pages.integrations/twilio.noCredentialsHint")}</p>
               )}
             </div>
           )}
@@ -458,7 +457,7 @@ export default function TwilioIntegrationPage() {
               className="text-sm text-pink-600 hover:text-pink-700 flex items-center gap-2"
             >
               <ExternalLink className="w-4 h-4" />
-              View Twilio API Documentation
+              {t("web.provider.settings.pages.integrations/twilio.viewTwilioApiDocs")}
             </a>
             <a
               href="https://www.twilio.com/docs/whatsapp"
@@ -467,7 +466,7 @@ export default function TwilioIntegrationPage() {
               className="text-sm text-pink-600 hover:text-pink-700 flex items-center gap-2"
             >
               <ExternalLink className="w-4 h-4" />
-              View Twilio WhatsApp Documentation
+              {t("web.provider.settings.pages.integrations/twilio.viewTwilioWhatsappDocs")}
             </a>
           </div>
         </SectionCard>
@@ -477,38 +476,38 @@ export default function TwilioIntegrationPage() {
           <SectionCard>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold mb-1">Test Integration</h3>
+                <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.integrations/twilio.testIntegration")}</h3>
                 <p className="text-sm text-gray-600">
-                  Send a test SMS or WhatsApp message to verify your integration
+                  {t("web.provider.settings.pages.integrations/twilio.sendTestHint")}
                 </p>
               </div>
             </div>
 
             <Tabs value={testChannel} onValueChange={(v) => setTestChannel(v as "sms" | "whatsapp")}>
               <TabsList>
-                <TabsTrigger value="sms">SMS</TabsTrigger>
-                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                <TabsTrigger value="sms">{t("web.provider.settings.pages.integrations/twilio.sms")}</TabsTrigger>
+                <TabsTrigger value="whatsapp">{t("web.provider.settings.pages.integrations/twilio.whatsapp")}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="sms" className="space-y-4 mt-4">
                 {integration.sms_test_status === "success" && (
                   <Badge variant="default" className="bg-green-500 mb-2">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    SMS Test Passed
+                    <CheckCircle2 className="w-3 h-3 me-1" />
+                    {t("web.provider.settings.pages.integrations/twilio.smsTestPassed")}
                   </Badge>
                 )}
                 {integration.sms_test_status === "failed" && (
                   <Badge variant="destructive" className="mb-2">
-                    <XCircle className="w-3 h-3 mr-1" />
-                    SMS Test Failed
+                    <XCircle className="w-3 h-3 me-1" />
+                    {t("web.provider.settings.pages.integrations/twilio.smsTestFailed")}
                   </Badge>
                 )}
                 
                 <div>
                   <PhoneInput
                     inputId="twilio-test-phone-sms"
-                    label="Test Phone Number"
-                    placeholder="Phone number"
+                    label={t("web.provider.settings.pages.integrations/twilio.testPhoneNumber")}
+                    placeholder={t("web.provider.settings.pages.integrations/twilio.phoneNumber")}
                     value={testPhone}
                     onChange={setTestPhone}
                     className="mt-1"
@@ -516,8 +515,8 @@ export default function TwilioIntegrationPage() {
                 </div>
 
                 <Button onClick={handleTest} disabled={isTesting || !isCompleteE164(testPhone)}>
-                  {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Phone className="w-4 h-4 mr-2" />}
-                  Send Test SMS
+                  {isTesting ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Phone className="w-4 h-4 me-2" />}
+                  {t("web.provider.settings.pages.integrations/twilio.sendTestSms")}
                 </Button>
 
                 {integration.sms_test_error && (
@@ -530,22 +529,22 @@ export default function TwilioIntegrationPage() {
               <TabsContent value="whatsapp" className="space-y-4 mt-4">
                 {integration.whatsapp_test_status === "success" && (
                   <Badge variant="default" className="bg-green-500 mb-2">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    WhatsApp Test Passed
+                    <CheckCircle2 className="w-3 h-3 me-1" />
+                    {t("web.provider.settings.pages.integrations/twilio.whatsappTestPassed")}
                   </Badge>
                 )}
                 {integration.whatsapp_test_status === "failed" && (
                   <Badge variant="destructive" className="mb-2">
-                    <XCircle className="w-3 h-3 mr-1" />
-                    WhatsApp Test Failed
+                    <XCircle className="w-3 h-3 me-1" />
+                    {t("web.provider.settings.pages.integrations/twilio.whatsappTestFailed")}
                   </Badge>
                 )}
                 
                 <div>
                   <PhoneInput
                     inputId="twilio-test-phone-whatsapp"
-                    label="Test Phone Number"
-                    placeholder="Phone number"
+                    label={t("web.provider.settings.pages.integrations/twilio.testPhoneNumber")}
+                    placeholder={t("web.provider.settings.pages.integrations/twilio.phoneNumber")}
                     value={testPhone}
                     onChange={setTestPhone}
                     className="mt-1"
@@ -553,8 +552,8 @@ export default function TwilioIntegrationPage() {
                 </div>
 
                 <Button onClick={handleTest} disabled={isTesting || !isCompleteE164(testPhone)}>
-                  {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MessageSquare className="w-4 h-4 mr-2" />}
-                  Send Test WhatsApp
+                  {isTesting ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <MessageSquare className="w-4 h-4 me-2" />}
+                  {t("web.provider.settings.pages.integrations/twilio.sendTestWhatsapp")}
                 </Button>
 
                 {integration.whatsapp_test_error && (

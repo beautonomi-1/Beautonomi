@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import {
   AlertDialog,
@@ -22,16 +23,18 @@ interface VersionConflictDialogProps {
 export function VersionConflictDialog({
   open,
   onOpenChange,
-  message = "This booking changed, reload",
+  message,
   onReload,
   onDismiss,
 }: VersionConflictDialogProps) {
+  const { t } = useTranslation();
+  const description = message ?? t("provider.mobile.screens.bookingDetail.conflictReloadBody");
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Booking changed</AlertDialogTitle>
-          <AlertDialogDescription>{message}</AlertDialogDescription>
+          <AlertDialogTitle>{t("web.versionConflict.title")}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel
@@ -39,7 +42,7 @@ export function VersionConflictDialog({
               onDismiss?.();
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
@@ -47,7 +50,7 @@ export function VersionConflictDialog({
               onOpenChange(false);
             }}
           >
-            Reload booking
+            {t("web.versionConflict.reload")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

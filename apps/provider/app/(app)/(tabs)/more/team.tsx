@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
@@ -20,6 +21,7 @@ import { Colors } from "@/constants/colors";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type StaffMember = {
   id: string;
@@ -38,6 +40,12 @@ type TeamAccessPayload = {
 };
 
 export default function TeamScreen() {
+  const { t } = useTranslation();
+  const tm = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.team." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
   const { provider, selectedLocationId } = useProvider();
@@ -127,64 +135,64 @@ export default function TeamScreen() {
 
   const quickActions = [
     {
-      label: "Staff schedules",
-      subtitle: "Weekly shifts by team member",
+      labelKey: "actionSchedules",
+      subtitleKey: "actionSchedulesSub",
       icon: "calendar-outline" as const,
       color: "#4f46e5",
       bg: "#e0e7ff",
       route: "/(app)/(tabs)/more/staff-schedule",
     },
     {
-      label: "Days off",
-      subtitle: "Leave, sick days, holidays",
+      labelKey: "actionDaysOff",
+      subtitleKey: "actionDaysOffSub",
       icon: "sunny-outline" as const,
       color: "#d97706",
       bg: "#fef3c7",
       route: "/(app)/(tabs)/more/days-off",
     },
     {
-      label: "Schedule locks",
-      subtitle: "Lunch, meetings, blocked time",
+      labelKey: "actionLocks",
+      subtitleKey: "actionLocksSub",
       icon: "ban-outline" as const,
       color: "#dc2626",
       bg: "#fee2e2",
       route: "/(app)/(tabs)/more/time-blocks",
     },
     {
-      label: "Time clock",
-      subtitle: "Clock in/out and time cards",
+      labelKey: "actionTimeClock",
+      subtitleKey: "actionTimeClockSub",
       icon: "time-outline" as const,
       color: "#0d9488",
       bg: "#ccfbf1",
       route: "/(app)/(tabs)/more/time-clock",
     },
     {
-      label: "Permissions",
-      subtitle: "Roles and access controls",
+      labelKey: "actionPermissions",
+      subtitleKey: "actionPermissionsSub",
       icon: "lock-open-outline" as const,
       color: "#4f46e5",
       bg: "#eef2ff",
       route: "/(app)/(tabs)/more/settings/staff-permissions",
     },
     {
-      label: "Commissions",
-      subtitle: "Pay rules and staff earnings",
+      labelKey: "actionCommissions",
+      subtitleKey: "actionCommissionsSub",
       icon: "cash-outline" as const,
       color: "#16a34a",
       bg: "#dcfce7",
       route: "/(app)/(tabs)/more/settings/team-commissions",
     },
     {
-      label: "Staff notifications",
-      subtitle: "Email, push, booking alerts",
+      labelKey: "actionNotifications",
+      subtitleKey: "actionNotificationsSub",
       icon: "notifications-outline" as const,
       color: "#d97706",
       bg: "#fef3c7",
       route: "/(app)/(tabs)/more/settings/team-staff-notifications",
     },
     {
-      label: "Time off types",
-      subtitle: "Leave categories and reasons",
+      labelKey: "actionTimeOffTypes",
+      subtitleKey: "actionTimeOffTypesSub",
       icon: "pricetags-outline" as const,
       color: "#9333ea",
       bg: "#f3e8ff",
@@ -195,7 +203,7 @@ export default function TeamScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team" onBack={() => router.back()} />
+        <ScreenHeader title={tm("title")} onBack={() => router.back()} />
         <View
           style={{
             flex: 1,
@@ -213,7 +221,7 @@ export default function TeamScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team" onBack={() => router.back()} />
+        <ScreenHeader title={tm("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -224,11 +232,11 @@ export default function TeamScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Team & scheduling"
+        title={tm("hubTitle")}
         subtitle={
           isFreelancer
-            ? "Your profile and service settings"
-            : "Staff, shifts & time clock"
+            ? tm("subtitleFreelancer")
+            : tm("subtitleTeam")
         }
         onBack={() => router.back()}
         rightAction={
@@ -248,19 +256,19 @@ export default function TeamScreen() {
                 paddingHorizontal: 14,
                 paddingVertical: 8,
               }}
-              accessibilityLabel="Add team member"
+              accessibilityLabel={tm("addMemberA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="add" size={18} color="#fff" />
               <Text
                 style={{
-                  marginLeft: 6,
+                  marginStart: 6,
                   fontSize: 14,
                   fontWeight: "600",
                   color: Colors.white,
                 }}
               >
-                Add member
+                {tm("addMember")}
               </Text>
             </TouchableOpacity>
           ) : undefined
@@ -287,8 +295,7 @@ export default function TeamScreen() {
             }}
           >
             <Text style={{ fontSize: 14, color: "#78350f" }}>
-              You have read-only team access. Ask an owner or manager with Manage team to add or
-              edit members.
+              {tm("readOnlyBanner")}
             </Text>
           </View>
         ) : null}
@@ -306,9 +313,9 @@ export default function TeamScreen() {
           >
             <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
               <Text style={{ fontWeight: "600", color: Colors.primary }}>
-                You’re set up as a freelancer.
+                {tm("freelancerLead")}
               </Text>{" "}
-              To add team members and unlock advanced features, upgrade to a salon.
+              {tm("freelancerBody")}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -320,7 +327,7 @@ export default function TeamScreen() {
                 pushInAppBrowser(
                   router,
                   `${base}/provider/settings/upgrade-to-salon`,
-                  "Upgrade",
+                  tm("upgradeTitle"),
                 );
               }}
               style={{
@@ -331,11 +338,11 @@ export default function TeamScreen() {
                 paddingHorizontal: 16,
                 paddingVertical: 10,
               }}
-              accessibilityLabel="Upgrade to salon"
+              accessibilityLabel={tm("upgradeA11y")}
               accessibilityRole="button"
             >
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>
-                Upgrade to salon
+                {tm("upgradeCta")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -345,15 +352,15 @@ export default function TeamScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingRight: 4 }}
+          contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingEnd: 4 }}
           style={{ marginBottom: 16 }}
         >
           <View style={{ width: 128 }}>
-            <StatCard title="Total" value={String(totalCount)} icon="people-outline" compact />
+            <StatCard title={tm("statTotal")} value={String(totalCount)} icon="people-outline" compact />
           </View>
           <View style={{ width: 128 }}>
             <StatCard
-              title="Active"
+              title={tm("statActive")}
               value={String(activeCount)}
               icon="checkmark-circle-outline"
               iconColor="#22c55e"
@@ -363,7 +370,7 @@ export default function TeamScreen() {
           </View>
           <View style={{ width: 148 }}>
             <StatCard
-              title="Service providers"
+              title={tm("statServiceProviders")}
               value={String(serviceProvidersCount)}
               icon="briefcase-outline"
               iconColor="#9333ea"
@@ -373,7 +380,7 @@ export default function TeamScreen() {
           </View>
           <View style={{ width: 128 }}>
             <StatCard
-              title="On shift"
+              title={tm("statOnShift")}
               value={String(onShiftCount)}
               icon="time-outline"
               iconColor={Colors.primary}
@@ -383,8 +390,8 @@ export default function TeamScreen() {
           </View>
           <View style={{ width: 128 }}>
             <StatCard
-              title="Avg rating"
-              value={avgRating == null ? "—" : avgRating.toFixed(1)}
+              title={tm("statAvgRating")}
+              value={avgRating == null ? tm("dash") : avgRating.toFixed(1)}
               icon="star-outline"
               iconColor="#f59e0b"
               iconBg="#ffedd5"
@@ -406,25 +413,25 @@ export default function TeamScreen() {
             paddingHorizontal: 16,
           }}
           activeOpacity={0.85}
-          accessibilityLabel="View and manage all team members"
+          accessibilityLabel={tm("manageAllA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="people" size={20} color="#fff" />
           <Text
             style={{
-              marginLeft: 8,
+              marginStart: 8,
               fontSize: 16,
               fontWeight: "600",
               color: Colors.white,
             }}
           >
-            View & manage all members
+            {tm("manageAll")}
           </Text>
-          <Ionicons
+          <DirectionalIcon
             name="chevron-forward"
             size={18}
             color="#fff"
-            style={{ marginLeft: 6 }}
+            style={{ marginStart: 6 }}
           />
         </TouchableOpacity>
 
@@ -438,12 +445,12 @@ export default function TeamScreen() {
             textTransform: "uppercase",
           }}
         >
-          Scheduling & controls
+          {tm("schedulingControls")}
         </Text>
         <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           {quickActions.map((item) => (
             <TouchableOpacity
-              key={item.label}
+              key={item.labelKey}
               onPress={() => router.push(item.route as never)}
               style={{
                 width: "48%",
@@ -455,7 +462,7 @@ export default function TeamScreen() {
                 padding: 14,
               }}
               activeOpacity={0.75}
-              accessibilityLabel={item.label}
+              accessibilityLabel={tm(item.labelKey)}
               accessibilityRole="button"
             >
               <View
@@ -471,10 +478,10 @@ export default function TeamScreen() {
                 <Ionicons name={item.icon} size={22} color={item.color} />
               </View>
               <Text style={{ marginTop: 10, fontWeight: "700", color: Colors.gray[900] }}>
-                {item.label}
+                {tm(item.labelKey)}
               </Text>
               <Text style={{ marginTop: 4, fontSize: 12, lineHeight: 16, color: Colors.gray[500] }}>
-                {item.subtitle}
+                {tm(item.subtitleKey)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -490,14 +497,13 @@ export default function TeamScreen() {
             textTransform: "uppercase",
           }}
         >
-          {selectedLocationId ? "At this location" : "Team preview"}
+          {selectedLocationId ? tm("atThisLocation") : tm("teamPreview")}
         </Text>
         {overCapUntil ? (
           <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", backgroundColor: "#FFFBEB", padding: 12 }}>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>Over staff cap</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>{tm("overCapTitle")}</Text>
             <Text style={{ marginTop: 4, fontSize: 12, color: "#92400E" }}>
-              Some team members were deactivated after a plan downgrade. Grace lasts until{" "}
-              {overCapUntil.toLocaleDateString()}. Upgrade or keep the roster at the new limit to reactivate them.
+              {tm("overCapBody", { date: overCapUntil.toLocaleDateString() })}
             </Text>
           </View>
         ) : null}
@@ -505,7 +511,7 @@ export default function TeamScreen() {
           <View style={{ paddingVertical: 24, paddingHorizontal: 8, alignItems: "center" }}>
             <Ionicons name="people-circle-outline" size={48} color="#9ca3af" />
             <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>
-              No team members {selectedLocationId ? "for this location" : "yet"}
+              {selectedLocationId ? tm("emptyLocation") : tm("emptyYet")}
             </Text>
             <Text
               style={{
@@ -517,8 +523,8 @@ export default function TeamScreen() {
               }}
             >
               {canManageTeam && !isFreelancer
-                ? "Add staff from the full team screen."
-                : "Open team to view details when you have access."}
+                ? tm("emptyCanManage")
+                : tm("emptyReadOnly")}
             </Text>
             {canManageTeam && !isFreelancer ? (
               <TouchableOpacity
@@ -531,7 +537,7 @@ export default function TeamScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontWeight: "600", color: Colors.white }}>Open team list</Text>
+                <Text style={{ fontWeight: "600", color: Colors.white }}>{tm("openTeamList")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -556,7 +562,7 @@ export default function TeamScreen() {
                 activeOpacity={0.7}
               >
                 <Avatar name={member.name} imageUrl={member.avatar_url ?? undefined} size="md" />
-                <View style={{ marginLeft: 12, flex: 1 }}>
+                <View style={{ marginStart: 12, flex: 1 }}>
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{member.name}</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
                     {member.email}
@@ -572,11 +578,11 @@ export default function TeamScreen() {
                         paddingVertical: 2,
                       }}
                     >
-                      <Text style={{ fontSize: 12, color: Colors.gray[600] }}>Inactive</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{tm("inactive")}</Text>
                     </View>
                   )}
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" />
               </TouchableOpacity>
             ))}
             {staff.length > previewStaff.length ? (
@@ -590,9 +596,9 @@ export default function TeamScreen() {
                 }}
               >
                 <Text style={{ fontSize: 15, fontWeight: "600", color: "#0d9488" }}>
-                  See all {staff.length} members
+                  {tm("seeAllMembers", { count: staff.length })}
                 </Text>
-                <Ionicons name="chevron-forward" size={18} color="#0d9488" style={{ marginLeft: 4 }} />
+                <DirectionalIcon name="chevron-forward" size={18} color="#0d9488" style={{ marginStart: 4 }} />
               </TouchableOpacity>
             ) : null}
           </View>

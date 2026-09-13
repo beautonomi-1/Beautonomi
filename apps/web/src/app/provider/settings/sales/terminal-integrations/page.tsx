@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 /**
  * /provider/settings/sales/terminal-integrations
  *
@@ -45,11 +46,12 @@ type VendorEntry = {
 };
 
 function StatusBadge({ status, connected }: { status: string; connected: boolean }) {
+  const { t } = useTranslation();
   if (connected) {
     return (
       <Badge className="bg-green-100 text-green-800 border-0 gap-1 font-medium">
         <CheckCircle2 className="h-3 w-3" />
-        Connected
+        {t("web.provider.settings.pages.sales/terminal-integrations/vendor.connected")}
       </Badge>
     );
   }
@@ -57,7 +59,7 @@ function StatusBadge({ status, connected }: { status: string; connected: boolean
     return (
       <Badge className="bg-yellow-100 text-yellow-800 border-0 gap-1 font-medium">
         <Clock className="h-3 w-3" />
-        Pending
+        {t("web.provider.settings.pages.sales/terminal-integrations.pending")}
       </Badge>
     );
   }
@@ -65,18 +67,19 @@ function StatusBadge({ status, connected }: { status: string; connected: boolean
     return (
       <Badge className="bg-red-100 text-red-800 border-0 gap-1 font-medium">
         <AlertTriangle className="h-3 w-3" />
-        Error
+        {t("web.provider.settings.pages.sales/terminal-integrations/vendor.error")}
       </Badge>
     );
   }
   return (
     <Badge variant="outline" className="text-slate-500 border-slate-200 font-medium">
-      Not connected
+      {t("web.provider.settings.pages.sales/terminal-integrations/vendor.notConnected")}
     </Badge>
   );
 }
 
 export default function TerminalIntegrationsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { bundle, isLoading: isConfigLoading } = useConfigBundle();
   const hubEnabled = bundle?.flags?.terminal_integrations_enabled?.enabled === true;
@@ -90,10 +93,10 @@ export default function TerminalIntegrationsPage() {
     try {
       const res = await fetch("/api/provider/terminal-integrations/vendors");
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message ?? "Failed to load");
+      if (!res.ok) throw new Error(json?.error?.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.failedToLoad"));
       setVendors(json.data?.vendors ?? []);
     } catch (err: any) {
-      toast.error(err.message ?? "Could not load terminal integrations");
+      toast.error(err.message ?? t("web.provider.settings.pages.sales/terminal-integrations.couldNotLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +116,8 @@ export default function TerminalIntegrationsPage() {
 
   return (
     <SettingsDetailLayout
-      title="Terminal Integrations"
-      description="Connect your existing card machines and payment terminals to track transactions and unlock platform features."
+      title={t("web.provider.settings.categories.sales.items.terminalIntegrations.title")}
+      description={t("web.provider.settings.pages.sales/terminal-integrations.connectHubDesc")}
       backHref="/provider/settings"
     >
       {isLoading ? (
@@ -127,7 +130,7 @@ export default function TerminalIntegrationsPage() {
         <div className="space-y-8">
           {/* Connected */}
           {connectedVendors.length > 0 && (
-            <SectionCard title="Connected terminals" className="divide-y divide-slate-100">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-integrations.connectedTerminals")} className="divide-y divide-slate-100">
               {connectedVendors.map((v) => (
                 <VendorRow key={v.vendor} vendor={v} />
               ))}
@@ -137,8 +140,8 @@ export default function TerminalIntegrationsPage() {
           {/* Available to connect */}
           {availableVendors.length > 0 && (
             <SectionCard
-              title="Connect a terminal"
-              description="Link your existing card machine or payment terminal to your Beautonomi account."
+              title={t("web.provider.settings.pages.sales/terminal-integrations.connectATerminal")}
+              description={t("web.provider.settings.pages.sales/terminal-integrations.linkExisting")}
               className="divide-y divide-slate-100"
             >
               {availableVendors.map((v) => (
@@ -149,9 +152,9 @@ export default function TerminalIntegrationsPage() {
 
           {/* Nothing available */}
           {connectedVendors.length === 0 && availableVendors.length === 0 && (
-            <SectionCard title="No integrations available yet">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-integrations.noIntegrationsAvailableYet")}>
               <p className="text-sm text-slate-500 py-2">
-                Terminal integrations are coming soon. Check back shortly or contact support for early access.
+{t("web.provider.settings.pages.sales/terminal-integrations.comingSoonEmpty")}
               </p>
             </SectionCard>
           )}
@@ -159,8 +162,8 @@ export default function TerminalIntegrationsPage() {
           {/* Coming soon */}
           {comingSoonVendors.length > 0 && (
             <SectionCard
-              title="Coming soon"
-              description="These integrations are in development. We'll notify you when they become available."
+              title={t("web.provider.settings.pages.sales/terminal-integrations.comingSoon")}
+              description={t("web.provider.settings.pages.sales/terminal-integrations.inDevelopment")}
               className="divide-y divide-slate-100"
             >
               {comingSoonVendors.map((v) => (
@@ -184,7 +187,7 @@ export default function TerminalIntegrationsPage() {
                     </div>
                   </div>
                   <Badge variant="outline" className="text-slate-400 border-slate-200 text-xs">
-                    Coming soon
+{t("web.provider.settings.pages.sales/terminal-integrations.comingSoon")}
                   </Badge>
                 </div>
               ))}
@@ -196,13 +199,13 @@ export default function TerminalIntegrationsPage() {
             <div className="flex items-start gap-3 text-sm text-slate-600">
               <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
               <p>
-                <span className="font-medium">Looking for Yoco?</span>{" "}
-                Yoco has its own dedicated integration.{" "}
+                <span className="font-medium">{t("web.provider.settings.pages.sales/terminal-integrations.lookingForYoco")}</span>{" "}
+                {t("web.provider.settings.pages.sales/terminal-integrations.yocoDedicated")}{" "}
                 <Link
                   href="/provider/settings/sales/yoco-integration"
                   className="text-pink-600 underline underline-offset-2 font-medium"
                 >
-                  Manage Yoco here →
+{t("web.provider.settings.pages.sales/terminal-integrations.manageYocoHere")}
                 </Link>
               </p>
             </div>

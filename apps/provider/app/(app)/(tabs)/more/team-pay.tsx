@@ -5,6 +5,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { PayrollContent } from "./payroll";
 import { TeamTotalsContent } from "./team-totals";
 import { MyEarningsContent } from "./my-earnings";
+import { useTranslation } from "@beautonomi/i18n";
 
 type TeamAccessPayload = {
   is_business_owner?: boolean;
@@ -15,6 +16,8 @@ function isOwnerRole(role: string | null, teamAccess?: TeamAccessPayload | null)
 }
 
 export default function TeamPayHubScreen() {
+  const { t } = useTranslation();
+  const tp = (key: string) => t(`provider.mobile.screens.teamPay.${key}`) as string;
   const { role } = useProvider();
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access", {
     staleTimeMs: 60_000,
@@ -24,17 +27,17 @@ export default function TeamPayHubScreen() {
   const tabs = useMemo(() => {
     if (isOwner) {
       return [
-        { id: "payroll", label: "Payroll", render: () => <PayrollContent embedded /> },
-        { id: "team", label: "Team totals", render: () => <TeamTotalsContent embedded /> },
+        { id: "payroll", label: tp("payroll"), render: () => <PayrollContent embedded /> },
+        { id: "team", label: tp("teamTotals"), render: () => <TeamTotalsContent embedded /> },
       ];
     }
-    return [{ id: "my-earnings", label: "My earnings", render: () => <MyEarningsContent embedded /> }];
-  }, [isOwner]);
+    return [{ id: "my-earnings", label: tp("myEarnings"), render: () => <MyEarningsContent embedded /> }];
+  }, [isOwner, t]);
 
   return (
     <FinanceHubShell
-      title="Team & pay"
-      subtitle={isOwner ? "Payroll & staff performance" : "Your pay stubs"}
+      title={tp("title")}
+      subtitle={isOwner ? tp("subtitleOwner") : tp("subtitleStaff")}
       tabs={tabs}
       defaultTab={isOwner ? "payroll" : "my-earnings"}
     />

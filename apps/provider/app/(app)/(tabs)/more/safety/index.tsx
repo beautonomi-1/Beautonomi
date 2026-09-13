@@ -18,6 +18,7 @@ import {
 } from "@/lib/safety/trust-hub-status";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { trackSafetyHubNav, trackSafetyHubView } from "@/lib/analytics";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -81,7 +82,7 @@ function Row({
         name={icon}
         size={22}
         color={destructive ? "#DC2626" : Colors.primary}
-        style={{ marginRight: 12 }}
+        style={{ marginEnd: 12 }}
       />
       <View style={{ flex: 1 }}>
         <Text style={{ fontWeight: "500", color: destructive ? "#DC2626" : Colors.gray[900] }}>{label}</Text>
@@ -89,7 +90,7 @@ function Row({
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{subtitle}</Text>
         ) : null}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+      <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
     </TouchableOpacity>
   );
 }
@@ -127,12 +128,8 @@ export default function SafetyHubScreen() {
   const contentSafetySubtitle =
     restrictionCount === 0
       ? ph("contentSafetySummaryNone")
-      : (t(`provider.mobile.screens.safetyHub.contentSafetySummary${restrictionCount === 1 ? "" : "_plural"}`, {
+      : (t("provider.mobile.screens.safetyHub.contentSafetySummary", {
           count: restrictionCount,
-          defaultValue:
-            restrictionCount === 1
-              ? ph("contentSafetySummary", { count: restrictionCount })
-              : ph("contentSafetySummary_plural", { count: restrictionCount }),
         }) as string);
 
   const emergencySubtitle = !user

@@ -6,6 +6,7 @@ import {
   FlatList,
   Share,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
@@ -48,13 +49,19 @@ interface GiftCardStats {
 }
 
 const PERIOD_FILTERS = [
-  { label: "All Time", value: "all" },
-  { label: "Last 30 days", value: "month" },
-  { label: "Last 7 days", value: "week" },
-  { label: "Today", value: "today" },
-];
+  { labelKey: "periodAllTime", value: "all" },
+  { labelKey: "periodLast30", value: "month" },
+  { labelKey: "periodLast7", value: "week" },
+  { labelKey: "periodToday", value: "today" },
+] as const;
 
 export default function GiftCardReportScreen() {
+  const { t } = useTranslation();
+  const gc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.giftCardsReport.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
@@ -86,18 +93,18 @@ export default function GiftCardReportScreen() {
       (c) =>
         `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${c.status},${formatDate(c.purchased_at)},${c.redeemed_at ?? c.captured_at ?? ""}`
     );
-    const csv = `Code,Purchaser,Recipient,Redemption amount,Status,Purchased,Capture\n${rows.join("\n")}`;
+    const csv = `${gc("csvHeader")}\n${rows.join("\n")}`;
     try {
-      await Share.share({ message: csv, title: "Gift Card Report" });
+      await Share.share({ message: csv, title: gc("exportTitle") });
     } catch {}
   }
 
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Gift cards"
+        title={gc("title")}
         showBack
-        subtitle="Redemptions at your business (platform sells cards)"
+        subtitle={gc("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -110,7 +117,7 @@ export default function GiftCardReportScreen() {
 
       {basis ? (
         <View style={twStyle("mb-3 rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase text-sky-900")}>What this counts</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase text-sky-900")}>{gc("whatThisCounts")}</Text>
           <Text style={twStyle("mt-1 text-sm leading-5 text-sky-950")}>{basis}</Text>
         </View>
       ) : null}
@@ -118,7 +125,7 @@ export default function GiftCardReportScreen() {
       <View style={twStyle("mb-3")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Redemption rows"
+            title={gc("redemptionRows")}
             value={String(stats?.total_sold ?? stats?.total_redeemed ?? 0)}
             icon="gift-outline"
             iconColor="#a855f7"
@@ -126,7 +133,7 @@ export default function GiftCardReportScreen() {
             compact
           />
           <StatCard
-            title="Redeemed value"
+            title={gc("redeemedValue")}
             value={formatCurrency(stats?.total_revenue ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -134,7 +141,7 @@ export default function GiftCardReportScreen() {
             compact
           />
           <StatCard
-            title="Avg / row"
+            title={gc("avgPerRow")}
             value={formatCurrency(stats?.avg_value ?? 0)}
             icon="analytics-outline"
             iconColor="#3b82f6"
@@ -145,7 +152,11 @@ export default function GiftCardReportScreen() {
       </View>
 
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
+        <FilterChipGroup
+          options={PERIOD_FILTERS.map((p) => ({ label: gc(p.labelKey), value: p.value }))}
+          selected={period}
+          onSelect={setPeriod}
+        />
       </View>
 
       {loading && !reportData ? (
@@ -155,8 +166,8 @@ export default function GiftCardReportScreen() {
       ) : cards.length === 0 ? (
         <EmptyState
           icon="gift-outline"
-          title="No gift card redemptions"
-          description="Captured redemptions in this period will appear here."
+          title={gc("emptyTitle")}
+          description={gc("emptyDesc")}
         />
       ) : (
         <FlatList
@@ -174,11 +185,11 @@ export default function GiftCardReportScreen() {
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-mono font-semibold text-gray-900")}>{card.code}</Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {card.purchaser_name ? `By ${card.purchaser_name}` : ""}
-                    {card.recipient_name ? ` → ${card.recipient_name}` : ""}
+                    {card.purchaser_name ? gc("byPurchaser", { name: card.purchaser_name }) : ""}
+                    {card.recipient_name ? gc("toRecipient", { name: card.recipient_name }) : ""}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                    Capture · {formatDate(card.redeemed_at ?? card.captured_at ?? card.purchased_at)}
+                    {gc("captureDate", { date: formatDate(card.redeemed_at ?? card.captured_at ?? card.purchased_at) })}
                   </Text>
                 </View>
                 <View style={twStyle("items-end")}>

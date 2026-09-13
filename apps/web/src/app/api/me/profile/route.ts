@@ -14,6 +14,7 @@ import { getUserAuthSecurityState } from "@/lib/auth/user-auth-security-state";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import type { User } from "@/types/beautonomi";
+import { isSupportedLanguageCode, normalizeLanguageCode } from "@/lib/i18n/config";
 
 /**
  * §Release-audit 2026-04: PATCH /api/me/profile updates the customer's
@@ -241,7 +242,7 @@ export async function GET(request: NextRequest) {
       emergency_contact: {
         name: u.emergency_contact_name || "",
         relationship: u.emergency_contact_relationship || "",
-        language: u.preferred_language || "",
+        language: u.emergency_contact_language || "",
         email: u.emergency_contact_email ?? "",
         country_code: u.emergency_contact_country_code ?? "",
         phone: u.emergency_contact_phone || "",
@@ -400,7 +401,13 @@ export async function PATCH(request: NextRequest) {
       }
       updates.date_of_birth = body.date_of_birth;
     }
-    if (body.preferred_language !== undefined) updates.preferred_language = body.preferred_language;
+    if (body.preferred_language !== undefined) {
+      const lang = String(body.preferred_language ?? "").trim();
+      if (lang && !isSupportedLanguageCode(lang)) {
+        throw new Error("Unsupported preferred_language");
+      }
+      updates.preferred_language = lang ? normalizeLanguageCode(lang) : null;
+    }
     if (body.signup_source !== undefined) {
       const allowed: string[] = [
         "google", "social_instagram", "social_facebook", "social_twitter",
@@ -452,7 +459,13 @@ export async function PATCH(request: NextRequest) {
       if (ec.name !== undefined) updates.emergency_contact_name = ec.name || null;
       if (ec.phone !== undefined) updates.emergency_contact_phone = ec.phone || null;
       if (ec.relationship !== undefined) updates.emergency_contact_relationship = ec.relationship || null;
-      if (ec.language !== undefined) updates.preferred_language = ec.language || null;
+      if (ec.language !== undefined) {
+        const lang = String(ec.language ?? "").trim();
+        if (lang && !isSupportedLanguageCode(lang)) {
+          throw new Error("Unsupported emergency contact language");
+        }
+        updates.emergency_contact_language = lang ? normalizeLanguageCode(lang) : null;
+      }
       if (ec.email !== undefined) updates.emergency_contact_email = ec.email || null;
       if (ec.country_code !== undefined) updates.emergency_contact_country_code = ec.country_code || null;
     }
@@ -751,7 +764,7 @@ export async function PATCH(request: NextRequest) {
           emergency_contact: {
             name: u.emergency_contact_name || "",
             relationship: u.emergency_contact_relationship || "",
-            language: u.preferred_language || "",
+            language: u.emergency_contact_language || "",
             email: u.emergency_contact_email ?? "",
             country_code: u.emergency_contact_country_code ?? "",
             phone: u.emergency_contact_phone || "",
@@ -819,7 +832,7 @@ export async function PATCH(request: NextRequest) {
         emergency_contact: {
           name: u.emergency_contact_name || "",
           relationship: u.emergency_contact_relationship || "",
-          language: u.preferred_language || "",
+          language: u.emergency_contact_language || "",
           email: u.emergency_contact_email ?? "",
           country_code: u.emergency_contact_country_code ?? "",
           phone: u.emergency_contact_phone || "",

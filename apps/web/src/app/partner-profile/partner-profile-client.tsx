@@ -25,6 +25,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderDetail } from "@/types/beautonomi";
 import type { PartnerProfileServiceCategoryInitial } from "@/types/partner-profile-services";
 import { fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 const tabChunkFallback = (
   <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-10" aria-hidden>
@@ -82,6 +83,7 @@ export default function PartnerProfileClient({
     initialProvider.disclosure_tier ?? "anon",
   );
   const { user, isLoading: authLoading } = useAuth();
+  const { pp } = usePartnerProfileT();
   const { track, isReady } = useAmplitude();
   const profileViewTrackedRef = useRef(false);
   const distanceEnrichedRef = useRef(false);
@@ -221,19 +223,19 @@ export default function PartnerProfileClient({
               className="flex overflow-x-auto scrollbar-hide px-4 md:px-10 w-full"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              <TabsTrigger value="services" className={tabTriggerClass}>Services</TabsTrigger>
-              <TabsTrigger value="shop" className={tabTriggerClass}>Shop</TabsTrigger>
-              <TabsTrigger value="photos" className={tabTriggerClass}>Photos</TabsTrigger>
+              <TabsTrigger value="services" className={tabTriggerClass}>{pp("tabServices")}</TabsTrigger>
+              <TabsTrigger value="shop" className={tabTriggerClass}>{pp("tabShop")}</TabsTrigger>
+              <TabsTrigger value="photos" className={tabTriggerClass}>{pp("tabPhotos")}</TabsTrigger>
               {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
-                <TabsTrigger value="team" className={tabTriggerClass}>Team</TabsTrigger>
+                <TabsTrigger value="team" className={tabTriggerClass}>{pp("tabTeam")}</TabsTrigger>
               )}
-              <TabsTrigger value="reviews" className={tabTriggerClass}>Reviews</TabsTrigger>
-              <TabsTrigger value="memberships" className={tabTriggerClass}>Memberships</TabsTrigger>
-              <TabsTrigger value="giftcard" className={tabTriggerClass}>Giftcard</TabsTrigger>
+              <TabsTrigger value="reviews" className={tabTriggerClass}>{pp("tabReviews")}</TabsTrigger>
+              <TabsTrigger value="memberships" className={tabTriggerClass}>{pp("tabMemberships")}</TabsTrigger>
+              <TabsTrigger value="giftcard" className={tabTriggerClass}>{pp("tabGiftcard")}</TabsTrigger>
               {provider.accepts_custom_requests !== false && (
-                <TabsTrigger value="custom-service" className={tabTriggerClass}>Request Custom Service</TabsTrigger>
+                <TabsTrigger value="custom-service" className={tabTriggerClass}>{pp("tabCustomService")}</TabsTrigger>
               )}
-              <TabsTrigger value="about" className={tabTriggerClass}>About</TabsTrigger>
+              <TabsTrigger value="about" className={tabTriggerClass}>{pp("tabAbout")}</TabsTrigger>
             </div>
           </TabsList>
 
@@ -296,7 +298,7 @@ export default function PartnerProfileClient({
             <Link
               href={`/account-settings/messages?provider=${provider.id}`}
               className="flex items-center justify-center gap-2 w-full bg-gray-100 hover:bg-gray-200 transition-colors rounded-xl py-3 px-4"
-              aria-label="Message provider"
+              aria-label={pp("messageProvider")}
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -306,7 +308,7 @@ export default function PartnerProfileClient({
                   d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                 />
               </svg>
-              <span className="text-sm font-medium text-gray-700">Message Provider</span>
+              <span className="text-sm font-medium text-gray-700">{pp("messageProvider")}</span>
             </Link>
           </div>
         </div>

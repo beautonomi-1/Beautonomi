@@ -1,5 +1,8 @@
+"use client";
+
 import type { SVGProps } from "react";
 import Image, { type StaticImageData } from "next/image";
+import { useTranslation } from "@beautonomi/i18n";
 import Access from "./../../public/images/accessing-your-account-optimized.jpg";
 import Paid from "./../../public/images/getting-paid-optimized.jpg";
 import HelpWithProviding from "./../../public/images/help-with-hosting-optimized.jpg";
@@ -18,43 +21,44 @@ interface Guide {
   mobileSrc: ImgSrc;
 }
 
-const guides: Guide[] = [
-  {
-    src: Access,
-    alt: "Access and manage your account",
-    description: "Access and manage your account",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: Paid,
-    alt: "Getting paid",
-    description: "Getting paid",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: HelpWithProviding,
-    alt: "Help with providing services",
-    description: "Help with providing services",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: Aircover,
-    alt: "Getting protected through Beautonomi Coverage for Providers",
-    description: "Getting protected through Beautonomi Coverage for Providers",
-    mobileSrc: Started,
-    link: "/",
-  },
-];
-
 export default function ProviderTab() {
+  const { t } = useTranslation();
+  const guides: Guide[] = [
+    {
+      src: Access,
+      alt: t("web.helpGuides.accessManageAccount"),
+      description: t("web.helpGuides.accessManageAccount"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: Paid,
+      alt: t("web.helpGuides.gettingPaid"),
+      description: t("web.helpGuides.gettingPaid"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: HelpWithProviding,
+      alt: t("web.helpGuides.helpProviding"),
+      description: t("web.helpGuides.helpProviding"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: Aircover,
+      alt: t("web.helpGuides.coverageProviders"),
+      description: t("web.helpGuides.coverageProviders"),
+      mobileSrc: Started,
+      link: "/",
+    },
+  ];
+
   return (
     <div className="max-w-6xl mx-auto  py-5 sm:py-8">
       <div className="block sm:flex justify-between items-center mb-6">
         <h2 className="text-[26px] mb-5 sm:mb-1 font-normal  text-secondary">
-          Guides for getting started
+          {t("web.helpGuides.gettingStartedTitle")}
         </h2>
         <div className="block sm:hidden">
           {guides.map((guide, index) => (
@@ -70,7 +74,7 @@ export default function ProviderTab() {
                     {guide.description}
                   </h2>
                 </div>
-                <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+                <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
               </div>
             </Link>
           ))}
@@ -80,10 +84,10 @@ export default function ProviderTab() {
             href="#"
             className="flex items-center font-normal  text-lg sm:text-sm text-secondary"
           >
-            Browse all topics{" "}
-            <ArrowRightIcon className="hidden sm:block ml-1 h-4 w-4" />
+            {t("web.helpGuides.browseAllTopics")}{" "}
+            <ArrowRightIcon className="hidden sm:block ms-1 h-4 w-4" />
           </a>
-          <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+          <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
         </div>
       </div>
       <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0">

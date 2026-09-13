@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -40,6 +41,12 @@ type ProfileForDelete = {
 };
 
 export default function DeleteAccountInfoScreen() {
+  const { t } = useTranslation();
+  const da = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.deleteAccount." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { signOut } = useAuth();
   const { data: status, loading, error, refresh } = useApi<AccountStatus>("/api/me/account-status");
@@ -70,30 +77,28 @@ export default function DeleteAccountInfoScreen() {
 
   const handleDeleteAccount = async () => {
     if (!authSecurityLoaded) {
-      Alert.alert("Please wait", "Still loading account security settings. Please try again.");
+      Alert.alert(da("pleaseWaitTitle"), da("stillLoadingSecurity"));
       return;
     }
     if (hasPassword && !password.trim()) {
-      Alert.alert("Password required", "Enter your password to confirm account deletion.");
+      Alert.alert(da("passwordRequiredTitle"), da("passwordRequiredBody"));
       return;
     }
     if (!hasPassword && !verificationNonce.trim()) {
-      Alert.alert("Verification required", "Enter the verification code to confirm account deletion.");
+      Alert.alert(da("verificationRequiredTitle"), da("verificationRequiredBody"));
       return;
     }
     if (!confirmOk) {
-      Alert.alert("Confirmation required", `Type ${DELETE_PHRASE} in the confirmation field.`);
+      Alert.alert(da("confirmationRequiredTitle"), da("confirmationRequiredBody", { phrase: DELETE_PHRASE }));
       return;
     }
     Alert.alert(
-      "Delete account permanently?",
-      isProviderOwner
-        ? "This cannot be undone. Your provider profile, services, bookings, and business data will be permanently removed."
-        : "This action cannot be undone and will permanently remove your account and profile data.",
+      da("deleteConfirmTitle"),
+      isProviderOwner ? da("deleteConfirmBodyOwner") : da("deleteConfirmBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Delete permanently",
+          text: da("deletePermanentlyCta"),
           style: "destructive",
           onPress: async () => {
             const result = await deleteAccount("/api/me/delete-account", {
@@ -102,18 +107,18 @@ export default function DeleteAccountInfoScreen() {
               reason: reason.trim() || "Deleted from mobile app",
             });
             if (result.error) {
-              Alert.alert("Could not delete account", result.error);
+              Alert.alert(da("deleteFailedTitle"), result.error);
               return;
             }
             const payload = result.data as { scheduled?: boolean; message?: string; grace_days?: number } | undefined;
             await signOut();
             const scheduled = payload?.scheduled === true;
             Alert.alert(
-              scheduled ? "Deletion scheduled" : "Account deleted",
+              scheduled ? da("deletionScheduledTitle") : da("deletedTitle"),
               payload?.message ??
                 (scheduled
-                  ? `Your account will be permanently deleted in ${payload?.grace_days ?? 30} days. Check your email to cancel.`
-                  : "Your account has been deleted."),
+                  ? da("deletionScheduledBody", { days: payload?.grace_days ?? 30 })
+                  : da("deletedBody")),
             );
             router.replace(
               (scheduled ? "/(auth)/login?deletion_scheduled=1" : "/(auth)/login") as never,
@@ -126,16 +131,16 @@ export default function DeleteAccountInfoScreen() {
 
   const requestVerificationCode = async () => {
     if (!canVerifyWithCode) {
-      Alert.alert("Add contact method", otpDestination.codeSentMessage);
+      Alert.alert(da("addContactMethodTitle"), otpDestination.codeSentMessage);
       return;
     }
     setRequestingNonce(true);
     try {
       const { error: reauthError } = await supabase.auth.reauthenticate();
       if (reauthError) throw reauthError;
-      Alert.alert("Code sent", otpDestination.codeSentMessage);
+      Alert.alert(t("provider.mobile.screens.loginSecurity.codeSentTitle"), otpDestination.codeSentMessage);
     } catch (e) {
-      Alert.alert("Could not send code", e instanceof Error ? e.message : "Please try again.");
+      Alert.alert(da("sendCodeFailedTitle"), e instanceof Error ? e.message : da("sendCodeFailedBody"));
     } finally {
       setRequestingNonce(false);
     }
@@ -144,7 +149,7 @@ export default function DeleteAccountInfoScreen() {
   if (loading && status == null) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Delete account" onBack={() => router.back()} />
+        <ScreenHeader title={da("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -155,7 +160,7 @@ export default function DeleteAccountInfoScreen() {
   if (error && status == null) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Delete account" onBack={() => router.back()} />
+        <ScreenHeader title={da("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -168,60 +173,57 @@ export default function DeleteAccountInfoScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Delete account" onBack={() => router.back()} />
+      <ScreenHeader title={da("title")} onBack={() => router.back()} />
       <View style={twStyle("px-4 pt-4 pb-8")}>
         {isProviderOwner && (
           <View style={twStyle("mb-4 rounded-xl border border-red-200 bg-red-50 p-4")}>
-            <Text style={twStyle("font-medium text-red-800")}>Provider business account</Text>
+            <Text style={twStyle("font-medium text-red-800")}>{da("providerBannerTitle")}</Text>
             <Text style={twStyle("mt-1 text-sm text-red-700 leading-5")}>
-              Deleting permanently removes your provider profile, services, and linked business data. Team members
-              may lose access to this business. To take a break instead, use Deactivate account in Settings.
+              {da("providerBannerBody")}
             </Text>
           </View>
         )}
 
         {isDeactivated && (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4")}>
-            <Text style={twStyle("font-medium text-amber-800")}>Account deactivated</Text>
+            <Text style={twStyle("font-medium text-amber-800")}>{da("accountDeactivatedTitle")}</Text>
             <Text style={twStyle("mt-1 text-sm text-amber-700")}>
-              Your account is currently deactivated. You can still permanently delete it below.
+              {da("accountDeactivatedBody")}
             </Text>
           </View>
         )}
 
         {isSuspended && (
           <View style={twStyle("mb-4 rounded-xl border border-red-200 bg-red-50 p-4")}>
-            <Text style={twStyle("font-medium text-red-800")}>Account suspended</Text>
+            <Text style={twStyle("font-medium text-red-800")}>{da("accountSuspendedTitle")}</Text>
             <Text style={twStyle("mt-1 text-sm text-red-700")}>
-              {status?.suspension_reason ?? "Your account has been suspended. Please contact support."}
+              {status?.suspension_reason ?? da("accountSuspendedBodyDefault")}
             </Text>
           </View>
         )}
 
         <Text style={twStyle("text-base text-gray-700 leading-6")}>
-          Request permanent deletion of your account. When the grace period is enabled, deletion is scheduled for 30
-          days — your account is locked and you can cancel via the email link or support.
+          {da("introBody")}
         </Text>
         <Text style={twStyle("mt-4 text-sm text-gray-500")}>
-          Confirm with your password or a one-time verification code, then type DELETE. After the grace period, data
-          is permanently removed.
+          {da("confirmHint", { phrase: DELETE_PHRASE })}
         </Text>
 
         <View style={twStyle("mt-5 rounded-xl border border-gray-200 bg-white p-4")}>
           {!authSecurityLoaded ? (
             <View style={twStyle("items-center py-4")}>
               <ActivityIndicator color="#6b7280" />
-              <Text style={twStyle("mt-2 text-sm text-gray-600")}>Loading verification options…</Text>
+              <Text style={twStyle("mt-2 text-sm text-gray-600")}>{da("loadingVerificationOptions")}</Text>
             </View>
           ) : hasPassword ? (
             <>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Current password</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{da("passwordLabel")}</Text>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
                 autoCapitalize="none"
-                placeholder="Enter password"
+                placeholder={da("passwordPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 style={twStyle("mb-3 rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
               />
@@ -229,7 +231,7 @@ export default function DeleteAccountInfoScreen() {
           ) : (
             <View style={twStyle("mb-3")}>
               <Text style={twStyle("mb-2 text-sm text-gray-600")}>
-                Confirm with a one-time verification code.
+                {da("confirmWithOtpBody")}
               </Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>{otpDestination.sendButtonHint}</Text>
               <TouchableOpacity
@@ -238,7 +240,7 @@ export default function DeleteAccountInfoScreen() {
                 style={twStyle("mb-2 rounded-lg border border-gray-200 bg-white px-3 py-3")}
               >
                 <Text style={twStyle("text-center font-semibold text-gray-900")}>
-                  {requestingNonce ? "Sending..." : "Send verification code"}
+                  {requestingNonce ? da("sending") : da("sendVerificationCode")}
                 </Text>
               </TouchableOpacity>
               <TextInput
@@ -247,24 +249,24 @@ export default function DeleteAccountInfoScreen() {
                 keyboardType="number-pad"
                 autoComplete="sms-otp"
                 textContentType="oneTimeCode"
-                placeholder="Enter code"
+                placeholder={da("enterCodePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 style={twStyle("rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
               />
             </View>
           )}
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Reason (optional)</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{da("reasonLabel")}</Text>
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder="Why are you leaving?"
+            placeholder={da("reasonPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             style={twStyle("min-h-[88px] rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
           />
           <Text style={twStyle("mb-1 mt-4 text-sm font-medium text-gray-700")}>
-            Type{" "}
-            <Text style={twStyle("font-mono text-red-600")}>{DELETE_PHRASE}</Text> to confirm
+            {da("typeConfirmPrefix")}{" "}
+            <Text style={twStyle("font-mono text-red-600")}>{DELETE_PHRASE}</Text> {da("typeConfirmSuffix")}
           </Text>
           <TextInput
             value={confirmText}
@@ -278,8 +280,9 @@ export default function DeleteAccountInfoScreen() {
             )}
           />
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-            Same safeguards as the website. Passwordless accounts receive a code by{" "}
-            {otpDestination.channel === "sms" ? "SMS" : "email"}.
+            {da("safeguardsBody", {
+              channel: otpDestination.channel === "sms" ? da("channelSms") : da("channelEmail"),
+            })}
           </Text>
         </View>
 
@@ -312,7 +315,7 @@ export default function DeleteAccountInfoScreen() {
               }`,
             )}
           >
-            {deleting ? "Deleting..." : "Delete account permanently"}
+            {deleting ? da("deleting") : da("deleteAccountPermanently")}
           </Text>
         </TouchableOpacity>
       </View>

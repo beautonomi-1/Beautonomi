@@ -112,6 +112,15 @@ export const EVENT_PROVIDER_JOURNEY_STARTED = "provider_journey_started";
 export const EVENT_PROVIDER_ETA_UPDATED = "provider_eta_updated";
 export const EVENT_PROVIDER_ARRIVED = "provider_arrived";
 
+// Booking lifecycle (confirmation SLA, close-out, running late)
+export const EVENT_PENDING_REQUEST_EXPIRED = "pending_request_expired";
+export const EVENT_PENDING_REQUEST_NUDGE_SENT = "pending_request_nudge_sent";
+export const EVENT_BOOKING_CLOSEOUT_PROMPTED = "booking_closeout_prompted";
+export const EVENT_BOOKING_CLOSEOUT_BULK_COMPLETED = "booking_closeout_bulk_completed";
+export const EVENT_BOOKING_RUNNING_LATE_REPORTED = "booking_running_late_reported";
+export const EVENT_BOOKING_RUNNING_LATE_ACKED = "booking_running_late_acked";
+export const EVENT_SALON_RUNNING_BEHIND_BROADCAST = "salon_running_behind_broadcast";
+
 // Provider growth funnel
 export const EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED = "provider_onboarding_step_completed";
 export const EVENT_PROVIDER_SUBSCRIPTION_CHECKOUT_START = "provider_subscription_checkout_start";
@@ -161,3 +170,6 @@ export const EVENT_EXPLORE_POST_MODERATED = "explore_post_moderated";
 export const EVENT_USER_REPORT_RESOLVED = "user_report_resolved";
 export const EVENT_SYSTEM_HEALTH_VIEW = "system_health_view";
 export const EVENT_MONITORING_ERROR_VIEW = "monitoring_error_view";
+
+export const EVENT_LOCALE_LANGUAGE_CHANGED = "locale_language_changed";
+export const EVENT_LOCALE_DISPLAY_CURRENCY_CHANGED = "locale_display_currency_changed";

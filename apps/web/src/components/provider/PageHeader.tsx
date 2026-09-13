@@ -45,7 +45,7 @@ export function PageHeader({
               onClick={primaryAction.onClick}
               className="provider-btn-brand w-full sm:w-auto flex-shrink-0 whitespace-nowrap px-5"
             >
-              {primaryAction.icon || <Plus className="w-4 h-4 mr-2 flex-shrink-0" />}
+              {primaryAction.icon || <Plus className="w-4 h-4 me-2 flex-shrink-0" />}
               <span className="truncate">{primaryAction.label}</span>
             </Button>
           )}

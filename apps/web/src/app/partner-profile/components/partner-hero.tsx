@@ -11,6 +11,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { formatProviderDescriptionForProfilePreview } from "@beautonomi/utils";
 import { ProviderGalleryImage } from "@beautonomi/ui/web";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
 import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
@@ -76,6 +77,8 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   current_badge,
 }) => {
   const { user, session, isLoading: authLoading } = useAuth();
+  const { t, pp } = usePartnerProfileT();
+  const providerFallback = pp("providerFallback");
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -159,7 +162,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   const handleMessageClick = async () => {
     // Wait for auth to finish loading before checking
     if (authLoading) {
-      toast.info("Please wait...");
+      toast.info(pp("pleaseWait"));
       return;
     }
     
@@ -202,7 +205,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
     } catch (err) {
       console.error("Error handling message:", err);
       // If timeout or error, still navigate to messages page - let the messages page handle conversation creation
-      toast.error("Opening messages...");
+      toast.error(pp("openingChat"));
       setTimeout(() => {
         window.location.href = `/account-settings/messages?provider=${id}`;
       }, 500);
@@ -235,10 +238,10 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
           localStorage.setItem(cacheKey, String(newState));
         }
         
-        toast.success(action === "added" ? "Saved to wishlist" : "Removed from wishlist");
+        toast.success(action === "added" ? pp("savedToWishlist") : pp("removedFromWishlist"));
       }
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to update wishlist";
+      const msg = err instanceof FetchError ? err.message : pp("failedWishlistUpdate");
       toast.error(msg);
     } finally {
       setIsToggling(false);
@@ -269,7 +272,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
         <ul className="flex items-center space-x-2 text-gray-500">
           <li>
             <Link href="/" className="hover:text-gray-700">
-              Home
+              {t("web.layout.home")}
             </Link>
           </li>
           <li>•</li>
@@ -291,15 +294,15 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             </Link>
           </li>
           <li>•</li>
-          <li className="text-black font-medium">{businessName || "Provider"}</li>
+          <li className="text-black font-medium">{businessName || providerFallback}</li>
         </ul>
       </nav>
 
       {/* Mobile Back Button */}
       <div className="flex md:hidden px-4 py-3 items-center">
         <Link href="/" className="flex items-center text-gray-600">
-          <ChevronLeft className="h-5 w-5 mr-1" />
-          <span className="text-sm">Go back</span>
+          <ChevronLeft className="h-5 w-5 me-1" />
+          <span className="text-sm">{pp("goBackCta")}</span>
         </Link>
       </div>
 
@@ -326,27 +329,27 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                     <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-500 via-yellow-500 to-amber-600 flex items-center justify-center">
                       <Check className="h-2.5 w-2.5 text-white stroke-[3]" />
                     </div>
-                    <span className="text-xs font-medium text-gray-900">Verified</span>
+                    <span className="text-xs font-medium text-gray-900">{pp("verifiedTag")}</span>
                   </div>
                 )}
                 {is_featured && (
                   <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-                    ⭐ Featured
+                    ⭐ {pp("tagFeatured")}
                   </div>
                 )}
                 {supports_house_calls && (
                   <div className="bg-green-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-                    House Calls
+                    {pp("tagHouseCalls")}
                   </div>
                 )}
                 {supports_salon && (
                   <div className="bg-purple-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-                    At Salon
+                    {pp("atSalon")}
                   </div>
                 )}
                 {business_type === 'freelancer' && (
                   <div className="bg-orange-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-                    Freelancer
+                    {pp("tagFreelancer")}
                   </div>
                 )}
               </div>
@@ -374,7 +377,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                   {isLast && displayImages.length > 5 && (
                     <div className="absolute inset-0 bg-black/40 flex items-end justify-center pb-4">
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 shadow-lg">
-                        Show all {displayImages.length} photos
+                        {pp("showAllPhotos", { count: displayImages.length })}
                       </span>
                     </div>
                   )}
@@ -430,7 +433,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               {thumbnail_url ? (
                 <Image
                   src={thumbnail_url}
-                  alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
+                  alt={businessName ? `${businessName} ${pp("profilePhoto")}` : pp("providerProfilePhoto")}
                   fill
                   sizes="(min-width: 768px) 88px, 72px"
                   className="object-cover"
@@ -450,7 +453,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             {/* Provider Name and Location */}
             <div className="mb-4">
               <h1 className="mb-2 text-3xl font-bold leading-tight text-gray-900 md:text-4xl">
-                {businessName || "Provider"}
+                {businessName || providerFallback}
               </h1>
               {current_badge ? (
                 <span
@@ -473,7 +476,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                   </div>
                 )}
                 {owner_name && (
-                  <p className="text-sm md:text-base text-gray-600">Work with {owner_name}</p>
+                  <p className="text-sm md:text-base text-gray-600">{pp("workWith", { name: owner_name })}</p>
                 )}
               </div>
 
@@ -497,7 +500,9 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                 {displayVoteCount > 0 && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm md:text-base text-gray-700">
-                      {displayVoteCount.toLocaleString()} {displayVoteCount === 1 ? "Review" : "Reviews"}
+                      {displayVoteCount === 1
+                        ? pp("reviewCountLabelOne", { count: displayVoteCount })
+                        : pp("reviewCountLabelOther", { count: displayVoteCount.toLocaleString() })}
                     </span>
                   </div>
                 )}
@@ -509,9 +514,9 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               {/* Left: Distance */}
               <div className="flex flex-col items-center flex-1">
                 <MapPin className="h-5 w-5 md:h-6 md:w-6 text-gray-500 mb-1.5" />
-                <span className="text-xs text-gray-600 mb-0.5">Distance</span>
+                <span className="text-xs text-gray-600 mb-0.5">{pp("distanceLabel")}</span>
                 <span className="text-sm md:text-base font-semibold text-gray-900">
-                  {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
+                  {distance_km ? pp("distanceKm", { km: distance_km.toFixed(1) }) : "—"}
                 </span>
               </div>
 
@@ -523,7 +528,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                     {rating && rating > 0 ? rating.toFixed(1) : "0.0"}
                   </span>
                 </div>
-                <span className="text-xs text-gray-600">Rating</span>
+                <span className="text-xs text-gray-600">{pp("ratingLabel")}</span>
               </div>
 
               {/* Right: Reviews */}
@@ -532,7 +537,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                   {displayVoteCount.toLocaleString()}
                 </span>
                 <span className="text-xs text-gray-600">
-                  {displayVoteCount === 1 ? "Review" : "Reviews"}
+                  {displayVoteCount === 1 ? pp("reviewLabelOne") : pp("reviewLabelOther")}
                 </span>
               </div>
             </div>
@@ -540,7 +545,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             {/* What this provider offers - Bio/Description Section */}
             {profileDescription && (
               <div className="py-4 border-b border-gray-200">
-                <h2 className="text-sm md:text-base font-semibold text-gray-900 mb-2">What this provider offers:</h2>
+                <h2 className="text-sm md:text-base font-semibold text-gray-900 mb-2">{pp("whatThisProviderOffers")}</h2>
                 <p className="text-sm md:text-base text-gray-700 leading-relaxed line-clamp-3">
                   {profileDescription}
                 </p>
@@ -558,12 +563,12 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               {isMessageLoading ? (
                 <>
                   <div className="h-4 w-4 md:h-5 md:w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span className="hidden md:inline text-sm">Opening...</span>
+                  <span className="hidden md:inline text-sm">{pp("openingChat")}</span>
                 </>
               ) : (
                 <>
                   <MessageSquare className="h-4 w-4 md:h-5 md:w-5 group-hover:scale-110 transition-transform" />
-                  <span className="hidden md:inline text-sm font-semibold">Message</span>
+                  <span className="hidden md:inline text-sm font-semibold">{pp("messageCta")}</span>
                 </>
               )}
             </button>
@@ -577,23 +582,23 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               }`}
             >
               <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-primary text-primary scale-110" : "text-gray-600 group-hover:text-primary group-hover:scale-110"}`} />
-              <span className="hidden md:inline text-sm font-medium">Save</span>
+              <span className="hidden md:inline text-sm font-medium">{pp("saveAction")}</span>
             </button>
             <button
               onClick={handleShareClick}
               className="group flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 rounded-xl bg-white border-2 border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 flex-shrink-0 shadow-sm hover:shadow-md"
             >
               <Share2 className="h-4 w-4 md:h-5 md:w-5 group-hover:scale-110 transition-transform" />
-              <span className="hidden md:inline text-sm font-medium">Share</span>
+              <span className="hidden md:inline text-sm font-medium">{pp("shareAction")}</span>
             </button>
             <button
               type="button"
               onClick={() => (user ? setIsReportModalOpen(true) : setIsLoginModalOpen(true))}
               className="group flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 rounded-xl bg-white border-2 border-gray-200 text-gray-600 hover:border-amber-200 hover:bg-amber-50 transition-all duration-200 flex-shrink-0 shadow-sm hover:shadow-md"
-              title="Report this provider"
+              title={pp("reportThisProvider")}
             >
               <Flag className="h-4 w-4 md:h-5 md:w-5 group-hover:scale-110 transition-transform" />
-              <span className="hidden md:inline text-sm font-medium">Report</span>
+              <span className="hidden md:inline text-sm font-medium">{pp("reportAction")}</span>
             </button>
           </div>
         </div>
@@ -604,13 +609,13 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
           open={isReportModalOpen}
           onOpenChange={setIsReportModalOpen}
           providerId={id}
-          providerName={businessName || "Provider"}
+          providerName={businessName || providerFallback}
         />
       )}
       <ShareModal
         isOpen={isShareModalOpen}
         onClose={handleCloseModal}
-        experienceTitle={businessName || "Provider"}
+        experienceTitle={businessName || providerFallback}
         experienceImage={(() => {
           const raw = displayImages[0]?.src ?? thumbnail_url ?? (gallery?.[0] ?? null);
           return typeof raw === "string" ? raw : (raw as { src?: string })?.src ?? "/images/logo-beatonomi.svg";

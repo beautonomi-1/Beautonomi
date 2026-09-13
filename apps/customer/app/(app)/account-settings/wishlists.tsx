@@ -6,6 +6,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function WishlistsScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -13,6 +14,8 @@ export default function WishlistsScreen() {
   const { user, loading } = useAuth();
   const { contentPadding } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
+  const { t } = useTranslation();
+  const wl = (key: string) => t(`customer.mobile.screens.wishlists.${key}`) as string;
 
   if (loading) {
     return (
@@ -28,10 +31,8 @@ export default function WishlistsScreen() {
     return (
       <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
-          <Text style={styles.title}>Wishlists & saved</Text>
-          <Text style={styles.subtitle}>
-            Sign in to see saved providers, products, and explore posts.
-          </Text>
+          <Text style={styles.title}>{wl("title")}</Text>
+          <Text style={styles.subtitle}>{wl("subtitle")}</Text>
           <TouchableOpacity
             style={styles.button}
             onPress={() =>
@@ -41,7 +42,7 @@ export default function WishlistsScreen() {
               } as never)
             }
           >
-            <Text style={styles.buttonText}>Sign in</Text>
+            <Text style={styles.buttonText}>{wl("signInCta")}</Text>
           </TouchableOpacity>
         </View>
       </ScreenFrame>

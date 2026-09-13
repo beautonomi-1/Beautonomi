@@ -15,15 +15,17 @@ import {
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import Link from "next/link";
+import { useTranslation } from "@beautonomi/i18n";
 
 export function ProviderTopbar() {
+  const { t } = useTranslation();
   const { provider, setupCompletion } = useProviderPortal();
 
   return (
     <div className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-4 md:px-6 w-full overflow-x-hidden">
       {/* Left: Logo (hidden on desktop, shown on mobile) */}
       <div className="md:hidden flex items-center gap-2 min-w-0 flex-shrink">
-        <span className="text-xl font-semibold text-primary whitespace-nowrap">Beautonomi</span>
+        <span className="text-xl font-semibold text-primary whitespace-nowrap">{t("web.seo.siteName")}</span>
         {/* Setup Progress on Mobile - Circular Wheel */}
         {setupCompletion < 100 && (
           <Link href="/provider/get-started" className="flex items-center gap-1.5 flex-shrink-0">
@@ -34,7 +36,7 @@ export function ProviderTopbar() {
               showPercentage={true}
             />
             <span className="text-xs font-medium text-primary hidden sm:inline whitespace-nowrap">
-              Setup
+              {t("web.provider.topbar.setup")}
             </span>
           </Link>
         )}
@@ -42,7 +44,7 @@ export function ProviderTopbar() {
 
       {/* Center: Global Search */}
       <div className="flex-1 max-w-2xl mx-4 hidden md:block min-w-0">
-        <ProviderGlobalSearch placeholder="Search appointments, clients, services..." />
+        <ProviderGlobalSearch placeholder={t("web.provider.topbar.searchPlaceholder")} />
       </div>
 
       {/* Right: Actions */}
@@ -57,12 +59,14 @@ export function ProviderTopbar() {
                 : "bg-purple-50 text-purple-700 border-purple-200"
             } hidden sm:inline-flex`}
           >
-            {provider.business_type === "freelancer" ? "Freelancer" : "Salon"}
+            {provider.business_type === "freelancer"
+              ? t("web.provider.topbar.freelancer")
+              : t("web.provider.topbar.salon")}
           </Badge>
         )}
         {/* Setup Progress - Desktop - Added margin-left for better separation */}
         {setupCompletion < 100 && (
-          <Link href="/provider/get-started" className="hidden md:flex items-center gap-2 ml-2">
+          <Link href="/provider/get-started" className="hidden md:flex items-center gap-2 ms-2">
             <CircularProgress 
               value={setupCompletion} 
               size={40} 
@@ -73,13 +77,13 @@ export function ProviderTopbar() {
               variant="outline"
               className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 cursor-pointer whitespace-nowrap"
             >
-              Complete Setup {setupCompletion}%
+              {t("web.provider.topbar.completeSetup", { percent: setupCompletion })}
             </Badge>
           </Link>
         )}
 
         {/* Notifications - Added margin-left for better separation from progress */}
-        <Button variant="ghost" size="icon" className="relative ml-1">
+        <Button variant="ghost" size="icon" className="relative ms-1">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
         </Button>
@@ -94,27 +98,27 @@ export function ProviderTopbar() {
                 </AvatarFallback>
               </Avatar>
               <span className="hidden md:block text-sm font-medium">
-                {provider?.owner_name || "User"}
+                {provider?.owner_name || t("web.provider.topbar.userFallback")}
               </span>
               <ChevronDown className="w-4 h-4 hidden md:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem>{t("web.provider.topbar.profile")}</DropdownMenuItem>
+            <DropdownMenuItem>{t("web.provider.topbar.settings")}</DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/help">Help Centre</Link>
+              <Link href="/help">{t("web.provider.topbar.menu.helpCentre")}</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/help/my-tickets">My tickets</Link>
+              <Link href="/help/my-tickets">{t("web.provider.topbar.myTickets")}</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/learn">Learning Center</Link>
+              <Link href="/learn">{t("web.provider.topbar.menu.learningCenter")}</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/help/submit-ticket">Contact support</Link>
+              <Link href="/help/submit-ticket">{t("web.provider.topbar.menu.contactSupport")}</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600">Logout</DropdownMenuItem>
+            <DropdownMenuItem className="text-red-600">{t("web.provider.topbar.logout")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

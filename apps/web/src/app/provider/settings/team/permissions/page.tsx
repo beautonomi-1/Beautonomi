@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -25,49 +26,37 @@ interface Permission {
   icon: React.ReactNode;
 }
 
-const permissionCategories: Permission[] = [
-  // Calendar & Appointments
-  { id: "view_calendar", name: "View Calendar", description: "View all appointments and calendar", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
-  { id: "create_appointments", name: "Create Appointments", description: "Create new appointments", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
-  { id: "edit_appointments", name: "Edit Appointments", description: "Edit existing appointments", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
-  { id: "cancel_appointments", name: "Cancel Appointments", description: "Cancel appointments", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
-  { id: "delete_appointments", name: "Delete Appointments", description: "Delete appointments", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
-  
-  // Sales & Payments
-  { id: "view_sales", name: "View Sales", description: "View sales and transactions", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
-  { id: "create_sales", name: "Create Sales", description: "Create new sales", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
-  { id: "process_payments", name: "Process Payments", description: "Process payments and refunds", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
-  { id: "view_reports", name: "View Reports", description: "View business reports", category: "sales", icon: <FileText className="w-4 h-4" /> },
-  
-  // Services & Products
-  { id: "view_services", name: "View Services", description: "View service catalogue", category: "catalogue", icon: <Package className="w-4 h-4" /> },
-  { id: "edit_services", name: "Edit Services", description: "Edit services", category: "catalogue", icon: <Package className="w-4 h-4" /> },
-  { id: "view_products", name: "View Products", description: "View product catalogue", category: "catalogue", icon: <Package className="w-4 h-4" /> },
-  { id: "edit_products", name: "Edit Products", description: "Edit products", category: "catalogue", icon: <Package className="w-4 h-4" /> },
-  
-  // Team Management
-  { id: "view_team", name: "View Team", description: "View team members", category: "team", icon: <Users className="w-4 h-4" /> },
-  { id: "manage_team", name: "Manage Team", description: "Add, edit, or remove team members", category: "team", icon: <Users className="w-4 h-4" /> },
-  
-  // Settings
-  { id: "view_settings", name: "View Settings", description: "View business settings", category: "settings", icon: <Settings className="w-4 h-4" /> },
-  { id: "edit_settings", name: "Edit Settings", description: "Edit business settings", category: "settings", icon: <Settings className="w-4 h-4" /> },
-  
-  // Clients
-  { id: "view_clients", name: "View Clients", description: "View client list", category: "clients", icon: <User className="w-4 h-4" /> },
-  { id: "edit_clients", name: "Edit Clients", description: "Edit client information", category: "clients", icon: <User className="w-4 h-4" /> },
-
-  // Reviews, Messages & Explore
-  { id: "view_reviews", name: "View Reviews", description: "View customer reviews", category: "engagement", icon: <Star className="w-4 h-4" /> },
-  { id: "edit_reviews", name: "Edit Reviews", description: "Respond to or manage reviews", category: "engagement", icon: <Star className="w-4 h-4" /> },
-  { id: "view_client_ratings", name: "View Client Ratings", description: "View internal client ratings", category: "engagement", icon: <Star className="w-4 h-4" /> },
-  { id: "rate_clients", name: "Rate Clients", description: "Submit internal client ratings", category: "engagement", icon: <Star className="w-4 h-4" /> },
-  { id: "view_messages", name: "View Messages", description: "View client conversations", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
-  { id: "send_messages", name: "Send Messages", description: "Reply to client conversations", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
-  { id: "create_explore_posts", name: "Create Explore Posts", description: "Create and manage provider Explore posts", category: "engagement", icon: <Sparkles className="w-4 h-4" /> },
-];
+const permissionMeta = [
+  { id: "view_calendar", nameKey: "viewCalendar", descKey: "viewCalendarDesc", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
+  { id: "create_appointments", nameKey: "createAppointments", descKey: "createAppointmentsDesc", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
+  { id: "edit_appointments", nameKey: "editAppointments", descKey: "editAppointmentsDesc", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
+  { id: "cancel_appointments", nameKey: "cancelAppointments", descKey: "cancelAppointmentsDesc", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
+  { id: "delete_appointments", nameKey: "deleteAppointments", descKey: "deleteAppointmentsDesc", category: "calendar", icon: <Calendar className="w-4 h-4" /> },
+  { id: "view_sales", nameKey: "viewSales", descKey: "viewSalesDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "create_sales", nameKey: "createSales", descKey: "createSalesDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "process_payments", nameKey: "processPayments", descKey: "processPaymentsDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "view_reports", nameKey: "viewReports", descKey: "viewReportsDesc", category: "sales", icon: <FileText className="w-4 h-4" /> },
+  { id: "view_services", nameKey: "viewServices", descKey: "viewServicesDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
+  { id: "edit_services", nameKey: "editServices", descKey: "editServicesDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
+  { id: "view_products", nameKey: "viewProducts", descKey: "viewProductsDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
+  { id: "edit_products", nameKey: "editProducts", descKey: "editProductsDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
+  { id: "view_team", nameKey: "viewTeam", descKey: "viewTeamDesc", category: "team", icon: <Users className="w-4 h-4" /> },
+  { id: "manage_team", nameKey: "manageTeam", descKey: "manageTeamDesc", category: "team", icon: <Users className="w-4 h-4" /> },
+  { id: "view_settings", nameKey: "viewSettings", descKey: "viewSettingsDesc", category: "settings", icon: <Settings className="w-4 h-4" /> },
+  { id: "edit_settings", nameKey: "editSettings", descKey: "editSettingsDesc", category: "settings", icon: <Settings className="w-4 h-4" /> },
+  { id: "view_clients", nameKey: "viewClients", descKey: "viewClientsDesc", category: "clients", icon: <User className="w-4 h-4" /> },
+  { id: "edit_clients", nameKey: "editClients", descKey: "editClientsDesc", category: "clients", icon: <User className="w-4 h-4" /> },
+  { id: "view_reviews", nameKey: "viewReviews", descKey: "viewReviewsDesc", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "edit_reviews", nameKey: "editReviews", descKey: "editReviewsDesc", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "view_client_ratings", nameKey: "viewClientRatings", descKey: "viewClientRatingsDesc", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "rate_clients", nameKey: "rateClients", descKey: "rateClientsDesc", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "view_messages", nameKey: "viewMessages", descKey: "viewMessagesDesc", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "send_messages", nameKey: "sendMessages", descKey: "sendMessagesDesc", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "create_explore_posts", nameKey: "createExplorePosts", descKey: "createExplorePostsDesc", category: "engagement", icon: <Sparkles className="w-4 h-4" /> },
+] as const;
 
 export default function PermissionsSettings() {
+  const { t } = useTranslation();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
@@ -96,7 +85,7 @@ export default function PermissionsSettings() {
       console.error("Failed to load team members:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load team members";
+: error?.error?.message || t("web.provider.settings.pages.team/commissions.failedToLoadTeamMembers");
       toast.error(errorMessage);
       setTeamMembers([]);
     } finally {
@@ -114,11 +103,11 @@ export default function PermissionsSettings() {
       console.error("Failed to load permissions:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load permissions";
+: error?.error?.message || t("web.provider.settings.pages.team/permissions.failedToLoadPermissions");
       toast.error(errorMessage);
       // Initialize all permissions as false if API fails
       const initialPermissions: Record<string, boolean> = {};
-      permissionCategories.forEach((perm) => {
+permissionMeta.forEach((perm) => {
         initialPermissions[perm.id] = false;
       });
       setPermissions(initialPermissions);
@@ -134,7 +123,7 @@ export default function PermissionsSettings() {
 
   const handleSave = async () => {
     if (!selectedMember) {
-      toast.error("Please select a team member");
+      toast.error(t("web.provider.settings.pages.team/permissions.pleaseSelectATeamMember"));
       return;
     }
 
@@ -143,14 +132,14 @@ export default function PermissionsSettings() {
       await fetcher.patch(`/api/provider/staff/${selectedMember}/permissions`, {
         permissions,
       });
-      toast.success("Permissions saved successfully");
+      toast.success(t("web.provider.settings.pages.team/permissions.permissionsSavedSuccessfully"));
       // Reload permissions to ensure UI is in sync
       await loadPermissions(selectedMember);
     } catch (error: any) {
       console.error("Failed to save permissions:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save permissions";
+: error?.error?.message || t("web.provider.settings.pages.team/permissions.failedToSavePermissions");
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);
@@ -158,7 +147,7 @@ export default function PermissionsSettings() {
   };
 
   const handleSelectAll = (category: string) => {
-    const categoryPermissions = permissionCategories.filter((p) => p.category === category);
+const categoryPermissions = permissionMeta.filter((p) => p.category === category);
     const allEnabled = categoryPermissions.every((p) => permissions[p.id]);
     
     setPermissions((prev) => {
@@ -171,6 +160,13 @@ export default function PermissionsSettings() {
   };
 
   const selectedMemberData = teamMembers.find((m) => m.id === selectedMember);
+  const permissionCategories: Permission[] = permissionMeta.map((perm) => ({
+    id: perm.id,
+    name: t(`web.provider.settings.pages.team/permissions.${perm.nameKey}`),
+    description: t(`web.provider.settings.pages.team/permissions.${perm.descKey}`),
+    category: perm.category,
+    icon: perm.icon,
+  }));
   const groupedPermissions = permissionCategories.reduce((acc, perm) => {
     if (!acc[perm.category]) {
       acc[perm.category] = [];
@@ -180,38 +176,38 @@ export default function PermissionsSettings() {
   }, {} as Record<string, Permission[]>);
 
   const categoryLabels: Record<string, string> = {
-    calendar: "Calendar & Appointments",
-    sales: "Sales & Payments",
-    catalogue: "Services & Products",
-    team: "Team Management",
-    settings: "Business Settings",
-    clients: "Client Management",
-    engagement: "Engagement",
+    calendar: t("web.provider.settings.pages.team/permissions.catCalendar"),
+    sales: t("web.provider.settings.pages.team/permissions.catSales"),
+    catalogue: t("web.provider.settings.pages.team/permissions.catCatalogue"),
+    team: t("web.provider.settings.pages.team/permissions.catTeam"),
+    settings: t("web.provider.settings.pages.team/permissions.catSettings"),
+    clients: t("web.provider.settings.pages.team/permissions.catClients"),
+    engagement: t("web.provider.settings.pages.team/permissions.catEngagement"),
   };
 
   return (
     <SettingsDetailLayout
-      title="Permissions"
-      subtitle="Manage what each team member can access and do"
+      title={t("web.provider.settings.categories.team.items.permissions.title")}
+      subtitle={t("web.provider.settings.categories.team.items.permissions.description")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Permissions"}
+saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.pages.team/permissions.savePermissions")}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Team", href: "/provider/settings/team/roles" },
-        { label: "Permissions" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.team/permissions.team"), href: "/provider/settings/team/roles" },
+        { label: t("web.provider.settings.pages.team/permissions.permissions") },
       ]}
     >
       {isLoading ? (
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading team members and permissions..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.team/permissions.loadingTeamMembersAndPermissions")} />
         </SectionCard>
       ) : teamMembers.length === 0 ? (
         <SectionCard className="p-8 sm:p-12 text-center">
-          <p className="text-gray-600 mb-4">No team members found</p>
+<p className="text-gray-600 mb-4">{t("web.provider.settings.pages.team/permissions.noTeamMembersFound")}</p>
           <Button onClick={() => window.location.href = "/provider/team/members"}>
-            Add Team Members
+{t("web.provider.settings.pages.team/commissions.addTeamMembers")}
           </Button>
         </SectionCard>
       ) : (
@@ -221,11 +217,11 @@ export default function PermissionsSettings() {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm sm:text-base font-semibold mb-2 block">
-                  Select Team Member
+{t("web.provider.settings.pages.team/permissions.selectTeamMember")}
                 </Label>
                 <Select value={selectedMember || ""} onValueChange={setSelectedMember}>
                   <SelectTrigger className="min-h-[44px] touch-manipulation">
-                    <SelectValue placeholder="Select a team member" />
+                    <SelectValue placeholder={t("web.provider.settings.pages.team/permissions.selectATeamMember")} />
                   </SelectTrigger>
                   <SelectContent>
                     {teamMembers.map((member) => (
@@ -237,7 +233,7 @@ export default function PermissionsSettings() {
                             </AvatarFallback>
                           </Avatar>
                           <span>{member.name}</span>
-                          <Badge variant="outline" className="ml-2 capitalize text-xs">
+                          <Badge variant="outline" className="ms-2 capitalize text-xs">
                             {member.role}
                           </Badge>
                         </div>
@@ -280,7 +276,7 @@ export default function PermissionsSettings() {
                           {categoryLabels[category] || category}
                         </h3>
                         <p className="text-xs text-gray-500 mt-1">
-                          {perms.length} permission{perms.length !== 1 ? "s" : ""}
+{t("web.provider.settings.pages.team/permissions.permissionCount", { count: perms.length })}
                         </p>
                       </div>
                       <Button
@@ -289,7 +285,7 @@ export default function PermissionsSettings() {
                         onClick={() => handleSelectAll(category)}
                         className="min-h-[36px] touch-manipulation"
                       >
-                        {perms.every((p) => permissions[p.id]) ? "Deselect All" : "Select All"}
+{perms.every((p) => permissions[p.id]) ? t("web.provider.bookings.bulkActions.deselectAll") : t("web.provider.bookings.bulkActions.selectAll")}
                       </Button>
                     </div>
 

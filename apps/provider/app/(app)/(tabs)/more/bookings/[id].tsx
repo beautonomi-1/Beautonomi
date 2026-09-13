@@ -26,7 +26,7 @@ import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
 import { formatPaycloudCollectLabel, inferBookingCollectContext } from "@/lib/paycloud-collect-cta";
-import { manualCardCollectOptionLabel, MANUAL_CARD_METHOD_HELPER } from "@beautonomi/utils";
+import { manualCardCollectOptionLabel, MANUAL_CARD_METHOD_HELPER, formatMoney } from "@beautonomi/utils";
 import {
   usePaycloudCollectAvailability,
   computePaycloudBookingChargeAmount,
@@ -109,6 +109,9 @@ import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncI
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 import { formatBookingLiveStageLabel, formatBookingEtaLabel } from "@/lib/booking-live-stage";
 import type { BookingEditPatchPayload } from "@/lib/booking-edit-types";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 function extractIsoDatePart(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -130,7 +133,7 @@ function formatDateTimeSafe(value: unknown, tz?: string | null): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   try {
-    return parsed.toLocaleDateString("en-US", {
+    return parsed.toLocaleDateString(getTenantLocaleTag(), {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -147,7 +150,7 @@ function formatTimeSafe(value: unknown, tz?: string | null): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   try {
-    return parsed.toLocaleTimeString("en-US", {
+    return parsed.toLocaleTimeString(getTenantLocaleTag(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -174,21 +177,28 @@ function formatSeriesDate(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   const parsed = new Date(value.includes("T") ? value : `${value}T00:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return parsed.toLocaleDateString(getTenantLocaleTag(), { month: "short", day: "numeric", year: "numeric" });
 }
 
-function recurrencePatternLabel(rule: unknown, fallbackFrequency?: unknown): string {
+function recurrencePatternLabel(
+  rule: unknown,
+  fallbackFrequency: unknown,
+  bk: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const frequency = typeof fallbackFrequency === "string" ? fallbackFrequency.toLowerCase() : "";
   const normalizedRule = typeof rule === "string" ? rule.toUpperCase() : "";
   const interval = Math.max(1, Number(normalizedRule.match(/INTERVAL=(\d+)/)?.[1] ?? 1));
-  if (frequency === "daily" || normalizedRule.includes("FREQ=DAILY")) return interval > 1 ? `Every ${interval} days` : "Daily";
-  if (frequency === "biweekly" || (normalizedRule.includes("FREQ=WEEKLY") && interval === 2)) return "Every 2 weeks";
-  if (frequency === "weekly" || normalizedRule.includes("FREQ=WEEKLY")) return interval > 1 ? `Every ${interval} weeks` : "Weekly";
-  if (frequency === "monthly" || normalizedRule.includes("FREQ=MONTHLY")) return interval > 1 ? `Every ${interval} months` : "Monthly";
-  return "Repeating visit";
+  if (frequency === "daily" || normalizedRule.includes("FREQ=DAILY")) return interval > 1 ? bk("recurrenceEveryDays", { interval }) : bk("recurrenceDaily");
+  if (frequency === "biweekly" || (normalizedRule.includes("FREQ=WEEKLY") && interval === 2)) return bk("recurrenceEvery2Weeks");
+  if (frequency === "weekly" || normalizedRule.includes("FREQ=WEEKLY")) return interval > 1 ? bk("recurrenceEveryWeeks", { interval }) : bk("recurrenceWeekly");
+  if (frequency === "monthly" || normalizedRule.includes("FREQ=MONTHLY")) return interval > 1 ? bk("recurrenceEveryMonths", { interval }) : bk("recurrenceMonthly");
+  return bk("recurrenceRepeating");
 }
 
-function getRecurringDetails(booking: BookingDetail | null | undefined) {
+function getRecurringDetails(
+  booking: BookingDetail | null | undefined,
+  bk: (key: string, opts?: Record<string, unknown>) => string,
+) {
   if (!booking) return null;
   const series = booking.recurring_series ?? {};
   const seriesId = booking.recurring_series_id ?? series.id;
@@ -197,18 +207,18 @@ function getRecurringDetails(booking: BookingDetail | null | undefined) {
   const generatedThrough = formatSeriesDate(booking.recurrence_last_booking_date ?? series.last_booking_date);
   const pieces = [
     formatSeriesDate(booking.recurrence_start_date ?? series.start_date)
-      ? `Starts ${formatSeriesDate(booking.recurrence_start_date ?? series.start_date)}`
+      ? bk("recurrenceStarts", { date: formatSeriesDate(booking.recurrence_start_date ?? series.start_date) })
       : null,
     booking.recurrence_end_date ?? series.end_date
-      ? `ends ${formatSeriesDate(booking.recurrence_end_date ?? series.end_date)}`
+      ? bk("recurrenceEnds", { date: formatSeriesDate(booking.recurrence_end_date ?? series.end_date) })
       : booking.recurrence_occurrences ?? series.occurrences
-        ? `${booking.recurrence_occurrences ?? series.occurrences} visits planned`
-        : "no end date",
-    generatedThrough ? `generated through ${generatedThrough}` : null,
+        ? bk("recurrenceVisitsPlanned", { count: booking.recurrence_occurrences ?? series.occurrences })
+        : bk("recurrenceNoEndDate"),
+    generatedThrough ? bk("recurrenceGeneratedThrough", { date: generatedThrough }) : null,
   ].filter(Boolean);
   return {
-    label: recurrencePatternLabel(rule, booking.recurrence_frequency ?? series.frequency),
-    status: series.is_active === false ? "Paused series" : "Active series",
+    label: recurrencePatternLabel(rule, booking.recurrence_frequency ?? series.frequency, bk),
+    status: series.is_active === false ? bk("recurrencePausedSeries") : bk("recurrenceActiveSeries"),
     rule: typeof rule === "string" ? rule : null,
     timeline: pieces.join(" · "),
   };
@@ -354,6 +364,12 @@ type BookingDetail = {
     notes?: string | null;
     request?: { id?: string; description?: string | null } | null;
   } | null;
+  needs_close_out?: boolean | null;
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
+  customer_running_late_at?: string | null;
+  customer_running_late_minutes?: number | null;
+  provider_late_ack_at?: string | null;
+  contact_attempts?: Array<{ at?: string; channel?: string; note?: string }> | null;
 };
 
 type AppointmentProductOrder = {
@@ -375,12 +391,15 @@ function isCollectionFulfillment(fulfillmentType?: string | null): boolean {
   return ft === "collection" || ft === "pickup" || ft === "";
 }
 
-function appointmentProductFulfillmentLabel(status?: string | null): string {
+function appointmentProductFulfillmentLabel(
+  status: string | null | undefined,
+  bk: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const s = (status ?? "confirmed").toLowerCase();
-  if (s === "delivered") return "Collected";
-  if (s === "cancelled") return "Cancelled";
-  if (s === "refunded") return "Refunded";
-  return "Awaiting collection";
+  if (s === "delivered") return bk("fulfillmentCollected");
+  if (s === "cancelled") return bk("fulfillmentCancelled");
+  if (s === "refunded") return bk("fulfillmentRefunded");
+  return bk("fulfillmentAwaitingCollection");
 }
 
 function isTerminalProductOrderStatus(status?: string | null): boolean {
@@ -446,7 +465,7 @@ function formatTimelineDateTime(value: unknown, tz?: string | null): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   try {
-    return parsed.toLocaleString("en-US", {
+    return parsed.toLocaleString(getTenantLocaleTag(), {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -461,49 +480,55 @@ function formatTimelineDateTime(value: unknown, tz?: string | null): string {
   }
 }
 
-function humanizeBookingStatusKey(raw: string | undefined | null): string {
+function humanizeBookingStatusKey(
+  raw: string | undefined | null,
+  bk: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (!raw) return "—";
   const map: Record<string, string> = {
-    pending: "Pending",
-    pending_payment: "Pending payment",
-    confirmed: "Confirmed",
-    booked: "Booked",
-    waiting: "Waiting",
-    checked_in: "Checked in",
-    in_progress: "In progress",
-    completed: "Completed",
-    cancelled: "Cancelled",
-    no_show: "No show",
+    pending: bk("statusPending"),
+    pending_payment: bk("statusPendingPayment"),
+    confirmed: bk("statusConfirmed"),
+    booked: bk("statusBooked"),
+    waiting: bk("statusWaiting"),
+    checked_in: bk("statusCheckedIn"),
+    in_progress: bk("statusInProgress"),
+    completed: bk("statusCompleted"),
+    cancelled: bk("statusCancelled"),
+    no_show: bk("statusNoShow"),
   };
   if (map[raw]) return map[raw];
   return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildAuditEntryDescription(entry: AuditLogEntry, currency: string): string | null {
+function buildAuditEntryDescription(
+  entry: AuditLogEntry,
+  currency: string,
+  bk: (key: string, opts?: Record<string, unknown>) => string,
+): string | null {
   const d = entry.event_data;
   if (!d || typeof d !== "object") return null;
   if (entry.event_type === "payment_received" || entry.event_type === "refunded") {
     const amt = typeof d.amount === "number" ? d.amount : null;
     const method = typeof d.payment_method === "string" ? d.payment_method : null;
     if (amt != null && Number.isFinite(amt)) {
-      const money = new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency?.trim() || "ZAR",
-      }).format(amt);
+      const money = formatMoney(amt, currency?.trim() || "ZAR");
       return method ? `${money} · ${method}` : money;
     }
   }
   if (d.previous_status != null && d.new_status != null) {
-    return `${humanizeBookingStatusKey(String(d.previous_status))} → ${humanizeBookingStatusKey(String(d.new_status))}`;
+    return `${humanizeBookingStatusKey(String(d.previous_status), bk)} → ${humanizeBookingStatusKey(String(d.new_status), bk)}`;
   }
   if (typeof d.previous_scheduled_at === "string" && typeof d.new_scheduled_at === "string") {
-    return "Appointment time was changed.";
+    return bk("auditAppointmentChanged");
   }
   if (typeof d.reason === "string" && d.reason.trim()) {
     return d.reason.trim();
   }
   if (entry.event_type === "updated" && d.field === "cancellation_reason") {
-    return typeof d.reason === "string" && d.reason.trim() ? `Reason: ${d.reason.trim()}` : "Cancellation details updated";
+    return typeof d.reason === "string" && d.reason.trim()
+      ? bk("auditReasonPrefix", { reason: d.reason.trim() })
+      : bk("auditCancellationUpdated");
   }
   return null;
 }
@@ -570,21 +595,22 @@ type MarkPaidPaymentMethod =
   | "paycloud_terminal";
 
 function buildMarkPaidPaymentMethods(
+  labelFor: (key: string) => string,
   paystackTerminalEnabled: boolean,
   manualCardEnabled: boolean,
   paycloudEnabled: boolean,
   paycloudCollectEnabled: boolean,
 ) {
   const methods: { label: string; value: MarkPaidPaymentMethod }[] = [
-    { label: "Cash", value: "cash" },
+    { label: labelFor("paymentMethodCash"), value: "cash" },
     ...(manualCardEnabled
       ? [{ label: manualCardCollectOptionLabel(), value: "card" as const }]
       : []),
-    { label: "EFT", value: "bank_transfer" },
-    { label: "Other", value: "other" },
+    { label: labelFor("paymentMethodEft"), value: "bank_transfer" },
+    { label: labelFor("paymentMethodOther"), value: "other" },
   ];
   if (paystackTerminalEnabled) {
-    methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
+    methods.splice(2, 0, { label: labelFor("paymentMethodPaystackTerminal"), value: "paystack_terminal" });
   }
   if (paycloudEnabled && paycloudCollectEnabled) {
     methods.splice(2, 0, {
@@ -604,18 +630,19 @@ type ChargePaymentMethod =
   | "paycloud_terminal";
 
 function buildChargePaymentMethods(
+  labelFor: (key: string) => string,
   manualCardEnabled: boolean,
   paycloudEnabled: boolean,
   paycloudCollectEnabled: boolean,
 ): { label: string; value: ChargePaymentMethod }[] {
   const methods: { label: string; value: ChargePaymentMethod }[] = [
-    { label: "Cash", value: "cash" },
+    { label: labelFor("paymentMethodCash"), value: "cash" },
     ...(manualCardEnabled
       ? [{ label: manualCardCollectOptionLabel(), value: "card" as const }]
       : []),
-    { label: "Mobile", value: "mobile" },
-    { label: "EFT", value: "bank_transfer" },
-    { label: "Other", value: "other" },
+    { label: labelFor("paymentMethodMobile"), value: "mobile" },
+    { label: labelFor("paymentMethodEft"), value: "bank_transfer" },
+    { label: labelFor("paymentMethodOther"), value: "other" },
   ];
   if (paycloudEnabled && paycloudCollectEnabled) {
     methods.push({
@@ -625,12 +652,6 @@ function buildChargePaymentMethods(
   }
   return methods;
 }
-
-const SEND_LINK_OPTIONS = [
-  { label: "Email", value: "email" as const },
-  { label: "SMS", value: "sms" as const },
-  { label: "Email & SMS", value: "both" as const },
-];
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = POST_COMPLETION_STORAGE_PREFIX;
 
@@ -658,9 +679,16 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 }
 
 export default function BookingDetailScreen() {
+  const { t } = useTranslation();
+  const bk = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.bookingDetail.${key}`, opts) as string,
+    [t],
+  );
+
   const router = useRouter();
   const { afterRatingSubmitted, sheetProps: storeReviewSheetProps } = useStoreReviewAfterRating("client_rating");
-  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step } =
+  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step, action } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
@@ -672,6 +700,7 @@ export default function BookingDetailScreen() {
     openCancel?: string;
     highlightConfirm?: string;
     step?: string;
+    action?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
@@ -836,7 +865,7 @@ export default function BookingDetailScreen() {
     const policyTargets = actionModel?.statusTargets ?? [];
     if (policyTargets.length > 0 && allowedStatusTargets.length === 0) {
       return [
-        "You do not have permission to change this booking's status. Ask an owner for appointment permissions.",
+        bk("noStatusChangePermission"),
         ...reasons,
       ];
     }
@@ -865,10 +894,10 @@ export default function BookingDetailScreen() {
 
   useEffect(() => {
     if (!data || highlightConfirmHandledRef.current) return;
-    if (!providerParamTruthy(highlightConfirm)) return;
+    if (!providerParamTruthy(highlightConfirm) && action !== "confirm") return;
     highlightConfirmHandledRef.current = true;
     if (currentDbStatus !== "pending" && currentDbStatus !== "pending_payment") {
-      router.setParams({ highlightConfirm: undefined });
+      router.setParams({ highlightConfirm: undefined, action: undefined });
       return;
     }
     setHighlightNextStep(true);
@@ -879,10 +908,19 @@ export default function BookingDetailScreen() {
         setPendingHighlightScroll(false);
       });
     }
-    router.setParams({ highlightConfirm: undefined });
+    if (action === "confirm" && id) {
+      const version = (data as { version?: number }).version;
+      void patchMutation(`/api/provider/bookings/${id}`, {
+        status: "confirmed",
+        ...(version !== undefined ? { version } : {}),
+      }).then(() => {
+        void refresh();
+      });
+    }
+    router.setParams({ highlightConfirm: undefined, action: undefined });
     const timer = setTimeout(() => setHighlightNextStep(false), 6000);
     return () => clearTimeout(timer);
-  }, [currentDbStatus, data, highlightConfirm, router, scrollToNextStepCard]);
+  }, [action, currentDbStatus, data, highlightConfirm, id, patchMutation, refresh, router, scrollToNextStepCard]);
 
   const handleNextStepCardLayout = useCallback(
     (y: number) => {
@@ -1081,16 +1119,25 @@ export default function BookingDetailScreen() {
   const markPaidPaymentMethods = useMemo(
     () =>
       buildMarkPaidPaymentMethods(
+        bk,
         paystackTerminalEnabled,
         manualCardEnabled,
         paycloudEnabled,
         paycloudCollectEnabled,
       ),
-    [paystackTerminalEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
+    [bk, paystackTerminalEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
   );
   const chargePaymentMethods = useMemo(
-    () => buildChargePaymentMethods(manualCardEnabled, paycloudEnabled, paycloudCollectEnabled),
-    [manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
+    () => buildChargePaymentMethods(bk, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled),
+    [bk, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
+  );
+  const sendLinkOptions = useMemo(
+    () => [
+      { label: bk("sendLinkEmail"), value: "email" as const },
+      { label: bk("sendLinkSms"), value: "sms" as const },
+      { label: bk("sendLinkBoth"), value: "both" as const },
+    ],
+    [bk],
   );
 
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
@@ -1163,8 +1210,8 @@ export default function BookingDetailScreen() {
     const res = await api.post(`/api/provider/bookings/${id}/resources`, { resource_id: resourceId });
     setResourceAssignLoading(false);
     if (res.error) {
-      const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? "Failed to assign resource";
-      Alert.alert("Error", msg.toLowerCase().includes("not available") ? "This resource is not available at this time." : msg);
+      const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? bk("failedAssignResource");
+      Alert.alert(bk("errorTitle"), msg.toLowerCase().includes("not available") ? bk("resourceNotAvailable") : msg);
       return;
     }
     setSelectedResourceId("");
@@ -1174,18 +1221,18 @@ export default function BookingDetailScreen() {
 
   const handleRemoveResource = useCallback(async (resourceId: string) => {
     if (!id) return;
-    Alert.alert("Remove resource", "Remove this resource from the booking?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(bk("removeResourceTitle"), bk("removeResourceBody"), [
+      { text: bk("cancelCta"), style: "cancel" },
       {
-        text: "Remove",
+        text: bk("removeCta"),
         style: "destructive",
         onPress: async () => {
           setResourceAssignLoading(true);
           const res = await api.delete(`/api/provider/bookings/${id}/resources/${resourceId}`);
           setResourceAssignLoading(false);
           if (res.error) {
-            const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? "Failed to remove resource";
-            Alert.alert("Error", msg);
+            const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? bk("failedRemoveResource");
+            Alert.alert(bk("errorTitle"), msg);
             return;
           }
           await refreshResources();
@@ -1381,14 +1428,14 @@ export default function BookingDetailScreen() {
         body: formData,
       });
       if (res.error) {
-        Alert.alert("Error", String(res.error));
+        Alert.alert(bk("errorTitle"), String(res.error));
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Success", "Consent document uploaded");
+        Alert.alert(bk("successTitle"), bk("consentUploaded"));
         await refreshBookingDetail();
       }
     } catch {
-      Alert.alert("Error", "Failed to upload document");
+      Alert.alert(bk("errorTitle"), bk("uploadFailed"));
     } finally {
       setUploadingConsentFormId(null);
     }
@@ -1532,8 +1579,8 @@ export default function BookingDetailScreen() {
       listActionOpenedRef.current = requestKey;
       if (!canEditAppointments) {
         Alert.alert(
-          "Permission",
-          "You do not have permission to reschedule this booking. Ask an owner for appointment permissions.",
+          bk("permissionTitle"),
+          bk("noRescheduleStatusPermissionOwner"),
         );
         return;
       }
@@ -1549,8 +1596,8 @@ export default function BookingDetailScreen() {
       listActionOpenedRef.current = requestKey;
       if (!canCancelAppointments) {
         Alert.alert(
-          "Permission",
-          "You do not have permission to cancel this booking. Ask an owner for cancellation permissions.",
+          bk("permissionTitle"),
+          bk("noCancelPermission"),
         );
         return;
       }
@@ -1662,11 +1709,11 @@ export default function BookingDetailScreen() {
 
   const handleRateClientSubmit = async () => {
     if (!canRateClients) {
-      Alert.alert("Permission", "You do not have permission to rate clients.");
+      Alert.alert(bk("permissionTitle"), bk("noRatingPermission"));
       return;
     }
     if (!bookingIdStr || rateClientStars < 1 || rateClientStars > 5) {
-      Alert.alert("Required", "Please select a rating (1–5 stars).");
+      Alert.alert(bk("requiredTitle"), bk("selectRating"));
       return;
     }
     if (submittingRateClient) return;
@@ -1683,7 +1730,7 @@ export default function BookingDetailScreen() {
         ...(locId ? { location_id: locId } : {}),
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to submit rating.");
+        Alert.alert(bk("errorTitle"), res.error.message || bk("ratingFailed"));
         return;
       }
       const submittedStars = Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0));
@@ -1700,8 +1747,8 @@ export default function BookingDetailScreen() {
           ? String((e as { message: string }).message)
           : (e && typeof e === "object" && "error" in e && (e as { error?: { message?: string } }).error?.message)
             ? String((e as { error: { message: string } }).error.message)
-            : "Failed to submit rating.";
-      Alert.alert("Error", msg);
+            : bk("ratingFailed");
+      Alert.alert(bk("errorTitle"), msg);
     } finally {
       setSubmittingRateClient(false);
     }
@@ -1788,7 +1835,7 @@ export default function BookingDetailScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Booking" onBack={() => router.back()} />
+        <ScreenHeader title={bk("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -1799,9 +1846,9 @@ export default function BookingDetailScreen() {
   if (error || !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Booking" onBack={() => router.back()} />
+        <ScreenHeader title={bk("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error ?? "Booking not found"} onRetry={refresh} />
+          <ErrorState message={error ?? bk("bookingNotFound")} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );
@@ -1809,8 +1856,8 @@ export default function BookingDetailScreen() {
 
   const b = (resolvedBooking ?? (data as BookingDetail)) as BookingDetail;
   const services = b.services ?? [];
-  const recurringDetails = getRecurringDetails(b);
-  const customerName = b.customers?.full_name ?? "Guest";
+  const recurringDetails = getRecurringDetails(b, bk);
+  const customerName = b.customers?.full_name ?? bk("guestFallback");
   const customerId = b.customer_id ?? (b.customers as { id?: string } | undefined)?.id ?? null;
   const locationName = b.locations?.name ?? null;
   const addressLine = b.address
@@ -2016,13 +2063,13 @@ export default function BookingDetailScreen() {
         pdfPath: `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/pdf`,
         signedUrlPath: `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/signed-url`,
         filename: `booking_${b.booking_number ?? String(id).slice(0, 8)}.pdf`,
-        title: "Booking receipt",
+        title: bk("bookingReceiptTitle"),
         label: "receipt",
       });
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Something went wrong while opening the receipt.";
-      Alert.alert("Receipt", msg);
+        err instanceof Error ? err.message : bk("receiptOpenFailed");
+      Alert.alert(bk("receiptTitle"), msg);
     }
   }
 
@@ -2031,7 +2078,7 @@ export default function BookingDetailScreen() {
     try {
       await shareProviderBookingReceipt(String(id), b.booking_number ?? null);
     } catch (e) {
-      Alert.alert("Share", e instanceof Error ? e.message : "Could not share this receipt.");
+      Alert.alert(bk("shareTitle"), e instanceof Error ? e.message : bk("shareReceiptFailed"));
     }
   }
 
@@ -2040,19 +2087,15 @@ export default function BookingDetailScreen() {
     const chargeAmount = Number(paycloudBookingCharge.chargeAmount.toFixed(2));
     if (chargeAmount <= 0) {
       Alert.alert(
-        "Nothing to charge",
-        outstanding < 0
-          ? "This booking has no remaining balance to collect (it may be overpaid). Pull to refresh if you just recorded a payment elsewhere."
-          : "There is no remaining balance on this booking.",
+        bk("nothingToChargeTitle"),
+        outstanding < 0 ? bk("nothingToChargeOverpaid") : bk("nothingToChargeNone"),
       );
       return;
     }
     if (!canMarkPaid) {
       Alert.alert(
-        "Cannot take card payment",
-        canProcessPayments
-          ? "This booking is not in a state where a card payment can be recorded (for example it may be cancelled)."
-          : "You do not have permission to process payments.",
+        bk("cannotTakeCardPaymentTitle"),
+        canProcessPayments ? bk("cannotTakeCardPaymentCancelled") : bk("cannotTakeCardPaymentNoPermission"),
       );
       return;
     }
@@ -2079,24 +2122,20 @@ export default function BookingDetailScreen() {
     const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
     if (chargeAmount <= 0) {
       Alert.alert(
-        "Nothing to charge",
-        outstanding < 0
-          ? "This booking has no remaining balance to collect (it may be overpaid). Pull to refresh if you just recorded a payment elsewhere."
-          : "There is no remaining balance on this booking.",
+        bk("nothingToChargeTitle"),
+        outstanding < 0 ? bk("nothingToChargeOverpaid") : bk("nothingToChargeNone"),
       );
       return;
     }
     if (!canMarkPaid) {
       Alert.alert(
-        "Cannot take card payment",
-        canProcessPayments
-          ? "This booking is not in a state where a card payment can be recorded (for example it may be cancelled)."
-          : "You do not have permission to process payments.",
+        bk("cannotTakeCardPaymentTitle"),
+        canProcessPayments ? bk("cannotTakeCardPaymentCancelled") : bk("cannotTakeCardPaymentNoPermission"),
       );
       return;
     }
     if (!canCreateSales) {
-      Alert.alert("Cannot take card payment", "You do not have permission to create sales records.");
+      Alert.alert(bk("cannotTakeCardPaymentTitle"), bk("noCardPermission"));
       return;
     }
     let saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
@@ -2115,7 +2154,7 @@ export default function BookingDetailScreen() {
     if (!saleId) {
       const builtItems = buildSaleItemsFromBookingDetail(b);
       if (builtItems.length === 0) {
-        Alert.alert("Cannot charge", "Could not build sale lines for this booking.");
+        Alert.alert(bk("cannotTakeCardPaymentTitle"), bk("cannotCharge"));
         return;
       }
       let items = builtItems;
@@ -2132,7 +2171,7 @@ export default function BookingDetailScreen() {
           item_id: null,
           product_variant_id: null,
           type: "service",
-          name: "Booking balance due",
+          name: bk("bookingBalanceDue"),
           quantity: 1,
           unit_price: chargeAmount,
         }];
@@ -2167,11 +2206,11 @@ export default function BookingDetailScreen() {
         notes: `Booking ${b.booking_number ?? id}`,
       });
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(bk("errorTitle"), error);
         return;
       }
       if (!saleData?.id) {
-        Alert.alert("Error", "Could not prepare card payment.");
+        Alert.alert(bk("errorTitle"), bk("cardPaymentFailed"));
         return;
       }
       saleId = saleData.id;
@@ -2187,15 +2226,13 @@ export default function BookingDetailScreen() {
     if (!id) return;
     const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
     if (chargeAmount <= 0) {
-      Alert.alert("Nothing to collect", "There is no remaining balance on this booking.");
+      Alert.alert(bk("nothingToChargeTitle"), bk("nothingToCollect"));
       return;
     }
     if (!canMarkPaid) {
       Alert.alert(
-        "Cannot prepare terminal payment",
-        canProcessPayments
-          ? "This booking is not in a state where an in-person payment can be collected."
-          : "You do not have permission to process payments.",
+        bk("cannotPrepareTerminalTitle"),
+        canProcessPayments ? bk("cannotPrepareTerminalCancelled") : bk("cannotTakeCardPaymentNoPermission"),
       );
       return;
     }
@@ -2212,13 +2249,13 @@ export default function BookingDetailScreen() {
         customer_reference: customerReference,
       }), { timeout: 120_000 });
       if (res.error) {
-        Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
+        Alert.alert(bk("paystackTerminalTitle"), res.error.message ?? bk("paystackTerminalFailed"));
         return;
       }
       const terminal = res.data?.terminal;
       const code = terminal?.terminal_code;
       if (!code) {
-        Alert.alert("Paystack Terminal", "No active Paystack Terminal is available. Create one first.");
+        Alert.alert(bk("paystackTerminalTitle"), bk("paystackNoTerminal"));
         return;
       }
       setPaystackTerminalPrompt({
@@ -2228,7 +2265,7 @@ export default function BookingDetailScreen() {
         expectedAmount: Number(res.data?.expectedAmount ?? chargeAmount),
       });
     } catch (err) {
-      Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to prepare terminal payment.");
+      Alert.alert(bk("paystackTerminalTitle"), err instanceof Error ? err.message : bk("paystackTerminalFailed"));
     } finally {
       setPreparingPaystackTerminal(false);
     }
@@ -2241,7 +2278,7 @@ export default function BookingDetailScreen() {
     if (!id || !result.reference) return;
     const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
     if (!saleId) {
-      Alert.alert("Error", "Missing sale record. Try again.");
+      Alert.alert(bk("errorTitle"), bk("missingSaleRecord"));
       return;
     }
     if (!options?.skipSalePatch) {
@@ -2252,12 +2289,12 @@ export default function BookingDetailScreen() {
       });
       if (patchRes.error) {
         Alert.alert(
-          "Payment received — finish recording",
-          "The terminal payment succeeded but the linked sale could not be finalized. Tap Finish recording to retry without charging again.",
+          bk("paymentReceivedFinishTitle"),
+          bk("paymentReceivedSaleFailed"),
           [
-            { text: "Later", style: "cancel" },
+            { text: bk("laterCta"), style: "cancel" },
             {
-              text: "Finish recording",
+              text: bk("finishRecordingCta"),
               onPress: () => {
                 void finalizeYocoBookingPayment(result);
               },
@@ -2278,12 +2315,12 @@ export default function BookingDetailScreen() {
     });
     if (res.error) {
       Alert.alert(
-        "Payment received — finish recording",
-        `The card payment went through but the booking still shows unpaid: ${res.error}`,
-        [
-          { text: "Later", style: "cancel" },
-          {
-            text: "Finish recording",
+          bk("paymentReceivedFinishTitle"),
+          bk("paymentReceivedBookingUnpaid", { error: res.error }),
+          [
+            { text: bk("laterCta"), style: "cancel" },
+            {
+              text: bk("finishRecordingCta"),
             onPress: () => {
               void finalizeYocoBookingPayment(result, { skipSalePatch: true });
             },
@@ -2313,7 +2350,7 @@ export default function BookingDetailScreen() {
   const applyDbStatusTransition = async (dbTarget: string) => {
     if (!id) return;
     if (dbTarget === "cancelled" ? !canCancelAppointments : !canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to update this booking status.");
+      Alert.alert(bk("permissionTitle"), bk("noStatusPermission"));
       return;
     }
     setShowStatusPicker(false);
@@ -2324,7 +2361,7 @@ export default function BookingDetailScreen() {
       const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
-        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+        Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
         return;
       }
       setOptimisticBookingStatus(null);
@@ -2335,11 +2372,11 @@ export default function BookingDetailScreen() {
     if (dbTarget === "completed") {
       if ((b.payment_status ?? "").toLowerCase() === "refunded") {
         Alert.alert(
-          "Booking refunded",
-          "This booking was fully refunded. Cancel it instead of marking completed.",
+          bk("bookingRefundedTitle"),
+          bk("bookingRefundedBody"),
           [
-            { text: "Cancel booking", onPress: () => void applyDbStatusTransition("cancelled") },
-            { text: "Dismiss", style: "cancel" },
+            { text: bk("cancelBookingCta"), onPress: () => void applyDbStatusTransition("cancelled") },
+            { text: bk("dismissCta"), style: "cancel" },
           ],
         );
         return;
@@ -2348,15 +2385,15 @@ export default function BookingDetailScreen() {
       if (!completionChecklist.allDone) {
         const cur = b.currency ?? getTenantDefaultCurrency();
         Alert.alert(
-          "Before completing",
-          `${completionChecklist.blockingLabels.join(" · ")}\n\nFinish these steps or choose Complete Anyway.`,
+          bk("beforeCompletingTitle"),
+          bk("beforeCompletingBody", { blockingLabels: completionChecklist.blockingLabels.join(" · ") }),
           [
             {
-              text: "Collect payment",
+              text: bk("collectPaymentCta"),
               onPress: () => setShowMarkPaid(true),
             },
             {
-              text: "Complete anyway",
+              text: bk("completeAnywayCta"),
               style: "default",
               onPress: () => {
                 void (async () => {
@@ -2367,7 +2404,7 @@ export default function BookingDetailScreen() {
                   );
                   if (err) {
                     setOptimisticBookingStatus(null);
-                    Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+                    Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
                     return;
                   }
                   setOptimisticBookingStatus(null);
@@ -2375,7 +2412,7 @@ export default function BookingDetailScreen() {
                 })();
               },
             },
-            { text: "Cancel", style: "cancel" },
+            { text: bk("cancelCta"), style: "cancel" },
           ],
         );
         return;
@@ -2385,17 +2422,17 @@ export default function BookingDetailScreen() {
       if (outstanding > 0) {
         const cur = b.currency ?? getTenantDefaultCurrency();
         Alert.alert(
-          "Outstanding balance",
-          `This booking has an unpaid balance of ${cur} ${outstanding.toFixed(2)}. Capture payment before completing or choose "Complete Anyway" to settle later.`,
+          bk("outstandingBalanceTitle"),
+          bk("outstandingBalanceBody", { currency: cur, amount: outstanding.toFixed(2) }),
           [
             {
-              text: "Capture Payment",
+              text: bk("capturePaymentCta"),
               onPress: () => {
                 setShowMarkPaid(true);
               },
             },
             {
-              text: "Complete Anyway",
+              text: bk("completeAnywayCta"),
               style: "default",
               onPress: () => {
                 void (async () => {
@@ -2406,7 +2443,7 @@ export default function BookingDetailScreen() {
                   );
                   if (err) {
                     setOptimisticBookingStatus(null);
-                    Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+                    Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
                     return;
                   }
                   setOptimisticBookingStatus(null);
@@ -2414,7 +2451,7 @@ export default function BookingDetailScreen() {
                 })();
               },
             },
-            { text: "Cancel", style: "cancel" },
+            { text: bk("cancelCta"), style: "cancel" },
           ],
         );
         return;
@@ -2424,7 +2461,7 @@ export default function BookingDetailScreen() {
       const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
-        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+        Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
         return;
       }
       setOptimisticBookingStatus(null);
@@ -2455,12 +2492,12 @@ export default function BookingDetailScreen() {
       setOptimisticBookingStatus(null);
       if (errorCode === "CONFLICT" || isConflictError(err)) {
         Alert.alert(
-          "Conflict",
-          "This booking changed, reload",
-          [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
+          bk("conflictTitle"),
+          bk("conflictReloadBody"),
+          [{ text: bk("cancelCta"), style: "cancel" }, { text: bk("refreshCta"), onPress: () => refresh() }],
         );
       } else {
-        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+        Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
       }
       return;
     }
@@ -2475,11 +2512,11 @@ export default function BookingDetailScreen() {
     });
     setCollectingProductOrderId(null);
     if (error) {
-      Alert.alert("Could not mark collected", mapProviderBookingActionError(error, errorCode));
+      Alert.alert(bk("couldNotMarkCollected"), mapProviderBookingActionError(error, errorCode));
       return;
     }
     await Promise.all([refreshProductOrders(), refresh()]);
-    Alert.alert("Done", "Product marked as collected.");
+    Alert.alert(bk("doneTitle"), bk("productCollected"));
   };
 
   const handlePrepareProductFulfillment = async () => {
@@ -2488,7 +2525,7 @@ export default function BookingDetailScreen() {
     const { error, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {});
     if (error) {
       setPreparingFulfillment(false);
-      Alert.alert("Could not prepare fulfillment", mapProviderBookingActionError(error, errorCode));
+      Alert.alert(bk("couldNotPrepareFulfillment"), mapProviderBookingActionError(error, errorCode));
       return;
     }
     await refreshProductOrders();
@@ -2496,19 +2533,19 @@ export default function BookingDetailScreen() {
     setPreparingFulfillment(false);
     if (!linked.data?.orders?.length) {
       Alert.alert(
-        "Fulfillment",
-        "No product order was linked yet. If products are on this visit, try again or contact support.",
+        bk("fulfillmentTitle"),
+        bk("fulfillmentNoOrder"),
       );
     }
   };
 
   const handleReschedule = async () => {
     if (!id || !rescheduleTime) {
-      Alert.alert("Required", "Please select a time.");
+      Alert.alert(bk("requiredTitle"), bk("selectTime"));
       return;
     }
     if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to reschedule bookings.");
+      Alert.alert(bk("permissionTitle"), bk("noReschedulePermission"));
       return;
     }
     setRescheduling(true);
@@ -2557,7 +2594,7 @@ export default function BookingDetailScreen() {
         `/api/provider/bookings/check-availability?${checkParams}`
       );
       if (checkRes.error) {
-        Alert.alert("Error", checkRes.error.message ?? "Could not verify availability. Please try again.");
+        Alert.alert(bk("errorTitle"), checkRes.error.message ?? bk("availabilityCheckFailed"));
         setRescheduling(false);
         return;
       }
@@ -2570,8 +2607,8 @@ export default function BookingDetailScreen() {
         const conflicts = checkRes.data.conflicts ?? [];
         const msg = conflicts.length > 0
           ? conflicts.join("\n")
-          : "This time is no longer available. Choose another.";
-        Alert.alert("Slot unavailable", msg);
+          : bk("slotUnavailableDefault");
+        Alert.alert(bk("slotUnavailable"), msg);
         setRescheduling(false);
         return;
       }
@@ -2585,12 +2622,12 @@ export default function BookingDetailScreen() {
       if (err) {
         if (isConflictError(err)) {
           Alert.alert(
-            "Conflict",
-            "This booking changed, reload",
-            [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+            bk("conflictTitle"),
+            bk("conflictReloadBody"),
+            [{ text: bk("cancelCta"), style: "cancel" }, { text: bk("refreshCta"), onPress: () => refresh() }]
           );
         } else {
-          Alert.alert("Reschedule not changed", mapProviderBookingActionError(err, errorCode));
+          Alert.alert(bk("rescheduleNotChanged"), mapProviderBookingActionError(err, errorCode));
         }
         setRescheduling(false);
         return;
@@ -2616,7 +2653,7 @@ export default function BookingDetailScreen() {
   const handleSaveNotes = async () => {
     if (!id) return;
     if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to edit booking notes.");
+      Alert.alert(bk("permissionTitle"), bk("noEditNotesPermission"));
       return;
     }
     setSavingNotes(true);
@@ -2629,12 +2666,12 @@ export default function BookingDetailScreen() {
     if (err) {
       if (isConflictError(err)) {
         Alert.alert(
-          "Conflict",
-          "This booking changed, reload",
-          [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+          bk("conflictTitle"),
+          bk("conflictReloadBody"),
+          [{ text: bk("cancelCta"), style: "cancel" }, { text: bk("refreshCta"), onPress: () => refresh() }]
         );
       } else {
-        Alert.alert("Error", err);
+        Alert.alert(bk("errorTitle"), err);
       }
       return;
     }
@@ -2645,21 +2682,21 @@ export default function BookingDetailScreen() {
   const handleMarkPaid = async (confirmRecollect = false) => {
     if (!id) return;
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     if (yocoTerminalAmount <= 0) {
-      Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
+      Alert.alert(bk("nothingToRecordTitle"), bk("nothingToRecordBody"));
       return;
     }
     if (requiresRecollectConfirm && !confirmRecollect) {
       Alert.alert(
-        "Booking was refunded",
-        "This booking was fully refunded. Record a new payment only if you are collecting again in person.",
+        bk("bookingWasRefundedTitle"),
+        bk("bookingWasRefundedBody"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: bk("cancelCta"), style: "cancel" },
           {
-            text: "Record new payment",
+            text: bk("recordNewPaymentCta"),
             onPress: () => void handleMarkPaid(true),
           },
         ],
@@ -2688,7 +2725,7 @@ export default function BookingDetailScreen() {
     });
     setMarkingPaid(false);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     setShowMarkPaid(false);
@@ -2697,24 +2734,24 @@ export default function BookingDetailScreen() {
 
   const handleRefund = async () => {
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      Alert.alert("Invalid amount", "Enter a valid refund amount.");
+      Alert.alert(bk("invalidAmountTitle"), bk("invalidAmountRefund"));
       return;
     }
     if (amount > maxRefundable + 0.01) {
       Alert.alert(
-        "Refund too large",
-        `You can refund up to ${b.currency ?? getTenantDefaultCurrency()} ${maxRefundable.toFixed(2)} (net of refunds already issued).`,
+        bk("refundTooLargeTitle"),
+        bk("refundTooLargeBody", { currency: b.currency ?? getTenantDefaultCurrency(), amount: maxRefundable.toFixed(2) }),
       );
       return;
     }
     const reason = refundReason.trim();
     if (!reason) {
-      Alert.alert("Reason required", "Please enter a reason for the refund.");
+      Alert.alert(bk("reasonRequiredTitle"), bk("reasonRequiredRefund"));
       return;
     }
     if (!id) return;
@@ -2722,7 +2759,7 @@ export default function BookingDetailScreen() {
     const res = await postMutation(`/api/provider/bookings/${id}/refund`, { amount, reason, refund_method: refundMethod });
     setRefunding(false);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     const payload = res.data && typeof res.data === "object" ? (res.data as Record<string, unknown>) : null;
@@ -2733,15 +2770,15 @@ export default function BookingDetailScreen() {
     setRefundReason("");
     if (pendingTerminal) {
       Alert.alert(
-        "Sent to card machine",
+        bk("sentToCardMachineTitle"),
         typeof payload?.message === "string"
           ? payload.message
-          : "Follow the prompts on the card machine. The booking updates when the refund is confirmed.",
+          : bk("sentToCardMachineDefault"),
       );
     } else if (pendingConfirmation) {
       Alert.alert(
-        "Refund recorded",
-        "The customer will be asked to confirm they received this cash refund.",
+        bk("refundRecordedTitle"),
+        bk("refundRecordedBody"),
       );
     }
     await refresh();
@@ -2750,7 +2787,7 @@ export default function BookingDetailScreen() {
   const handleStartJourney = async () => {
     if (!id) return;
     if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to update this booking.");
+      Alert.alert(bk("permissionTitle"), bk("noUpdateBookingPermission"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2776,7 +2813,7 @@ export default function BookingDetailScreen() {
     const res = await postMutation(`/api/provider/bookings/${id}/start-journey`, body);
     if (res.error) {
       Alert.alert(
-        "Journey not started",
+        bk("journeyNotStartedTitle"),
         mapProviderBookingActionError(res.error, res.errorCode),
       );
       return;
@@ -2795,11 +2832,11 @@ export default function BookingDetailScreen() {
   const handleUpdateEta = async () => {
     if (!id) return;
     if (updateEtaMinutes == null || updateEtaMinutes < 1) {
-      Alert.alert("ETA", "Choose an ETA between 1 and 240 minutes.");
+      Alert.alert(bk("etaTitle"), bk("etaRangeBody"));
       return;
     }
     if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to update this booking.");
+      Alert.alert(bk("permissionTitle"), bk("noUpdateBookingPermission"));
       return;
     }
     setIsUpdatingEta(true);
@@ -2808,7 +2845,7 @@ export default function BookingDetailScreen() {
         eta_minutes: updateEtaMinutes,
       });
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Could not update ETA."));
+        Alert.alert(bk("errorTitle"), getApiErrorMessage(res.error, bk("etaUpdateFailed")));
         return;
       }
       await refresh();
@@ -2820,7 +2857,7 @@ export default function BookingDetailScreen() {
   const handleMarkArrived = async () => {
     if (!id) return;
     if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to update this booking.");
+      Alert.alert(bk("permissionTitle"), bk("noUpdateBookingPermission"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2841,7 +2878,7 @@ export default function BookingDetailScreen() {
     }
     const res = await postMutation(`/api/provider/bookings/${id}/arrive`, body);
     if (res.error) {
-      Alert.alert("Arrival not recorded", mapProviderBookingActionError(res.error, res.errorCode));
+      Alert.alert(bk("arrivalNotRecordedTitle"), mapProviderBookingActionError(res.error, res.errorCode));
       return;
     }
     applyBookingFromResponse(res.data?.booking);
@@ -2852,7 +2889,7 @@ export default function BookingDetailScreen() {
     if (!id) return;
     const code = arrivalPinInput.replace(/\D/g, "");
     if (code.length !== 4 && code.length !== 6) {
-      Alert.alert("Required", ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE);
+      Alert.alert(bk("requiredTitle"), ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2860,7 +2897,7 @@ export default function BookingDetailScreen() {
     try {
       const res = await postMutation(`/api/provider/bookings/${id}/verify-arrival`, { otp: code });
       if (res.error) {
-        Alert.alert("Error", res.error);
+        Alert.alert(bk("errorTitle"), res.error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2882,7 +2919,7 @@ export default function BookingDetailScreen() {
     try {
       const res = await postMutation(`/api/provider/bookings/${id}/resend-arrival-otp`, {});
       if (res.error) {
-        Alert.alert("Error", res.error);
+        Alert.alert(bk("errorTitle"), res.error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2929,7 +2966,7 @@ export default function BookingDetailScreen() {
         body,
       );
       if (res.error) {
-        Alert.alert("Error", res.error);
+        Alert.alert(bk("errorTitle"), res.error);
         return;
       }
       setShowOverrideArrivalModal(false);
@@ -2954,7 +2991,7 @@ export default function BookingDetailScreen() {
     try {
       const res = await postMutation(`/api/provider/bookings/${id}/notify-resend`, { type });
       if (res.error) {
-        Alert.alert("Notification", res.error);
+        Alert.alert(bk("notificationTitle"), res.error);
         return;
       }
       const payload = res.data as
@@ -2966,16 +3003,16 @@ export default function BookingDetailScreen() {
           payload?.detail ||
           payload?.error ||
           payload?.message ||
-          "The notification could not be delivered. Check the customer's contact details and try again.";
-        Alert.alert("Not sent", reason);
+          bk("notificationNotDelivered");
+        Alert.alert(bk("notSentTitle"), reason);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        "Sent",
+        bk("sentTitle"),
         type === "confirmation"
-          ? "Confirmation re-sent to the customer."
-          : "Reminder sent to the customer.",
+          ? bk("confirmationResentBody")
+          : bk("reminderSentBody"),
       );
     } finally {
       setIsNotifying(false);
@@ -2992,16 +3029,16 @@ export default function BookingDetailScreen() {
         { cancellation_type: isNoShow ? "no_show" : "normal" },
       );
       if (res.error) {
-        Alert.alert("Notification", res.error);
+        Alert.alert(bk("notificationTitle"), res.error);
         return;
       }
       const sent = (res.data as { sent?: boolean } | undefined)?.sent;
       if (sent === false) {
-        Alert.alert("Notification", "Cancellation notice could not be sent.");
+        Alert.alert(bk("notificationTitle"), bk("cancellationNoticeFailed"));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Notification", "Cancellation notice sent to customer.");
+      Alert.alert(bk("notificationTitle"), bk("cancellationNoticeSent"));
     } finally {
       setIsNotifying(false);
     }
@@ -3019,7 +3056,7 @@ export default function BookingDetailScreen() {
         const message = res.error;
         setQrScanError(message);
         if (!showArrivalQrScanner) {
-          Alert.alert("Error", message);
+          Alert.alert(bk("errorTitle"), message);
         }
         return false;
       }
@@ -3046,10 +3083,7 @@ export default function BookingDetailScreen() {
     } else if (code.length >= 8) {
       body.verification_code = code;
     } else {
-      Alert.alert(
-        "Required",
-        "Enter the 8-character code from the customer’s QR, paste the full scanned JSON, or use Scan QR."
-      );
+      Alert.alert(bk("requiredTitle"), bk("qrRequiredBody"));
       return;
     }
     await submitVerifyQrBody(body);
@@ -3071,23 +3105,23 @@ export default function BookingDetailScreen() {
         ? `https://maps.apple.com/?q=${encoded}`
         : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
     Linking.openURL(url).catch(() => {
-      Alert.alert("Error", "Could not open maps. Please check your map application.");
+      Alert.alert(bk("errorTitle"), bk("mapsOpenFailed"));
     });
   };
 
   const handleRequestPayment = async () => {
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     const description = requestPaymentDescription.trim();
     if (!description) {
-      Alert.alert("Required", "Please enter a description for the charge.");
+      Alert.alert(bk("requiredTitle"), bk("chargeDescriptionRequired"));
       return;
     }
     const amount = parseFloat(requestPaymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      Alert.alert("Invalid amount", "Please enter a valid amount.");
+      Alert.alert(bk("invalidAmountTitle"), bk("invalidChargeAmount"));
       return;
     }
     if (!id) return;
@@ -3098,7 +3132,7 @@ export default function BookingDetailScreen() {
     });
     setRequestingPayment(false);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -3111,7 +3145,7 @@ export default function BookingDetailScreen() {
   const handleSendPaymentLink = async () => {
     if (!id) return;
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     setSendingPaymentLink(true);
@@ -3120,19 +3154,19 @@ export default function BookingDetailScreen() {
     });
     setSendingPaymentLink(false);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowSendPaymentLink(false);
-    Alert.alert("Done", `Payment link sent via ${sendPaymentLinkMethod}.`);
+    Alert.alert(bk("doneTitle"), bk("paymentLinkSentBody", { method: sendPaymentLinkMethod }));
     refresh();
   };
 
   const handleChargeMarkPaid = async () => {
     if (!id || !chargeMarkPaidId) return;
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     if (chargeMarkPaidMethod === "paycloud_terminal") {
@@ -3149,7 +3183,7 @@ export default function BookingDetailScreen() {
     );
     setMarkingChargePaid(false);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -3160,7 +3194,7 @@ export default function BookingDetailScreen() {
   const handleSendChargeToClient = async (chargeId: string) => {
     if (!id) return;
     if (!canProcessPayments) {
-      Alert.alert("Permission", "You do not have permission to process payments.");
+      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
       return;
     }
     setNotifyingChargeId(chargeId);
@@ -3170,11 +3204,11 @@ export default function BookingDetailScreen() {
     );
     setNotifyingChargeId(null);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bk("errorTitle"), res.error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Sent", "The customer has been asked to pay this charge online.");
+    Alert.alert(bk("sentTitle"), bk("chargePayRequestSent"));
     await Promise.all([refresh(), refreshCharges()]);
   };
 
@@ -3193,9 +3227,9 @@ export default function BookingDetailScreen() {
     currentDbStatus !== "no_show" &&
     b.status !== "completed";
   const nextStep = getBookingNextStepCard(b, { outstanding, isAtHome, isAtSalon });
-  const primaryServiceName = services[0]?.offering_name ?? "Appointment";
+  const primaryServiceName = services[0]?.offering_name ?? bk("appointmentFallback");
   const serviceCountLabel =
-    services.length > 1 ? `${primaryServiceName} +${services.length - 1} more` : primaryServiceName;
+    services.length > 1 ? bk("serviceCountMore", { primary: primaryServiceName, count: services.length - 1 }) : primaryServiceName;
 
   const openRescheduleEditor = () => {
     if (!b.scheduled_at) return;
@@ -3214,18 +3248,18 @@ export default function BookingDetailScreen() {
 
   const getAuditEventLabel = (eventType: string): string => {
     const labels: Record<string, string> = {
-      created: "Created",
-      confirmed: "Confirmed",
-      service_started: "Service Started",
-      service_completed: "Service Completed",
-      cancelled: "Cancelled",
-      status_changed: "Status Changed",
-      payment_received: "Payment Received",
-      refunded: "Refunded",
-      rescheduled: "Rescheduled",
-      note_added: "Note Added",
-      deleted: "Deleted",
-      updated: "Updated",
+      created: bk("auditCreated"),
+      confirmed: bk("auditConfirmed"),
+      service_started: bk("auditServiceStarted"),
+      service_completed: bk("auditServiceCompleted"),
+      cancelled: bk("auditCancelled"),
+      status_changed: bk("auditStatusChanged"),
+      payment_received: bk("auditPaymentReceived"),
+      refunded: bk("auditRefunded"),
+      rescheduled: bk("auditRescheduled"),
+      note_added: bk("auditNoteAdded"),
+      deleted: bk("auditDeleted"),
+      updated: bk("auditUpdated"),
     };
     return labels[eventType] ?? eventType.replace(/_/g, " ");
   };
@@ -3272,7 +3306,7 @@ export default function BookingDetailScreen() {
         }}
       />
       <ScreenHeader
-        title={b.booking_number ?? "Booking"}
+        title={b.booking_number ?? bk("title")}
         subtitle={labelForDbStatus(currentDbStatus)}
         onBack={() => router.back()}
         rightAction={
@@ -3282,9 +3316,9 @@ export default function BookingDetailScreen() {
             }}
             style={twStyle("py-2 px-2")}
             accessibilityRole="button"
-            accessibilityLabel="View booking history"
+            accessibilityLabel={bk("historyA11y")}
           >
-            <Text style={twStyle("text-sm font-medium text-primary")}>History</Text>
+            <Text style={twStyle("text-sm font-medium text-primary")}>{bk("historyLink")}</Text>
           </TouchableOpacity>
         }
       />
@@ -3299,8 +3333,8 @@ export default function BookingDetailScreen() {
           }}
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back-outline" size={16} color="#4338ca" style={{ marginRight: 8 }} />
-          <Text style={twStyle("text-sm font-medium text-indigo-800")}>Return to group session</Text>
+          <DirectionalIcon name="arrow-back-outline" size={16} color="#4338ca" style={{ marginEnd: 8 }} />
+          <Text style={twStyle("text-sm font-medium text-indigo-800")}>{bk("returnToGroupSession")}</Text>
         </TouchableOpacity>
       ) : null}
       <ScrollView
@@ -3346,16 +3380,16 @@ export default function BookingDetailScreen() {
             <View style={twStyle("flex-row items-center justify-between mb-2")}>
               <View style={twStyle("flex-row items-center flex-1")}>
                 <Ionicons name="home" size={22} color={Colors.primary} />
-                <Text style={twStyle("ml-2 text-base font-bold text-primary")}>House call</Text>
+                <Text style={twStyle("ms-2 text-base font-bold text-primary")}>{bk("houseCall")}</Text>
               </View>
               {b.db_status === "pending" ? (
                 <View style={twStyle("rounded-full bg-amber-200 px-2 py-1")}>
-                  <Text style={twStyle("text-xs font-bold text-amber-900")}>Confirm first</Text>
+                  <Text style={twStyle("text-xs font-bold text-amber-900")}>{bk("confirmFirst")}</Text>
                 </View>
               ) : null}
             </View>
             <Text style={twStyle("text-sm text-gray-800 leading-5 mb-3")}>
-              You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then tap Start service in the Journey card (same as Booking actions → In progress).
+              {bk("houseCallFlowExplainer")}
             </Text>
             <Text style={twStyle("text-xs text-gray-700 leading-5 mb-2")}>{PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE}</Text>
             <TouchableOpacity
@@ -3373,15 +3407,15 @@ export default function BookingDetailScreen() {
                 onPress={openMapsUrl}
                 style={twStyle("flex-row items-center rounded-2xl border border-primary/20 bg-white px-3 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Open directions to client address"
+                accessibilityLabel={bk("openDirectionsA11y")}
               >
                 <Ionicons name="navigate" size={18} color={Colors.primary} />
-                <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")} numberOfLines={3}>
+                <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-gray-800")} numberOfLines={3}>
                   {addressLine}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text style={twStyle("text-xs text-primary")}>No address on file — check notes or contact the client.</Text>
+              <Text style={twStyle("text-xs text-primary")}>{bk("noAddressOnFile")}</Text>
             )}
           </View>
         ) : null}
@@ -3390,7 +3424,7 @@ export default function BookingDetailScreen() {
           <View style={twStyle("rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 mb-3")}>
             <View style={twStyle("flex-row items-center mb-2")}>
               <Ionicons name="business" size={22} color="#334155" />
-              <Text style={twStyle("ml-2 text-base font-bold text-slate-900")}>At salon</Text>
+              <Text style={twStyle("ms-2 text-base font-bold text-slate-900")}>{bk("atSalon")}</Text>
             </View>
             <Text style={twStyle("text-sm text-slate-800 leading-5 mb-2")}>{PROVIDER_SALON_VISIT_FLOW_EXPLAINER}</Text>
             <Text style={twStyle("text-xs text-slate-600 leading-5")}>{PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE}</Text>
@@ -3408,18 +3442,18 @@ export default function BookingDetailScreen() {
           <View style={twStyle("flex-row flex-wrap items-center mb-3")}>
             <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>{customerName}</Text>
               {(b.customers as { identity_verified?: boolean | null } | null)?.identity_verified ? (
-                <VerifiedBadge verified style={{ marginLeft: 8 }} />
+                <VerifiedBadge verified style={{ marginStart: 8 }} />
               ) : null}
               {typeof b.customers?.rating_average === "number" && b.customers.rating_average > 0 ? (
-                <Text style={twStyle("ml-2 text-xs font-semibold text-amber-700")}>
+                <Text style={twStyle("ms-2 text-xs font-semibold text-amber-700")}>
                   {`${b.customers.rating_average.toFixed(1)}${b.customers.review_count ? ` (${b.customers.review_count})` : ""} ★`}
                 </Text>
               ) : null}
               {customerId ? (
                 <TouchableOpacity
                   onPress={openCustomerProfile}
-                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
-                  accessibilityLabel="View customer profile"
+                  style={twStyle("ms-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityLabel={bk("viewCustomerProfileA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="person-circle-outline" size={24} color="#4b5563" />
@@ -3435,7 +3469,7 @@ export default function BookingDetailScreen() {
               {b.customers?.phone ? (
                 <TouchableOpacity
                   onPress={() => Linking.openURL(`tel:${b.customers!.phone}`).catch(() => {})}
-                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  style={twStyle("ms-2 p-1.5 rounded-full bg-gray-100")}
                   accessibilityRole="button"
                   accessibilityLabel={`Call ${customerName}`}
                 >
@@ -3461,16 +3495,16 @@ export default function BookingDetailScreen() {
                         const code = (result.error as { code?: string }).code;
                         const msg =
                           (result.error as { message?: string }).message ??
-                          "Could not start conversation.";
+                          bk("couldNotStartConversation");
                         if (code === "CUSTOMER_UNREGISTERED") {
-                          Alert.alert("Invite this client first", msg);
+                          Alert.alert(bk("inviteClientFirstTitle"), msg);
                           return;
                         }
                         if (code === "CUSTOMER_NOT_LINKED") {
-                          Alert.alert("Cannot message", msg);
+                          Alert.alert(bk("cannotMessageTitle"), msg);
                           return;
                         }
-                        Alert.alert("Message", msg);
+                        Alert.alert(bk("messageTitle"), msg);
                         return;
                       }
                       const convId = result.data?.id;
@@ -3478,10 +3512,10 @@ export default function BookingDetailScreen() {
                         router.push(`/(app)/(tabs)/chats/${convId}` as never);
                       }
                     } catch {
-                      Alert.alert("Message", "Failed to start conversation.");
+                      Alert.alert(bk("messageTitle"), bk("messageFailedBody"));
                     }
                   }}
-                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  style={twStyle("ms-2 p-1.5 rounded-full bg-gray-100")}
                   accessibilityRole="button"
                   accessibilityLabel={`Message ${customerName}`}
                 >
@@ -3493,7 +3527,7 @@ export default function BookingDetailScreen() {
           {isEnRoute || isArrived ? (
             <View style={twStyle("mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2")}>
               <Text style={twStyle("text-sm font-semibold text-emerald-900")}>
-                {formatBookingLiveStageLabel(b.current_stage) ?? "Live appointment"}
+                {formatBookingLiveStageLabel(b.current_stage) ?? bk("liveAppointment")}
               </Text>
               {isEnRoute && (b as { estimated_arrival?: string }).estimated_arrival ? (
                 <Text style={twStyle("mt-0.5 text-xs text-emerald-800")}>
@@ -3501,7 +3535,7 @@ export default function BookingDetailScreen() {
                 </Text>
               ) : null}
               {isArrived && (b as { arrival_otp_verified?: boolean }).arrival_otp_verified ? (
-                <Text style={twStyle("mt-0.5 text-xs text-emerald-800")}>Arrival verified</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-emerald-800")}>{bk("arrivalVerifiedLabel")}</Text>
               ) : null}
             </View>
           ) : null}
@@ -3518,24 +3552,24 @@ export default function BookingDetailScreen() {
           */}
           <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
             {b.is_group_booking && (
-              <View style={[twStyle("flex-row items-center gap-1 rounded-full bg-pink-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
+              <View style={[twStyle("flex-row items-center gap-1 rounded-full bg-pink-100 px-2 py-1"), { marginEnd: 6, marginTop: 4 }]}>
                 <Ionicons name="people-outline" size={12} color="#be185d" />
-                <Text style={twStyle("text-xs font-medium text-pink-800")}>Group</Text>
+                <Text style={twStyle("text-xs font-medium text-pink-800")}>{bk("groupBadge")}</Text>
               </View>
             )}
             {b.booking_source === "walk_in" && (
-              <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
-                <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
+              <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginEnd: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-green-800")}>{bk("walkInBadge")}</Text>
               </View>
             )}
             {b.booking_source === "provider" && !b.is_group_booking && (
-              <View style={[twStyle("rounded-full bg-primary/10 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
-                <Text style={twStyle("text-xs font-medium text-primary")}>Provider-created</Text>
+              <View style={[twStyle("rounded-full bg-primary/10 px-2 py-1"), { marginEnd: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-primary")}>{bk("providerCreatedBadge")}</Text>
               </View>
             )}
             {b.booking_source === "online" && !b.is_group_booking && (
-              <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
-                <Text style={twStyle("text-xs font-medium text-blue-800")}>Online</Text>
+              <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginEnd: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-blue-800")}>{bk("onlineBadge")}</Text>
               </View>
             )}
             <View style={[twStyle(`rounded-full px-2 py-1 ${statusColor(currentDbStatus)}`), { marginTop: 4 }]}>
@@ -3567,15 +3601,64 @@ export default function BookingDetailScreen() {
           )}
         >
           <View style={twStyle("flex-row items-start")}>
-            <View style={[twStyle("mr-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: Colors.primarySoft }]}>
+            <View style={[twStyle("me-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: Colors.primarySoft }]}>
               <Ionicons name={nextStep.icon} size={22} color={Colors.primary} />
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-base font-bold text-gray-900")}>{nextStep.title}</Text>
               <Text style={twStyle("mt-1 text-sm leading-5 text-gray-600")}>{nextStep.description}</Text>
+              {b.customer_running_late_at && !b.provider_late_ack_at ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!id) return;
+                    const { error: err } = await postMutation(
+                      `/api/provider/bookings/${id}/acknowledge-late`,
+                      {},
+                    );
+                    if (err) {
+                      Alert.alert(bk("couldNotAcknowledge"), err);
+                      return;
+                    }
+                    void refresh();
+                  }}
+                  disabled={mutating}
+                  style={twStyle("mt-3 items-center rounded-xl bg-amber-600 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel={bk("okWellWaitA11y")}
+                >
+                  <Text style={twStyle("text-sm font-semibold text-white")}>{bk("okWellWait")}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {isAtHome && (currentDbStatus === "confirmed" || Boolean(b.needs_close_out)) ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!id) return;
+                    const phone = b.customers?.phone?.replace(/\s/g, "") ?? "";
+                    const { error: err } = await postMutation(
+                      `/api/provider/bookings/${id}/contact-attempt`,
+                      { channel: phone ? "call" : "other" },
+                    );
+                    if (err) {
+                      Alert.alert(bk("couldNotLogAttempt"), err);
+                      return;
+                    }
+                    if (phone) {
+                      const tel = phone.startsWith("+") ? phone : phone.replace(/\D/g, "");
+                      await Linking.openURL(`tel:${tel}`).catch(() => {});
+                    }
+                    void refresh();
+                  }}
+                  disabled={mutating}
+                  style={twStyle("mt-2 items-center rounded-xl border border-gray-300 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel={bk("couldntReachClientA11y")}
+                >
+                  <Text style={twStyle("text-sm font-semibold text-gray-800")}>{bk("couldntReachClient")}</Text>
+                </TouchableOpacity>
+              ) : null}
               {!completionChecklist.allDone && (isActive || isStarted) ? (
                 <View style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
-                  <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>Before you finish</Text>
+                  <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>{bk("beforeYouFinish")}</Text>
                   {completionChecklist.items.map((item) => (
                     <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
                       <Ionicons
@@ -3583,7 +3666,7 @@ export default function BookingDetailScreen() {
                         size={14}
                         color={item.done ? "#16a34a" : "#d97706"}
                       />
-                      <Text style={twStyle("ml-1.5 text-xs text-amber-950")}>
+                      <Text style={twStyle("ms-1.5 text-xs text-amber-950")}>
                         {item.label}
                         {!item.done && item.detail ? ` — ${item.detail}` : ""}
                       </Text>
@@ -3596,7 +3679,7 @@ export default function BookingDetailScreen() {
 
         {isAtHome && (canStartJourney || isEnRoute || isArrived || isInService || isJourneyComplete) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>Journey steps</Text>
+            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>{bk("journeySteps")}</Text>
             <JourneyProgress
               stage={
                 isJourneyComplete
@@ -3611,15 +3694,15 @@ export default function BookingDetailScreen() {
               }
             />
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>At-home visit</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("atHomeVisit")}</Text>
               {addressLine ? (
                 <TouchableOpacity
                   onPress={openMapsUrl}
                   style={twStyle("py-1")}
                   accessibilityRole="button"
-                  accessibilityLabel="Get directions"
+                  accessibilityLabel={bk("getDirectionsA11y")}
                 >
-                  <Text style={twStyle("text-sm font-medium text-primary")}>Get directions</Text>
+                  <Text style={twStyle("text-sm font-medium text-primary")}>{bk("getDirections")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -3627,7 +3710,7 @@ export default function BookingDetailScreen() {
               <>
                 <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3 mb-3")}>
                   <Text style={twStyle("text-sm font-medium text-green-800")}>
-                    {arrivalVerified ? "Customer verified – you can start service" : "Provider arrived"}
+                    {arrivalVerified ? bk("customerVerifiedStart") : bk("providerArrived")}
                   </Text>
                 </View>
                 {isArrived && !arrivalVerified && arrivalOtpPending && (
@@ -3653,12 +3736,12 @@ export default function BookingDetailScreen() {
                         }
                         style={twStyle("flex-1 rounded-lg bg-primary py-2.5 items-center")}
                         accessibilityRole="button"
-                        accessibilityLabel="Verify arrival"
+                        accessibilityLabel={bk("verifyArrivalA11y")}
                       >
                         {isVerifyingArrival ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={twStyle("text-white font-semibold")}>Verify</Text>
+                          <Text style={twStyle("text-white font-semibold")}>{bk("verify")}</Text>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -3666,12 +3749,12 @@ export default function BookingDetailScreen() {
                         disabled={isResendingArrivalOtp}
                         style={twStyle("rounded-lg border border-gray-400 py-2.5 px-3 justify-center")}
                         accessibilityRole="button"
-                        accessibilityLabel="Resend code"
+                        accessibilityLabel={bk("resendCodeA11y")}
                       >
                         {isResendingArrivalOtp ? (
                           <ActivityIndicator size="small" color="#111" />
                         ) : (
-                          <Text style={twStyle("text-gray-700 font-medium")}>Resend code & QR</Text>
+                          <Text style={twStyle("text-gray-700 font-medium")}>{bk("resendCodeQr")}</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -3680,22 +3763,20 @@ export default function BookingDetailScreen() {
                       disabled={isOverridingArrival}
                       style={twStyle("mt-2 py-2")}
                       accessibilityRole="button"
-                      accessibilityLabel="Customer cannot verify"
+                      accessibilityLabel={bk("customerCantVerify")}
                     >
                       <Text style={twStyle("text-amber-800 font-medium text-sm text-center")}>
-                        {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
+                        {isOverridingArrival ? bk("saving") : bk("customerCantVerify")}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 )}
                 {isArrived && !arrivalVerified && qrArrivalPending && (
                   <View style={twStyle("rounded-2xl bg-primary/10 border border-primary/20 p-3 mb-3")}>
-                    <Text style={twStyle("text-sm font-medium text-primary mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
+                    <Text style={twStyle("text-sm font-medium text-primary mb-1")}>{bk("scanCustomerQr")}</Text>
                     <Text style={twStyle("text-xs text-gray-700 mb-2")}>
-                      Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
-                      {arrivalOtpPending
-                        ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
-                        : " If it expired, use Resend below — the customer gets a fresh code and QR."}
+                      {bk("scanCustomerQrSubtext")}
+                      {arrivalOtpPending ? bk("scanCustomerQrResendPin") : bk("scanCustomerQrResendBelow")}
                     </Text>
                     {!arrivalOtpPending ? (
                       <TouchableOpacity
@@ -3703,32 +3784,32 @@ export default function BookingDetailScreen() {
                         disabled={isResendingArrivalOtp}
                         style={twStyle("rounded-2xl border border-primary/20 py-2.5 px-3 items-center mb-2")}
                         accessibilityRole="button"
-                        accessibilityLabel="Resend QR and code to customer"
+                        accessibilityLabel={bk("resendQrToCustomerA11y")}
                       >
                         {isResendingArrivalOtp ? (
                           <ActivityIndicator size="small" color={Colors.primary} />
                         ) : (
-                          <Text style={twStyle("text-primary font-semibold")}>Resend QR & code to customer</Text>
+                          <Text style={twStyle("text-primary font-semibold")}>{bk("resendQrToCustomer")}</Text>
                         )}
                       </TouchableOpacity>
                     ) : null}
                     <TextInput
                       value={qrArrivalCodeInput}
                       onChangeText={(t) => setQrArrivalCodeInput(t.replace(/\s/g, "").toUpperCase().slice(0, 12))}
-                      placeholder="e.g. AB12CD34"
+                      placeholder={bk("qrCodePlaceholder")}
                       autoCapitalize="characters"
                       autoCorrect={false}
                       style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white font-mono")}
-                      accessibilityLabel="QR verification code from customer"
+                      accessibilityLabel={bk("qrCodeA11y")}
                     />
-                    <Text style={twStyle("text-xs text-primary mb-1")}>Or paste raw scan result (JSON)</Text>
+                    <Text style={twStyle("text-xs text-primary mb-1")}>{bk("pasteRawScan")}</Text>
                     <TextInput
                       value={qrPasteJson}
                       onChangeText={setQrPasteJson}
                       placeholder='{"booking_id":"…"'
                       multiline
                       style={twStyle("border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 bg-white min-h-[72px]")}
-                      accessibilityLabel="Pasted QR JSON"
+                      accessibilityLabel={bk("pasteQrJsonA11y")}
                     />
                     <TouchableOpacity
                       onPress={() => {
@@ -3740,10 +3821,10 @@ export default function BookingDetailScreen() {
                         `rounded-2xl border-2 border-primary py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
                       )}
                       accessibilityRole="button"
-                      accessibilityLabel="Open QR scanner"
+                      accessibilityLabel={bk("openQrScannerA11y")}
                     >
                       <Text style={twStyle("text-primary font-semibold")}>
-                        {Platform.OS === "web" ? "Scan QR (use mobile app)" : "Scan QR"}
+                        {Platform.OS === "web" ? bk("scanQrWeb") : bk("scanQr")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -3755,12 +3836,12 @@ export default function BookingDetailScreen() {
                       }
                       style={twStyle("rounded-2xl bg-primary py-2.5 items-center")}
                       accessibilityRole="button"
-                      accessibilityLabel="Verify QR arrival"
+                      accessibilityLabel={bk("verifyQrA11y")}
                     >
                       {isVerifyingQrArrival ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={twStyle("text-white font-semibold")}>Verify QR</Text>
+                        <Text style={twStyle("text-white font-semibold")}>{bk("verifyQr")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -3771,12 +3852,12 @@ export default function BookingDetailScreen() {
                     disabled={mutating || patchLoading}
                     style={twStyle("rounded-xl bg-primary py-3 items-center mt-1")}
                     accessibilityRole="button"
-                    accessibilityLabel="Start service"
+                    accessibilityLabel={bk("startServiceA11y")}
                   >
                     {mutating ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={twStyle("text-white font-semibold")}>Start service</Text>
+                      <Text style={twStyle("text-white font-semibold")}>{bk("startService")}</Text>
                     )}
                   </TouchableOpacity>
                 ) : null}
@@ -3797,7 +3878,7 @@ export default function BookingDetailScreen() {
                 {!completionChecklist.allDone ? (
                   <View style={twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 mb-3")}>
                     <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>
-                      Before you finish
+                      {bk("beforeYouFinish")}
                     </Text>
                     {completionChecklist.items.map((item) => (
                       <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
@@ -3806,7 +3887,7 @@ export default function BookingDetailScreen() {
                           size={14}
                           color={item.done ? "#16a34a" : "#d97706"}
                         />
-                        <Text style={twStyle("ml-1.5 text-xs text-amber-950")}>
+                        <Text style={twStyle("ms-1.5 text-xs text-amber-950")}>
                           {item.label}
                           {!item.done && item.detail ? ` — ${item.detail}` : ""}
                         </Text>
@@ -3819,11 +3900,13 @@ export default function BookingDetailScreen() {
                     onPress={() => setShowMarkPaid(true)}
                     style={twStyle("rounded-xl border border-primary py-3 items-center mb-2")}
                     accessibilityRole="button"
-                    accessibilityLabel="Collect payment"
+                    accessibilityLabel={bk("collectPaymentCta")}
                   >
                     <Text style={twStyle("text-primary font-semibold")}>
-                      Collect payment ({b.currency ?? getTenantDefaultCurrency()}{" "}
-                      {outstanding.toFixed(2)})
+                      {bk("collectPaymentWithAmount", {
+                        currency: b.currency ?? getTenantDefaultCurrency(),
+                        amount: outstanding.toFixed(2),
+                      })}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -3833,12 +3916,12 @@ export default function BookingDetailScreen() {
                     disabled={mutating || patchLoading}
                     style={twStyle("rounded-xl bg-primary py-3 items-center")}
                     accessibilityRole="button"
-                    accessibilityLabel="Complete service"
+                    accessibilityLabel={bk("completeServiceA11y")}
                   >
                     {mutating ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={twStyle("text-white font-semibold")}>Complete service</Text>
+                      <Text style={twStyle("text-white font-semibold")}>{bk("completeService")}</Text>
                     )}
                   </TouchableOpacity>
                 ) : null}
@@ -3881,9 +3964,7 @@ export default function BookingDetailScreen() {
                       `text-sm font-medium ${isRunningLate ? "text-amber-900" : "text-blue-800"}`,
                     )}
                   >
-                    {isRunningLate
-                      ? "You're past the estimated arrival. Update your ETA so the client knows you're running a little late."
-                      : "En route"}
+                    {isRunningLate ? bk("pastEtaWarning") : bk("enRoute")}
                   </Text>
                 </View>
                 <EtaPicker
@@ -3896,12 +3977,12 @@ export default function BookingDetailScreen() {
                   disabled={isUpdatingEta || mutating || updateEtaMinutes == null}
                   style={twStyle("rounded-xl border border-primary py-3 items-center mt-1 mb-2")}
                   accessibilityRole="button"
-                  accessibilityLabel="Update ETA"
+                  accessibilityLabel={bk("updateEtaA11y")}
                 >
                   {isUpdatingEta ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
-                    <Text style={twStyle("text-primary font-semibold")}>Update ETA</Text>
+                    <Text style={twStyle("text-primary font-semibold")}>{bk("updateEta")}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -3911,9 +3992,7 @@ export default function BookingDetailScreen() {
                 {!isScheduledToday ? (
                   <View style={twStyle("rounded-lg border border-amber-200 bg-amber-50 py-2 px-3 mb-3")}>
                     <Text style={twStyle("text-xs text-amber-900")}>
-                      {isPastBooking
-                        ? "This appointment was scheduled for an earlier date. Starting the journey now will notify the client."
-                        : "This appointment isn't today. Starting the journey now will notify the client that you're on the way."}
+                      {isPastBooking ? bk("journeyPastDateHint") : bk("journeyNotTodayHint")}
                     </Text>
                   </View>
                 ) : null}
@@ -3927,13 +4006,13 @@ export default function BookingDetailScreen() {
                   disabled={mutating}
                   style={twStyle("rounded-xl bg-primary py-3 items-center mb-2")}
                   accessibilityRole="button"
-                  accessibilityLabel={etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
+                  accessibilityLabel={etaMinutes == null ? bk("startJourneyNoEta") : bk("startJourney")}
                 >
                   {mutating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={twStyle("text-white font-semibold")}>
-                      {etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
+                      {etaMinutes == null ? bk("startJourneyNoEta") : bk("startJourney")}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -3945,12 +4024,12 @@ export default function BookingDetailScreen() {
                 disabled={mutating}
                 style={twStyle("rounded-xl border border-primary py-3 items-center")}
                 accessibilityRole="button"
-                accessibilityLabel="Mark arrived"
+                accessibilityLabel={bk("markArrivedA11y")}
               >
                 {mutating ? (
                   <ActivityIndicator size="small" color="#000" />
                 ) : (
-                  <Text style={twStyle("text-primary font-semibold")}>Mark arrived</Text>
+                  <Text style={twStyle("text-primary font-semibold")}>{bk("markArrived")}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -3960,43 +4039,46 @@ export default function BookingDetailScreen() {
 
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
-              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Appointment</Text>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>{bk("appointmentLabel")}</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")} numberOfLines={1}>
                 {serviceCountLabel}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
-              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Type</Text>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>{bk("typeLabel")}</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
-                {isAtHome ? "House call" : b.booking_source === "walk_in" ? "Walk-in / salon" : "Salon"}
+                {isAtHome ? bk("houseCall") : b.booking_source === "walk_in" ? bk("walkInSalon") : bk("salon")}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
-              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Channel</Text>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>{bk("channelLabel")}</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
                 {b.is_group_booking
-                  ? "Group"
+                  ? bk("groupBadge")
                   : b.booking_source === "walk_in"
-                    ? "Walk-in"
+                    ? bk("walkInBadge")
                     : b.booking_source === "provider"
-                      ? "Provider-created"
+                      ? bk("providerCreatedBadge")
                       : b.booking_source === "online"
-                        ? "Online"
-                        : "Booking"}
+                        ? bk("onlineBadge")
+                        : bk("bookingChannel")}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
-              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Balance</Text>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>{bk("balanceLabel")}</Text>
               <Text style={twStyle(`mt-0.5 text-sm font-semibold ${outstanding > 0 ? "text-amber-700" : "text-emerald-700"}`)}>
                 {outstanding > 0
-                  ? `${b.currency ?? getTenantDefaultCurrency()} ${outstanding.toLocaleString()} due`
-                  : "Settled"}
+                  ? bk("balanceDue", {
+                      currency: b.currency ?? getTenantDefaultCurrency(),
+                      amount: outstanding.toLocaleString(),
+                    })
+                  : bk("settled")}
               </Text>
             </View>
             {b.referral_source_name ? (
               <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
                 <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>
-                  Client source
+                  {bk("clientSource")}
                 </Text>
                 <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")} numberOfLines={1}>
                   {b.referral_source_name}
@@ -4008,7 +4090,7 @@ export default function BookingDetailScreen() {
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
             {allowedStatusTargets.length > 0 ? (
               <ActionButton
-                label={isAtHome ? "Booking actions" : "Change status"}
+                label={isAtHome ? bk("bookingActions") : bk("changeStatus")}
                 onPress={() => setShowStatusPicker(true)}
                 disabled={patchLoading || mutating}
                 variant="brand"
@@ -4021,9 +4103,9 @@ export default function BookingDetailScreen() {
                 onPress={openRescheduleEditor}
                 style={twStyle("rounded-xl border border-primary px-4 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Reschedule booking"
+                accessibilityLabel={bk("rescheduleBookingA11y")}
               >
-                <Text style={twStyle("text-sm font-semibold text-primary")}>Reschedule</Text>
+                <Text style={twStyle("text-sm font-semibold text-primary")}>{bk("rescheduleTitle")}</Text>
               </TouchableOpacity>
             ) : null}
             {canEditLineItems ? (
@@ -4031,9 +4113,9 @@ export default function BookingDetailScreen() {
                 onPress={() => setShowEditAppointment(true)}
                 style={twStyle("rounded-xl border border-gray-900 px-4 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Edit appointment services and products"
+                accessibilityLabel={bk("editAppointmentA11y")}
               >
-                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Edit appointment</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>{bk("editAppointment")}</Text>
               </TouchableOpacity>
             ) : null}
             {canEditAppointments ? (
@@ -4044,9 +4126,9 @@ export default function BookingDetailScreen() {
                 }}
                 style={twStyle("rounded-xl border border-gray-300 px-4 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Edit booking notes"
+                accessibilityLabel={bk("editNotesA11y")}
               >
-                <Text style={twStyle("text-sm font-semibold text-gray-800")}>Edit notes</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-800")}>{bk("editNotes")}</Text>
               </TouchableOpacity>
             ) : null}
             {canMarkPaid ? (
@@ -4058,12 +4140,12 @@ export default function BookingDetailScreen() {
                     : "rounded-xl border border-emerald-600 bg-white px-4 py-2.5",
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Collect payment for booking"
+                accessibilityLabel={bk("collectPaymentBookingA11y")}
               >
                 <Text
                   style={twStyle(`text-sm font-semibold ${markPaidPrimary ? "text-white" : "text-emerald-700"}`)}
                 >
-                  Collect payment
+                  {bk("collectPaymentCta")}
                 </Text>
               </TouchableOpacity>
             ) : canSendPaymentLink ? (
@@ -4071,9 +4153,9 @@ export default function BookingDetailScreen() {
                 onPress={() => setShowSendPaymentLink(true)}
                 style={twStyle("rounded-xl border border-emerald-600 px-4 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Send payment link"
+                accessibilityLabel={bk("sendPaymentLinkTitle")}
               >
-                <Text style={twStyle("text-sm font-semibold text-emerald-700")}>Payment link</Text>
+                <Text style={twStyle("text-sm font-semibold text-emerald-700")}>{bk("paymentLinkCta")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -4088,15 +4170,15 @@ export default function BookingDetailScreen() {
         {recurringDetails ? (
           <View style={twStyle("rounded-xl border border-blue-200 bg-blue-50 p-4 mb-3")}>
             <View style={twStyle("flex-row items-start justify-between")}>
-              <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("flex-1 pe-3")}>
                 <View style={twStyle("flex-row items-center")}>
                   <Ionicons name="repeat-outline" size={18} color="#2563eb" />
-                  <Text style={twStyle("ml-2 text-sm font-bold text-blue-950")}>
+                  <Text style={twStyle("ms-2 text-sm font-bold text-blue-950")}>
                     {recurringDetails.label}
                   </Text>
                 </View>
                 <Text style={twStyle("mt-1 text-xs text-blue-800")}>
-                  {recurringDetails.timeline || "Repeating series"}
+                  {recurringDetails.timeline || bk("repeatingSeries")}
                 </Text>
                 {recurringDetails.rule ? (
                   <Text style={twStyle("mt-1 text-xs text-blue-700")}>Rule: {recurringDetails.rule}</Text>
@@ -4115,9 +4197,9 @@ export default function BookingDetailScreen() {
               }
               style={twStyle("mt-3 rounded-lg border border-blue-200 bg-white px-3 py-2")}
               accessibilityRole="button"
-              accessibilityLabel="Manage recurring series"
+              accessibilityLabel={bk("manageSeriesA11y")}
             >
-              <Text style={twStyle("text-center text-sm font-semibold text-blue-700")}>Manage series</Text>
+              <Text style={twStyle("text-center text-sm font-semibold text-blue-700")}>{bk("manageSeries")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -4125,13 +4207,13 @@ export default function BookingDetailScreen() {
         {b.custom_offer && (b.custom_offer.request?.description || b.custom_offer.notes) ? (
           <View style={twStyle("rounded-xl border border-violet-200 bg-violet-50 p-4 mb-3")}>
             <View style={twStyle("flex-row items-center mb-2")}>
-              <Ionicons name="sparkles-outline" size={16} color="#7C3AED" style={{ marginRight: 6 }} />
-              <Text style={twStyle("text-sm font-bold text-violet-900")}>Custom Order</Text>
+              <Ionicons name="sparkles-outline" size={16} color="#7C3AED" style={{ marginEnd: 6 }} />
+              <Text style={twStyle("text-sm font-bold text-violet-900")}>{bk("customOrder")}</Text>
             </View>
             {b.custom_offer.request?.description ? (
               <View style={twStyle("mb-2")}>
                 <Text style={twStyle("text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1")}>
-                  Client&apos;s request
+                  {bk("clientsRequest")}
                 </Text>
                 <Text style={twStyle("text-sm text-violet-900 leading-5")}>
                   {b.custom_offer.request.description}
@@ -4141,7 +4223,7 @@ export default function BookingDetailScreen() {
             {b.custom_offer.notes ? (
               <View>
                 <Text style={twStyle("text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1")}>
-                  Your notes
+                  {bk("yourNotes")}
                 </Text>
                 <Text style={twStyle("text-sm text-violet-900 leading-5")}>{b.custom_offer.notes}</Text>
               </View>
@@ -4151,57 +4233,57 @@ export default function BookingDetailScreen() {
 
         {hasAdditionalLocationDetails ? (
           <View style={twStyle("rounded-xl border border-slate-200 bg-slate-50 p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-semibold text-slate-900")}>Additional location details</Text>
+            <Text style={twStyle("text-sm font-semibold text-slate-900")}>{bk("additionalLocationDetails")}</Text>
             <Text style={twStyle("text-xs text-slate-600 mt-1 mb-3")}>
-              Helpful info from the customer so you can find them easily.
+              {bk("additionalLocationDetailsHint")}
             </Text>
             {addr?.apartment_unit?.trim() ? (
               <Text style={twStyle("text-sm text-gray-800 mb-1")}>
-                <Text style={twStyle("text-gray-500")}>Unit: </Text>
+                <Text style={twStyle("text-gray-500")}>{bk("unitLabel")}</Text>
                 {addr.apartment_unit}
               </Text>
             ) : null}
             {addr?.building_name?.trim() ? (
               <Text style={twStyle("text-sm text-gray-800 mb-1")}>
-                <Text style={twStyle("text-gray-500")}>Building: </Text>
+                <Text style={twStyle("text-gray-500")}>{bk("buildingLabel")}</Text>
                 {addr.building_name}
               </Text>
             ) : null}
             {addr?.floor_number?.trim() ? (
               <Text style={twStyle("text-sm text-gray-800 mb-1")}>
-                <Text style={twStyle("text-gray-500")}>Floor: </Text>
+                <Text style={twStyle("text-gray-500")}>{bk("floorLabel")}</Text>
                 {addr.floor_number}
               </Text>
             ) : null}
             {hasAccessCodes && accessCodes ? (
               <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
-                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Access</Text>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>{bk("accessLabel")}</Text>
                 {accessCodes.gate?.trim() ? (
-                  <Text style={twStyle("text-sm text-gray-800")}>Gate: {accessCodes.gate}</Text>
+                  <Text style={twStyle("text-sm text-gray-800")}>{bk("gateLabel", { value: accessCodes.gate })}</Text>
                 ) : null}
                 {accessCodes.buzzer?.trim() ? (
-                  <Text style={twStyle("text-sm text-gray-800")}>Buzzer: {accessCodes.buzzer}</Text>
+                  <Text style={twStyle("text-sm text-gray-800")}>{bk("buzzerLabel", { value: accessCodes.buzzer })}</Text>
                 ) : null}
                 {accessCodes.door?.trim() ? (
-                  <Text style={twStyle("text-sm text-gray-800")}>Door: {accessCodes.door}</Text>
+                  <Text style={twStyle("text-sm text-gray-800")}>{bk("doorLabel", { value: accessCodes.door })}</Text>
                 ) : null}
               </View>
             ) : null}
             {addr?.parking_instructions?.trim() ? (
               <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
-                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Parking</Text>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>{bk("parkingLabel")}</Text>
                 <Text style={twStyle("text-sm text-gray-800")}>{addr.parking_instructions}</Text>
               </View>
             ) : null}
             {addr?.location_landmarks?.trim() ? (
               <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
-                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Landmarks</Text>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>{bk("landmarksLabel")}</Text>
                 <Text style={twStyle("text-sm text-gray-800")}>{addr.location_landmarks}</Text>
               </View>
             ) : null}
             {b.house_call_instructions?.trim() ? (
               <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
-                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>House call instructions</Text>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>{bk("houseCallInstructions")}</Text>
                 <Text style={twStyle("text-sm text-gray-800")}>{b.house_call_instructions}</Text>
               </View>
             ) : null}
@@ -4213,7 +4295,7 @@ export default function BookingDetailScreen() {
             {(b.participants?.length ?? 0) > 0 ? (
               <View style={twStyle("rounded-3xl border border-primary/20 bg-primary/10 p-4")}>
                 <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-                  <Text style={twStyle("text-sm font-medium text-primary")}>Group participants</Text>
+                  <Text style={twStyle("text-sm font-medium text-primary")}>{bk("groupParticipants")}</Text>
                   {b.group_booking_id ? (
                     <TouchableOpacity
                       onPress={() =>
@@ -4224,9 +4306,9 @@ export default function BookingDetailScreen() {
                       }
                       style={twStyle("rounded-full bg-white px-3 py-1.5")}
                       accessibilityRole="button"
-                      accessibilityLabel="Manage group booking"
+                      accessibilityLabel={bk("manageGroupA11y")}
                     >
-                      <Text style={twStyle("text-xs font-semibold text-primary")}>Manage group</Text>
+                      <Text style={twStyle("text-xs font-semibold text-primary")}>{bk("manageGroup")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -4236,14 +4318,14 @@ export default function BookingDetailScreen() {
                     style={twStyle("mb-2 rounded-2xl border border-primary/20 bg-white px-3 py-2 last:mb-0")}
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                      {p.participant_name?.trim() || "Participant"}
-                      {p.is_primary_contact ? " · Primary" : ""}
+                      {p.participant_name?.trim() || bk("participantFallback")}
+                      {p.is_primary_contact ? bk("primarySuffix") : ""}
                     </Text>
                     {p.participant_phone ? (
                       <TouchableOpacity
                         onPress={() => Linking.openURL(`tel:${p.participant_phone}`).catch(() => {})}
                         accessibilityRole="button"
-                        accessibilityLabel={`Call ${p.participant_name?.trim() || "participant"}`}
+                        accessibilityLabel={bk("callCustomerA11y", { name: p.participant_name?.trim() || bk("participantFallback") })}
                       >
                         <Text style={twStyle("text-xs text-primary mt-0.5")}>{p.participant_phone}</Text>
                       </TouchableOpacity>
@@ -4257,13 +4339,13 @@ export default function BookingDetailScreen() {
             ) : null}
             {b.package_name ? (
               <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
-                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>Package</Text>
+                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>{bk("packageLabel")}</Text>
                 <Text style={twStyle("text-base font-semibold text-gray-900")}>{b.package_name}</Text>
               </View>
             ) : b.package_id ? (
               <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
-                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>Package</Text>
-                <Text style={twStyle("text-sm text-gray-700")}>Package booking (ID on file)</Text>
+                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>{bk("packageLabel")}</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{bk("packageBookingOnFile")}</Text>
               </View>
             ) : null}
           </View>
@@ -4277,8 +4359,8 @@ export default function BookingDetailScreen() {
         {isAtHome && allowedStatusTargets.length > 0 ? (
           <Text style={twStyle("text-[11px] text-gray-500 mb-3 px-1")}>
             After the customer verifies arrival, use{" "}
-            <Text style={twStyle("font-semibold text-gray-700")}>Start service</Text> in the Journey card (same as{" "}
-            <Text style={twStyle("font-semibold text-gray-700")}>Booking actions</Text> → In progress). For cancel or
+            <Text style={twStyle("font-semibold text-gray-700")}>{bk("startService")}</Text> in the Journey card (same as{" "}
+            <Text style={twStyle("font-semibold text-gray-700")}>{bk("bookingActions")}</Text> → In progress). For cancel or
             no-show, use Booking actions below.
           </Text>
         ) : null}
@@ -4286,20 +4368,20 @@ export default function BookingDetailScreen() {
         {/* Client rating (provider → customer via provider_client_ratings) */}
         {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Client rating</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("clientRating")}</Text>
             {hasProviderClientRating === true ? (
               <View>
-                <Text style={twStyle("text-sm text-gray-600 mb-1")}>You have rated this client for this booking.</Text>
+                <Text style={twStyle("text-sm text-gray-600 mb-1")}>{bk("alreadyRatedClient")}</Text>
                 {providerClientRatingValue != null ? (
                   <View style={twStyle("flex-row items-center")}>
-                    <Text style={twStyle("text-xs text-gray-500 mr-2")}>Your rating</Text>
+                    <Text style={twStyle("text-xs text-gray-500 me-2")}>{bk("yourRating")}</Text>
                     {[1, 2, 3, 4, 5].map((star) => (
                       <Ionicons
                         key={star}
                         name={star <= providerClientRatingValue ? "star" : "star-outline"}
                         size={15}
                         color="#f59e0b"
-                        style={twStyle("mr-1")}
+                        style={twStyle("me-1")}
                       />
                     ))}
                   </View>
@@ -4311,10 +4393,10 @@ export default function BookingDetailScreen() {
                 style={twStyle("rounded-xl py-3 px-4 self-start")}
                 activeOpacity={0.85}
               >
-                <Text style={twStyle("font-semibold text-primary")}>Rate this client</Text>
+                <Text style={twStyle("font-semibold text-primary")}>{bk("rateClientTitle")}</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={twStyle("text-sm text-gray-600")}>You do not have permission to rate clients.</Text>
+              <Text style={twStyle("text-sm text-gray-600")}>{bk("noRatingPermission")}</Text>
             )}
           </View>
         )}
@@ -4322,7 +4404,7 @@ export default function BookingDetailScreen() {
         {/* Payment summary & Mark paid / Refund */}
         {showPaymentAndReceiptCard && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("paymentSectionTitle")}</Text>
             {b.payment_status ? (
               <Text style={twStyle("text-xs text-gray-500 mb-2")}>
                 {"Status: " + (
@@ -4517,7 +4599,7 @@ export default function BookingDetailScreen() {
                     {markingPaid ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={twStyle("font-medium text-white")}>Collect payment</Text>
+                      <Text style={twStyle("font-medium text-white")}>{bk("collectPaymentCta")}</Text>
                     )}
                   </TouchableOpacity>
                   {canMarkPaid && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
@@ -4551,7 +4633,7 @@ export default function BookingDetailScreen() {
                       {preparingYocoSale ? (
                         <ActivityIndicator size="small" color={Colors.primary} />
                       ) : (
-                        <Text style={twStyle("font-medium text-primary")}>Pay with Yoco</Text>
+                        <Text style={twStyle("font-medium text-primary")}>{bk("payWithYoco")}</Text>
                       )}
                     </TouchableOpacity>
                   )}
@@ -4564,7 +4646,7 @@ export default function BookingDetailScreen() {
                       {preparingPaystackTerminal ? (
                         <ActivityIndicator size="small" color="#047857" />
                       ) : (
-                        <Text style={twStyle("font-medium text-emerald-800")}>Pay with Paystack Terminal</Text>
+                        <Text style={twStyle("font-medium text-emerald-800")}>{bk("payWithPaystackTerminal")}</Text>
                       )}
                     </TouchableOpacity>
                   )}
@@ -4579,7 +4661,7 @@ export default function BookingDetailScreen() {
                   {sendingPaymentLink ? (
                     <ActivityIndicator size="small" color="#000" />
                   ) : (
-                    <Text style={twStyle("font-medium text-primary")}>Send payment link</Text>
+                    <Text style={twStyle("font-medium text-primary")}>{bk("sendPaymentLinkTitle")}</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -4589,12 +4671,12 @@ export default function BookingDetailScreen() {
                   disabled={requestingPayment}
                   style={twStyle("rounded-xl border border-gray-400 py-2.5 px-4")}
                   accessibilityRole="button"
-                  accessibilityLabel="Send additional charge"
+                  accessibilityLabel={bk("sendAdditionalChargeTitle")}
                 >
                   {requestingPayment ? (
                     <ActivityIndicator size="small" color="#000" />
                   ) : (
-                    <Text style={twStyle("font-medium text-gray-800")}>Send additional charge</Text>
+                    <Text style={twStyle("font-medium text-gray-800")}>{bk("sendAdditionalChargeTitle")}</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -4612,24 +4694,24 @@ export default function BookingDetailScreen() {
                   }}
                   style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
                 >
-                  <Text style={twStyle("font-medium text-red-700")}>Refund</Text>
+                  <Text style={twStyle("font-medium text-red-700")}>{bk("refundCta")}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={() => void shareBookingReceiptSummary()}
                 style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                 accessibilityRole="button"
-                accessibilityLabel="Share receipt summary"
+                accessibilityLabel={bk("shareSummaryA11y")}
               >
-                <Text style={twStyle("font-medium text-gray-700")}>Share summary</Text>
+                <Text style={twStyle("font-medium text-gray-700")}>{bk("shareSummary")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void openBookingReceiptPdf()}
                 style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                 accessibilityRole="button"
-                accessibilityLabel="Download PDF receipt"
+                accessibilityLabel={bk("downloadPdfA11y")}
               >
-                <Text style={twStyle("font-medium text-gray-700")}>Download PDF</Text>
+                <Text style={twStyle("font-medium text-gray-700")}>{bk("downloadPdfCta")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4652,7 +4734,7 @@ export default function BookingDetailScreen() {
           return (
             <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>
-                Customer notifications
+                {bk("customerNotifications")}
               </Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {isConfirmedOrLater && (
@@ -4661,13 +4743,13 @@ export default function BookingDetailScreen() {
                     disabled={isNotifying}
                     style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                     accessibilityRole="button"
-                    accessibilityLabel="Resend booking confirmation to customer"
+                    accessibilityLabel={bk("resendConfirmationA11y")}
                   >
                     {isNotifying ? (
                       <ActivityIndicator size="small" color="#374151" />
                     ) : (
                       <Text style={twStyle("font-medium text-gray-800")}>
-                        Re-send confirmation
+                        {bk("resendConfirmation")}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -4678,12 +4760,12 @@ export default function BookingDetailScreen() {
                     disabled={isNotifying}
                     style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                     accessibilityRole="button"
-                    accessibilityLabel="Send reminder to customer"
+                    accessibilityLabel={bk("sendReminderA11y")}
                   >
                     {isNotifying ? (
                       <ActivityIndicator size="small" color="#374151" />
                     ) : (
-                      <Text style={twStyle("font-medium text-gray-800")}>Send reminder</Text>
+                      <Text style={twStyle("font-medium text-gray-800")}>{bk("sendReminder")}</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -4693,13 +4775,13 @@ export default function BookingDetailScreen() {
                     disabled={isNotifying}
                     style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
                     accessibilityRole="button"
-                    accessibilityLabel="Send cancellation notice to customer"
+                    accessibilityLabel={bk("sendCancellationNoticeA11y")}
                   >
                     {isNotifying ? (
                       <ActivityIndicator size="small" color="#b91c1c" />
                     ) : (
                       <Text style={twStyle("font-medium text-red-700")}>
-                        Send cancellation notice
+                        {bk("sendCancellationNotice")}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -4712,16 +4794,16 @@ export default function BookingDetailScreen() {
         {/* Additional charges */}
         {additionalCharges.length > 0 && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Additional charges</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("additionalCharges")}</Text>
             {settlementPlan && (
               <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 mb-3")}>
                 <Text style={twStyle("text-xs text-blue-800")}>
-                  <Text style={twStyle("font-semibold")}>Recommended: </Text>
+                  <Text style={twStyle("font-semibold")}>{bk("recommendedPrefix")}</Text>
                   {settlementPlan.recommendedAction === "charge_card_on_file"
-                    ? "Charge card on file (customer approves first)"
+                    ? bk("recommendChargeCard")
                     : settlementPlan.recommendedAction === "customer_pay"
-                    ? "Send to customer — they pay in-app"
-                    : "Collect in person (cash, card, or terminal)"}
+                    ? bk("recommendCustomerPay")
+                    : bk("recommendCollectInPerson")}
                 </Text>
               </View>
             )}
@@ -4743,12 +4825,12 @@ export default function BookingDetailScreen() {
                         disabled={notifyingChargeId === c.id}
                         style={twStyle("flex-1 min-w-[120px] rounded-lg border border-primary py-2 px-3 items-center")}
                         accessibilityRole="button"
-                        accessibilityLabel="Send this charge to the client to pay online"
+                        accessibilityLabel={bk("sendToClientA11y")}
                       >
                         {notifyingChargeId === c.id ? (
                           <ActivityIndicator size="small" color={Colors.primary} />
                         ) : (
-                          <Text style={twStyle("text-xs font-medium text-primary text-center")}>Send to client</Text>
+                          <Text style={twStyle("text-xs font-medium text-primary text-center")}>{bk("sendToClient")}</Text>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -4762,7 +4844,7 @@ export default function BookingDetailScreen() {
                         {markingChargePaid && chargeMarkPaidId === c.id ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={twStyle("text-xs font-medium text-white text-center")}>Record payment</Text>
+                          <Text style={twStyle("text-xs font-medium text-white text-center")}>{bk("recordPayment")}</Text>
                         )}
                       </TouchableOpacity>
                       {paycloudEnabled && paycloudCollectEnabled ? (
@@ -4796,20 +4878,20 @@ export default function BookingDetailScreen() {
 
         {services.length > 0 && (
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Services</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("services")}</Text>
             {services.map((s, i) => (
               <View key={i} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
                 <Text style={twStyle("font-medium text-gray-900")}>
-                  {s.offering_name ?? "Service"}
+                  {s.offering_name ?? bk("serviceFallback")}
                   {s.guest_name ? ` · ${s.guest_name}` : ""}
                 </Text>
                 {s.staff_name ? (
                   <TouchableOpacity onPress={() => setShowReassignStaff(true)} activeOpacity={0.7}>
-                    <Text style={twStyle("text-sm text-teal-700")}>{s.staff_name} · Change</Text>
+                    <Text style={twStyle("text-sm text-teal-700")}>{bk("staffChange", { name: s.staff_name })}</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity onPress={() => setShowReassignStaff(true)} activeOpacity={0.7}>
-                    <Text style={twStyle("text-sm text-teal-700")}>Assign staff</Text>
+                    <Text style={twStyle("text-sm text-teal-700")}>{bk("assignStaff")}</Text>
                   </TouchableOpacity>
                 )}
                 {s.scheduled_start_at && (
@@ -4827,15 +4909,15 @@ export default function BookingDetailScreen() {
             ))}
             {b.custom_offer && (
               <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mt-1")}>
-                <Text style={twStyle("text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2")}>Custom Offer Details</Text>
+                <Text style={twStyle("text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2")}>{bk("customOfferDetails")}</Text>
                 {b.custom_offer.request?.description && (
                   <Text style={twStyle("text-sm text-gray-600 mb-1")}>
-                    <Text style={twStyle("font-medium text-gray-800")}>Request:</Text> {b.custom_offer.request.description}
+                    <Text style={twStyle("font-medium text-gray-800")}>{bk("requestLabel")}</Text> {b.custom_offer.request.description}
                   </Text>
                 )}
                 {b.custom_offer.notes && (
                   <Text style={twStyle("text-sm text-gray-600")}>
-                    <Text style={twStyle("font-medium text-gray-800")}>Notes:</Text> {b.custom_offer.notes}
+                    <Text style={twStyle("font-medium text-gray-800")}>{bk("notesLabel")}</Text> {b.custom_offer.notes}
                   </Text>
                 )}
               </View>
@@ -4845,12 +4927,12 @@ export default function BookingDetailScreen() {
 
         {(b.products?.length ?? 0) > 0 && (
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Products</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("products")}</Text>
             {(b.products ?? []).map((p, i) => {
               const vLabel = formatProductVariantLabel(p.product_variant);
               return (
                 <View key={p.id ?? `prod-${i}`} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
-                  <Text style={twStyle("font-medium text-gray-900")}>{p.product_name ?? "Product"}</Text>
+                  <Text style={twStyle("font-medium text-gray-900")}>{p.product_name ?? bk("productFallback")}</Text>
                   {vLabel ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{vLabel}</Text> : null}
                   <Text style={twStyle("text-sm text-gray-600 mt-1")}>
                     Qty {p.quantity ?? 1}
@@ -4880,7 +4962,7 @@ export default function BookingDetailScreen() {
                   </Text>
                 ) : null}
                 {appointmentProductOrders.map((ord) => {
-                  const fulfillmentLabel = appointmentProductFulfillmentLabel(ord.status);
+                  const fulfillmentLabel = appointmentProductFulfillmentLabel(ord.status, bk);
                   const isTerminal = isTerminalProductOrderStatus(ord.status);
                   const isCollection = isCollectionFulfillment(ord.fulfillment_type);
                   const isCollecting = collectingProductOrderId === ord.id;
@@ -4890,7 +4972,7 @@ export default function BookingDetailScreen() {
                       style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3")}
                     >
                       <View style={twStyle("flex-row items-start justify-between")}>
-                        <View style={twStyle("flex-1 pr-3")}>
+                        <View style={twStyle("flex-1 pe-3")}>
                           <Text style={twStyle("text-sm font-semibold text-amber-950")}>
                             {isCollection ? "Product pickup" : "Product delivery"}
                           </Text>
@@ -4898,7 +4980,7 @@ export default function BookingDetailScreen() {
                             {ord.order_number ?? "Product order"} · {fulfillmentLabel}
                           </Text>
                           {(ord.payment_status ?? "").toLowerCase() === "paid" ? (
-                            <Text style={twStyle("text-xs text-emerald-800 mt-0.5")}>Paid on appointment</Text>
+                            <Text style={twStyle("text-xs text-emerald-800 mt-0.5")}>{bk("paidOnAppointment")}</Text>
                           ) : null}
                         </View>
                       </View>
@@ -4911,12 +4993,12 @@ export default function BookingDetailScreen() {
                               `mt-2 flex-row items-center justify-center rounded-lg bg-amber-900 px-3 py-2${isCollecting || patchLoading ? " opacity-60" : ""}`,
                             )}
                             accessibilityRole="button"
-                            accessibilityLabel="Mark product collected"
+                            accessibilityLabel={bk("markCollectedA11y")}
                           >
                             {isCollecting ? (
                               <ActivityIndicator size="small" color="#fff" />
                             ) : (
-                              <Text style={twStyle("text-sm font-semibold text-white")}>Mark collected</Text>
+                              <Text style={twStyle("text-sm font-semibold text-white")}>{bk("markCollected")}</Text>
                             )}
                           </TouchableOpacity>
                         ) : (
@@ -4930,9 +5012,7 @@ export default function BookingDetailScreen() {
                             accessibilityRole="button"
                             accessibilityLabel="Manage delivery and tracking"
                           >
-                            <Text style={twStyle("text-sm font-semibold text-amber-900")}>
-                              Manage delivery & tracking
-                            </Text>
+                            <Text style={twStyle("text-sm font-semibold text-amber-900")}>{bk("manageDeliveryTracking")}</Text>
                           </TouchableOpacity>
                         )
                       ) : null}
@@ -4948,12 +5028,12 @@ export default function BookingDetailScreen() {
                   `mt-2 flex-row items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50/50 px-3 py-2.5${preparingFulfillment || patchLoading ? " opacity-60" : ""}`,
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Prepare product fulfillment"
+                accessibilityLabel={bk("prepareFulfillmentA11y")}
               >
                 {preparingFulfillment ? (
                   <ActivityIndicator size="small" color="#92400e" />
                 ) : (
-                  <Text style={twStyle("text-sm font-medium text-amber-900")}>Prepare fulfillment</Text>
+                  <Text style={twStyle("text-sm font-medium text-amber-900")}>{bk("prepareFulfillment")}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -4964,7 +5044,7 @@ export default function BookingDetailScreen() {
         {(bookingResources.length > 0 || canEditAppointments) && (
           <View style={twStyle("mb-3")}>
             <View style={twStyle("flex-row items-center justify-between mb-2")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Resources</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("resources")}</Text>
               {canEditAppointments && (
                 <TouchableOpacity
                   onPress={() => {
@@ -4972,12 +5052,12 @@ export default function BookingDetailScreen() {
                     setShowResourcePicker(true);
                   }}
                 >
-                  <Text style={twStyle("text-sm font-medium text-primary")}>+ Assign</Text>
+                  <Text style={twStyle("text-sm font-medium text-primary")}>{bk("assignResource")}</Text>
                 </TouchableOpacity>
               )}
             </View>
             {bookingResources.length === 0 ? (
-              <Text style={twStyle("text-sm text-gray-400")}>No resources assigned</Text>
+              <Text style={twStyle("text-sm text-gray-400")}>{bk("noResourcesAssigned")}</Text>
             ) : (
               bookingResources.map((r) => (
                 <View key={r.id} style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 mb-2")}>
@@ -4991,7 +5071,7 @@ export default function BookingDetailScreen() {
                     <TouchableOpacity
                       onPress={() => handleRemoveResource(r.resource_id)}
                       disabled={resourceAssignLoading}
-                      style={twStyle("ml-3 p-1")}
+                      style={twStyle("ms-3 p-1")}
                     >
                       <Ionicons name="trash-outline" size={16} color="#ef4444" />
                     </TouchableOpacity>
@@ -5008,9 +5088,9 @@ export default function BookingDetailScreen() {
             >
               <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setShowResourcePicker(false)}>
                 <Pressable style={twStyle("bg-white rounded-t-2xl p-5")} onPress={() => {}}>
-                  <Text style={twStyle("text-base font-semibold text-gray-900 mb-3")}>Assign resource</Text>
+                  <Text style={twStyle("text-base font-semibold text-gray-900 mb-3")}>{bk("assignResourceModalTitle")}</Text>
                   {availableResources.filter((r) => !bookingResources.some((br) => br.resource_id === r.id)).length === 0 ? (
-                    <Text style={twStyle("text-sm text-gray-500 mb-4")}>All resources are already assigned or none configured.</Text>
+                    <Text style={twStyle("text-sm text-gray-500 mb-4")}>{bk("allResourcesAssigned")}</Text>
                   ) : (
                     availableResources
                       .filter((r) => !bookingResources.some((br) => br.resource_id === r.id))
@@ -5036,7 +5116,7 @@ export default function BookingDetailScreen() {
                       style={twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center")}
                       onPress={() => { setShowResourcePicker(false); setSelectedResourceId(""); }}
                     >
-                      <Text style={twStyle("text-sm font-medium text-gray-700")}>Cancel</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("cancelCta")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[twStyle("flex-1 rounded-xl py-3 items-center"), { backgroundColor: selectedResourceId ? Colors.primary : "#d1d5db" }]}
@@ -5046,7 +5126,7 @@ export default function BookingDetailScreen() {
                       {resourceAssignLoading ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={twStyle("text-sm font-medium text-white")}>Assign</Text>
+                        <Text style={twStyle("text-sm font-medium text-white")}>{bk("assign")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -5059,7 +5139,7 @@ export default function BookingDetailScreen() {
         {/* Notes / Special requests (editable) */}
         <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mb-3")}>
           <View style={twStyle("flex-row items-center justify-between mb-2")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Notes / Special requests</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("notesSpecialRequests")}</Text>
             {!editingNotes && canEditAppointments ? (
               <TouchableOpacity
                 onPress={() => {
@@ -5067,7 +5147,7 @@ export default function BookingDetailScreen() {
                   setEditingNotes(true);
                 }}
               >
-                <Text style={twStyle("text-sm font-medium text-primary")}>Edit</Text>
+                <Text style={twStyle("text-sm font-medium text-primary")}>{bk("edit")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -5075,7 +5155,7 @@ export default function BookingDetailScreen() {
             <View>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900 min-h-[80px]")}
-                placeholder="Notes or special requests..."
+                placeholder={bk("notesPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={notesText}
                 onChangeText={setNotesText}
@@ -5091,7 +5171,7 @@ export default function BookingDetailScreen() {
                   {savingNotes ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={twStyle("text-sm font-medium text-white")}>Save</Text>
+                    <Text style={twStyle("text-sm font-medium text-white")}>{bk("save")}</Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -5101,13 +5181,13 @@ export default function BookingDetailScreen() {
                   }}
                   style={twStyle("rounded-lg border border-gray-300 py-2 px-4")}
                 >
-                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Cancel</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("cancelCta")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
             <Text style={twStyle("text-sm text-gray-600")}>
-              {b.special_requests?.trim() || "No notes"}
+              {b.special_requests?.trim() || bk("noNotes")}
             </Text>
           )}
         </View>
@@ -5159,12 +5239,12 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={showReschedule}
         onClose={() => setShowReschedule(false)}
-        title="Reschedule"
-        subtitle={rescheduleTime ? `New time: ${rescheduleTime}` : "Select a date and time below"}
+        title={bk("rescheduleTitle")}
+        subtitle={rescheduleTime ? bk("rescheduleSubtitleTime", { time: rescheduleTime }) : bk("rescheduleSubtitleSelect")}
         snapHeight="full"
         footer={
           <ActionButton
-            label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
+            label={rescheduling ? bk("rescheduling") : bk("rescheduleConfirm")}
             onPress={handleReschedule}
             loading={rescheduling}
             disabled={!rescheduleTime}
@@ -5177,23 +5257,23 @@ export default function BookingDetailScreen() {
         <View>
           {/* Compact hint — same style as new-booking picker */}
           <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
-            <Ionicons name="information-circle-outline" size={14} color="#1d4ed8" style={{ marginRight: 6 }} />
+            <Ionicons name="information-circle-outline" size={14} color="#1d4ed8" style={{ marginEnd: 6 }} />
             <Text style={twStyle("flex-1 text-xs leading-4 text-blue-800")}>
-              Held customer checkout slots appear unavailable until the hold expires.
+              {bk("rescheduleHoldHint")}
             </Text>
           </View>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Date</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>{bk("dateLabel")}</Text>
           <View style={twStyle("mb-4")}>
             <BookingDateStrip selectedDate={rescheduleDate} onSelectDate={setRescheduleDate} />
           </View>
           <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 px-3 py-2")}>
-            <Text style={twStyle("flex-1 pr-3 text-sm text-gray-800")}>Notify client</Text>
+            <Text style={twStyle("flex-1 pe-3 text-sm text-gray-800")}>{bk("notifyClient")}</Text>
             <Switch
               value={notifyCustomerOnReschedule}
               onValueChange={setNotifyCustomerOnReschedule}
             />
           </View>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Time</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>{bk("timeLabel")}</Text>
           <BookingTimeSlotGrid
             rows={rescheduleTimeRows}
             selectedTime={rescheduleTime}
@@ -5205,21 +5285,21 @@ export default function BookingDetailScreen() {
       </BottomSheet>
 
       {/* Mark paid modal */}
-      <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Collect payment">
+      <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title={bk("collectPaymentTitle")}>
         <View>
           {Math.abs(yocoTerminalAmount - outstanding) > 0.01 ? (
             <>
               <Text style={twStyle("text-sm text-gray-600 mb-1")}>
-                Full balance: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
+                {bk("fullBalance", { currency: b.currency ?? getTenantDefaultCurrency(), amount: outstanding.toFixed(2) })}
               </Text>
               <Text style={twStyle("text-sm font-medium text-gray-900 mb-2")}>
-                This payment: {b.currency ?? getTenantDefaultCurrency()} {yocoTerminalAmount.toFixed(2)}
-                {depositTarget != null ? " (deposit due)" : ""}
+                {bk("thisPayment", { currency: b.currency ?? getTenantDefaultCurrency(), amount: yocoTerminalAmount.toFixed(2) })}
+                {depositTarget != null ? bk("depositDue") : ""}
               </Text>
             </>
           ) : (
             <Text style={twStyle("text-sm text-gray-600 mb-2")}>
-              Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
+              {bk("outstandingLabel", { currency: b.currency ?? getTenantDefaultCurrency(), amount: outstanding.toFixed(2) })}
             </Text>
           )}
           {totalPaid > 0 ? (
@@ -5227,7 +5307,7 @@ export default function BookingDetailScreen() {
               This records another payment toward the booking (e.g. after cash, EFT, or Paystack). Only the remaining balance is applied.
             </Text>
           ) : null}
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("paymentMethod")}</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
             {markPaidPaymentMethods.map((pm) => (
               <TouchableOpacity
@@ -5249,18 +5329,18 @@ export default function BookingDetailScreen() {
           ) : null}
           {markPaidMethod === "paycloud_terminal" ? (
             <ActionButton
-              label="Charge on card machine"
+              label={bk("chargeOnCardMachine")}
               onPress={() => void handleMarkPaid()}
               fullWidth
             />
           ) : (
-            <ActionButton label={markingPaid ? "Processing…" : "Record payment"} onPress={() => void handleMarkPaid()} loading={markingPaid} fullWidth />
+            <ActionButton label={markingPaid ? bk("processing") : bk("recordPayment")} onPress={() => void handleMarkPaid()} loading={markingPaid} fullWidth />
           )}
         </View>
       </BottomSheet>
 
       {/* Refund modal */}
-      <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title="Issue refund">
+      <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title={bk("issueRefundTitle")}>
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-1")}>
             Net collected: {b.currency ?? getTenantDefaultCurrency()} {netPaidAfterRefunds.toFixed(2)}
@@ -5269,33 +5349,33 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-xs text-gray-500 mb-2")}>
             Maximum refund now: {b.currency ?? getTenantDefaultCurrency()} {maxRefundable.toFixed(2)}. Refunds increase what the client may still owe on this booking.
           </Text>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund amount</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("refundAmountLabel")}</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
-            placeholder="0.00"
+            placeholder={bk("amountPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={refundAmount}
             onChangeText={setRefundAmount}
             keyboardType="decimal-pad"
           />
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Reason (required)</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("reasonRequiredLabel")}</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4 min-h-[80px]")}
-            placeholder="e.g. Customer requested, service not completed…"
+            placeholder={bk("refundReasonPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={refundReason}
             onChangeText={setRefundReason}
             multiline
             textAlignVertical="top"
           />
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund method</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("refundMethod")}</Text>
           <View style={twStyle("flex-row flex-wrap rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2 gap-1")}>
             {([
               ...(paycloudCollectEnabled || paycloudEnabled
-                ? [{ key: "original" as const, label: "Back to card" }]
+                ? [{ key: "original" as const, label: bk("refundBackToCard") }]
                 : []),
-              { key: "cash" as const, label: "In person (cash)" },
-              { key: "store_credit" as const, label: "Wallet credit" },
+              { key: "cash" as const, label: bk("refundInPersonCash") },
+              { key: "store_credit" as const, label: bk("refundWalletCredit") },
             ]).map((opt) => {
               const active = refundMethod === opt.key;
               return (
@@ -5318,7 +5398,7 @@ export default function BookingDetailScreen() {
               ? "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds."
               : "Use when the customer is not present or the payment was made online. The refund is credited to their wallet."}
           </Text>
-          <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
+          <ActionButton label={refunding ? bk("processing") : bk("confirmRefund")} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
       </BottomSheet>
 
@@ -5326,16 +5406,16 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={showRequestPayment}
         onClose={() => { setShowRequestPayment(false); setRequestPaymentDescription(""); setRequestPaymentAmount(""); }}
-        title="Send additional charge"
+        title={bk("sendAdditionalChargeTitle")}
       >
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-2")}>
             Creates a pending line item and notifies the customer. They can pay online, or you can mark it paid later.
           </Text>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Description</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("description")}</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-3")}
-            placeholder="e.g. Extra product, travel fee"
+            placeholder={bk("chargeDescPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={requestPaymentDescription}
             onChangeText={setRequestPaymentDescription}
@@ -5343,14 +5423,14 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Amount ({b.currency ?? getTenantDefaultCurrency()})</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
-            placeholder="0.00"
+            placeholder={bk("amountPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={requestPaymentAmount}
             onChangeText={setRequestPaymentAmount}
             keyboardType="decimal-pad"
           />
           <ActionButton
-            label={requestingPayment ? "Sending…" : "Send additional charge"}
+            label={requestingPayment ? bk("sending") : bk("sendAdditionalChargeTitle")}
             onPress={handleRequestPayment}
             loading={requestingPayment}
             fullWidth
@@ -5362,15 +5442,15 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={showSendPaymentLink}
         onClose={() => setShowSendPaymentLink(false)}
-        title="Send payment link"
+        title={bk("sendPaymentLinkTitle")}
       >
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-3")}>
             Send a link to the customer so they can pay online (Paystack). Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
           </Text>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Send via</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("sendVia")}</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
-            {SEND_LINK_OPTIONS.map((opt) => (
+            {sendLinkOptions.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
                 onPress={() => setSendPaymentLinkMethod(opt.value)}
@@ -5381,7 +5461,7 @@ export default function BookingDetailScreen() {
             ))}
           </View>
           <ActionButton
-            label={sendingPaymentLink ? "Sending…" : "Send link"}
+            label={sendingPaymentLink ? bk("sending") : bk("sendLink")}
             onPress={handleSendPaymentLink}
             loading={sendingPaymentLink}
             fullWidth
@@ -5393,7 +5473,7 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={!!chargeMarkPaidId}
         onClose={() => { setChargeMarkPaidId(null); }}
-        title="Mark charge as paid"
+        title={bk("markChargePaidTitle")}
       >
         <View>
           {chargeMarkPaidId && (() => {
@@ -5404,7 +5484,7 @@ export default function BookingDetailScreen() {
                 <Text style={twStyle("text-sm text-gray-600 mb-2")}>
                   {c.description} · {c.currency} {Number(c.amount).toFixed(2)}
                 </Text>
-                <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("paymentMethod")}</Text>
                 <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
                   {chargePaymentMethods.map((pm) => (
                     <TouchableOpacity
@@ -5426,13 +5506,13 @@ export default function BookingDetailScreen() {
                 ) : null}
                 {chargeMarkPaidMethod === "paycloud_terminal" ? (
                   <ActionButton
-                    label="Charge on card machine"
+                    label={bk("chargeOnCardMachine")}
                     onPress={handleChargeMarkPaid}
                     fullWidth
                   />
                 ) : (
                   <ActionButton
-                    label={markingChargePaid ? "Processing…" : "Confirm"}
+                    label={markingChargePaid ? bk("processing") : bk("confirm")}
                     onPress={handleChargeMarkPaid}
                     loading={markingChargePaid}
                     fullWidth
@@ -5476,7 +5556,7 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={!!paystackTerminalPrompt}
         onClose={() => setPaystackTerminalPrompt(null)}
-        title="Paystack Terminal"
+        title={bk("paystackTerminalSheetTitle")}
       >
         {paystackTerminalPrompt ? (
           <View>
@@ -5484,7 +5564,7 @@ export default function BookingDetailScreen() {
               Ask the customer to pay using this Paystack link. Paystack will generate the transaction reference; after the webhook arrives, allocate the payment from your terminal inbox.
             </Text>
             <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-3")}>
-              <Text style={twStyle("text-xs uppercase tracking-wide text-emerald-700")}>Terminal code</Text>
+              <Text style={twStyle("text-xs uppercase tracking-wide text-emerald-700")}>{bk("terminalCode")}</Text>
               <Text style={twStyle("mt-2 font-mono text-2xl font-semibold text-emerald-950")}>
                 {paystackTerminalPrompt.code}
               </Text>
@@ -5501,7 +5581,7 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 onPress={() => {
                   void Share.share({
-                    title: "Paystack Terminal",
+                    title: bk("paystackTerminalSheetTitle"),
                     message: paystackTerminalPrompt.link
                       ? `Pay ${b.currency ?? getTenantDefaultCurrency()} ${paystackTerminalPrompt.expectedAmount.toFixed(2)} using this Paystack Terminal link: ${paystackTerminalPrompt.link}${paystackTerminalPrompt.reference ? ` Note: ${paystackTerminalPrompt.reference}` : ""}`
                       : `Pay ${b.currency ?? getTenantDefaultCurrency()} ${paystackTerminalPrompt.expectedAmount.toFixed(2)} using Paystack Terminal code ${paystackTerminalPrompt.code}${paystackTerminalPrompt.reference ? `. Note: ${paystackTerminalPrompt.reference}` : ""}.`,
@@ -5509,14 +5589,14 @@ export default function BookingDetailScreen() {
                 }}
                 style={twStyle("flex-1 rounded-xl bg-emerald-600 px-3 py-3")}
               >
-                <Text style={twStyle("text-center font-semibold text-white")}>Share</Text>
+                <Text style={twStyle("text-center font-semibold text-white")}>{bk("shareTitle")}</Text>
               </TouchableOpacity>
               {paystackTerminalPrompt.link ? (
                 <TouchableOpacity
                   onPress={() => void Linking.openURL(paystackTerminalPrompt.link || "")}
                   style={twStyle("flex-1 rounded-xl border border-emerald-600 px-3 py-3")}
                 >
-                  <Text style={twStyle("text-center font-semibold text-emerald-700")}>Open link</Text>
+                  <Text style={twStyle("text-center font-semibold text-emerald-700")}>{bk("openLink")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -5574,7 +5654,7 @@ export default function BookingDetailScreen() {
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
-              {isAtHome ? "Booking actions" : "Change status"}
+              {isAtHome ? bk("bookingActions") : bk("changeStatus")}
             </Text>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
               Current: {labelForDbStatus(currentDbStatus)}
@@ -5582,9 +5662,9 @@ export default function BookingDetailScreen() {
             {isAtHome ? (
               <Text style={{ fontSize: 12, color: Colors.gray[600], marginBottom: 16, lineHeight: 18 }}>
                 For house calls, use{" "}
-                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Start journey</Text>,{" "}
-                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Mark arrived</Text>, verify the PIN/QR,
-                then <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Start service</Text> in the Journey
+                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{bk("startJourney")}</Text>,{" "}
+                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{bk("markArrived")}</Text>, verify the PIN/QR,
+                then <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{bk("startService")}</Text> in the Journey
                 card (or pick In progress here — same action). Below: cancellations and no-shows.
               </Text>
             ) : null}
@@ -5596,7 +5676,7 @@ export default function BookingDetailScreen() {
                   target === "confirmed" &&
                   (currentDbStatus === "checked_in" || currentDbStatus === "waiting");
                 const label = isRecoveryTarget
-                  ? "Reset to confirmed (restart journey)"
+                  ? bk("resetToConfirmed")
                   : labelForDbStatus(target);
                 return (
                   <TouchableOpacity
@@ -5623,7 +5703,7 @@ export default function BookingDetailScreen() {
                     </Text>
                     {isRecoveryTarget ? (
                       <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-                        Returns to confirmed so you can start the journey.
+                        {bk("resetToConfirmedHint")}
                       </Text>
                     ) : null}
                   </TouchableOpacity>
@@ -5635,7 +5715,7 @@ export default function BookingDetailScreen() {
               style={{ paddingVertical: 14, alignItems: "center", marginTop: 8 }}
               activeOpacity={0.8}
             >
-              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Close</Text>
+              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>{bk("close")}</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -5724,7 +5804,7 @@ export default function BookingDetailScreen() {
                 onPress={() => setShowOverrideArrivalModal(false)}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bk("back")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={
@@ -5768,8 +5848,8 @@ export default function BookingDetailScreen() {
             style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Cancel Booking</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Please provide a reason for cancellation:</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{bk("cancelBookingCta")}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{bk("cancelReasonPrompt")}</Text>
             {isPastBooking ? (
               <View
                 style={{
@@ -5793,10 +5873,10 @@ export default function BookingDetailScreen() {
                     }}
                     style={{ marginTop: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel="Mark as no-show instead"
+                    accessibilityLabel={bk("markNoShowInsteadA11y")}
                   >
                     <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400e" }}>
-                      Mark as no-show instead
+                      {bk("markNoShowInstead")}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -5808,7 +5888,7 @@ export default function BookingDetailScreen() {
             <TextInput
               value={cancelReason}
               onChangeText={setCancelReason}
-              placeholder="Reason for cancellation…"
+              placeholder={bk("cancelReasonPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
               multiline
               numberOfLines={3}
@@ -5819,7 +5899,7 @@ export default function BookingDetailScreen() {
                 onPress={() => setShowCancelModal(false)}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bk("back")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={patchLoading}
@@ -5837,12 +5917,12 @@ export default function BookingDetailScreen() {
                     if (isConflictError(err)) {
                       setShowCancelModal(false);
                       Alert.alert(
-                        "Conflict",
-                        "This booking changed, reload",
-                        [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+                        bk("conflictTitle"),
+                        bk("conflictReloadBody"),
+                        [{ text: bk("dismissCta"), style: "cancel" }, { text: bk("refreshCta"), onPress: () => refresh() }]
                       );
                     } else {
-                      Alert.alert("Error", err);
+                      Alert.alert(bk("errorTitle"), err);
                     }
                     return;
                   }
@@ -5855,7 +5935,7 @@ export default function BookingDetailScreen() {
                 {patchLoading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>{bk("cancelBookingCta")}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -5877,7 +5957,7 @@ export default function BookingDetailScreen() {
             style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Mark as no-show</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{bk("markAsNoShow")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
               Mark {customerName || "this client"} as a no-show?
             </Text>
@@ -5908,7 +5988,7 @@ export default function BookingDetailScreen() {
                 onPress={() => setShowNoShowModal(false)}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bk("back")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={patchLoading}
@@ -5924,12 +6004,12 @@ export default function BookingDetailScreen() {
                     if (isConflictError(err)) {
                       setShowNoShowModal(false);
                       Alert.alert(
-                        "Conflict",
-                        "This booking changed, reload",
-                        [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
+                        bk("conflictTitle"),
+                        bk("conflictReloadBody"),
+                        [{ text: bk("dismissCta"), style: "cancel" }, { text: bk("refreshCta"), onPress: () => refresh() }],
                       );
                     } else {
-                      Alert.alert("Error", err);
+                      Alert.alert(bk("errorTitle"), err);
                     }
                     return;
                   }
@@ -5942,7 +6022,7 @@ export default function BookingDetailScreen() {
                 {patchLoading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={{ fontWeight: "600", color: "#fff" }}>Confirm no-show</Text>
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>{bk("confirmNoShow")}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -5958,7 +6038,7 @@ export default function BookingDetailScreen() {
           setRateClientStars(0);
           setRateClientComment("");
         }}
-        title="Rate this client"
+        title={bk("rateClientTitle")}
         snapHeight="full"
       >
         <View style={twStyle("p-4")}>
@@ -5985,7 +6065,7 @@ export default function BookingDetailScreen() {
             ))}
           </View>
           <TextInput
-            placeholder="Optional comment (e.g. punctual, great communication)"
+            placeholder={bk("rateCommentPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             value={rateClientComment}
             onChangeText={setRateClientComment}
@@ -5995,7 +6075,7 @@ export default function BookingDetailScreen() {
             style={twStyle("border border-gray-200 rounded-lg p-3 text-gray-900 mb-4 min-h-[80px]")}
           />
           <ActionButton
-            label={submittingRateClient ? "Submitting…" : "Submit rating"}
+            label={submittingRateClient ? bk("submitting") : bk("submitRating")}
             onPress={handleRateClientSubmit}
             loading={submittingRateClient}
             disabled={submittingRateClient || rateClientStars < 1}
@@ -6007,7 +6087,7 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={showCustomerProfile}
         onClose={() => { setShowCustomerProfile(false); setCustomerProfile(null); }}
-        title="Customer profile"
+        title={bk("customerProfileTitle")}
         snapHeight="half"
       >
         {loadingCustomerProfile ? (
@@ -6022,7 +6102,7 @@ export default function BookingDetailScreen() {
                 imageUrl={customerProfile.customer.avatar_url}
                 size="xl"
               />
-              <View style={twStyle("ml-4 flex-1")}>
+              <View style={twStyle("ms-4 flex-1")}>
                 <Text style={twStyle("text-lg font-semibold text-gray-900")}>{customerProfile.customer.full_name ?? "Customer"}</Text>
                 {customerProfile.customer.email ? (
                   <Text style={twStyle("text-sm text-gray-600")}>{customerProfile.customer.email}</Text>
@@ -6034,7 +6114,7 @@ export default function BookingDetailScreen() {
             </View>
             {customerProfile.profile && Object.keys(customerProfile.profile).length > 0 ? (
               <View style={twStyle("mb-4")}>
-                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Profile details</Text>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>{bk("profileDetails")}</Text>
                 <View style={twStyle("rounded-lg border border-gray-200 bg-gray-50 p-3")}>
                   {Object.entries(customerProfile.profile).map(([key, value]) => (
                     value != null && value !== "" && key !== "user_id" ? (
@@ -6049,7 +6129,7 @@ export default function BookingDetailScreen() {
             ) : null}
             {(b.custom_field_values && Object.keys(b.custom_field_values).length > 0) || (b.provider_form_responses && Object.keys(b.provider_form_responses).length > 0) ? (
               <View style={twStyle("mb-4")}>
-                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Answers for this booking</Text>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>{bk("answersForThisBooking")}</Text>
                 <View style={twStyle("rounded-lg border border-gray-200 bg-amber-50/50 p-3")}>
                   {b.custom_field_values ? Object.entries(b.custom_field_values).map(([key, value]) => (
                     value != null && value !== "" ? (
@@ -6084,7 +6164,7 @@ export default function BookingDetailScreen() {
                             }
                           >
                             <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
-                            <Text style={twStyle("ml-1 text-sm font-medium text-primary")}>View consent document</Text>
+                            <Text style={twStyle("ms-1 text-sm font-medium text-primary")}>{bk("viewConsentDocument")}</Text>
                           </TouchableOpacity>
                         ) : null}
                         <TouchableOpacity
@@ -6093,10 +6173,10 @@ export default function BookingDetailScreen() {
                           disabled={uploadingConsentFormId === formId}
                         >
                           <Ionicons name="cloud-upload-outline" size={16} color="#6b7280" />
-                          <Text style={twStyle("ml-1 text-sm font-medium text-gray-600")}>
+                          <Text style={twStyle("ms-1 text-sm font-medium text-gray-600")}>
                             {(answers as Record<string, unknown>)._consent_document_url ? "Replace" : "Upload"} consent document
                           </Text>
-                          {uploadingConsentFormId === formId && <ActivityIndicator size="small" style={{ marginLeft: 8 }} />}
+                          {uploadingConsentFormId === formId && <ActivityIndicator size="small" style={{ marginStart: 8 }} />}
                         </TouchableOpacity>
                       </View>
                     ) : null
@@ -6116,13 +6196,13 @@ export default function BookingDetailScreen() {
               }}
               style={twStyle("rounded-lg border-2 border-primary bg-primary/5 py-3 items-center")}
               accessibilityRole="button"
-              accessibilityLabel="See full profile"
+              accessibilityLabel={bk("seeFullProfileA11y")}
             >
-              <Text style={twStyle("font-semibold text-primary")}>See full profile</Text>
+              <Text style={twStyle("font-semibold text-primary")}>{bk("seeFullProfile")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <Text style={twStyle("text-center text-gray-500 py-8")}>Could not load profile</Text>
+          <Text style={twStyle("text-center text-gray-500 py-8")}>{bk("couldNotLoadProfile")}</Text>
         )}
       </BottomSheet>
 
@@ -6130,7 +6210,7 @@ export default function BookingDetailScreen() {
       <BottomSheet
         visible={showAuditLog}
         onClose={() => setShowAuditLog(false)}
-        title="Booking history"
+        title={bk("bookingHistoryTitle")}
         snapHeight="half"
       >
         {loadingAuditLog ? (
@@ -6139,19 +6219,19 @@ export default function BookingDetailScreen() {
           </View>
         ) : sortedAuditLogs.length === 0 ? (
           <View style={twStyle("py-6 px-2")}>
-            <Text style={twStyle("text-center text-gray-600")}>No events yet</Text>
+            <Text style={twStyle("text-center text-gray-600")}>{bk("noEventsYet")}</Text>
             <Text style={twStyle("text-center text-gray-500 text-sm mt-2 leading-5")}>
-              Events will appear here as the booking progresses.
+              {bk("eventsWillAppear")}
             </Text>
           </View>
         ) : (
-          <ScrollView style={twStyle("max-h-96 pr-1")} showsVerticalScrollIndicator>
+          <ScrollView style={twStyle("max-h-96 pe-1")} showsVerticalScrollIndicator>
             {sortedAuditLogs.map((entry, idx) => {
               const isLast = idx === sortedAuditLogs.length - 1;
-              const desc = buildAuditEntryDescription(entry, b.currency ?? "ZAR");
+              const desc = buildAuditEntryDescription(entry, b.currency ?? "ZAR", bk);
               return (
                 <View key={entry.id} style={twStyle("flex-row")}>
-                  <View style={twStyle("w-7 items-center mr-2")}>
+                  <View style={twStyle("w-7 items-center me-2")}>
                     <View style={twStyle("w-2.5 h-2.5 rounded-full bg-primary mt-1")} />
                     {!isLast ? (
                       <View

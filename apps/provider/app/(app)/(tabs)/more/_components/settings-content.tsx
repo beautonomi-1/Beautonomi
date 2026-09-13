@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -23,6 +24,8 @@ export interface BusinessSettings {
 
 /** Content-only for use in Settings hub tab. Lives in _components so it is not a route. */
 export function SettingsBusinessContent() {
+  const { t } = useTranslation();
+  const bs = (key: string) => t(`provider.mobile.screens.businessSettings.${key}`) as string;
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<BusinessSettings>(
@@ -73,24 +76,24 @@ export function SettingsBusinessContent() {
       <View style={twStyle("mb-6 h-16 w-16 items-center justify-center rounded-full bg-gray-100")}>
         <Ionicons name="settings-outline" size={32} color="#6b7280" />
       </View>
-      <Text style={twStyle("text-lg font-semibold text-gray-900")}>Business</Text>
+      <Text style={twStyle("text-lg font-semibold text-gray-900")}>{bs("hubTitle")}</Text>
       <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-        Your business details. Edit locations, hours, and related settings directly in-app.
+        {bs("hubIntro")}
       </Text>
 
       <View style={twStyle("mt-6 rounded-2xl border border-gray-200 bg-white p-4")}>
         <View style={twStyle("mb-3")}>
           <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-            Business name
+            {bs("fieldBusinessName")}
           </Text>
           <Text style={twStyle("mt-1 text-base font-medium text-gray-900")}>
-            {business.business_name || "—"}
+            {business.business_name || bs("emptyValue")}
           </Text>
         </View>
         {business.business_type ? (
           <View style={twStyle("mb-3")}>
             <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-              Type
+              {bs("fieldType")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-gray-800 capitalize")}>
               {business.business_type.replace("_", " ")}
@@ -100,7 +103,7 @@ export function SettingsBusinessContent() {
         {business.email ? (
           <View style={twStyle("mb-3")}>
             <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-              Email
+              {bs("fieldEmail")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-gray-800")}>{business.email}</Text>
           </View>
@@ -108,7 +111,7 @@ export function SettingsBusinessContent() {
         {business.phone ? (
           <View style={twStyle("mb-3")}>
             <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-              Phone
+              {bs("fieldPhone")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-gray-800")}>{business.phone}</Text>
           </View>
@@ -116,7 +119,7 @@ export function SettingsBusinessContent() {
         {address ? (
           <View>
             <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-              Address
+              {bs("fieldAddress")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-gray-800")}>{address}</Text>
           </View>
@@ -125,8 +128,7 @@ export function SettingsBusinessContent() {
 
       <View style={twStyle("mt-4 rounded-xl bg-gray-50 p-3")}>
         <Text style={twStyle("text-sm text-gray-600")}>
-          To update locations, operating hours, online booking, team permissions, or notifications,
-          use the Settings & Account sections in this app.
+          {bs("hubHint")}
         </Text>
       </View>
     </ScrollView>

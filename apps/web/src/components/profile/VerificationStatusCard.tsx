@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,7 @@ export default function VerificationStatusCard({
   failureReason,
   onAction,
 }: VerificationStatusCardProps) {
+  const { t } = useTranslation();
   const getStatusConfig = () => {
     switch (status) {
       case "verified":
@@ -30,9 +33,9 @@ export default function VerificationStatusCard({
           iconColor: "text-green-600",
           bgColor: "bg-green-50",
           borderColor: "border-green-200",
-          title: "Identity Verified",
-          description: "Your identity has been verified. You can now book services and become a Beauty Partner.",
-          buttonText: "View Status",
+          title: t("web.global.profile.identityVerified"),
+          description: t("web.global.profile.identityVerifiedDesc"),
+          buttonText: t("web.global.profile.viewStatus"),
           buttonVariant: "outline" as const,
           showButton: false,
         };
@@ -42,11 +45,11 @@ export default function VerificationStatusCard({
           iconColor: "text-yellow-600",
           bgColor: "bg-yellow-50",
           borderColor: "border-yellow-200",
-          title: "Verification Pending",
+          title: t("web.global.profile.verificationPending"),
           description: submittedAt
-            ? `Submitted on ${submittedAt.toLocaleDateString()}. Under review. ${estimatedTime || "We'll notify you once it's processed."}`
-            : "Your verification is under review. We'll notify you once it's processed.",
-          buttonText: "View Status",
+            ? t("web.global.profile.submittedOn", { date: submittedAt.toLocaleDateString(), eta: estimatedTime || t("web.global.profile.underReviewNotify") })
+            : t("web.global.profile.pendingReview"),
+          buttonText: t("web.global.profile.viewStatus"),
           buttonVariant: "outline" as const,
           showButton: false,
         };
@@ -56,9 +59,9 @@ export default function VerificationStatusCard({
           iconColor: "text-red-600",
           bgColor: "bg-red-50",
           borderColor: "border-red-200",
-          title: "Verification Failed",
-          description: failureReason || "Your verification was not approved. Please try again.",
-          buttonText: "Upload Again",
+          title: t("web.global.profile.verificationFailed"),
+          description: failureReason || t("web.global.profile.verificationNotApproved"),
+          buttonText: t("web.global.profile.uploadAgain"),
           buttonVariant: "default" as const,
           showButton: true,
         };
@@ -68,10 +71,10 @@ export default function VerificationStatusCard({
           iconColor: "text-gray-600",
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
-          title: "Get Verified",
+          title: t("web.global.profile.getVerified"),
           description:
-            "Upload a government-issued ID to verify your identity. If you were asked to re-verify, use the button below.",
-          buttonText: "Upload ID",
+            t("web.global.profile.getVerifiedDesc"),
+          buttonText: t("web.global.profile.uploadId"),
           buttonVariant: "default" as const,
           showButton: true,
         };
@@ -93,7 +96,7 @@ export default function VerificationStatusCard({
               </h4>
               {status === "pending" && (
                 <Badge variant="outline" className="text-xs border-yellow-300 text-yellow-700">
-                  Under Review
+                  {t("web.global.profile.underReview")}
                 </Badge>
               )}
             </div>

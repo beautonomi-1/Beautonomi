@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "About",
-  description: "Learn about Beautonomi, our mission, and how we support beauty professionals and clients.",
-  alternates: {
-    canonical: "/about",
-    languages: getHreflangAlternateUrls("/about"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/about",
+    titleKey: "web.seo.aboutTitle",
+    descriptionKey: "web.seo.aboutDescription",
+  });
+}
 
 export default function AboutLayout({ children }: { children: React.ReactNode }) {
   return children;

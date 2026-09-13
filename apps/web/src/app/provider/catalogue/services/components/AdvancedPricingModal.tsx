@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState } from "react";
 import {
   Dialog,
@@ -44,6 +46,7 @@ export function AdvancedPricingModal({
   onSave,
   initialRules = [],
 }: AdvancedPricingModalProps) {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<AdvancedPricingRule[]>(initialRules);
   const [activeTab, setActiveTab] = useState<string>("time");
 
@@ -124,12 +127,12 @@ export function AdvancedPricingModal({
     );
 
     if (invalidRules.length > 0) {
-      toast.error("Please complete all required fields for enabled rules");
+      toast.error(t("web.provider.advancedPricing.completeRequired"));
       return;
     }
 
     onSave(rules);
-    toast.success("Advanced pricing rules saved");
+    toast.success(t("web.provider.advancedPricing.saved"));
     onOpenChange(false);
   };
 
@@ -142,7 +145,7 @@ export function AdvancedPricingModal({
               checked={rule.enabled}
               onCheckedChange={(checked) => updateRule(rule.id, { enabled: checked })}
             />
-            <CardTitle className="text-base">Time-Based Pricing</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.advancedPricing.timeBasedPricing")}</CardTitle>
           </div>
           <Button
             variant="ghost"
@@ -156,9 +159,9 @@ export function AdvancedPricingModal({
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label>Rule Name</Label>
+          <Label>{t("web.provider.advancedPricing.ruleName")}</Label>
           <Input
-            placeholder="e.g., Peak Hours, Weekend Pricing"
+            placeholder={t("web.provider.advancedPricing.timeRulePlaceholder")}
             value={rule.name}
             onChange={(e) => updateRule(rule.id, { name: e.target.value })}
             className="mt-1.5"
@@ -167,7 +170,7 @@ export function AdvancedPricingModal({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Start Time</Label>
+            <Label>{t("web.provider.advancedPricing.startTime")}</Label>
             <Input
               type="time"
               value={rule.conditions.startTime || "09:00"}
@@ -176,7 +179,7 @@ export function AdvancedPricingModal({
             />
           </div>
           <div>
-            <Label>End Time</Label>
+            <Label>{t("web.provider.advancedPricing.endTime")}</Label>
             <Input
               type="time"
               value={rule.conditions.endTime || "17:00"}
@@ -187,9 +190,9 @@ export function AdvancedPricingModal({
         </div>
 
         <div>
-          <Label>Days of Week</Label>
+          <Label>{t("web.provider.advancedPricing.daysOfWeek")}</Label>
           <div className="flex flex-wrap gap-2 mt-1.5">
-            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+            {(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const).map(
               (day) => {
                 const days = rule.conditions.days || [];
                 const isSelected = days.includes(day);
@@ -206,7 +209,7 @@ export function AdvancedPricingModal({
                       updateRuleCondition(rule.id, "days", newDays);
                     }}
                   >
-                    {day.slice(0, 3)}
+                    {t(`web.provider.common.weekday.${day.toLowerCase()}`)}
                   </Button>
                 );
               }
@@ -216,7 +219,7 @@ export function AdvancedPricingModal({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Price Adjustment Type</Label>
+            <Label>{t("web.provider.advancedPricing.priceAdjustmentType")}</Label>
             <Select
               value={rule.priceAdjustment.type}
               onValueChange={(value: "fixed" | "percentage") =>
@@ -229,14 +232,14 @@ export function AdvancedPricingModal({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="percentage">Percentage</SelectItem>
-                <SelectItem value="fixed">Fixed Amount</SelectItem>
+                <SelectItem value="percentage">{t("web.provider.advancedPricing.percentage")}</SelectItem>
+                <SelectItem value="fixed">{t("web.provider.advancedPricing.fixedAmount")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label>
-              {rule.priceAdjustment.type === "percentage" ? "Percentage (%)" : "Amount (R)"}
+              {rule.priceAdjustment.type === "percentage" ? t("web.provider.advancedPricing.percentageLabel") : t("web.provider.advancedPricing.amountLabel")}
             </Label>
             <Input
               type="number"
@@ -251,7 +254,7 @@ export function AdvancedPricingModal({
                 })
               }
               className="mt-1.5"
-              placeholder={rule.priceAdjustment.type === "percentage" ? "10" : "50.00"}
+              placeholder={rule.priceAdjustment.type === "percentage" ? t("web.provider.advancedPricing.percentPlaceholder") : t("web.provider.advancedPricing.amountPlaceholder")}
             />
           </div>
         </div>
@@ -268,7 +271,7 @@ export function AdvancedPricingModal({
               checked={rule.enabled}
               onCheckedChange={(checked) => updateRule(rule.id, { enabled: checked })}
             />
-            <CardTitle className="text-base">Client Type Pricing</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.advancedPricing.clientTypePricing")}</CardTitle>
           </div>
           <Button
             variant="ghost"
@@ -282,9 +285,9 @@ export function AdvancedPricingModal({
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label>Rule Name</Label>
+          <Label>{t("web.provider.advancedPricing.ruleName")}</Label>
           <Input
-            placeholder="e.g., New Client Discount, VIP Pricing"
+            placeholder={t("web.provider.advancedPricing.clientRulePlaceholder")}
             value={rule.name}
             onChange={(e) => updateRule(rule.id, { name: e.target.value })}
             className="mt-1.5"
@@ -292,7 +295,7 @@ export function AdvancedPricingModal({
         </div>
 
         <div>
-          <Label>Client Type</Label>
+          <Label>{t("web.provider.advancedPricing.clientType")}</Label>
           <Select
             value={rule.conditions.clientType || "new"}
             onValueChange={(value) => updateRuleCondition(rule.id, "clientType", value)}
@@ -301,16 +304,16 @@ export function AdvancedPricingModal({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="new">New Clients</SelectItem>
-              <SelectItem value="returning">Returning Clients</SelectItem>
-              <SelectItem value="vip">VIP Clients</SelectItem>
+              <SelectItem value="new">{t("web.provider.advancedPricing.newClients")}</SelectItem>
+              <SelectItem value="returning">{t("web.provider.advancedPricing.returningClients")}</SelectItem>
+              <SelectItem value="vip">{t("web.provider.advancedPricing.vipClients")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Price Adjustment Type</Label>
+            <Label>{t("web.provider.advancedPricing.priceAdjustmentType")}</Label>
             <Select
               value={rule.priceAdjustment.type}
               onValueChange={(value: "fixed" | "percentage") =>
@@ -323,14 +326,14 @@ export function AdvancedPricingModal({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="percentage">Percentage</SelectItem>
-                <SelectItem value="fixed">Fixed Amount</SelectItem>
+                <SelectItem value="percentage">{t("web.provider.advancedPricing.percentage")}</SelectItem>
+                <SelectItem value="fixed">{t("web.provider.advancedPricing.fixedAmount")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label>
-              {rule.priceAdjustment.type === "percentage" ? "Percentage (%)" : "Amount (R)"}
+              {rule.priceAdjustment.type === "percentage" ? t("web.provider.advancedPricing.percentageLabel") : t("web.provider.advancedPricing.amountLabel")}
             </Label>
             <Input
               type="number"
@@ -361,7 +364,7 @@ export function AdvancedPricingModal({
               checked={rule.enabled}
               onCheckedChange={(checked) => updateRule(rule.id, { enabled: checked })}
             />
-            <CardTitle className="text-base">Seasonal Pricing</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.advancedPricing.seasonalPricing")}</CardTitle>
           </div>
           <Button
             variant="ghost"
@@ -375,9 +378,9 @@ export function AdvancedPricingModal({
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label>Rule Name</Label>
+          <Label>{t("web.provider.advancedPricing.ruleName")}</Label>
           <Input
-            placeholder="e.g., Holiday Season, Summer Special"
+            placeholder={t("web.provider.advancedPricing.seasonalPlaceholder")}
             value={rule.name}
             onChange={(e) => updateRule(rule.id, { name: e.target.value })}
             className="mt-1.5"
@@ -386,7 +389,7 @@ export function AdvancedPricingModal({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Start Date</Label>
+            <Label>{t("web.provider.advancedPricing.startDate")}</Label>
             <Input
               type="date"
               value={rule.conditions.startDate || ""}
@@ -395,7 +398,7 @@ export function AdvancedPricingModal({
             />
           </div>
           <div>
-            <Label>End Date</Label>
+            <Label>{t("web.provider.advancedPricing.endDate")}</Label>
             <Input
               type="date"
               value={rule.conditions.endDate || ""}
@@ -407,7 +410,7 @@ export function AdvancedPricingModal({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Price Adjustment Type</Label>
+            <Label>{t("web.provider.advancedPricing.priceAdjustmentType")}</Label>
             <Select
               value={rule.priceAdjustment.type}
               onValueChange={(value: "fixed" | "percentage") =>
@@ -420,14 +423,14 @@ export function AdvancedPricingModal({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="percentage">Percentage</SelectItem>
-                <SelectItem value="fixed">Fixed Amount</SelectItem>
+                <SelectItem value="percentage">{t("web.provider.advancedPricing.percentage")}</SelectItem>
+                <SelectItem value="fixed">{t("web.provider.advancedPricing.fixedAmount")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label>
-              {rule.priceAdjustment.type === "percentage" ? "Percentage (%)" : "Amount (R)"}
+              {rule.priceAdjustment.type === "percentage" ? t("web.provider.advancedPricing.percentageLabel") : t("web.provider.advancedPricing.amountLabel")}
             </Label>
             <Input
               type="number"
@@ -457,10 +460,9 @@ export function AdvancedPricingModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Advanced Pricing Options</DialogTitle>
+          <DialogTitle>{t("web.provider.advancedPricing.title")}</DialogTitle>
           <DialogDescription>
-            Set up custom pricing rules based on time, client type, seasons, and more. These rules
-            will automatically adjust the base price when conditions are met.
+            {t("web.provider.advancedPricing.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -468,15 +470,15 @@ export function AdvancedPricingModal({
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="time" className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              Time-Based
+              {t("web.provider.advancedPricing.timeBased")}
             </TabsTrigger>
             <TabsTrigger value="client" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
-              Client Type
+              {t("web.provider.advancedPricing.clientTypeTab")}
             </TabsTrigger>
             <TabsTrigger value="seasonal" className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              Seasonal
+              {t("web.provider.advancedPricing.seasonal")}
             </TabsTrigger>
           </TabsList>
 
@@ -488,16 +490,15 @@ export function AdvancedPricingModal({
               onClick={() => addRule("time_based")}
               className="w-full"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Time-Based Rule
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.advancedPricing.addTimeBasedRule")}
             </Button>
             {timeBasedRules.length === 0 && (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-8">
                   <Clock className="w-12 h-12 text-gray-300 mb-2" />
                   <p className="text-sm text-gray-500 text-center">
-                    No time-based pricing rules. Add one to set different prices for specific times
-                    or days.
+                    {t("web.provider.advancedPricing.emptyTime")}
                   </p>
                 </CardContent>
               </Card>
@@ -512,16 +513,15 @@ export function AdvancedPricingModal({
               onClick={() => addRule("client_type")}
               className="w-full"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Client Type Rule
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.advancedPricing.addClientTypeRule")}
             </Button>
             {clientTypeRules.length === 0 && (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-8">
                   <Users className="w-12 h-12 text-gray-300 mb-2" />
                   <p className="text-sm text-gray-500 text-center">
-                    No client type pricing rules. Add one to offer discounts or premiums based on
-                    client type.
+                    {t("web.provider.advancedPricing.emptyClient")}
                   </p>
                 </CardContent>
               </Card>
@@ -536,16 +536,15 @@ export function AdvancedPricingModal({
               onClick={() => addRule("seasonal")}
               className="w-full"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Seasonal Rule
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.advancedPricing.addSeasonalRule")}
             </Button>
             {seasonalRules.length === 0 && (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-8">
                   <Calendar className="w-12 h-12 text-gray-300 mb-2" />
                   <p className="text-sm text-gray-500 text-center">
-                    No seasonal pricing rules. Add one to adjust prices during specific date
-                    ranges.
+                    {t("web.provider.advancedPricing.emptySeasonal")}
                   </p>
                 </CardContent>
               </Card>
@@ -555,9 +554,9 @@ export function AdvancedPricingModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("web.provider.common.cancel")}
           </Button>
-          <Button onClick={handleSave}>Save Rules</Button>
+          <Button onClick={handleSave}>{t("web.provider.advancedPricing.saveRules")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -411,6 +411,12 @@ function usePushRegistration() {
               const actionId = String(
                 (event as unknown as { result?: { actionId?: string } }).result?.actionId ?? "",
               );
+              if (actionId === "accept_booking") {
+                merged.action = "confirm";
+              }
+              if (actionId === "decline_booking") {
+                merged.action = "decline";
+              }
               if (actionId === "mark_read") {
                 // "Mark as read" doesn't open the app — just clear it server-side.
                 markPushNotificationRead(merged);

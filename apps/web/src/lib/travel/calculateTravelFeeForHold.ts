@@ -9,6 +9,7 @@ import { computeTravelFee } from "@/lib/travel/travelFeeEngine";
 import { buildAtHomeTravelFeeRules } from "@/lib/travel/buildAtHomeTravelFeeRules";
 import { matchPlatformZoneForHouseCall } from "@/lib/travel/matchPlatformZoneForHouseCall";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { roundCurrency } from "@beautonomi/utils";
 
 export interface HoldAddressInput {
@@ -40,17 +41,24 @@ export async function calculateTravelFeeForHold(
     coordinates: clientCoordinates,
   };
 
-  const { data: provider } = await supabase
+  let travelDb: SupabaseClient = supabase;
+  try {
+    travelDb = getSupabaseAdmin();
+  } catch {
+    travelDb = supabase;
+  }
+
+  const { data: provider } = await travelDb
     .from("providers")
     .select("max_service_distance_km, is_distance_filter_enabled, offers_mobile_services")
     .eq("id", providerId)
-    .single();
+    .maybeSingle();
 
   if (!provider || provider.offers_mobile_services === false) {
     return { travelFee: 0, distanceKm: 0, withinServiceArea: false };
   }
 
-  const { data: providerLocations } = await supabase
+  const { data: providerLocations } = await travelDb
     .from("provider_locations")
     .select("id, latitude, longitude")
     .eq("provider_id", providerId)
@@ -125,7 +133,7 @@ export async function calculateTravelFeeForHold(
   // admin map. This replaces the old JS polygon/postal/city matching loops.
   let ptZones: { zone_id: string; zone_name: string }[] = [];
   try {
-    const { data } = await supabase.rpc("check_point_in_platform_zones", {
+    const { data } = await travelDb.rpc("check_point_in_platform_zones", {
       p_lng: clientCoordinates.longitude,
       p_lat: clientCoordinates.latitude,
     });
@@ -134,7 +142,7 @@ export async function calculateTravelFeeForHold(
     // RPC not available — fall through to legacy path below
   }
 
-  const { count: platformZoneCount } = await supabase
+  const { count: platformZoneCount } = await travelDb
     .from("platform_zones")
     .select("id", { count: "exact", head: true })
     .eq("is_active", true)
@@ -147,7 +155,7 @@ export async function calculateTravelFeeForHold(
     // have no geometry and never appear in ptZones — fall through to JS matcher below.
     if (ptZones.length > 0) {
       const matchedZoneIds = ptZones.map((z) => z.zone_id);
-      const { data: providerSelection } = await supabase
+      const { data: providerSelection } = await travelDb
         .from("provider_zone_selections")
         .select("*")
         .eq("provider_id", providerId)
@@ -157,7 +165,7 @@ export async function calculateTravelFeeForHold(
         .maybeSingle();
 
       if (providerSelection) {
-        const { data: zoneRow } = await supabase
+        const { data: zoneRow } = await travelDb
           .from("platform_zones")
           .select("id, name")
           .eq("id", providerSelection.platform_zone_id)
@@ -166,7 +174,7 @@ export async function calculateTravelFeeForHold(
       }
     }
     if (!matchedZone) {
-      const jsMatch = await matchPlatformZoneForHouseCall(supabase, mapbox, {
+      const jsMatch = await matchPlatformZoneForHouseCall(travelDb, mapbox, {
         providerId,
         serviceAddress: {
           city: serviceAddress.city,
@@ -183,7 +191,7 @@ export async function calculateTravelFeeForHold(
     }
   } else {
     // ── 2. Legacy fallback — no active platform_zones in the system ──────────────────────
-    const { data: serviceZones } = await supabase
+    const { data: serviceZones } = await travelDb
       .from("service_zones")
       .select("*")
       .eq("provider_id", providerId)
@@ -211,14 +219,14 @@ export async function calculateTravelFeeForHold(
     return { travelFee: 0, distanceKm: parseFloat(distanceKm.toFixed(2)), withinServiceArea: false };
   }
 
-  const { data: travelFeeSettings } = await supabase
+  const { data: travelFeeSettings } = await travelDb
     .from("provider_travel_fee_settings")
     .select("*")
     .eq("provider_id", providerId)
     .eq("enabled", true)
     .single();
 
-  const { data: platformSettings } = await supabase
+  const { data: platformSettings } = await travelDb
     .from("platform_settings")
     .select("settings")
     .eq("is_active", true)

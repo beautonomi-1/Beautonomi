@@ -77,6 +77,16 @@ export async function GET(
         ? reviews.reduce((sum: number, r: { rating?: number }) => sum + (r.rating ?? 0), 0) / reviews.length
         : 0;
 
+    // Provider health: confirmed appointments left open (never closed out) for > 7 days.
+    // Chronic offenders here skew reports and customer "Awaiting close-out" states.
+    const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { count: openOver7DaysCount } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .in("status", ["confirmed", "checked_in", "waiting", "in_progress"])
+      .lt("scheduled_at", sevenDaysAgoIso);
+
     // Load terminal profile (provider_payment_terminal_profile 1:1 with provider)
     const { data: terminalProfileRow } = await supabase
       .from("provider_payment_terminal_profile")
@@ -207,6 +217,7 @@ export async function GET(
         booking_count: bookingCount || 0,
         review_count: reviewCount || 0,
         average_rating: avgRating,
+        open_over_7_days: openOver7DaysCount || 0,
       },
     });
   } catch (error) {

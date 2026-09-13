@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
@@ -17,6 +18,7 @@ import { trackScreenView } from "@/lib/analytics";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { Colors } from "@/constants/colors";
 import { PROVIDER_REPORT_CATEGORIES, type ProviderReportItem } from "./reportCatalog";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface AnalyticsSummary {
   revenue: { thisMonth: number; current_period?: number; growth: string };
@@ -43,13 +45,18 @@ function navigateToReport(router: ReturnType<typeof useRouter>, report: Provider
   }
 }
 
-function reportBadge(report: ProviderReportItem): string {
-  if (report.target === "detail") return "Detail";
-  if (report.target === "native") return "Screen";
-  return "Link";
-}
-
 export default function ReportsIndex() {
+  const { t } = useTranslation();
+  const ri = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.reportsIndex.${key}`, opts) as string,
+    [t],
+  );
+  const reportBadge = useCallback((report: ProviderReportItem): string => {
+    if (report.target === "detail") return ri("badgeDetail");
+    if (report.target === "native") return ri("badgeScreen");
+    return ri("badgeLink");
+  }, [ri]);
   const router = useRouter();
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
@@ -95,9 +102,9 @@ export default function ReportsIndex() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Reports"
+        title={ri("title")}
         showBack
-        subtitle="Same data as the web portal — all reports open in the app"
+        subtitle={ri("subtitle")}
       />
       <ActiveLocationChip />
       <ReportRevenueGlossary keys={["recognizedRevenue", "ledgerNet"]} />
@@ -114,7 +121,7 @@ export default function ReportsIndex() {
             alignItems: "center",
           }}
         >
-          <Text style={{ fontSize: 13, color: Colors.gray[400] }}>Loading summary…</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[400] }}>{ri("loadingSummary")}</Text>
         </View>
       ) : analyticsError && !analytics ? (
         <View
@@ -127,7 +134,7 @@ export default function ReportsIndex() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, color: "#dc2626" }}>Could not load analytics summary. Pull to refresh.</Text>
+          <Text style={{ fontSize: 13, color: "#dc2626" }}>{ri("loadFailed")}</Text>
         </View>
       ) : analytics ? (
         <View
@@ -140,30 +147,30 @@ export default function ReportsIndex() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>This month</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>{ri("thisMonth")}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "baseline" }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                 {formatCurrency(revenueThisMonth)}
               </Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>earnings (ledger)</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>{ri("earningsLedger")}</Text>
               {revenueGrowth !== "0" && revenueGrowth !== "New" && (
-                <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({revenueGrowth}%)</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>{ri("growthPct", { growth: revenueGrowth })}</Text>
               )}
               {revenueGrowth === "New" && (
-                <Text style={{ fontSize: 12, color: "#22c55e", marginLeft: 4 }}>New</Text>
+                <Text style={{ fontSize: 12, color: "#22c55e", marginStart: 4 }}>{ri("newBadge")}</Text>
               )}
             </View>
             <View style={{ flexDirection: "row", alignItems: "baseline" }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{bookingsThisMonth}</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>bookings created</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>{ri("bookingsCreated")}</Text>
               {bookingsGrowth !== "0" && bookingsGrowth !== "New" && (
-                <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({bookingsGrowth}%)</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>{ri("growthPct", { growth: bookingsGrowth })}</Text>
               )}
             </View>
             <View style={{ flexDirection: "row", alignItems: "baseline" }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{customersTotal}</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>customers</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>{ri("customers")}</Text>
             </View>
           </View>
           {analytics.basis?.ledger_period || analytics.basis?.bookings_in_period ? (
@@ -176,7 +183,7 @@ export default function ReportsIndex() {
       ) : null}
 
       <View style={{ marginBottom: 12 }}>
-        <SearchBar value={search} onChangeText={setSearch} placeholder="Search reports..." />
+        <SearchBar value={search} onChangeText={setSearch} placeholder={ri("searchPlaceholder")} />
       </View>
 
       {filteredCategories.length === 0 ? (
@@ -190,7 +197,7 @@ export default function ReportsIndex() {
           }}
         >
           <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-            No reports match &quot;{search}&quot;
+            {ri("noMatch", { search })}
           </Text>
         </View>
       ) : (
@@ -209,14 +216,14 @@ export default function ReportsIndex() {
                       backgroundColor: Colors.white,
                       padding: 16,
                     },
-                    isTablet && { width: "48.5%", marginRight: 12, marginBottom: 12 },
+                    isTablet && { width: "48.5%", marginEnd: 12, marginBottom: 12 },
                     !isTablet && reportIdx > 0 && { marginTop: 12 },
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     navigateToReport(router, report);
                   }}
-                  accessibilityLabel={`View ${report.name} report`}
+                  accessibilityLabel={ri("viewReportA11y", { name: report.name })}
                   accessibilityRole="button"
                 >
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -232,7 +239,7 @@ export default function ReportsIndex() {
                     >
                       <Ionicons name={report.icon} size={24} color={report.color} />
                     </View>
-                    <View style={{ marginLeft: 12, flex: 1 }}>
+                    <View style={{ marginStart: 12, flex: 1 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{report.name}</Text>
                         <View
@@ -257,7 +264,7 @@ export default function ReportsIndex() {
                       </View>
                       <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{report.description}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+                    <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
                   </View>
                 </TouchableOpacity>
               ))}

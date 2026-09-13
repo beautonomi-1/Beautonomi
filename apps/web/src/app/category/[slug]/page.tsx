@@ -8,7 +8,9 @@ import Footer from "@/components/layout/footer";
 import CategoryPageClient from "./category-page-client";
 import { BreadcrumbSchema } from "@/components/seo/structured-data";
 import type { Category } from "@/types/beautonomi";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
@@ -32,6 +34,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const hostRaw =
     (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
   const ogLocale = openGraphLocaleForHost(hostRaw);
+  const localeCtx = await resolveRequestLanguage();
+  const t = await getServerT(localeCtx.language);
 
   try {
     const supabase = await getSupabaseServer();
@@ -44,7 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     if (!category) {
       return {
-        title: "Category Not Found",
+        title: t("web.seo.categoryNotFoundTitle") as string,
       };
     }
 
@@ -60,24 +64,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
           )
         : undefined;
 
+    const title = t("web.seo.categoryTitle", { name: category.name }) as string;
+    const description =
+      category.description ||
+      (t("web.seo.categoryDescription", { name: category.name }) as string);
+
     return {
-      title: `${category.name} Services | Beautonomi`,
-      description: category.description || `Discover top-rated ${category.name} services and providers on Beautonomi`,
+      title,
+      description,
       alternates: {
         canonical: `${origin}${path}`,
-        languages: getHreflangAlternateUrls(path),
+        languages: await hreflangForPath(path),
       },
       openGraph: {
-        title: `${category.name} Services | Beautonomi`,
-        description: category.description || `Find the best ${category.name} services near you`,
+        title,
+        description,
         url: `${origin}${path}`,
         locale: ogLocale,
         images: ogCategoryIconUrl ? [{ url: ogCategoryIconUrl }] : undefined,
       },
       twitter: {
         card: "summary_large_image",
-        title: `${category.name} Services | Beautonomi`,
-        description: category.description || `Find the best ${category.name} services`,
+        title,
+        description,
       },
     };
   } catch (error) {

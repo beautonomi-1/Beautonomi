@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -173,10 +175,10 @@ function campaignProgress(
   return Math.max(0, Math.min(1, Number(campaign.spent || 0) / budget));
 }
 
-function campaignModelLabel(campaign: Campaign): string {
-  if (isTimeBasedCampaign(campaign)) return "time boost";
-  if (isImpressionPackCampaign(campaign)) return "impression pack";
-  return "CPC budget";
+function campaignModelLabel(campaign: Campaign, t: (key: string) => string): string {
+  if (isTimeBasedCampaign(campaign)) return t("web.provider.settings.pages.ads.timeBoostLower");
+  if (isImpressionPackCampaign(campaign)) return t("web.provider.settings.pages.ads.impressionPackLower");
+  return t("web.provider.settings.pages.ads.cpcBudget");
 }
 
 type PerformanceSummary = {
@@ -195,7 +197,7 @@ type CampaignPerformance = {
 };
 
 const formatCompactNumber = (value: number | null | undefined) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+  new Intl.NumberFormat(getDefaultMoneyLocale(), { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 const formatCtr = (impressions: number, clicks: number): string => {
   const denom = Number(impressions || 0);
@@ -213,20 +215,21 @@ function isFreshPendingOrder(order: Campaign["latest_budget_order"]): boolean {
   return Date.now() - new Date(order.created_at).getTime() < PENDING_ORDER_FRESH_MS;
 }
 
-const LIFECYCLE_BADGE: Record<
-  CampaignLifecycle,
-  { label: string; className: string }
-> = {
-  awaiting_payment: { label: "Awaiting payment", className: "border-amber-300 text-amber-700" },
-  confirming: { label: "Confirming payment", className: "border-blue-300 text-blue-700" },
-  payment_failed: { label: "Payment failed", className: "border-red-300 text-red-700" },
-  active: { label: "Active", className: "border-emerald-300 text-emerald-700" },
-  paused: { label: "Paused", className: "border-amber-300 text-amber-800" },
-  budget_exhausted: { label: "Budget exhausted", className: "border-slate-300 text-slate-700" },
-  expired: { label: "Expired", className: "border-slate-300 text-slate-700" },
-  delivered: { label: "Delivered", className: "border-slate-300 text-slate-700" },
-  cancelled: { label: "Cancelled", className: "border-slate-300 text-slate-600" },
-};
+function getLifecycleBadge(
+  t: (key: string) => string,
+): Record<CampaignLifecycle, { label: string; className: string }> {
+  return {
+    awaiting_payment: { label: t("web.provider.settings.pages.ads.awaitingPayment"), className: "border-amber-300 text-amber-700" },
+    confirming: { label: t("web.provider.settings.pages.ads.confirmingPayment"), className: "border-blue-300 text-blue-700" },
+    payment_failed: { label: t("web.provider.settings.pages.ads.paymentFailed"), className: "border-red-300 text-red-700" },
+    active: { label: t("web.provider.settings.pages.ads.active"), className: "border-emerald-300 text-emerald-700" },
+    paused: { label: t("web.provider.settings.pages.ads.paused"), className: "border-amber-300 text-amber-800" },
+    budget_exhausted: { label: t("web.provider.settings.pages.ads.budgetExhausted"), className: "border-slate-300 text-slate-700" },
+    expired: { label: t("web.provider.settings.pages.ads.expired"), className: "border-slate-300 text-slate-700" },
+    delivered: { label: t("web.provider.settings.pages.ads.delivered"), className: "border-slate-300 text-slate-700" },
+    cancelled: { label: t("web.provider.settings.pages.ads.cancelled"), className: "border-slate-300 text-slate-600" },
+  };
+}
 
 function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
   return (
@@ -247,6 +250,7 @@ type TimePack = {
 };
 
 export default function ProviderAdsPage() {
+  const { t } = useTranslation();
   const { currencyCode, format: fmt } = useReportCurrency();
   const searchParams = useSearchParams();
   const { provider } = useProviderPortal();
@@ -308,7 +312,7 @@ export default function ProviderAdsPage() {
       setNowMs(Date.now());
     } catch {
       setCampaigns([]);
-      toast.error("Failed to load campaigns. Please try again.");
+      toast.error(t("web.provider.settings.pages.ads.failedToLoadCampaignsPleaseTry"));
     }
   }, []);
 
@@ -417,7 +421,7 @@ export default function ProviderAdsPage() {
       // §Provider-paystack-audit 2026-05: campaigns auto-activate as soon as
       // `handleAdsBudgetOrderSuccess` lands (CPC included), so the banner copy
       // no longer instructs providers to "tap Activate" — that was misleading.
-      toast.success("Payment confirmed. Your campaign is being funded and will go live shortly.");
+      toast.success(t("web.provider.settings.pages.ads.paymentConfirmedYourCampaignIsBeing"));
       void loadCampaigns();
       void loadPerformance();
       // Defensive refresh retries to avoid transient stale status immediately post-verify.
@@ -440,7 +444,7 @@ export default function ProviderAdsPage() {
   const createDraft = () => {
     const num = parseFloat(createForm.budget);
     if (!Number.isFinite(num) || num < 0) {
-      toast.error("Enter a valid total budget");
+      toast.error(t("web.provider.settings.pages.ads.enterAValidTotalBudget"));
       return;
     }
     if (num <= 0) {
@@ -450,26 +454,26 @@ export default function ProviderAdsPage() {
     }
     const dailyCap = createForm.daily_budget ? parseFloat(createForm.daily_budget) : null;
     const bidCpc = createForm.bid_cpc ? parseFloat(createForm.bid_cpc) : 0;
-    const lineItems = [{ label: "Campaign budget", value: fmt(num) }];
+    const lineItems = [{ label: t("web.provider.settings.pages.ads.campaignBudget"), value: fmt(num) }];
     if (dailyCap && Number.isFinite(dailyCap) && dailyCap > 0) {
-      lineItems.push({ label: "Daily cap", value: fmt(dailyCap) });
+      lineItems.push({ label: t("web.provider.settings.pages.ads.dailyCap"), value: fmt(dailyCap) });
     }
     if (bidCpc && Number.isFinite(bidCpc) && bidCpc > 0) {
-      lineItems.push({ label: "Bid per click", value: `${fmt(bidCpc)}/click` });
+      lineItems.push({ label: t("web.provider.settings.pages.ads.bidPerClick"), value: t("web.provider.settings.pages.ads.bidPerClickValue", { amount: fmt(bidCpc) }) });
     }
-    lineItems.push({ label: "Total due", value: fmt(num) });
+    lineItems.push({ label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(num) });
     setCheckoutReview({
-      heading: "CPC budget",
-      title: `${fmt(num)} campaign budget`,
-      subtitle: "Pay-per-click campaign with full control over spend and bids.",
+heading: t("web.provider.settings.pages.ads.cpcBudget"),
+      title: t("web.provider.settings.pages.ads.campaignBudgetTitle", { amount: fmt(num) }),
+subtitle: t("web.provider.settings.pages.ads.cpcSubtitle"),
       benefits: [
-        "Sponsored placement in eligible category searches",
-        "You only pay as your ad earns clicks",
-        "Pause or end anytime — unspent budget stops serving",
+        t("web.provider.settings.pages.ads.benefitSponsoredPlacement"),
+        t("web.provider.settings.pages.ads.benefitPayAsClicks"),
+        t("web.provider.settings.pages.ads.benefitPauseAnytime"),
       ],
       lineItems,
       total: fmt(num),
-      confirmLabel: `Pay ${fmt(num)}`,
+      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(num) }),
       run: runCreateDraft,
     });
   };
@@ -477,7 +481,7 @@ export default function ProviderAdsPage() {
   const runCreateDraft = async () => {
     const num = parseFloat(createForm.budget);
     if (!Number.isFinite(num) || num < 0) {
-      toast.error("Enter a valid total budget");
+      toast.error(t("web.provider.settings.pages.ads.enterAValidTotalBudget"));
       return;
     }
     setCreating(true);
@@ -505,13 +509,13 @@ export default function ProviderAdsPage() {
       setCampaigns((prev) => [campaign, ...prev]);
       setCreateForm({ budget: "", daily_budget: "", bid_cpc: "", global_category_ids: [] });
       if (data?.requires_payment && data?.payment_url) {
-        toast.success("Redirecting to payment. Complete payment to fund your campaign.");
+        toast.success(t("web.provider.settings.pages.ads.redirectingToPaymentCompletePaymentTo"));
         window.location.href = data.payment_url;
         return;
       }
-      toast.success("Campaign created (draft). Activate it when ready.");
+      toast.success(t("web.provider.settings.pages.ads.campaignCreatedDraftActivateItWhen"));
     } catch {
-      toast.error("Failed to create campaign");
+      toast.error(t("web.provider.settings.pages.ads.failedToCreateCampaign"));
     } finally {
       setCreating(false);
     }
@@ -519,20 +523,20 @@ export default function ProviderAdsPage() {
 
   const buyPack = (pack: ImpressionPack) => {
     setCheckoutReview({
-      heading: "Impression pack",
-      title: `${formatCompactNumber(pack.impressions)} sponsored impressions`,
-      subtitle: "Prepaid reach — placements deliver until the pack is fully shown.",
+heading: t("web.provider.settings.pages.ads.impressionPack"),
+      title: t("web.provider.settings.pages.ads.impressionPackTitle", { value: formatCompactNumber(pack.impressions) }),
+subtitle: t("web.provider.settings.pages.ads.impressionPackSubtitle"),
       benefits: [
-        `${formatCompactNumber(pack.impressions)} guaranteed sponsored impressions`,
-        "Delivery starts only after payment is verified",
-        "No bidding or daily caps to manage",
+        t("web.provider.settings.pages.ads.benefitGuaranteedImpressions", { value: formatCompactNumber(pack.impressions) }),
+        t("web.provider.settings.pages.ads.benefitDeliveryAfterPayment"),
+        t("web.provider.settings.pages.ads.benefitNoBidding"),
       ],
       lineItems: [
-        { label: "Impression pack", value: formatCompactNumber(pack.impressions) },
-        { label: "Total due", value: fmt(Number(pack.price_zar)) },
+        { label: t("web.provider.settings.pages.ads.impressionPack"), value: formatCompactNumber(pack.impressions) },
+        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(Number(pack.price_zar)) },
       ],
       total: fmt(Number(pack.price_zar)),
-      confirmLabel: `Pay ${fmt(Number(pack.price_zar))}`,
+      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(Number(pack.price_zar)) }),
       run: () => runBuyPack(pack),
     });
   };
@@ -560,13 +564,13 @@ export default function ProviderAdsPage() {
       const campaign = data?.campaign ?? data;
       setCampaigns((prev) => [campaign, ...prev]);
       if (data?.requires_payment && data?.payment_url) {
-        toast.success(`Redirecting to payment for ${pack.impressions} impressions.`);
+        toast.success(t("web.provider.settings.pages.ads.redirectingImpressions", { count: pack.impressions }));
         window.location.href = data.payment_url;
         return;
       }
-      toast.success("Campaign created.");
+      toast.success(t("web.provider.settings.pages.ads.campaignCreated"));
     } catch {
-      toast.error("Failed to create campaign");
+      toast.error(t("web.provider.settings.pages.ads.failedToCreateCampaign"));
     } finally {
       setCreatingPackId(null);
     }
@@ -588,36 +592,36 @@ export default function ProviderAdsPage() {
         campaign?: Campaign;
       };
       if (payload?.requires_payment && payload?.payment_url) {
-        toast.success("Redirecting to secure payment…");
+        toast.success(t("web.provider.settings.pages.ads.redirectingToSecurePayment"));
         window.location.href = payload.payment_url;
         return;
       }
-      toast.success("Campaign created.");
+      toast.success(t("web.provider.settings.pages.ads.campaignCreated"));
       loadCampaigns();
     } catch {
-      toast.error("Failed to create campaign");
+      toast.error(t("web.provider.settings.pages.ads.failedToCreateCampaign"));
     } finally {
       setCreatingPackId(null);
     }
   };
 
   const openTimePackReview = (tp: TimePack) => {
-    const daysLabel = tp.duration_days === 1 ? "1 day" : `${tp.duration_days} days`;
+    const daysLabel = t("web.provider.settings.pages.ads.dayCount", { count: tp.duration_days });
     setCheckoutReview({
-      heading: "Time boost",
-      title: tp.label?.trim() ? tp.label : `${daysLabel} boost`,
-      subtitle: `Flat fee — sponsored placement for ${daysLabel}.`,
+heading: t("web.provider.settings.pages.ads.timeBoost"),
+      title: tp.label?.trim() ? tp.label : t("web.provider.settings.pages.ads.daysBoost", { days: daysLabel }),
+      subtitle: t("web.provider.settings.pages.ads.timeBoostSubtitle", { days: daysLabel }),
       benefits: [
-        `Sponsored placement for the full ${daysLabel}`,
-        "Predictable flat price — no per-click charges",
-        "Goes live only after payment is verified",
+        t("web.provider.settings.pages.ads.benefitSponsoredDuration", { days: daysLabel }),
+        t("web.provider.settings.pages.ads.benefitFlatPrice"),
+        t("web.provider.settings.pages.ads.benefitGoesLiveAfterPayment"),
       ],
       lineItems: [
-        { label: "Boost duration", value: daysLabel },
-        { label: "Total due", value: fmt(Number(tp.price_zar)) },
+        { label: t("web.provider.settings.pages.ads.boostDuration"), value: daysLabel },
+        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(Number(tp.price_zar)) },
       ],
       total: fmt(Number(tp.price_zar)),
-      confirmLabel: `Pay ${fmt(Number(tp.price_zar))}`,
+      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(Number(tp.price_zar)) }),
       run: () => runBuyTimePack(tp),
     });
   };
@@ -640,7 +644,7 @@ export default function ProviderAdsPage() {
       const nextBudget = parseFloat(form.budget);
       if (Number.isFinite(nextBudget) && nextBudget > Number(editCampaign.budget ?? 0)) {
         toast.error(
-          "Budget increases require a new paid campaign or pack. Reduce the budget, or buy a new boost."
+t("web.provider.settings.pages.ads.budgetIncreaseBlocked")
         );
         return;
       }
@@ -663,9 +667,9 @@ export default function ProviderAdsPage() {
       await fetcher.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, payload);
       await loadCampaigns();
       setEditCampaign(null);
-      toast.success("Campaign updated");
+      toast.success(t("web.provider.settings.pages.ads.campaignUpdated"));
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Failed to update campaign"));
+toast.error(formatApiErrorMessage(err, t("web.provider.settings.pages.ads.failedToUpdateCampaign")));
     } finally {
       setUpdating(null);
     }
@@ -678,13 +682,13 @@ export default function ProviderAdsPage() {
       await loadCampaigns();
       toast.success(
         status === "active"
-          ? "Campaign activated"
+          ? t("web.provider.settings.pages.ads.campaignActivated")
           : status === "paused"
-            ? "Campaign paused"
-            : "Campaign ended"
+            ? t("web.provider.settings.pages.ads.campaignPaused")
+            : t("web.provider.settings.pages.ads.campaignEnded")
       );
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Failed to update status"));
+toast.error(formatApiErrorMessage(err, t("web.provider.settings.pages.ads.failedToUpdateStatus")));
     } finally {
       setUpdating(null);
     }
@@ -704,12 +708,12 @@ export default function ProviderAdsPage() {
       );
       const url = res.data?.payment_url ?? null;
       if (!url) {
-        toast.error("Couldn't reopen Paystack. Please try again.");
+        toast.error(t("web.provider.settings.pages.ads.couldnTReopenPaystackPleaseTry"));
         return;
       }
       window.location.assign(url);
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Couldn't reopen Paystack"));
+toast.error(formatApiErrorMessage(err, t("web.provider.settings.pages.ads.couldntReopenPaystack")));
     } finally {
       setUpdating(null);
     }
@@ -718,7 +722,7 @@ export default function ProviderAdsPage() {
   const cancelDraftCampaign = async (campaign: Campaign) => {
     if (
       typeof window !== "undefined" &&
-      !window.confirm("Cancel this draft? No charge was made.")
+!window.confirm(t("web.provider.settings.pages.ads.cancelDraftConfirm"))
     ) {
       return;
     }
@@ -732,9 +736,9 @@ export default function ProviderAdsPage() {
     try {
       await fetcher.post(`/api/provider/ads/budget-orders/${orderId}/abandon`, {});
       await loadCampaigns();
-      toast.success("Payment cancelled. You can try again or remove the campaign.");
+      toast.success(t("web.provider.settings.pages.ads.paymentCancelledYouCanTryAgain"));
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Couldn't cancel the payment"));
+toast.error(formatApiErrorMessage(err, t("web.provider.settings.pages.ads.couldntCancelPayment")));
     } finally {
       setUpdating(null);
     }
@@ -743,7 +747,7 @@ export default function ProviderAdsPage() {
   const viewCampaignReceipt = async (campaign: Campaign) => {
     const orderId = campaign.latest_budget_order?.id;
     if (!orderId) {
-      toast.error("No paid order found for this campaign.");
+      toast.error(t("web.provider.settings.pages.ads.noPaidOrderFoundForThis"));
       return;
     }
     setUpdating(campaign.id);
@@ -754,12 +758,12 @@ export default function ProviderAdsPage() {
       );
       const url = res.data?.url;
       if (!url) {
-        toast.error("Couldn't open the receipt.");
+        toast.error(t("web.provider.settings.pages.ads.couldnTOpenTheReceipt"));
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Couldn't open the receipt"));
+toast.error(formatApiErrorMessage(err, t("web.provider.settings.pages.ads.couldntOpenReceipt")));
     } finally {
       setUpdating(null);
     }
@@ -773,11 +777,11 @@ export default function ProviderAdsPage() {
       global_category_ids: campaign.targeting?.global_category_ids ?? [],
     });
     if (isTimeBasedCampaign(campaign)) {
-      toast.message("Pick a time boost below to run another campaign with the same targeting.");
+toast.message(t("web.provider.settings.pages.ads.pickTimeBoost"));
       return;
     }
     if (isImpressionPackCampaign(campaign)) {
-      toast.message("Pick an impression pack below to run another campaign with the same targeting.");
+toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
       return;
     }
     createDraft();
@@ -795,23 +799,21 @@ export default function ProviderAdsPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Paid ads" subtitle="Boost your visibility with sponsored slots.">
-        <LoadingTimeout loadingMessage="Loading..." />
+      <SettingsDetailLayout title={t("web.provider.settings.categories.marketingIntegrations.items.paidAds.title")} subtitle={t("web.provider.settings.categories.marketingIntegrations.items.paidAds.description")}>
+        <LoadingTimeout loadingMessage={t("common.loading")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Growth & Marketing — Paid ads"
-      subtitle="Boost your profile in high-intent discovery moments, target the categories that matter, and track the visibility, reach, clicks, and bookings your campaigns generate."
+      title={t("web.provider.settings.categories.marketingIntegrations.items.paidAds.title")}
+      subtitle={t("web.provider.settings.categories.marketingIntegrations.items.paidAds.description")}
     >
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>
-            Sponsored listings are not available in your market yet. When ads are available, you
-            will be able to boost your profile and track visibility, reach, clicks, and bookings
-            here.
+{t("web.provider.settings.pages.ads.sponsoredUnavailable")}
           </AlertDescription>
         </Alert>
       )}
@@ -824,15 +826,14 @@ export default function ProviderAdsPage() {
               reflects that automatically rather than asking providers to tap
               Activate (CPC campaigns are flipped to active by the webhook). */}
             <span>
-              <strong>Payment confirmed.</strong> Your campaign is now funded and will go live
-              shortly. Refresh in a moment if it isn&apos;t showing as active yet.
+<strong>{t("web.provider.settings.pages.ads.paymentConfirmedStrong")}</strong> {t("web.provider.settings.pages.ads.paymentConfirmedBody")}
             </span>
             <div className="flex shrink-0 items-center gap-2">
               <a
                 href="/provider/settings/billing"
                 className="inline-flex items-center rounded-md border border-emerald-300 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
               >
-                View receipt
+{t("web.provider.settings.pages.ads.viewReceipt")}
               </a>
               <Button
                 type="button"
@@ -841,7 +842,7 @@ export default function ProviderAdsPage() {
                 className="border-emerald-300"
                 onClick={() => setPaymentConfirmedBanner(false)}
               >
-                Dismiss
+{t("web.provider.common.dismiss")}
               </Button>
             </div>
           </AlertDescription>
@@ -850,10 +851,9 @@ export default function ProviderAdsPage() {
 
       {/* Ad Performance Dashboard */}
       {enabled && performance && (
-        <SectionCard title="Ad performance" className="mb-6">
+        <SectionCard title={t("web.provider.settings.pages.ads.adPerformance")} className="mb-6">
           <p className="text-sm text-muted-foreground mb-4">
-            See how many people your ads reached, how often they were shown, and how many customers
-            took action.
+{t("web.provider.settings.pages.ads.adPerformanceHint")}
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-4 flex items-center gap-3">
@@ -862,38 +862,38 @@ export default function ProviderAdsPage() {
                 <p className="text-2xl font-semibold">
                   {formatCompactNumber(performance.impressions)}
                 </p>
-                <p className="text-xs text-muted-foreground">Impressions</p>
+<p className="text-xs text-muted-foreground">{t("web.provider.settings.pages.ads.impressions")}</p>
               </div>
             </div>
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Users className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="text-2xl font-semibold">{formatCompactNumber(performance.reach)}</p>
-                <p className="text-xs text-muted-foreground">Reach</p>
+<p className="text-xs text-muted-foreground">{t("web.provider.settings.pages.ads.reach")}</p>
               </div>
             </div>
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <MousePointer className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="text-2xl font-semibold">{formatCompactNumber(performance.clicks)}</p>
-                <p className="text-xs text-muted-foreground">Clicks</p>
+<p className="text-xs text-muted-foreground">{t("web.provider.settings.pages.ads.clicks")}</p>
               </div>
             </div>
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Banknote className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="text-2xl font-semibold">{fmt(Number(performance.spend))}</p>
-                <p className="text-xs text-muted-foreground">Spend</p>
+<p className="text-xs text-muted-foreground">{t("web.provider.settings.pages.ads.spend")}</p>
               </div>
             </div>
           </div>
           {campaigns.length > 0 && (
             <div className="mt-6 overflow-hidden rounded-lg border">
               <div className="grid grid-cols-5 gap-3 bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
-                <span className="col-span-2">Campaign</span>
-                <span>Impr.</span>
-                <span>Clicks</span>
-                <span>Spend</span>
+<span className="col-span-2">{t("web.provider.settings.pages.ads.campaign")}</span>
+<span>{t("web.provider.settings.pages.ads.impr")}</span>
+<span>{t("web.provider.settings.pages.ads.clicks")}</span>
+<span>{t("web.provider.settings.pages.ads.spend")}</span>
               </div>
               {campaigns.map((campaign) => {
                 const metrics = campaignPerformance[campaign.id] ?? {
@@ -910,7 +910,7 @@ export default function ProviderAdsPage() {
                   >
                     <div className="col-span-2 min-w-0">
                       <p className="truncate font-medium capitalize">
-                        {campaignModelLabel(campaign)}
+                        {campaignModelLabel(campaign, t)}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{campaign.id}</p>
                     </div>
@@ -925,14 +925,14 @@ export default function ProviderAdsPage() {
         </SectionCard>
       )}
 
-      <SectionCard title="Campaigns">
+      <SectionCard title={t("web.provider.settings.pages.ads.campaigns")}>
         <div className="space-y-4">
           {campaigns.some((c) => isPastCampaign(c.lifecycle)) ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">
                 {showEndedCampaigns
-                  ? "Showing active and past campaigns."
-                  : "Past campaigns are hidden."}
+                  ? t("web.provider.settings.pages.ads.showingActiveAndPast")
+                  : t("web.provider.settings.pages.ads.pastCampaignsHidden")}
               </p>
               <Button
                 type="button"
@@ -940,7 +940,7 @@ export default function ProviderAdsPage() {
                 size="sm"
                 onClick={() => setShowEndedCampaigns((v) => !v)}
               >
-                {showEndedCampaigns ? "Hide past campaigns" : "Show past campaigns"}
+{showEndedCampaigns ? t("web.provider.settings.pages.ads.hidePastCampaigns") : t("web.provider.settings.pages.ads.showPastCampaigns")}
               </Button>
             </div>
           ) : null}
@@ -948,26 +948,26 @@ export default function ProviderAdsPage() {
             <>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
                 <p className="font-medium text-indigo-950">
-                  Choose the ad product that matches your goal
+{t("web.provider.settings.pages.ads.chooseAdProduct")}
                 </p>
                 <p className="mt-1 text-sm text-indigo-900/75">
                   {defaultModel === "time_based"
-                    ? "Recommended: boost for a fixed number of days for predictable visibility."
+                    ? t("web.provider.settings.pages.ads.recommendedTime")
                     : defaultModel === "impression_pack"
-                      ? "Recommended: buy a fixed impression pack and track delivery until it is used."
-                      : "Recommended: use a custom CPC budget when you want control over spend, caps, and bids."}
+                      ? t("web.provider.settings.pages.ads.recommendedImpression")
+                      : t("web.provider.settings.pages.ads.recommendedCpc")}
                 </p>
               </div>
               {timePacks.length > 0 && availableModels.includes("time_based") && (
                 <div className="mb-6">
                   <div className="flex items-center gap-2">
-                    <Label className="text-base font-medium">Boost for a set number of days</Label>
+<Label className="text-base font-medium">{t("web.provider.settings.pages.ads.boostForSetDays")}</Label>
                     {defaultModel === "time_based" ? (
-                      <Badge variant="secondary">Recommended</Badge>
+<Badge variant="secondary">{t("web.provider.common.recommended")}</Badge>
                     ) : null}
                   </div>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Pay a flat rate — your listing stays in sponsored slots for the full duration.
+{t("web.provider.settings.pages.ads.payFlatRate")}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
                     {timePacks.map((tp) => (
@@ -979,10 +979,10 @@ export default function ProviderAdsPage() {
                           type="button"
                           onClick={() => openTimePackReview(tp)}
                           disabled={creatingPackId !== null}
-                          className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                          className="w-full rounded-[14px] bg-background p-4 text-start transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
                         >
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
-                            Time boost
+{t("web.provider.settings.pages.ads.timeBoost")}
                           </span>
                           <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
                             {tp.duration_days}
@@ -991,8 +991,8 @@ export default function ProviderAdsPage() {
                             {tp.label?.trim()
                               ? tp.label
                               : tp.duration_days === 1
-                                ? "day in sponsored slots"
-                                : "days in sponsored slots"}
+? t("web.provider.settings.pages.ads.dayInSponsoredSlots")
+                                : t("web.provider.settings.pages.ads.daysInSponsoredSlots")}
                           </span>
                           <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
                             {fmt(Number(tp.price_zar))}
@@ -1001,7 +1001,7 @@ export default function ProviderAdsPage() {
                             <Loader2 className="h-4 w-4 animate-spin mt-2 text-emerald-600" />
                           ) : (
                             <span className="text-xs font-semibold text-emerald-600 mt-2">
-                              Tap to purchase →
+{t("web.provider.settings.pages.ads.tapToPurchase")}
                             </span>
                           )}
                         </button>
@@ -1014,13 +1014,13 @@ export default function ProviderAdsPage() {
               {packs.length > 0 && availableModels.includes("impression_pack") && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <Label className="text-base font-medium">Buy impressions</Label>
+<Label className="text-base font-medium">{t("web.provider.settings.pages.ads.buyImpressions")}</Label>
                     {defaultModel === "impression_pack" ? (
-                      <Badge variant="secondary">Recommended</Badge>
+<Badge variant="secondary">{t("web.provider.common.recommended")}</Badge>
                     ) : null}
                   </div>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Prepaid reach — delivery runs until every impression in the pack is shown.
+{t("web.provider.settings.pages.ads.prepaidReach")}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     {packs.map((pack) => (
@@ -1032,16 +1032,16 @@ export default function ProviderAdsPage() {
                           type="button"
                           onClick={() => buyPack(pack)}
                           disabled={creatingPackId !== null}
-                          className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                          className="w-full rounded-[14px] bg-background p-4 text-start transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
                         >
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">
-                            Impression pack
+{t("web.provider.settings.pages.ads.impressionPack")}
                           </span>
                           <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
                             {formatCompactNumber(pack.impressions)}
                           </span>
                           <span className="text-sm text-muted-foreground mt-0.5">
-                            sponsored impressions
+{t("web.provider.settings.pages.ads.sponsoredImpressions")}
                           </span>
                           <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
                             {fmt(Number(pack.price_zar))}
@@ -1050,7 +1050,7 @@ export default function ProviderAdsPage() {
                             <Loader2 className="h-4 w-4 animate-spin mt-2 text-violet-600" />
                           ) : (
                             <span className="text-xs font-semibold text-violet-600 mt-2">
-                              Tap to purchase →
+{t("web.provider.settings.pages.ads.tapToPurchase")}
                             </span>
                           )}
                         </button>
@@ -1058,8 +1058,7 @@ export default function ProviderAdsPage() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mb-4">
-                    Optional: select target categories below to show your ad only for those
-                    searches. Leave unchecked for all searches.
+{t("web.provider.settings.pages.ads.optionalTargetCategories")}
                   </p>
                   <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto border rounded p-2 mb-4">
                     {globalCategories.map((cat) => (
@@ -1084,32 +1083,32 @@ export default function ProviderAdsPage() {
               {cpcBudgetAvailable && packs.length > 0 && (
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2">
-                    <Label className="text-base font-medium">Or set a custom budget</Label>
+<Label className="text-base font-medium">{t("web.provider.settings.pages.ads.orSetCustomBudget")}</Label>
                     {defaultModel === "cpc_budget" ? (
-                      <Badge variant="secondary">Recommended</Badge>
+<Badge variant="secondary">{t("web.provider.common.recommended")}</Badge>
                     ) : null}
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Open-ended budget and bid per click (for advanced use).
+{t("web.provider.settings.pages.ads.openEndedBudget")}
                   </p>
                 </div>
               )}
               {cpcBudgetAvailable && (
                 <div className="flex flex-wrap items-end gap-3 p-4 border rounded-lg bg-muted/30">
                   <div>
-                    <Label>Total budget ({currencyCode})</Label>
+<Label>{t("web.provider.settings.pages.ads.totalBudget", { currency: currencyCode })}</Label>
                     <Input
                       type="number"
                       min={0}
                       step={10}
                       value={createForm.budget}
                       onChange={(e) => setCreateForm((p) => ({ ...p, budget: e.target.value }))}
-                      placeholder="500"
+                      placeholder={t("web.provider.settings.pages.ads.n500")}
                       className="w-32"
                     />
                   </div>
                   <div>
-                    <Label>Daily budget ({currencyCode}, optional)</Label>
+<Label>{t("web.provider.settings.pages.ads.dailyBudgetOptional", { currency: currencyCode })}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -1118,24 +1117,24 @@ export default function ProviderAdsPage() {
                       onChange={(e) =>
                         setCreateForm((p) => ({ ...p, daily_budget: e.target.value }))
                       }
-                      placeholder="No cap"
+                      placeholder={t("web.provider.settings.pages.ads.noCap")}
                       className="w-32"
                     />
                   </div>
                   <div>
-                    <Label>Bid per click ({currencyCode})</Label>
+<Label>{t("web.provider.settings.pages.ads.bidPerClickCurrency", { currency: currencyCode })}</Label>
                     <Input
                       type="number"
                       min={0}
                       step={0.5}
                       value={createForm.bid_cpc}
                       onChange={(e) => setCreateForm((p) => ({ ...p, bid_cpc: e.target.value }))}
-                      placeholder="2.00"
+                      placeholder={t("web.provider.settings.pages.ads.n200")}
                       className="w-28"
                     />
                   </div>
                   <div className="w-full">
-                    <Label>Target categories (optional)</Label>
+<Label>{t("web.provider.settings.pages.ads.targetCategoriesOptional")}</Label>
                     <div className="flex flex-wrap gap-2 mt-2 max-h-24 overflow-y-auto border rounded p-2">
                       {globalCategories.map((cat) => (
                         <label key={cat.id} className="flex items-center gap-2 text-sm">
@@ -1155,18 +1154,17 @@ export default function ProviderAdsPage() {
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Your ad shows for selected category searches. Leave all unchecked for all
-                      searches.
+{t("web.provider.settings.pages.ads.adShowsForSelected")}
                     </p>
                   </div>
                   <Button onClick={createDraft} disabled={creating}>
                     {creating ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Creating…
+<Loader2 className="h-4 w-4 animate-spin me-2" /> {t("web.provider.settings.pages.ads.creating")}
                       </>
                     ) : (
                       <>
-                        <Plus className="h-4 w-4 mr-2" /> New campaign (draft)
+<Plus className="h-4 w-4 me-2" /> {t("web.provider.settings.pages.ads.newCampaignDraft")}
                       </>
                     )}
                   </Button>
@@ -1178,8 +1176,8 @@ export default function ProviderAdsPage() {
           {campaigns.filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle)).length === 0 ? (
             <p className="text-muted-foreground">
               {campaigns.length === 0
-                ? "No campaigns yet. Create a draft to get started."
-                : "No active campaigns. Show past campaigns to review ended boosts."}
+                ? t("web.provider.settings.pages.ads.noCampaignsYet")
+                : t("web.provider.settings.pages.ads.noActiveCampaigns")}
             </p>
           ) : (
             <ul className="space-y-3">
@@ -1194,9 +1192,9 @@ export default function ProviderAdsPage() {
                   spent: Number(c.spent ?? 0),
                 };
                 const lifecycle = c.lifecycle;
-                const lifecycleBadge =
-                  lifecycle && LIFECYCLE_BADGE[lifecycle]
-                    ? LIFECYCLE_BADGE[lifecycle]
+                const lifecycleBadgeInfo =
+                  lifecycle && getLifecycleBadge(t)[lifecycle]
+                    ? getLifecycleBadge(t)[lifecycle]
                     : null;
                 const paymentState = c.payment_state ?? "none";
                 const freshPending = paymentState === "pending" && isFreshPendingOrder(c.latest_budget_order);
@@ -1208,17 +1206,17 @@ export default function ProviderAdsPage() {
                 const remaining =
                   c.billing_model === "time_based"
                     ? !c.end_at
-                      ? "Starts after payment"
+? t("web.provider.settings.pages.ads.startsAfterPayment")
                       : new Date(c.end_at).getTime() <= nowMs
-                        ? "Boost period ended"
-                        : `${Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000))} days remaining`
+? t("web.provider.settings.pages.ads.boostPeriodEnded")
+                        : t("web.provider.settings.pages.ads.daysRemaining", { count: Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000)) })
                     : isImpressionPackCampaign(c) && c.pack_impressions != null
                       ? Number(metrics.impressions ?? 0) >= Number(c.pack_impressions)
-                        ? "All impressions delivered"
-                        : `${formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0)))} impressions remaining`
+? t("web.provider.settings.pages.ads.allImpressionsDelivered")
+                        : t("web.provider.settings.pages.ads.impressionsRemaining", { value: formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0))) })
                       : Number(c.budget || 0) > 0 && Number(c.spent ?? 0) >= Number(c.budget || 0)
-                        ? "Budget fully used"
-                        : `${fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)))} budget remaining`;
+? t("web.provider.settings.pages.ads.budgetFullyUsed")
+                        : t("web.provider.settings.pages.ads.budgetRemaining", { amount: fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0))) });
                 return (
                   <li
                     key={c.id}
@@ -1226,24 +1224,23 @@ export default function ProviderAdsPage() {
                   >
                     <div className="space-y-1 flex-1 min-w-[16rem]">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium capitalize">{campaignModelLabel(c)}</span>
-                        {lifecycleBadge ? (
-                          <Badge variant="outline" className={lifecycleBadge.className}>
-                            {lifecycleBadge.label}
+                        <span className="font-medium capitalize">{campaignModelLabel(c, t)}</span>
+                        {lifecycleBadgeInfo ? (
+                          <Badge variant="outline" className={lifecycleBadgeInfo.className}>
+                            {lifecycleBadgeInfo.label}
                           </Badge>
                         ) : null}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {c.billing_model === "time_based"
-                          ? `${c.duration_days ?? "?"} day boost · ${fmt(Number(c.budget))} paid${c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : ""}`
+                          ? t("web.provider.settings.pages.ads.dayBoostPaid", { days: c.duration_days ?? t("web.provider.settings.pages.ads.unknownDays"), amount: fmt(Number(c.budget)) }) + (c.end_at ? ` · ${t("web.provider.settings.pages.ads.endsOn", { date: new Date(c.end_at).toLocaleDateString() })}` : "")
                           : c.pack_impressions != null
-                            ? `${c.pack_impressions} impressions · ${fmt(Number(c.budget))} paid · ${fmt(Number(c.spent))} spent`
-                            : `Total budget ${fmt(Number(c.budget))} · Spent ${fmt(Number(c.spent))}${c.daily_budget != null ? ` · Daily cap ${fmt(Number(c.daily_budget))}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ${fmt(Number(c.bid_cpc))}/click` : ""}`}
+                            ? t("web.provider.settings.pages.ads.impressionsPaidSpent", { count: c.pack_impressions, paid: fmt(Number(c.budget)), spent: fmt(Number(c.spent)) })
+                            : [t("web.provider.settings.pages.ads.totalBudgetSpent", { budget: fmt(Number(c.budget)), spent: fmt(Number(c.spent)) }), c.daily_budget != null ? t("web.provider.settings.pages.ads.dailyCapLine", { amount: fmt(Number(c.daily_budget)) }) : null, c.bid_cpc != null && c.bid_cpc > 0 ? t("web.provider.settings.pages.ads.bidLine", { amount: fmt(Number(c.bid_cpc)) }) : null].filter(Boolean).join(" · ")}
                       </p>
                       {c.targeting?.global_category_ids?.length ? (
                         <p className="text-xs text-muted-foreground">
-                          Targeting: {c.targeting.global_category_ids.length} categor
-                          {c.targeting.global_category_ids.length === 1 ? "y" : "ies"}
+{t("web.provider.settings.pages.ads.targetingCategory", { count: c.targeting.global_category_ids.length })}
                         </p>
                       ) : null}
                       <div className="max-w-sm pt-2">
@@ -1259,12 +1256,12 @@ export default function ProviderAdsPage() {
                       </div>
                       <div className="flex flex-wrap gap-2 pt-2">
                         {[
-                          ["Impr.", formatCompactNumber(metrics.impressions)],
-                          ["Reach", formatCompactNumber(metrics.reach)],
-                          ["Clicks", formatCompactNumber(metrics.clicks)],
-                          ["CTR", formatCtr(metrics.impressions, metrics.clicks)],
-                          ["Bookings", formatCompactNumber(metrics.books)],
-                          ["Spend", fmt(Number(metrics.spent ?? 0))],
+                          [t("web.provider.settings.pages.ads.impr"), formatCompactNumber(metrics.impressions)],
+                          [t("web.provider.settings.pages.ads.reach"), formatCompactNumber(metrics.reach)],
+                          [t("web.provider.settings.pages.ads.clicks"), formatCompactNumber(metrics.clicks)],
+                          [t("web.provider.settings.pages.ads.ctr"), formatCtr(metrics.impressions, metrics.clicks)],
+                          [t("web.provider.settings.pages.ads.bookings"), formatCompactNumber(metrics.books)],
+                          [t("web.provider.settings.pages.ads.spend"), fmt(Number(metrics.spent ?? 0))],
                         ].map(([label, value]) => (
                           <div
                             key={label}
@@ -1283,7 +1280,7 @@ export default function ProviderAdsPage() {
                         onClick={() => openEdit(c)}
                         disabled={updating === c.id}
                       >
-                        {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
+{canEditBudgetFields(c) ? t("web.provider.common.edit") : t("web.provider.settings.pages.ads.editTargeting")}
                       </Button>
                       {/* §Provider-paystack-audit 2026-05: surface payment_state
                       so unpaid / failed / pending drafts get explicit actions. */}
@@ -1297,11 +1294,11 @@ export default function ProviderAdsPage() {
                             {updating === c.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Banknote className="h-4 w-4 mr-1" />
+                              <Banknote className="h-4 w-4 me-1" />
                             )}
                             {paymentState === "failed"
-                              ? "Try payment again"
-                              : "Complete payment"}
+                              ? t("web.provider.settings.pages.ads.tryPaymentAgain")
+                              : t("web.provider.settings.pages.ads.completePayment")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1309,7 +1306,7 @@ export default function ProviderAdsPage() {
                             onClick={() => void cancelDraftCampaign(c)}
                             disabled={updating === c.id}
                           >
-                            Cancel campaign
+{t("web.provider.settings.pages.ads.cancelCampaign")}
                           </Button>
                         </>
                       ) : paymentState === "pending" ? (
@@ -1322,9 +1319,9 @@ export default function ProviderAdsPage() {
                             {updating === c.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Banknote className="h-4 w-4 mr-1" />
+                              <Banknote className="h-4 w-4 me-1" />
                             )}
-                            Resume payment
+{t("web.provider.settings.pages.ads.resumePayment")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1332,7 +1329,7 @@ export default function ProviderAdsPage() {
                             onClick={() => void abandonPendingOrder(c)}
                             disabled={updating === c.id}
                           >
-                            Cancel payment
+{t("web.provider.settings.pages.ads.cancelPayment")}
                           </Button>
                         </>
                       ) : canActivate ? (
@@ -1344,9 +1341,9 @@ export default function ProviderAdsPage() {
                           {updating === c.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Play className="h-4 w-4 mr-1" />
+                            <Play className="h-4 w-4 me-1" />
                           )}
-                          Activate
+{t("web.provider.settings.pages.ads.activate")}
                         </Button>
                       ) : lifecycle === "active" ? (
                         <Button
@@ -1358,9 +1355,9 @@ export default function ProviderAdsPage() {
                           {updating === c.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Pause className="h-4 w-4 mr-1" />
+                            <Pause className="h-4 w-4 me-1" />
                           )}
-                          Pause
+{t("web.provider.settings.pages.ads.pause")}
                         </Button>
                       ) : null}
                       {(paymentState === "paid" || c.latest_budget_order?.status === "paid") &&
@@ -1371,7 +1368,7 @@ export default function ProviderAdsPage() {
                           onClick={() => void viewCampaignReceipt(c)}
                           disabled={updating === c.id}
                         >
-                          View receipt
+          {t("web.provider.settings.pages.ads.viewReceipt")}
                         </Button>
                       ) : null}
                       {isPastCampaign(lifecycle) ? (
@@ -1381,7 +1378,7 @@ export default function ProviderAdsPage() {
                           onClick={() => buyAgainCampaign(c)}
                           disabled={updating === c.id}
                         >
-                          Buy again
+{t("web.provider.settings.pages.ads.buyAgain")}
                         </Button>
                       ) : null}
                       {!isPastCampaign(lifecycle) &&
@@ -1394,7 +1391,7 @@ export default function ProviderAdsPage() {
                           onClick={() => setStatus(c.id, "ended")}
                           disabled={updating === c.id}
                         >
-                          End
+{t("web.provider.settings.pages.ads.end")}
                         </Button>
                       ) : null}
                     </div>
@@ -1410,18 +1407,18 @@ export default function ProviderAdsPage() {
       <Dialog open={!!editCampaign} onOpenChange={(open) => !open && setEditCampaign(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit campaign</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.ads.editCampaign")}</DialogTitle>
             <DialogDescription>
               {canEditBudgetFields(editCampaign)
-                ? "Update budget, daily cap, bid, and targeting. Budget increases require a new paid boost."
-                : "This campaign was bought as a pack or time boost. Pricing and dates are locked by the platform model, but targeting can still be refined."}
+                ? t("web.provider.settings.pages.ads.editCampaignBudgetDesc")
+                : t("web.provider.settings.pages.ads.editCampaignLockedDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {canEditBudgetFields(editCampaign) ? (
               <>
                 <div>
-                  <Label>Total budget ({currencyCode})</Label>
+<Label>{t("web.provider.settings.pages.ads.totalBudget", { currency: currencyCode })}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1430,22 +1427,21 @@ export default function ProviderAdsPage() {
                     onChange={(e) => setForm((p) => ({ ...p, budget: e.target.value }))}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    You can lower or re-balance this budget. To add more money, buy a new boost or
-                    pack.
+{t("web.provider.settings.pages.ads.budgetLowerHint")}
                   </p>
                 </div>
                 <div>
-                  <Label>Daily budget ({currencyCode}, optional)</Label>
+<Label>{t("web.provider.settings.pages.ads.dailyBudgetOptional", { currency: currencyCode })}</Label>
                   <Input
                     type="number"
                     min={0}
                     value={form.daily_budget}
                     onChange={(e) => setForm((p) => ({ ...p, daily_budget: e.target.value }))}
-                    placeholder="No daily cap"
+                    placeholder={t("web.provider.settings.pages.ads.noDailyCap")}
                   />
                 </div>
                 <div>
-                  <Label>Bid per click ({currencyCode})</Label>
+<Label>{t("web.provider.settings.pages.ads.bidPerClickCurrency", { currency: currencyCode })}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1459,13 +1455,13 @@ export default function ProviderAdsPage() {
               <Alert>
                 <AlertDescription>
                   {isTimeBasedCampaign(editCampaign)
-                    ? "Time boosts use the duration and price configured by the marketplace. Buy another boost when you want to extend it."
-                    : "Impression packs use the fixed number of impressions and price configured by the marketplace."}
+                    ? t("web.provider.settings.pages.ads.timeBoostLocked")
+                    : t("web.provider.settings.pages.ads.impressionPackLocked")}
                 </AlertDescription>
               </Alert>
             )}
             <div>
-              <Label>Target categories</Label>
+<Label>{t("web.provider.settings.pages.ads.targetCategories")}</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {globalCategories.map((cat) => (
                   <label key={cat.id} className="flex items-center gap-2 text-sm">
@@ -1485,19 +1481,19 @@ export default function ProviderAdsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Leave all unchecked to show for all category searches.
+{t("web.provider.settings.pages.ads.leaveUncheckedAll")}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditCampaign(null)}>
-              Cancel
+<Button variant="outline" onClick={() => setEditCampaign(null)}>
+              {t("web.provider.common.cancel")}
             </Button>
             <Button onClick={updateCampaign} disabled={updating === editCampaign?.id}>
               {updating === editCampaign?.id ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : null}
-              Save
+{t("web.provider.common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1515,10 +1511,9 @@ export default function ProviderAdsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Review your boost</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.ads.reviewYourBoost")}</DialogTitle>
             <DialogDescription>
-              Confirm the details below. You&apos;re only charged after you approve the payment on the
-              secure Paystack page.
+{t("web.provider.settings.pages.ads.reviewBoostDesc")}
             </DialogDescription>
           </DialogHeader>
           {checkoutReview ? (
@@ -1577,15 +1572,13 @@ export default function ProviderAdsPage() {
               <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
                 <Megaphone className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  Your listing will appear as a <strong>Sponsored</strong> result in eligible
-                  searches while the campaign is funded and active.
+{t("web.provider.settings.pages.ads.sponsoredDisclosure")} <strong>{t("web.provider.settings.pages.ads.sponsored")}</strong> {t("web.provider.settings.pages.ads.sponsoredDisclosureRest")}
                 </span>
               </div>
               <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  You&apos;re only charged after you confirm on Paystack. Your campaign goes live once
-                  payment is verified — never before.
+{t("web.provider.settings.pages.ads.chargedAfterConfirm")}
                 </span>
               </div>
             </div>
@@ -1596,16 +1589,16 @@ export default function ProviderAdsPage() {
               onClick={() => setCheckoutReview(null)}
               disabled={checkoutSubmitting}
             >
-              Not now
+{t("web.provider.settings.pages.ads.notNow")}
             </Button>
             <Button onClick={() => void confirmCheckout()} disabled={checkoutSubmitting}>
               {checkoutSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Opening secure checkout…
+<Loader2 className="me-2 h-4 w-4 animate-spin" /> {t("web.provider.settings.pages.ads.openingSecureCheckout")}
                 </>
               ) : (
                 <>
-                  <Lock className="mr-2 h-4 w-4" /> {checkoutReview?.confirmLabel ?? "Pay securely"}
+                  <Lock className="me-2 h-4 w-4" /> {checkoutReview?.confirmLabel ?? t("web.provider.settings.pages.ads.paySecurely")}
                 </>
               )}
             </Button>

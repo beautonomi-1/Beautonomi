@@ -13,6 +13,7 @@ export default async function HomeMarketplaceHeader() {
           name: c.name,
           slug: c.slug,
           icon: c.icon || "BeautonomiAll",
+          nameI18n: c.nameI18n ?? null,
         }))
       : undefined;
 

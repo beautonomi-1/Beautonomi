@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import * as Haptics from "expo-haptics";
 import {
   View,
@@ -50,20 +51,22 @@ interface RoleForm {
   permissions: string[];
 }
 
-const AVAILABLE_PERMISSIONS: Permission[] = [
-  { key: "view_calendar", label: "View Calendar", description: "See the appointment calendar" },
-  { key: "manage_bookings", label: "Manage Bookings", description: "Create, edit, and cancel bookings" },
-  { key: "view_clients", label: "View Clients", description: "Access client list and profiles" },
-  { key: "manage_clients", label: "Manage Clients", description: "Add and edit client records" },
-  { key: "view_finances", label: "View Finances", description: "See revenue and payment data" },
-  { key: "manage_payments", label: "Manage Payments", description: "Process payments and refunds" },
-  { key: "manage_services", label: "Manage Services", description: "Add and edit services and pricing" },
-  { key: "manage_products", label: "Manage Products", description: "Manage product inventory" },
-  { key: "view_reports", label: "View Reports", description: "Access business reports" },
-  { key: "manage_staff", label: "Manage Staff", description: "Add, edit, and remove staff members" },
-  { key: "manage_settings", label: "Manage Settings", description: "Modify business settings" },
-  { key: "manage_marketing", label: "Manage Marketing", description: "Access marketing and promos" },
-];
+function useAvailablePermissions(ts: (key: string) => string): Permission[] {
+  return [
+  { key: "view_calendar", label: ts("permission_view_calendar"), description: ts("permission_view_calendar_desc") },
+  { key: "manage_bookings", label: ts("permission_manage_bookings"), description: ts("permission_manage_bookings_desc") },
+  { key: "view_clients", label: ts("permission_view_clients"), description: ts("permission_view_clients_desc") },
+  { key: "manage_clients", label: ts("permission_manage_clients"), description: ts("permission_manage_clients_desc") },
+  { key: "view_finances", label: ts("permission_view_finances"), description: ts("permission_view_finances_desc") },
+  { key: "manage_payments", label: ts("permission_manage_payments"), description: ts("permission_manage_payments_desc") },
+  { key: "manage_services", label: ts("permission_manage_services"), description: ts("permission_manage_services_desc") },
+  { key: "manage_products", label: ts("permission_manage_products"), description: ts("permission_manage_products_desc") },
+  { key: "view_reports", label: ts("permission_view_reports"), description: ts("permission_view_reports_desc") },
+  { key: "manage_staff", label: ts("permission_manage_staff"), description: ts("permission_manage_staff_desc") },
+  { key: "manage_settings", label: ts("permission_manage_settings"), description: ts("permission_manage_settings_desc") },
+  { key: "manage_marketing", label: ts("permission_manage_marketing"), description: ts("permission_manage_marketing_desc") },
+  ];
+}
 
 const EMPTY_ROLE_FORM: RoleForm = {
   name: "",
@@ -73,6 +76,13 @@ const EMPTY_ROLE_FORM: RoleForm = {
 
 /* ─── screen ─── */
 export default function TeamSettingsScreen() {
+  const { t } = useTranslation();
+  const ts = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamSettings.${key}`, opts) as string,
+    [t],
+  );
+  const AVAILABLE_PERMISSIONS = useAvailablePermissions(ts);
   useResponsive();
   const { data: roles, loading: rolesLoading, refresh: refreshRoles } =
     useApi<Role[]>("/api/provider/settings/team/roles");
@@ -140,7 +150,7 @@ export default function TeamSettingsScreen() {
 
   async function handleSaveRole() {
     if (!roleForm.name.trim()) {
-      Alert.alert("Validation Error", "Role name is required");
+      Alert.alert(ts("validationError"), ts("roleNameRequired"));
       return;
     }
 
@@ -157,19 +167,19 @@ export default function TeamSettingsScreen() {
         payload,
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(ts("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Updated", "Role updated successfully.");
+      Alert.alert(ts("updatedTitle"), ts("roleUpdated"));
     } else {
       const { error } = await createRole(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(ts("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Created", "New role added.");
+      Alert.alert(ts("createdTitle"), ts("roleCreated"));
     }
     setRoleSheetVisible(false);
     refreshRoles();
@@ -177,19 +187,19 @@ export default function TeamSettingsScreen() {
 
   function handleDeleteRole(role: Role) {
     Alert.alert(
-      "Delete Role",
-      `Are you sure you want to delete "${capitalizeFirst(role.name)}"?`,
+      ts("deleteRoleTitle"),
+      ts("deleteRoleBody", { name: capitalizeFirst(role.name) }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: ts("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: ts("delete"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const { error } = await deleteRole(
               `/api/provider/settings/team/roles/${role.id}`,
             );
-            if (error) Alert.alert("Error", error);
+            if (error) Alert.alert(ts("errorTitle"), error);
             else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               refreshRoles();
@@ -213,7 +223,7 @@ export default function TeamSettingsScreen() {
       },
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ts("errorTitle"), error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditingStaffId(null);
@@ -226,18 +236,18 @@ export default function TeamSettingsScreen() {
   if (loading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team Settings" showBack />
+        <ScreenHeader title={ts("title")} showBack />
         <LoadingState />
       </ScreenContainer>
     );
   }
 
-  const fetchError = rolesLoading ? null : (roles === null ? "Failed to load team settings" : null);
+  const fetchError = rolesLoading ? null : (roles === null ? ts("loadFailed") : null);
   if (fetchError && !roles) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team Settings" showBack />
-        <ErrorState message="Failed to load team settings" onRetry={() => { refreshRoles(); refreshComm(); }} />
+        <ScreenHeader title={ts("title")} showBack />
+        <ErrorState message={ts("loadFailed")} onRetry={() => { refreshRoles(); refreshComm(); }} />
       </ScreenContainer>
     );
   }
@@ -245,22 +255,22 @@ export default function TeamSettingsScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Team Settings"
+        title={ts("title")}
         showBack
-        subtitle="Roles, permissions & commission"
+        subtitle={ts("subtitle")}
       />
 
       {/* ─── Roles ─── */}
       <SectionHeader
-        title="Roles"
-        actionLabel="Add Role"
+        title={ts("roles")}
+        actionLabel={ts("addRole")}
         onAction={openAddRoleSheet}
       />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {(roles ?? []).length === 0 ? (
           <View style={twStyle("items-center px-4 py-8")}>
             <Text style={twStyle("text-sm text-gray-400")}>
-              No roles configured yet
+              {ts("noRoles")}
             </Text>
           </View>
         ) : (
@@ -273,7 +283,7 @@ export default function TeamSettingsScreen() {
               <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-indigo-50")}>
                 <Ionicons name="shield-outline" size={18} color="#6366f1" />
               </View>
-              <View style={twStyle("ml-3 flex-1")}>
+              <View style={twStyle("ms-3 flex-1")}>
                 <Text style={twStyle("text-sm font-medium text-gray-900")}>
                   {capitalizeFirst(role.name)}
                 </Text>
@@ -283,7 +293,7 @@ export default function TeamSettingsScreen() {
               </View>
 
               <TouchableOpacity
-                style={twStyle("mr-2 p-2")}
+                style={twStyle("me-2 p-2")}
                 onPress={() => openEditRoleSheet(role)}
                 hitSlop={8}
                 accessibilityLabel={`Edit ${role.name} role`}
@@ -306,12 +316,12 @@ export default function TeamSettingsScreen() {
       </View>
 
       {/* ─── Staff Commissions ─── */}
-      <SectionHeader title="Staff Commissions" />
+      <SectionHeader title={ts("staffCommissions")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {!staffCommissions || staffCommissions.length === 0 ? (
           <View style={twStyle("items-center px-4 py-8")}>
             <Text style={twStyle("text-sm text-gray-400")}>
-              No staff members found
+              {ts("noStaff")}
             </Text>
           </View>
         ) : (
@@ -329,14 +339,14 @@ export default function TeamSettingsScreen() {
                       {member.name}
                     </Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      {capitalizeFirst(member.role?.replace("provider_", "") || "staff")}
+                      {capitalizeFirst(member.role?.replace("provider_", "") || ts("staffRoleFallback"))}
                     </Text>
                   </View>
 
                   {isEditing ? (
                     <View style={twStyle("flex-row items-center")}>
                       <TextInput
-                        style={[twStyle("w-20 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-sm text-gray-900"), { marginRight: 8 }]}
+                        style={[twStyle("w-20 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-sm text-gray-900"), { marginEnd: 8 }]}
                         value={commEdits[member.staffId] ?? "0"}
                         onChangeText={(v) => {
                           setCommEdits((prev) => ({ ...prev, [member.staffId]: v }));
@@ -348,7 +358,7 @@ export default function TeamSettingsScreen() {
                       />
                       <Text style={twStyle("text-sm text-gray-400")}>%</Text>
                       <TouchableOpacity
-                        style={twStyle("ml-1 rounded-lg bg-indigo-600 px-3 py-2")}
+                        style={twStyle("ms-1 rounded-lg bg-indigo-600 px-3 py-2")}
                         onPress={() => handleSaveStaffCommission(member.staffId)}
                         disabled={savingComm}
                         accessibilityLabel={`Save commission for ${member.name}`}
@@ -365,7 +375,7 @@ export default function TeamSettingsScreen() {
                             [member.staffId]: (member.commissionPercentage ?? 0).toString(),
                           }));
                         }}
-                        accessibilityLabel="Cancel editing"
+                        accessibilityLabel={ts("cancelEditingA11y")}
                         accessibilityRole="button"
                       >
                         <Ionicons name="close" size={16} color="#6b7280" />
@@ -378,7 +388,7 @@ export default function TeamSettingsScreen() {
                       accessibilityLabel={`Edit commission for ${member.name}`}
                       accessibilityRole="button"
                     >
-                      <Text style={twStyle("mr-1 text-sm font-semibold text-indigo-600")}>
+                      <Text style={twStyle("me-1 text-sm font-semibold text-indigo-600")}>
                         {member.commissionPercentage ?? 0}%
                       </Text>
                       <Ionicons name="create-outline" size={14} color="#6366f1" />
@@ -389,11 +399,14 @@ export default function TeamSettingsScreen() {
                 {member.tiers && member.tiers.length > 0 && (
                   <View style={twStyle("mt-2 rounded-lg bg-gray-50 p-2")}>
                     <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>
-                      Commission Tiers
+                      {ts("commissionTiers")}
                     </Text>
                     {member.tiers.map((tier, ti) => (
                       <Text key={tier.id ?? ti} style={twStyle("text-xs text-gray-600")}>
-                        Above R{tier.minRevenue}: {tier.commissionRate}%
+                        {ts("tierAboveRevenue", {
+                          amount: tier.minRevenue,
+                          rate: tier.commissionRate,
+                        })}
                       </Text>
                     ))}
                   </View>
@@ -410,13 +423,13 @@ export default function TeamSettingsScreen() {
       <BottomSheet
         visible={roleSheetVisible}
         onClose={() => setRoleSheetVisible(false)}
-        title={editingRoleId ? "Edit Role" : "Add Role"}
+        title={editingRoleId ? ts("roleSheetEditTitle") : ts("roleSheetAddTitle")}
         snapHeight="full"
       >
         {/* Name */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Role Name <Text style={twStyle("text-red-500")}>*</Text>
+            {ts("roleNameFieldLabel")} <Text style={twStyle("text-red-500")}>*</Text>
           </Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
@@ -424,16 +437,16 @@ export default function TeamSettingsScreen() {
             onChangeText={(v) =>
               setRoleForm((prev) => ({ ...prev, name: v }))
             }
-            placeholder="e.g. Senior Stylist"
+            placeholder={ts("roleNameExamplePlaceholder")}
             placeholderTextColor="#9ca3af"
-            accessibilityLabel="Role name"
+            accessibilityLabel={ts("roleNameA11y")}
           />
         </View>
 
         {/* Description */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {ts("descriptionLabel")}
           </Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
@@ -441,16 +454,16 @@ export default function TeamSettingsScreen() {
             onChangeText={(v) =>
               setRoleForm((prev) => ({ ...prev, description: v }))
             }
-            placeholder="Role description (optional)"
+            placeholder={ts("roleDescInputPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
-            accessibilityLabel="Role description"
+            accessibilityLabel={ts("roleDescA11y")}
           />
         </View>
 
         {/* Permissions */}
         <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>
-          Permissions
+          {ts("permissionsSection")}
         </Text>
         {AVAILABLE_PERMISSIONS.map((perm) => {
           const checked = roleForm.permissions.includes(perm.key);
@@ -459,11 +472,14 @@ export default function TeamSettingsScreen() {
               key={perm.key}
               style={twStyle("mb-2 flex-row items-center rounded-xl bg-gray-50 px-4 py-3")}
               onPress={() => togglePermission(perm.key)}
-              accessibilityLabel={`${perm.label} permission ${checked ? "enabled" : "disabled"}`}
+              accessibilityLabel={ts("permissionA11y", {
+                label: perm.label,
+                state: checked ? ts("permissionEnabled") : ts("permissionDisabled"),
+              })}
               accessibilityRole="checkbox"
             >
               <View
-                style={twStyle(`mr-3 h-5 w-5 items-center justify-center rounded ${checked ? "bg-indigo-600" : "border border-gray-300 bg-white"}`)}
+                style={twStyle(`me-3 h-5 w-5 items-center justify-center rounded ${checked ? "bg-indigo-600" : "border border-gray-300 bg-white"}`)}
               >
                 {checked && (
                   <Ionicons name="checkmark" size={14} color="#fff" />
@@ -487,10 +503,10 @@ export default function TeamSettingsScreen() {
           <ActionButton
             label={
               isSavingRole
-                ? "Saving…"
+                ? ts("saving")
                 : editingRoleId
-                  ? "Update Role"
-                  : "Add Role"
+                  ? ts("updateRoleButton")
+                  : ts("addRoleButton")
             }
             onPress={handleSaveRole}
             loading={isSavingRole}

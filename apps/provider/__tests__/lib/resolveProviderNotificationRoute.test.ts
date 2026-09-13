@@ -55,6 +55,23 @@ describe("resolveProviderNotificationRoute", () => {
     });
   });
 
+  it("routes provider_closeout_reminder to the close-out queue", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      template_key: "provider_closeout_reminder",
+      action_url: "/provider/bookings?filter=close_out",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/bookings?status=close_out");
+  });
+
+  it("routes close-out status query without template key", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      action_url: "/provider/bookings?status=close_out",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/bookings?status=close_out");
+  });
+
   it("returns false for unknown types", () => {
     const ok = applyProviderNotificationRoute(router, { type: "unknown_event_type" });
     expect(ok).toBe(false);

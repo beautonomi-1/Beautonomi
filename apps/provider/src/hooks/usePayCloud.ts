@@ -27,6 +27,16 @@ function isPaycloudPlatformSessionDisabled(): boolean {
   return true;
 }
 
+/** Session gate after API returns PAYCLOUD_DISABLED_BY_PLATFORM. */
+export function usePaycloudPlatformSessionDisabled(): boolean {
+  ensureAppStatePaycloudRecovery();
+  return useSyncExternalStore(
+    subscribeSettings,
+    () => isPaycloudPlatformSessionDisabled(),
+    () => isPaycloudPlatformSessionDisabled(),
+  );
+}
+
 function notePaycloudPlatformDisabled(code: string | undefined): void {
   if (code === PAYCLOUD_PLATFORM_DISABLED_CODE) {
     paycloudPlatformDisabledUntil = Date.now() + PAYCLOUD_SESSION_DISABLE_TTL_MS;
@@ -54,12 +64,11 @@ function ensureAppStatePaycloudRecovery(): void {
 
 function usePayCloudPlatformAvailability(): { ready: boolean; disabled: boolean } {
   ensureAppStatePaycloudRecovery();
-  const { bundle, isLoading, error } = useConfigBundle();
-  const flag = bundle?.flags?.[PAYCLOUD_PLATFORM_FLAG_KEY];
-  const flagDisabled = !isLoading && !error && flag != null && flag.enabled !== true;
+  const { isLoading } = useConfigBundle();
+  const sessionDisabled = usePaycloudPlatformSessionDisabled();
   return {
     ready: !isLoading,
-    disabled: isPaycloudPlatformSessionDisabled() || flagDisabled,
+    disabled: sessionDisabled,
   };
 }
 

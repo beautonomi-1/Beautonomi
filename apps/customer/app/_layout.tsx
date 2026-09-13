@@ -19,7 +19,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
-import { i18n } from "@beautonomi/i18n";
+import { i18n, useTranslation } from "@beautonomi/i18n";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
 import { AttTrackingBootstrap } from "@/components/AttTrackingBootstrap";
 import {
@@ -65,23 +65,24 @@ function SplashController() {
 }
 
 function ForceUpdateGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const { updateRequired, openUpdate } = useForceUpdate();
   if (updateRequired) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", padding: 24 }}>
         <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", textAlign: "center" }}>
-          Update required
+          {t("customer.mobile.screens.appUpdate.title")}
         </Text>
         <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, color: "#4B5563", textAlign: "center" }}>
-          A newer version of Beautonomi is required to keep bookings, payments, and account features working correctly.
+          {t("customer.mobile.screens.appUpdate.body")}
         </Text>
         <TouchableOpacity
           onPress={openUpdate}
           accessibilityRole="button"
-          accessibilityLabel="Update Beautonomi now"
+          accessibilityLabel={t("customer.mobile.screens.appUpdate.ctaA11y")}
           style={{ marginTop: 24, minHeight: 48, borderRadius: 14, backgroundColor: "#111827", paddingHorizontal: 28, paddingVertical: 14 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Update now</Text>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{t("customer.mobile.screens.appUpdate.cta")}</Text>
         </TouchableOpacity>
       </View>
     );

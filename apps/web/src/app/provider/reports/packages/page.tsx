@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
@@ -42,20 +43,25 @@ type PackageOverviewData = {
   packages: PackageOverviewRow[];
 };
 
-const PERIODS: Array<{ value: Period; label: string }> = [
-  { value: "month", label: "Month" },
-  { value: "quarter", label: "Quarter" },
-  { value: "year", label: "Year" },
-  { value: "all", label: "All time" },
-];
+function periodOptions(t: (k: string) => string): Array<{ value: Period; label: string }> {
+  return [
+    { value: "month", label: t("web.provider.common.dateRange.month") },
+    { value: "quarter", label: t("web.provider.reports.pages.packages.quarter") },
+    { value: "year", label: t("web.provider.reports.pages.packages.year") },
+    { value: "all", label: t("web.provider.reports.pages.packages.allTime") },
+  ];
+}
 
-const BASIS_LABELS: Record<string, string> = {
-  catalog: "Catalog",
-  aggregates: "Totals",
-  revenue: "Value",
-};
+function basisLabels(t: (k: string) => string): Record<string, string> {
+  return {
+    catalog: t("web.provider.reports.pages.packages.catalog"),
+    aggregates: t("web.provider.reports.pages.packages.totals"),
+    revenue: t("web.provider.reports.pages.packages.value"),
+  };
+}
 
 export default function PackageOverviewReport() {
+  const { t } = useTranslation();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode, format: formatMoney } = useReportCurrency();
   const [period, setPeriod] = useState<Period>("month");
@@ -78,7 +84,7 @@ export default function PackageOverviewReport() {
         );
         if (!cancelled) setData(res.data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load packages overview");
+        if (!cancelled) setError(err instanceof Error ? err.message : t("web.provider.reports.pages.packages.failedToLoad"));
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -99,10 +105,10 @@ export default function PackageOverviewReport() {
     if (!data) return;
     exportToCSV(
       rows.map((pkg) => ({
-        Package: pkg.name,
-        Bookings: pkg.total_sold,
-        Revenue: pkg.total_revenue,
-        "Services in bundle": pkg.services_included,
+        [t("web.provider.reports.pages.packages.package")]: pkg.name,
+        [t("web.provider.sidebar.items.bookings")]: pkg.total_sold,
+        [t("web.provider.pages.team/totals.revenue")]: pkg.total_revenue,
+        [t("web.provider.reports.pages.packages.csvServices")]: pkg.services_included,
       })),
       `packages-overview-${period}`,
     );
@@ -112,10 +118,10 @@ export default function PackageOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Packages overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages.title") },
         ]}
       >
         <ReportSkeleton />
@@ -127,15 +133,15 @@ export default function PackageOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Packages overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Packages overview" />
-          <ReportSubscriptionRequired feature="Packages overview" />
+          <PageHeader title={t("web.provider.reports.pages.packages.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.packages.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -145,13 +151,13 @@ export default function PackageOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Packages overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages.title") },
         ]}
       >
-        <EmptyReportState title="Failed to load report" description={error || "Unable to load package overview data"} />
+        <EmptyReportState title={t("web.provider.common.failedToLoadReport")} description={error || t("web.provider.reports.pages.packages.unableToLoad")} />
       </SettingsDetailLayout>
     );
   }
@@ -159,33 +165,33 @@ export default function PackageOverviewReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Packages overview" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.packages.title") },
       ]}
     >
       <PageHeader
-        title="Packages overview"
-        subtitle="Active catalog bundles with booked counts and package line value in the selected period — same revenue rules as Package sales."
+        title={t("web.provider.reports.pages.packages.title")}
+        subtitle={t("web.provider.reports.pages.packages.subtitle")}
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/provider/reports/packages/sales">
-              <Button variant="outline">Package sales</Button>
+              <Button variant="outline">{t("web.provider.reports.pages.packages.packageSales")}</Button>
             </Link>
             <Link href="/provider/reports/packages/usage">
-              <Button variant="outline">Package usage</Button>
+              <Button variant="outline">{t("web.provider.reports.pages.packages.packageUsage")}</Button>
             </Link>
             <Button variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              <Download className="me-2 h-4 w-4" />
+              {t("web.provider.common.exportCsv")}
             </Button>
           </div>
         }
       />
 
       <div className="mb-6 flex flex-wrap gap-2">
-        {PERIODS.map((option) => (
+        {periodOptions(t).map((option) => (
           <Button
             key={option.value}
             type="button"
@@ -200,13 +206,13 @@ export default function PackageOverviewReport() {
 
       {data.reportBasis ? (
         <div className="mb-6 rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-          <p className="font-medium text-sky-950">What this report counts</p>
+          <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
           <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-            {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+{data.timezone ? <span>{t("web.provider.reports.common.timezoneDot", { tz: data.timezone })}</span> : null}
             {data.fromYmd && data.toYmd ? (
               <span>
-                Window · {data.fromYmd} – {data.toYmd}
+                {t("web.provider.reports.pages.packages.window", { from: data.fromYmd, to: data.toYmd })}
               </span>
             ) : null}
           </div>
@@ -216,12 +222,12 @@ export default function PackageOverviewReport() {
       {basisEntries.length > 0 ? (
         <Card className="mb-6 border-violet-100 bg-violet-50/40 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+            <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-violet-950/95">
             {basisEntries.map(([k, v]) => (
               <p key={k}>
-                <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                <span className="font-medium">{basisLabels(t)[k] ?? k} · </span>
                 {v}
               </p>
             ))}
@@ -232,34 +238,34 @@ export default function PackageOverviewReport() {
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card className="border-gray-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Catalog packages</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("web.provider.reports.pages.packages.catalogPackages")}</CardTitle>
             <Layers className="h-4 w-4 text-cyan-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{data.stats.total_packages}</div>
-            <p className="text-xs text-muted-foreground leading-snug">Active service_packages definitions</p>
+            <p className="text-xs text-muted-foreground leading-snug">{t("web.provider.reports.pages.packages.catalogHint")}</p>
           </CardContent>
         </Card>
         <Card className="border-gray-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Bookings in window</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("web.provider.reports.pages.packages.bookingsInWindow")}</CardTitle>
             <Package className="h-4 w-4 text-cyan-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{data.stats.total_sold}</div>
             <p className="text-xs text-muted-foreground leading-snug">
-              Qualifying package bookings + group events (scheduled_at in period)
+              {t("web.provider.reports.pages.packages.bookingsHint")}
             </p>
           </CardContent>
         </Card>
         <Card className="border-gray-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Booked package value</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("web.provider.reports.pages.packages.bookedValue")}</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{formatMoney(data.stats.total_revenue)}</div>
-            <p className="text-xs text-muted-foreground leading-snug">packageReportBookedValue — excludes arbitrary booking.total_amount padding</p>
+            <p className="text-xs text-muted-foreground leading-snug">{t("web.provider.reports.pages.packages.bookedValueHint")}</p>
           </CardContent>
         </Card>
       </div>
@@ -268,27 +274,27 @@ export default function PackageOverviewReport() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <BarChart3 className="h-5 w-5" />
-            By catalog package
+            {t("web.provider.reports.pages.packages.byCatalog")}
           </CardTitle>
           <p className="text-sm font-normal text-muted-foreground mt-1">
-            Every active bundle is listed; zeros mean no matching bookings in the period.
+            {t("web.provider.reports.pages.packages.byCatalogHint")}
           </p>
         </CardHeader>
         <CardContent>
           {rows.length === 0 ? (
             <EmptyReportState
-              title="No catalog packages"
-              description="Create active service packages to see them here."
+              title={t("web.provider.reports.pages.packages.noCatalog")}
+              description={t("web.provider.reports.pages.packages.noCatalogDesc")}
             />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-3 font-medium">Package</th>
-                    <th className="pb-3 font-medium">Bundle</th>
-                    <th className="pb-3 text-right font-medium">Bookings</th>
-                    <th className="pb-3 text-right font-medium">Value</th>
+                  <tr className="border-b text-start text-muted-foreground">
+                    <th className="pb-3 font-medium">{t("web.provider.reports.pages.packages.package")}</th>
+                    <th className="pb-3 font-medium">{t("web.provider.reports.pages.packages.bundle")}</th>
+                    <th className="pb-3 text-end font-medium">{t("web.provider.sidebar.items.bookings")}</th>
+                    <th className="pb-3 text-end font-medium">{t("web.provider.reports.pages.packages.value")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -300,18 +306,18 @@ export default function PackageOverviewReport() {
                       </td>
                       <td className="py-4">
                         <Badge variant="secondary">
-                          {pkg.services_included} item{pkg.services_included === 1 ? "" : "s"}
+                          {t("web.provider.reports.pages.packages.items", { count: pkg.services_included })}
                         </Badge>
                       </td>
-                      <td className="py-4 text-right tabular-nums">{pkg.total_sold}</td>
-                      <td className="py-4 text-right tabular-nums font-medium">{formatMoney(pkg.total_revenue)}</td>
+                      <td className="py-4 text-end tabular-nums">{pkg.total_sold}</td>
+                      <td className="py-4 text-end tabular-nums font-medium">{formatMoney(pkg.total_revenue)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">Currency: {currencyCode}.</p>
+          <p className="mt-4 text-xs text-muted-foreground">{t("web.provider.reports.pages.packages.currency", { code: currencyCode })}</p>
         </CardContent>
       </Card>
     </SettingsDetailLayout>

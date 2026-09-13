@@ -17,6 +17,7 @@ import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type CreatePaymentMethod =
   | "pay_later"
@@ -56,6 +57,7 @@ export function CreatePaymentSection({
   showDeposit = true,
   totalAmount = 0,
 }: CreatePaymentSectionProps) {
+  const { t } = useTranslation();
   const yocoEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_YOCO);
   const paycloudEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD);
   const paystackEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL);
@@ -65,26 +67,27 @@ export function CreatePaymentSection({
 
   const methods: MethodChip[] = useMemo(() => {
     const list: MethodChip[] = [
-      { id: "pay_later", label: "Pay later", icon: Clock },
-      { id: "cash", label: "Cash", icon: Banknote },
+      { id: "pay_later", label: t("web.provider.bookings.createPayment.payLater"), icon: Clock },
+      { id: "cash", label: t("web.provider.bookings.createPayment.cash"), icon: Banknote },
     ];
     if (manualCardEnabled) {
       list.push({ id: "card", label: manualCardCollectOptionLabel(), icon: CreditCard });
     }
     if (paymentLinkEnabled) {
-      list.push({ id: "payment_link", label: "Payment link", icon: Link2 });
+      list.push({ id: "payment_link", label: t("web.provider.bookings.createPayment.paymentLink"), icon: Link2 });
     }
     if (yocoEnabled) {
-      list.push({ id: "yoco_pos", label: "Yoco", icon: Smartphone });
+      list.push({ id: "yoco_pos", label: t("web.provider.bookings.createPayment.yoco"), icon: Smartphone });
     }
     if (paycloudEnabled && paycloudReady) {
-      list.push({ id: "paycloud_terminal", label: "PayCloud", icon: CreditCard });
+      list.push({ id: "paycloud_terminal", label: t("web.provider.bookings.createPayment.paycloud"), icon: CreditCard });
     }
     if (paystackEnabled) {
-      list.push({ id: "paystack_terminal", label: "Paystack", icon: Wallet });
+      list.push({ id: "paystack_terminal", label: t("web.provider.bookings.createPayment.paystack"), icon: Wallet });
     }
     return list;
   }, [
+    t,
     manualCardEnabled,
     paymentLinkEnabled,
     yocoEnabled,
@@ -106,10 +109,10 @@ export function CreatePaymentSection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">Payment & notifications</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.createPayment.sectionTitle")}</BookingSectionLabel>
       <div className="space-y-4">
         <div>
-          <p className="text-xs font-medium text-gray-600 mb-2">Payment method</p>
+          <p className="text-xs font-medium text-gray-600 mb-2">{t("web.provider.bookings.createPayment.paymentMethod")}</p>
           <div className="flex flex-wrap gap-2">
             {methods.map(({ id, label, icon: Icon }) => {
               const active = paymentMethod === id;
@@ -135,19 +138,19 @@ export function CreatePaymentSection({
 
         {paycloudEnabled && !paycloudReady ? (
           <p className="text-xs text-amber-800">
-            PayCloud is enabled but not ready.{" "}
+            {t("web.provider.bookings.createPayment.paycloudNotReady")}{" "}
             <Link
               href={blockers[0]?.href ?? "/provider/settings/sales/card-machines"}
               className="font-semibold underline"
             >
-              Set up card machine
+              {t("web.provider.bookings.createPayment.setUpCardMachine")}
             </Link>
           </p>
         ) : null}
 
         {showDeposit ? (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-600">Amount to collect now</p>
+            <p className="text-xs font-medium text-gray-600">{t("web.provider.bookings.createPayment.amountToCollect")}</p>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -159,7 +162,7 @@ export function CreatePaymentSection({
                     : "border-gray-200 bg-white text-gray-700",
                 )}
               >
-                Full payment
+                {t("web.provider.bookings.createPayment.fullPayment")}
               </button>
               <button
                 type="button"
@@ -171,19 +174,21 @@ export function CreatePaymentSection({
                     : "border-gray-200 bg-white text-gray-700",
                 )}
               >
-                Deposit ({depositPercentage}%)
+                {t("web.provider.bookings.createPayment.depositPct", { percent: depositPercentage })}
               </button>
             </div>
             {collectDeposit && depositDue > 0 ? (
-              <p className="text-xs text-gray-500">Deposit due now: {depositDue.toFixed(2)}</p>
+              <p className="text-xs text-gray-500">
+                {t("web.provider.bookings.createPayment.depositDue", { amount: depositDue.toFixed(2) })}
+              </p>
             ) : null}
           </div>
         ) : null}
 
         <div className="flex items-center justify-between gap-3 pt-1 border-t">
           <div>
-            <p className="text-sm font-medium text-gray-900">Notify client</p>
-            <p className="text-xs text-gray-500">Send booking confirmation</p>
+            <p className="text-sm font-medium text-gray-900">{t("web.provider.bookings.createPayment.notifyClient")}</p>
+            <p className="text-xs text-gray-500">{t("web.provider.bookings.createPayment.notifyHint")}</p>
           </div>
           <Switch checked={sendNotification} onCheckedChange={onSendNotificationChange} />
         </div>

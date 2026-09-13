@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, Alert, DeviceEventEmitter } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -25,6 +26,7 @@ import {
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type SetupStep = {
   id: string;
@@ -46,6 +48,12 @@ type SetupStatus = {
  * Completion % and counts are based on required steps only.
  */
 export default function OnboardingHubScreen() {
+  const { t } = useTranslation();
+  const oh = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.onboardingHub.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { signOut, user } = useAuth();
   const { provider } = useProvider();
@@ -98,12 +106,12 @@ export default function OnboardingHubScreen() {
   const confirmSignOut = () => {
     hapticLight();
     Alert.alert(
-      "Sign out?",
-      "You can finish setup later. Your progress is saved to your account.",
+      oh("signOutTitle"),
+      oh("signOutBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: oh("cancel"), style: "cancel" },
         {
-          text: "Sign out",
+          text: oh("signOut"),
           style: "destructive",
           onPress: async () => {
             await signOut();
@@ -166,13 +174,15 @@ export default function OnboardingHubScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
-        <ScreenHeader title="Set up" showBack={false} />
+        <ScreenHeader title={oh("title")} showBack={false} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );
   }
+
+  const previewKeys = ["previewBusinessDetails", "previewServices", "previewPayment"] as const;
 
   return (
     <ScreenContainer noPadding edges={["top"]} reserveTabBarSpace={false}>
@@ -187,16 +197,16 @@ export default function OnboardingHubScreen() {
           }}
         >
           <ScreenHeader
-            title="Set up"
+            title={oh("title")}
             showBack={false}
             subtitle={
               isComplete
                 ? isPendingApproval
-                  ? "Setup complete — under review"
-                  : "Everything looks good"
+                  ? oh("subtitleCompleteReview")
+                  : oh("subtitleComplete")
                 : hasSetupSteps
-                  ? "A few steps to go live"
-                  : "Start your provider profile"
+                  ? oh("subtitleInProgress")
+                  : oh("subtitleStart")
             }
             rightAction={
               isComplete ? (
@@ -206,11 +216,11 @@ export default function OnboardingHubScreen() {
                     "flex-row items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm",
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel="Go to dashboard"
+                  accessibilityLabel={oh("goToDashboardA11y")}
                   activeOpacity={0.85}
                 >
                   <Ionicons name="home-outline" size={14} color="#334155" />
-                  <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>Dashboard</Text>
+                  <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>{oh("dashboard")}</Text>
                 </TouchableOpacity>
               ) : undefined
             }
@@ -241,40 +251,40 @@ export default function OnboardingHubScreen() {
               <Text style={twStyle("text-[12px] font-semibold text-primary")}>
                 {isComplete
                   ? isSuspended
-                    ? "Account suspended"
+                    ? oh("badgeSuspended")
                     : isPendingApproval
-                      ? "Under review"
-                      : "Ready to work"
+                      ? oh("badgeUnderReview")
+                      : oh("badgeReady")
                   : isSuspended
-                    ? "Account suspended"
-                    : "Guided setup · about 10–15 min"}
+                    ? oh("badgeSuspended")
+                    : oh("badgeGuided")}
               </Text>
             </View>
             <Text style={twStyle("text-center text-[24px] font-bold text-slate-900")}>
               {isComplete
                 ? isSuspended
-                  ? "Account suspended"
+                  ? oh("headingSuspended")
                   : isPendingApproval
-                    ? "Setup complete"
-                    : "You're all set"
+                    ? oh("headingComplete")
+                    : oh("headingAllSet")
                 : isSuspended
-                  ? "Account suspended"
-                  : "Welcome to Beautonomi"}
+                  ? oh("headingSuspended")
+                  : oh("headingWelcome")}
             </Text>
             <Text style={twStyle("mt-2 max-w-sm text-center text-[15px] leading-relaxed text-slate-500")}>
               {isComplete
                 ? isSuspended
-                  ? "Your provider account is suspended. Contact support to restore access before accepting new bookings."
+                  ? oh("bodyCompleteSuspended")
                   : isPendingApproval
-                    ? "Your profile is under review. You can explore the app and finish optional setup while we approve your listing."
-                    : "Your profile is live. Accept bookings and manage your business from the app."
+                    ? oh("bodyCompleteReview")
+                    : oh("bodyCompleteLive")
                 : isSuspended
-                  ? "Your provider account is suspended. Contact support to restore access."
+                  ? oh("bodySuspended")
                 : !hasSetupSteps
-                  ? "Create your business profile first. You can leave setup any time and come back when you're ready."
+                  ? oh("bodyNoSteps")
                 : remaining > 0
-                  ? `${remaining} required step${remaining === 1 ? "" : "s"} left before you can go fully live.`
-                  : "Complete the required steps to start accepting bookings."}
+                  ? oh("remainingSteps", { count: remaining })
+                  : oh("bodyCompleteRequired")}
             </Text>
           </View>
         </LinearGradient>
@@ -293,18 +303,18 @@ export default function OnboardingHubScreen() {
                 </View>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-[16px] font-bold text-slate-900")}>
-                    Set up your business profile
+                    {oh("setupProfileTitle")}
                   </Text>
                   <Text style={twStyle("mt-1 text-[13px] leading-relaxed text-slate-500")}>
-                    We will guide you through the basics before showing provider tools.
+                    {oh("setupProfileBody")}
                   </Text>
                 </View>
               </View>
               <View style={twStyle("gap-3")}>
-                {["Business details", "Services and availability", "Payment and payout setup"].map((label) => (
-                  <View key={label} style={twStyle("flex-row items-center gap-3")}>
+                {previewKeys.map((key) => (
+                  <View key={key} style={twStyle("flex-row items-center gap-3")}>
                     <Ionicons name="checkmark-circle-outline" size={18} color={Colors.primary} />
-                    <Text style={twStyle("text-[14px] font-medium text-slate-700")}>{label}</Text>
+                    <Text style={twStyle("text-[14px] font-medium text-slate-700")}>{oh(key)}</Text>
                   </View>
                 ))}
               </View>
@@ -320,7 +330,7 @@ export default function OnboardingHubScreen() {
             >
               <View style={twStyle("mb-3 flex-row items-center justify-between")}>
                 <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>
-                  {completedRequired} of {requiredSteps.length} required
+                  {oh("requiredProgress", { completed: completedRequired, total: requiredSteps.length })}
                 </Text>
                 <View style={twStyle("rounded-full bg-primary/10 px-3 py-1")}>
                   <Text style={twStyle("text-[12px] font-bold text-primary")}>{pct}%</Text>
@@ -353,7 +363,7 @@ export default function OnboardingHubScreen() {
                 <Text
                   style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-500")}
                 >
-                  Required to go live
+                  {oh("requiredToGoLive")}
                 </Text>
               </View>
               {/* §provider-onboarding-2026-05: render ALL required steps with
@@ -369,7 +379,7 @@ export default function OnboardingHubScreen() {
                     `flex-row items-center gap-4 py-3.5 ${idx === 0 ? "" : "border-t border-slate-50"}`,
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel={`${s.completed ? "Completed" : "Open"} ${s.title}`}
+                  accessibilityLabel={s.completed ? oh("stepCompletedA11y", { title: s.title }) : oh("stepOpenA11y", { title: s.title })}
                   accessibilityState={{ selected: s.completed }}
                 >
                   <View
@@ -394,7 +404,7 @@ export default function OnboardingHubScreen() {
                   >
                     {s.title}
                   </Text>
-                  <Ionicons
+                  <DirectionalIcon
                     name="chevron-forward"
                     size={20}
                     color={s.completed ? "#cbd5e1" : "#94a3b8"}
@@ -416,7 +426,7 @@ export default function OnboardingHubScreen() {
                 <Text
                   style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-500")}
                 >
-                  Polish your profile
+                  {oh("polishProfile")}
                 </Text>
               </View>
               {optionalPending.slice(0, 4).map((s, idx) => (
@@ -428,7 +438,7 @@ export default function OnboardingHubScreen() {
                     `flex-row items-center gap-4 py-3.5 ${idx === 0 ? "" : "border-t border-slate-50"}`,
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${s.title}`}
+                  accessibilityLabel={oh("stepOpenA11y", { title: s.title })}
                 >
                   <View
                     style={twStyle(
@@ -438,7 +448,7 @@ export default function OnboardingHubScreen() {
                     <Ionicons name="add" size={18} color={Colors.primary} />
                   </View>
                   <Text style={twStyle("flex-1 text-[16px] font-medium text-slate-800")}>{s.title}</Text>
-                  <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                  <DirectionalIcon name="chevron-forward" size={18} color="#cbd5e1" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -452,19 +462,19 @@ export default function OnboardingHubScreen() {
                 Shadows.card,
               ]}
               activeOpacity={0.88}
-              accessibilityLabel={hasSetupSteps ? "Continue setup wizard" : "Start full setup wizard"}
+              accessibilityLabel={hasSetupSteps ? oh("continueSetupA11y") : oh("startSetupA11y")}
               accessibilityRole="button"
             >
               <View style={twStyle("flex-row items-center gap-2")}>
                 <Ionicons name="rocket-outline" size={20} color="#fff" />
                 <Text style={twStyle("text-[16px] font-semibold text-white")}>
-                  {hasSetupSteps ? "Continue setup" : "Start business setup"}
+                  {hasSetupSteps ? oh("continueSetup") : oh("startSetup")}
                 </Text>
               </View>
               <Text style={twStyle("mt-1 px-6 text-center text-[13px] text-slate-300")}>
                 {hasSetupSteps
-                  ? "Jump to your next incomplete task"
-                  : "Walks you through every step end-to-end"}
+                  ? oh("continueHint")
+                  : oh("startHint")}
               </Text>
             </TouchableOpacity>
           )}
@@ -474,11 +484,11 @@ export default function OnboardingHubScreen() {
               onPress={openGuidedWizard}
               style={twStyle("mb-4 items-center py-2")}
               activeOpacity={0.85}
-              accessibilityLabel="Open full guided setup wizard"
+              accessibilityLabel={oh("guidedWizardA11y")}
               accessibilityRole="button"
             >
               <Text style={twStyle("text-[14px] font-medium text-primary")}>
-                Or use the full guided wizard
+                {oh("guidedWizard")}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -490,10 +500,10 @@ export default function OnboardingHubScreen() {
                 "mb-4 items-center rounded-full border-2 border-slate-200 bg-white py-4",
               )}
               activeOpacity={0.85}
-              accessibilityLabel="Go to dashboard"
+              accessibilityLabel={oh("goToDashboardA11y")}
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>Go to dashboard</Text>
+              <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>{oh("goToDashboard")}</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -504,11 +514,11 @@ export default function OnboardingHubScreen() {
                 "items-center rounded-full border-2 border-slate-200 bg-white py-4",
               )}
               activeOpacity={0.85}
-              accessibilityLabel="Sign out"
+              accessibilityLabel={oh("signOutA11y")}
               accessibilityRole="button"
             >
               <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
-                Sign out
+                {oh("signOut")}
               </Text>
             </TouchableOpacity>
           )}
@@ -518,10 +528,10 @@ export default function OnboardingHubScreen() {
               onPress={goToApp}
               style={twStyle("items-center rounded-full bg-primary py-4.5 shadow-sm")}
               activeOpacity={0.88}
-              accessibilityLabel="Go to dashboard"
+              accessibilityLabel={oh("goToDashboardA11y")}
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-[16px] font-semibold text-white")}>Go to dashboard</Text>
+              <Text style={twStyle("text-[16px] font-semibold text-white")}>{oh("goToDashboard")}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

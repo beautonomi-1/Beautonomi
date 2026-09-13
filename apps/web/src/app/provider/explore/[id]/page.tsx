@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   Loader2,
   ChevronLeft,
@@ -26,17 +27,17 @@ function isVideoUrl(url: string): boolean {
   return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
 }
 
-function formatCommentTime(iso: string): string {
+function formatCommentTime(iso: string, t: (key: string, options?: { count: number }) => string): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffM = Math.floor(diffMs / 60000);
   const diffH = Math.floor(diffMs / 3600000);
   const diffD = Math.floor(diffMs / 86400000);
-  if (diffM < 1) return "Just now";
-  if (diffM < 60) return `${diffM}m`;
-  if (diffH < 24) return `${diffH}h`;
-  if (diffD < 7) return `${diffD}d`;
+  if (diffM < 1) return t("web.provider.pages.explore/[id].justNow");
+  if (diffM < 60) return t("web.provider.pages.explore/[id].minutesShort", { count: diffM });
+  if (diffH < 24) return t("web.provider.pages.explore/[id].hoursShort", { count: diffH });
+  if (diffD < 7) return t("web.provider.pages.explore/[id].daysShort", { count: diffD });
   return d.toLocaleDateString();
 }
 
@@ -58,6 +59,7 @@ function CommentBody({ body }: { body: string }) {
 }
 
 export default function ProviderExploreViewPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
@@ -130,7 +132,7 @@ export default function ProviderExploreViewPage() {
       setCommentCount((c) => c + 1);
       await fetchComments(0, false);
     } catch {
-      toast.error("Could not post comment");
+      toast.error(t("web.provider.pages.explore/[id].couldNotPost"));
     } finally {
       setCommentSubmitting(false);
     }
@@ -142,7 +144,7 @@ export default function ProviderExploreViewPage() {
       setCommentCount((c) => Math.max(0, c - 1));
       setComments((prev) => prev.filter((c) => c.id !== commentId));
     } catch {
-      toast.error("Could not delete comment");
+      toast.error(t("web.provider.pages.explore/[id].couldNotDelete"));
     }
   };
 
@@ -168,9 +170,9 @@ export default function ProviderExploreViewPage() {
         showLoading={false}
       >
         <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-          <p className="text-gray-600 mb-4">Post not found</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.pages.explore/[id].postNotFound")}</p>
           <Button variant="outline" onClick={() => router.push("/provider/explore")}>
-            Back to Explore
+            {t("web.provider.pages.explore/[id].backToExplore")}
           </Button>
         </div>
       </RoleGuard>
@@ -187,13 +189,13 @@ export default function ProviderExploreViewPage() {
     >
       <div className="min-h-screen bg-white">
         <PageHeader
-          title="View post"
-          subtitle={post.caption || "Explore post"}
+          title={t("web.provider.pages.explore/[id].viewPost")}
+          subtitle={post.caption || t("web.provider.pages.explore/[id].explorePost")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Explore", href: "/provider/explore" },
-            { label: "View post" },
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.topbar.mobileTitles.explore"), href: "/provider/explore" },
+            { label: t("web.provider.pages.explore/[id].viewPost") },
           ]}
         />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-12">
@@ -203,7 +205,7 @@ export default function ProviderExploreViewPage() {
               className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
             >
               <ChevronLeft className="w-5 h-5" />
-              Back
+              {t("web.provider.common.back")}
             </Link>
           </div>
 
@@ -220,7 +222,7 @@ export default function ProviderExploreViewPage() {
                 ) : (
                   <Image
                     src={primaryMedia}
-                    alt={post.caption || "Post"}
+                    alt={post.caption || t("web.provider.pages.explore/[id].postAlt")}
                     fill
                     className="object-contain"
                     sizes="(max-width: 768px) 100vw, 672px"
@@ -228,13 +230,13 @@ export default function ProviderExploreViewPage() {
                 )
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400">
-                  No media
+                  {t("web.provider.pages.explore/[id].noMedia")}
                 </div>
               )}
             </div>
             <div className="p-4 border-t border-gray-100">
               <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">
-                {post.caption || "No caption"}
+                {post.caption || t("web.provider.pages.explore/[id].noCaption")}
               </p>
               <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
                 <span
@@ -246,16 +248,16 @@ export default function ProviderExploreViewPage() {
                 </span>
                 <span className="flex items-center gap-1">
                   <Heart className="w-4 h-4" />
-                  {post.like_count} likes
+                  {t("web.provider.pages.explore/[id].likes", { count: post.like_count })}
                 </span>
                 <span className="flex items-center gap-1">
                   <MessageCircle className="w-4 h-4" />
-                  {commentCount} comments
+                  {t("web.provider.pages.explore/[id].comments", { count: commentCount })}
                 </span>
                 {typeof post.view_count === "number" && (
                   <span className="flex items-center gap-1">
                     <Eye className="w-4 h-4" />
-                    {post.view_count} views
+                    {t("web.provider.pages.explore/[id].views", { count: post.view_count })}
                   </span>
                 )}
                 {post.status === "published" && (
@@ -263,18 +265,18 @@ export default function ProviderExploreViewPage() {
                     href="/explore"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-primary hover:underline ml-auto"
+                    className="flex items-center gap-1 text-primary hover:underline ms-auto"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    View on Explore
+                    {t("web.provider.pages.explore/[id].viewOnExplore")}
                   </Link>
                 )}
               </div>
               <div className="flex gap-2">
                 <Link href={`/provider/explore/${post.id}/edit`}>
                   <Button variant="outline" size="sm">
-                    <Pencil className="w-4 h-4 mr-1" />
-                    Edit post
+                    <Pencil className="w-4 h-4 me-1" />
+                    {t("web.provider.pages.explore/[id].editPost")}
                   </Button>
                 </Link>
               </div>
@@ -285,14 +287,14 @@ export default function ProviderExploreViewPage() {
           <div className="mt-8 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">
-                Comments ({commentCount})
+                {t("web.provider.pages.explore/[id].commentsTitle", { count: commentCount })}
               </h2>
             </div>
             <div className="p-4">
               {commentsLoading && comments.length === 0 ? (
                 <div className="flex items-center gap-2 py-8 text-gray-400 justify-center">
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Loading comments...</span>
+                  <span className="text-sm">{t("web.provider.pages.explore/[id].loadingComments")}</span>
                 </div>
               ) : (
                 <ul className="space-y-4 max-h-80 overflow-y-auto">
@@ -313,9 +315,9 @@ export default function ProviderExploreViewPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-gray-900 font-medium">
-                          {c.author?.full_name || "Someone"}
-                          <span className="text-gray-400 font-normal ml-2">
-                            {formatCommentTime(c.created_at)}
+                          {c.author?.full_name || t("web.provider.pages.explore/[id].someone")}
+                          <span className="text-gray-400 font-normal ms-2">
+                            {formatCommentTime(c.created_at, t)}
                           </span>
                         </p>
                         <CommentBody body={c.body} />
@@ -324,8 +326,8 @@ export default function ProviderExploreViewPage() {
                         type="button"
                         onClick={() => deleteComment(c.id)}
                         className="shrink-0 p-2 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                        aria-label="Delete comment"
-                        title="Delete comment"
+                        aria-label={t("web.provider.pages.explore/[id].deleteComment")}
+                        title={t("web.provider.pages.explore/[id].deleteComment")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -340,14 +342,14 @@ export default function ProviderExploreViewPage() {
                   disabled={commentsLoading}
                   className="mt-3 text-sm text-primary hover:underline"
                 >
-                  {commentsLoading ? "Loading..." : "Load more comments"}
+                  {commentsLoading ? t("web.provider.pages.explore/[id].loading") : t("web.provider.pages.explore/[id].loadMoreComments")}
                 </button>
               )}
 
               <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
                 <input
                   type="text"
-                  placeholder="Reply to comments... (use @username to mention)"
+                  placeholder={t("web.provider.pages.explore/[id].replyPlaceholder")}
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -366,11 +368,11 @@ export default function ProviderExploreViewPage() {
                 >
                   {commentSubmitting ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin mr-1" />
-                      Sending...
+                      <Loader2 className="w-5 h-5 animate-spin me-1" />
+                      {t("web.provider.pages.explore/[id].sending")}
                     </>
                   ) : (
-                    "Reply"
+                    t("web.provider.pages.explore/[id].reply")
                   )}
                 </Button>
               </div>

@@ -9,6 +9,7 @@ import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 /** Renders comment body with @username segments highlighted */
 function CommentBody({ body }: { body: string }) {
@@ -28,17 +29,18 @@ function CommentBody({ body }: { body: string }) {
   );
 }
 
-function formatCommentTime(iso: string): string {
+function formatCommentTime(iso: string, t: TFunction): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffM = Math.floor(diffMs / 60000);
   const diffH = Math.floor(diffMs / 3600000);
   const diffD = Math.floor(diffMs / 86400000);
-  if (diffM < 1) return "Just now";
-  if (diffM < 60) return `${diffM}m`;
-  if (diffH < 24) return `${diffH}h`;
-  if (diffD < 7) return `${diffD}d`;
+  const pd = "web.explore.postDetail";
+  if (diffM < 1) return t(`${pd}.justNow`);
+  if (diffM < 60) return t(`${pd}.minutesShort`, { count: diffM });
+  if (diffH < 24) return t(`${pd}.hoursShort`, { count: diffH });
+  if (diffD < 7) return t(`${pd}.daysShort`, { count: diffD });
   return d.toLocaleDateString();
 }
 
@@ -54,6 +56,8 @@ interface ExplorePostDetailProps {
 
 export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const pd = "web.explore.postDetail";
   const [isLiked, setIsLiked] = useState(post.is_liked ?? false);
   const [isSaved, setIsSaved] = useState(post.is_saved ?? false);
   const [likeCount, setLikeCount] = useState(post.like_count);
@@ -121,7 +125,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       setCommentCount((c) => c + 1);
       await fetchComments(0, false);
     } catch {
-      toast.error("Could not post comment");
+      toast.error(t(`${pd}.commentFailed`));
     } finally {
       setCommentSubmitting(false);
     }
@@ -133,7 +137,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       setCommentCount((c) => Math.max(0, c - 1));
       setComments((prev) => prev.filter((c) => c.id !== commentId));
     } catch {
-      toast.error("Could not delete comment");
+      toast.error(t(`${pd}.deleteCommentFailed`));
     }
   };
 
@@ -182,7 +186,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       }
       setIsLiked(newLiked);
     } catch {
-      toast.error("Could not update like");
+      toast.error(t(`${pd}.likeFailed`));
     } finally {
       setIsUpdating(false);
     }
@@ -204,7 +208,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       }
       setIsSaved(newSaved);
     } catch {
-      toast.error("Could not update save");
+      toast.error(t(`${pd}.saveFailed`));
     } finally {
       setIsUpdating(false);
     }
@@ -213,17 +217,20 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const providerName = post.provider?.business_name || "Beautonomi";
   const shareTitle = post.caption?.trim()
-    ? `${post.caption.trim().slice(0, 100)}${post.caption.length > 100 ? "…" : ""} — @${providerName} on Beautonomi`
-    : `@${providerName} on Beautonomi`;
+    ? t(`${pd}.shareTitleWithCaption`, {
+        caption: `${post.caption.trim().slice(0, 100)}${post.caption.length > 100 ? "…" : ""}`,
+        name: providerName,
+      })
+    : t(`${pd}.shareTitleDefault`, { name: providerName });
   const shareBody = `${shareTitle}\n\n${shareUrl}`;
 
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
-      toast.success("Link copied!");
+      toast.success(t(`${pd}.linkCopied`));
       setShowShareModal(false);
     } catch {
-      toast.error("Could not copy link");
+      toast.error(t(`${pd}.copyFailed`));
     }
   };
 
@@ -263,7 +270,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     setShowMoreMenu(false);
     const mediaUrl = post.media_urls?.[0];
     if (!mediaUrl || isVideoUrl(mediaUrl)) {
-      toast.error("Download is available for images only");
+      toast.error(t(`${pd}.downloadImagesOnly`));
       return;
     }
     try {
@@ -274,9 +281,9 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       a.download = `post-${post.id}.${mediaUrl.split(".").pop()?.split("?")[0] || "jpg"}`;
       a.click();
       URL.revokeObjectURL(a.href);
-      toast.success("Download started");
+      toast.success(t(`${pd}.downloadStarted`));
     } catch {
-      toast.error("Could not download image");
+      toast.error(t(`${pd}.downloadFailed`));
     }
   };
 
@@ -306,7 +313,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
               ) : (
                 <Image
                   src={primaryMedia}
-                  alt={post.caption || "Post"}
+                  alt={post.caption || t(`${pd}.altPost`)}
                   fill
                   className="object-cover"
                   sizes="(max-width: 768px) 100vw, 50vw"
@@ -351,10 +358,10 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                         <button
                           type="button"
                           onClick={handleDownloadImage}
-                          className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3"
+                          className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3"
                         >
                           <ImageIcon className="w-5 h-5 text-gray-500" />
-                          <span className="text-sm">Download image</span>
+                          <span className="text-sm">{t(`${pd}.downloadImage`)}</span>
                         </button>
                         <button
                           type="button"
@@ -363,17 +370,17 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                             handleSave();
                           }}
                           disabled={isUpdating}
-                          className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3"
+                          className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3"
                         >
                           <Bookmark className={`w-5 h-5 ${isSaved ? "fill-current text-[#FF0077]" : "text-gray-500"}`} />
-                          <span className="text-sm">{isSaved ? "Saved" : "Save image"}</span>
+                          <span className="text-sm">{isSaved ? t(`${pd}.saved`) : t(`${pd}.saveImage`)}</span>
                         </button>
                         <Link
                           href={`/partner-profile?slug=${encodeURIComponent(post.provider.slug)}`}
                           onClick={() => setShowMoreMenu(false)}
-                          className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3 block"
+                          className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3 block"
                         >
-                          <span className="text-sm">Find out more about this</span>
+                          <span className="text-sm">{t(`${pd}.findOutMore`)}</span>
                         </Link>
                       </div>
                     </>
@@ -385,7 +392,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 type="button"
                 onClick={() => primaryMedia && setShowZoomModal(true)}
                 className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10"
-                aria-label="Zoom"
+                aria-label={t(`${pd}.zoom`)}
               >
                 <ZoomIn className="w-5 h-5 text-gray-700" />
               </button>
@@ -398,14 +405,14 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] pt-6 px-4 pb-4">
             {/* Title */}
             <h1 className="text-xl font-bold text-gray-900 mb-2">
-              {caption ? (captionExpanded ? caption : captionShort) : "Untitled post"}
+              {caption ? (captionExpanded ? caption : captionShort) : t(`${pd}.untitledPost`)}
             </h1>
             {hasMoreCaption && (
               <button
                 onClick={() => setCaptionExpanded(!captionExpanded)}
                 className="text-sm text-gray-500 hover:text-[#FF0077] mb-3"
               >
-                {captionExpanded ? "less" : "more"}
+                {captionExpanded ? t(`${pd}.less`) : t(`${pd}.more`)}
               </button>
             )}
 
@@ -426,13 +433,13 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
             <div className="py-2 border-t border-gray-100">
               <p className="text-sm text-gray-500 mb-2">
                 {commentCount === 0
-                  ? "No comments yet"
-                  : `${commentCount} comment${commentCount === 1 ? "" : "s"}`}
+                  ? t(`${pd}.noCommentsYet`)
+                  : t(`${pd}.commentCount`, { count: commentCount })}
               </p>
               {commentsLoading && comments.length === 0 ? (
                 <div className="flex items-center gap-2 py-4 text-gray-400">
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Loading comments...</span>
+                  <span className="text-sm">{t(`${pd}.loadingComments`)}</span>
                 </div>
               ) : (
                 <ul className="space-y-3 max-h-64 overflow-y-auto mb-3">
@@ -447,8 +454,8 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-gray-900 font-medium">
-                          {c.author?.full_name || "Someone"}
-                          <span className="text-gray-400 font-normal ml-1.5">{formatCommentTime(c.created_at)}</span>
+                          {c.author?.full_name || t(`${pd}.someone`)}
+                          <span className="text-gray-400 font-normal ms-1.5">{formatCommentTime(c.created_at, t)}</span>
                         </p>
                         <CommentBody body={c.body} />
                       </div>
@@ -457,7 +464,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           type="button"
                           onClick={() => deleteComment(c.id)}
                           className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                          aria-label="Delete comment"
+                          aria-label={t(`${pd}.deleteComment`)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -473,7 +480,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   disabled={commentsLoading}
                   className="text-sm text-[#FF0077] hover:underline mb-2"
                 >
-                  {commentsLoading ? "Loading..." : "Load more comments"}
+                  {commentsLoading ? t(`${pd}.loading`) : t(`${pd}.loadMoreComments`)}
                 </button>
               )}
               <div className="flex items-center gap-3 py-2">
@@ -486,7 +493,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 </div>
                 <input
                   type="text"
-                  placeholder={user ? "Add a comment... (use @username to mention)" : "Sign in to comment"}
+                  placeholder={user ? t(`${pd}.addCommentMention`) : t(`${pd}.signInToComment`)}
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -517,7 +524,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
         {(firstRelated || moreRelated.length > 0) && (
           <div className="px-4 pb-8">
             <h2 className="text-base font-bold text-gray-900 mb-4">
-              More like this
+              {t(`${pd}.moreLikeThis`)}
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {[firstRelated, ...moreRelated].filter(Boolean).slice(0, 6).map((p) => (
@@ -571,7 +578,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     ) : (
                       <Image
                         src={primaryMedia}
-                        alt={post.caption || "Post"}
+                        alt={post.caption || t(`${pd}.altPost`)}
                         fill
                         className="object-contain"
                         sizes="50vw"
@@ -599,16 +606,16 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} aria-hidden />
                             <div className="absolute top-full right-0 mt-1 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-20">
-                              <button onClick={handleDownloadImage} className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3">
+                              <button onClick={handleDownloadImage} className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3">
                                 <ImageIcon className="w-5 h-5 text-gray-500" />
-                                <span className="text-sm">Download image</span>
+                                <span className="text-sm">{t(`${pd}.downloadImage`)}</span>
                               </button>
-                              <button onClick={() => { setShowMoreMenu(false); handleSave(); }} disabled={isUpdating} className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3">
+                              <button onClick={() => { setShowMoreMenu(false); handleSave(); }} disabled={isUpdating} className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3">
                                 <Bookmark className={`w-5 h-5 ${isSaved ? "fill-current text-[#FF0077]" : "text-gray-500"}`} />
-                                <span className="text-sm">{isSaved ? "Saved" : "Save image"}</span>
+                                <span className="text-sm">{isSaved ? t(`${pd}.saved`) : t(`${pd}.saveImage`)}</span>
                               </button>
-                              <Link href={`/partner-profile?slug=${encodeURIComponent(post.provider.slug)}`} onClick={() => setShowMoreMenu(false)} className="w-full px-4 py-2.5 text-left text-gray-800 hover:bg-gray-50 flex items-center gap-3 block">
-                                <span className="text-sm">Find out more about this</span>
+                              <Link href={`/partner-profile?slug=${encodeURIComponent(post.provider.slug)}`} onClick={() => setShowMoreMenu(false)} className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3 block">
+                                <span className="text-sm">{t(`${pd}.findOutMore`)}</span>
                               </Link>
                             </div>
                           </>
@@ -619,7 +626,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                       type="button"
                       onClick={() => setShowZoomModal(true)}
                       className="absolute bottom-3 right-3 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10 opacity-0 group-hover:opacity-100 transition-opacity"
-                      aria-label="Zoom"
+                      aria-label={t(`${pd}.zoom`)}
                     >
                       <ZoomIn className="w-5 h-5 text-gray-700" />
                     </button>
@@ -635,11 +642,11 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     disabled={isUpdating}
                     className={`px-5 py-2.5 rounded-full font-medium transition-colors ${isSaved ? "bg-[#FF0077] text-white" : "bg-gray-900 text-white hover:bg-gray-800"}`}
                   >
-                    Save
+                    {t(`${pd}.save`)}
                   </button>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900 mb-2 break-words">{post.caption || "Untitled post"}</h1>
+                  <h1 className="text-xl font-bold text-gray-900 mb-2 break-words">{post.caption || t(`${pd}.untitledPost`)}</h1>
                   <Link href={`/partner-profile?slug=${encodeURIComponent(post.provider.slug)}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold shrink-0">
                       {post.provider.business_name?.charAt(0) || "?"}
@@ -650,12 +657,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 {/* Desktop comments */}
                 <div className="border-t border-gray-100 pt-4">
                   <p className="text-sm text-gray-500 mb-3">
-                    {commentCount === 0 ? "No comments yet" : `${commentCount} comment${commentCount === 1 ? "" : "s"}`}
+                    {commentCount === 0 ? t(`${pd}.noCommentsYet`) : t(`${pd}.commentCount`, { count: commentCount })}
                   </p>
                   {commentsLoading && comments.length === 0 ? (
                     <div className="flex items-center gap-2 py-4 text-gray-400">
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-sm">Loading comments...</span>
+                      <span className="text-sm">{t(`${pd}.loadingComments`)}</span>
                     </div>
                   ) : (
                     <ul className="space-y-3 max-h-48 overflow-y-auto mb-3">
@@ -670,8 +677,8 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm text-gray-900 font-medium">
-                              {c.author?.full_name || "Someone"}
-                              <span className="text-gray-400 font-normal ml-1.5">{formatCommentTime(c.created_at)}</span>
+                              {c.author?.full_name || t(`${pd}.someone`)}
+                              <span className="text-gray-400 font-normal ms-1.5">{formatCommentTime(c.created_at, t)}</span>
                             </p>
                             <CommentBody body={c.body} />
                           </div>
@@ -680,7 +687,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                               type="button"
                               onClick={() => deleteComment(c.id)}
                               className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                              aria-label="Delete comment"
+                              aria-label={t(`${pd}.deleteComment`)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -691,7 +698,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   )}
                   {hasMoreComments && comments.length > 0 && (
                     <button type="button" onClick={loadMoreComments} disabled={commentsLoading} className="text-sm text-[#FF0077] hover:underline mb-3">
-                      {commentsLoading ? "Loading..." : "Load more comments"}
+                      {commentsLoading ? t(`${pd}.loading`) : t(`${pd}.loadMoreComments`)}
                     </button>
                   )}
                   <div className="flex items-center gap-2">
@@ -700,7 +707,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     </div>
                     <input
                       type="text"
-                      placeholder={user ? "Add a comment... (@username to mention)" : "Sign in to comment"}
+                      placeholder={user ? t(`${pd}.addCommentMentionShort`) : t(`${pd}.signInToComment`)}
                       value={commentInput}
                       onChange={(e) => setCommentInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComment(); } }}
@@ -721,12 +728,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 </div>
                 {firstRelated && firstRelated.media_urls?.[0] && (
                   <div>
-                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">More like this</h2>
+                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t(`${pd}.moreLikeThis`)}</h2>
                     <Link href={`/explore/${firstRelated.id}`} className="block relative aspect-[4/5] max-h-64 w-full rounded-xl overflow-hidden bg-gray-100 group">
                       {isVideoUrl(firstRelated.media_urls[0]) ? (
                         <video src={firstRelated.media_urls[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" muted playsInline />
                       ) : (
-                        <Image src={firstRelated.media_urls[0]} alt={firstRelated.caption || "Related"} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="400px" />
+                        <Image src={firstRelated.media_urls[0]} alt={firstRelated.caption || t(`${pd}.altRelated`)} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="400px" />
                       )}
                     </Link>
                   </div>
@@ -736,7 +743,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           </div>
           {moreRelated.length > 0 && (
             <div className="mt-12">
-              <h2 className="text-lg font-bold text-gray-900 mb-6">Related posts</h2>
+              <h2 className="text-lg font-bold text-gray-900 mb-6">{t(`${pd}.relatedPosts`)}</h2>
               <div className="columns-3 xl:columns-4 gap-4">
                 {moreRelated.map((p) => (
                   <Link key={p.id} href={`/explore/${p.id}`} className="block break-inside-avoid mb-4 group">
@@ -765,7 +772,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
             onKeyDown={(e) => e.key === "Escape" && setShowZoomModal(false)}
             role="button"
             tabIndex={0}
-            aria-label="Close zoom"
+            aria-label={t(`${pd}.closeZoom`)}
           />
           <div className="fixed inset-4 md:inset-8 z-[603] flex items-center justify-center pointer-events-none">
             <div className="relative w-full h-full max-w-5xl max-h-[90vh] pointer-events-auto" onClick={(e) => e.stopPropagation()}>
@@ -773,7 +780,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 type="button"
                 onClick={() => setShowZoomModal(false)}
                 className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white z-10"
-                aria-label="Close"
+                aria-label={t(`${pd}.close`)}
               >
                 <X className="w-6 h-6" />
               </button>
@@ -788,7 +795,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
               ) : (
                 <Image
                   src={primaryMedia}
-                  alt={post.caption || "Post"}
+                  alt={post.caption || t(`${pd}.altPost`)}
                   fill
                   className="object-contain"
                   sizes="(max-width: 768px) 100vw, 80vw"
@@ -810,8 +817,8 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           />
           <div className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:right-auto lg:bottom-1/2 lg:translate-x-[-50%] lg:translate-y-[50%] lg:max-w-md w-full bg-white rounded-t-2xl lg:rounded-2xl shadow-xl z-[601] max-h-[85vh] overflow-hidden">
             <div className="p-5 pb-8 lg:pb-5">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Share</h3>
-              <p className="text-sm text-gray-500 mb-5">Share this look from Beautonomi Explore</p>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">{t(`${pd}.share`)}</h3>
+              <p className="text-sm text-gray-500 mb-5">{t(`${pd}.shareLead`)}</p>
               <div className="grid grid-cols-4 gap-4">
                 {typeof navigator !== "undefined" && navigator.share ? (
                   <button
@@ -822,7 +829,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     <div className="w-12 h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
                       <Share2 className="w-6 h-6 text-[#FF0077]" />
                     </div>
-                    <span className="text-xs font-medium text-gray-700 text-center">More</span>
+                    <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.moreShare`)}</span>
                   </button>
                 ) : null}
                 <button
@@ -833,7 +840,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
                     <Link2 className="w-6 h-6 text-gray-700" />
                   </div>
-                  <span className="text-xs font-medium text-gray-700 text-center">Copy link</span>
+                  <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.copyLink`)}</span>
                 </button>
                 <button
                   type="button"
@@ -843,7 +850,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div className="w-12 h-12 rounded-full bg-[#25D366]/20 flex items-center justify-center">
                     <MessageCircle className="w-6 h-6 text-[#25D366]" />
                   </div>
-                  <span className="text-xs font-medium text-gray-700 text-center">WhatsApp</span>
+                  <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.whatsapp`)}</span>
                 </button>
                 <button
                   type="button"
@@ -853,7 +860,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div className="w-12 h-12 rounded-full bg-[#1877F2]/20 flex items-center justify-center">
                     <Share2 className="w-6 h-6 text-[#1877F2]" />
                   </div>
-                  <span className="text-xs font-medium text-gray-700 text-center">Facebook</span>
+                  <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.facebook`)}</span>
                 </button>
                 <button
                   type="button"
@@ -863,7 +870,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div className="w-12 h-12 rounded-full bg-gray-900/10 flex items-center justify-center">
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                   </div>
-                  <span className="text-xs font-medium text-gray-700 text-center">X</span>
+                  <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.x`)}</span>
                 </button>
                 <button
                   type="button"
@@ -873,7 +880,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
                     <Mail className="w-6 h-6 text-gray-700" />
                   </div>
-                  <span className="text-xs font-medium text-gray-700 text-center">Email</span>
+                  <span className="text-xs font-medium text-gray-700 text-center">{t(`${pd}.email`)}</span>
                 </button>
               </div>
               <button
@@ -881,7 +888,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 onClick={() => setShowShareModal(false)}
                 className="w-full mt-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700"
               >
-                Cancel
+                {t(`${pd}.cancel`)}
               </button>
             </div>
           </div>

@@ -5,7 +5,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { View, Text, TouchableOpacity, FlatList } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -16,6 +15,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Avatar } from "@/components/ui/Avatar";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface StaffMember {
   id: string;
@@ -25,13 +26,15 @@ interface StaffMember {
   is_admin?: boolean;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  provider_owner: "Owner",
-  provider_manager: "Manager",
-  provider_staff: "Staff",
-};
-
 export default function TeamStaffNotificationsListScreen() {
+  const { t } = useTranslation();
+  const tn = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.screens.teamStaffNotifications.${key}`, opts) as string;
+  const roleLabel = (role?: string) => {
+    if (role === "provider_owner") return tn("roleOwner");
+    if (role === "provider_manager") return tn("roleManager");
+    if (role === "provider_staff") return tn("roleStaff");
+    return role || tn("roleStaff");
+  };
   const router = useRouter();
   const { provider, selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
@@ -47,11 +50,10 @@ export default function TeamStaffNotificationsListScreen() {
   >(staffUrl);
 
   const headerSubtitle = useMemo(() => {
-    const base = "Email, SMS & scheduling alerts per person";
-    if (!selectedLocationId || !provider?.locations?.length) return base;
+    if (!selectedLocationId || !provider?.locations?.length) return tn("subtitle");
     const loc = provider.locations.find((locRow) => locRow.id === selectedLocationId);
-    return loc?.name ? `${base} · ${loc.name}` : base;
-  }, [selectedLocationId, provider?.locations]);
+    return loc?.name ? tn("subtitleWithLocation", { location: loc.name }) : tn("subtitle");
+  }, [selectedLocationId, provider?.locations, t]);
 
   const staffList: StaffMember[] = Array.isArray(staffRaw)
     ? staffRaw
@@ -69,7 +71,7 @@ export default function TeamStaffNotificationsListScreen() {
   if (loading && !staffRaw) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading team..." />
+        <LoadingState message={tn("loading")} />
       </ScreenContainer>
     );
   }
@@ -77,7 +79,7 @@ export default function TeamStaffNotificationsListScreen() {
   if (staffError && !staffRaw) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team notifications" showBack subtitle={headerSubtitle} />
+        <ScreenHeader title={tn("title")} showBack subtitle={headerSubtitle} />
         <ErrorState message={staffError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -85,12 +87,12 @@ export default function TeamStaffNotificationsListScreen() {
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Team notifications" showBack subtitle={headerSubtitle} />
+      <ScreenHeader title={tn("title")} showBack subtitle={headerSubtitle} />
       {staffList.length === 0 ? (
         <EmptyState
           icon="people-outline"
-          title="No team members"
-          description="Add staff in Team first, then configure their notifications here."
+          title={tn("emptyTitle")}
+          description={tn("emptyDescription")}
         />
       ) : (
         <FlatList
@@ -106,14 +108,14 @@ export default function TeamStaffNotificationsListScreen() {
               }
             >
               <Avatar name={item.name} size="md" />
-              <View style={twStyle("ml-3 flex-1")}>
+              <View style={twStyle("ms-3 flex-1")}>
                 <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  {item.role ? ROLE_LABEL[item.role] ?? item.role : "Staff"}
-                  {item.is_admin ? " • Admin" : ""}
+                  {roleLabel(item.role)}
+                  {item.is_admin ? tn("adminSuffix") : ""}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
           )}
         />

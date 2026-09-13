@@ -227,9 +227,9 @@ export default function OnDemandWaitingScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <Text style={{ color: Colors.gray[600] }}>Missing request ID</Text>
+          <Text style={{ color: Colors.gray[600] }}>{ow("missingRequestId")}</Text>
           <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.gray[200], borderRadius: 8 }}>
-            <Text>Back</Text>
+            <Text>{ow("back")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -252,7 +252,7 @@ export default function OnDemandWaitingScreen() {
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
           <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{error}</Text>
           <TouchableOpacity onPress={() => { setLoading(true); load(); }} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.primary, borderRadius: 8 }}>
-            <Text style={{ color: Colors.white }}>Retry</Text>
+            <Text style={{ color: Colors.white }}>{ow("retry")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -274,7 +274,7 @@ export default function OnDemandWaitingScreen() {
         </View>
         {helpUrl ? (
           <TouchableOpacity onPress={openHelp} style={{ alignSelf: "flex-start", marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Help</Text>
+            <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>{ow("help")}</Text>
           </TouchableOpacity>
         ) : null}
 

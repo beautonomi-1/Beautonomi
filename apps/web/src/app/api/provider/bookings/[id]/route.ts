@@ -26,6 +26,9 @@ import {
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import {
+  enrichBookingLifecycleFields,
+} from "@/lib/bookings/lifecycle-booking-enrichment";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
@@ -368,6 +371,16 @@ export async function GET(
     }
 
     const bookingData = booking as BookingDbRow;
+    const lifecycle = enrichBookingLifecycleFields({
+      status: String(bookingData.status ?? ""),
+      scheduled_at: String(bookingData.scheduled_at ?? ""),
+      location_type: bookingData.location_type,
+      current_stage: bookingData.current_stage,
+      booking_services: (bookingData.booking_services ?? []) as Array<{
+        scheduled_end_at?: string | null;
+        duration_minutes?: number | null;
+      }>,
+    });
 
     // Repair stale pending_payment bookings whose payment has already been confirmed.
     // The lifecycle status should have advanced to "pending" or "confirmed" after the
@@ -573,6 +586,17 @@ export async function GET(
       custom_offer: bookingData.custom_offer || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       current_stage: (bookingData.current_stage ?? null) as BookingResponse["current_stage"],
+      needs_close_out: lifecycle.needs_close_out,
+      suggested_close_out_action: lifecycle.suggested_close_out_action,
+      suggestedAction: lifecycle.suggested_close_out_action,
+      customer_running_late_at:
+        (bookingData as { customer_running_late_at?: string | null }).customer_running_late_at ?? null,
+      customer_running_late_minutes:
+        (bookingData as { customer_running_late_minutes?: number | null }).customer_running_late_minutes ??
+        null,
+      provider_late_ack_at:
+        (bookingData as { provider_late_ack_at?: string | null }).provider_late_ack_at ?? null,
+      contact_attempts: (bookingData as { contact_attempts?: unknown }).contact_attempts ?? [],
       estimated_arrival:
         (bookingData as { estimated_arrival?: string | null }).estimated_arrival ?? null,
       provider_eta_minutes:
@@ -1062,6 +1086,30 @@ export async function PATCH(
         );
       }
 
+      if (requestedDbStatus === "no_show") {
+        const { shouldSuppressNoShowAfterRunningLate } = await import(
+          "@/lib/bookings/lifecycle-running-late"
+        );
+        const lateAt = (currentBooking as { customer_running_late_at?: string | null })
+          .customer_running_late_at;
+        const delayMinutes = Number(
+          (currentBooking as { customer_running_late_minutes?: number | null })
+            .customer_running_late_minutes ?? 0,
+        );
+        if (
+          shouldSuppressNoShowAfterRunningLate({
+            scheduledAt: String((currentBooking as { scheduled_at?: string }).scheduled_at ?? ""),
+            delayMinutes,
+            customerRunningLateAt: lateAt,
+          })
+        ) {
+          return errorResponse(
+            "Customer reported running late — wait until the late window ends before marking no-show.",
+            "RUNNING_LATE_WINDOW",
+            409,
+          );
+        }
+      }
     }
 
     // Update booking

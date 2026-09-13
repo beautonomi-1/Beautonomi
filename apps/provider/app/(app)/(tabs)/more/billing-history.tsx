@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Redirect, useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
 import { useApi } from "@/hooks/useApi";
@@ -38,6 +39,12 @@ type BillingHistoryResponse = {
 
 /** Content-only for use in Billing hub tab. */
 export function BillingHistoryContent() {
+  const { t } = useTranslation();
+  const bh = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.billingHistory." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -73,11 +80,11 @@ export function BillingHistoryContent() {
         pdfPath: url,
         signedUrlPath: url.replace(/\/pdf$/, "/signed-url"),
         filename: `receipt-${item.id}.pdf`,
-        title: "Receipt",
+        title: bh("receiptTitle"),
       });
       return;
     }
-    pushInAppBrowser(router, url, "Invoice");
+    pushInAppBrowser(router, url, bh("invoiceTitle"));
   };
 
   if (loading && !data) {
@@ -120,12 +127,12 @@ export function BillingHistoryContent() {
             <Ionicons name="document-text-outline" size={32} color="#6366f1" />
           </View>
           <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>
-            No billing history
+            {bh("emptyTitle")}
           </Text>
           <Text
             style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}
           >
-            Subscription and ads payments will appear here.
+            {bh("emptyDesc")}
           </Text>
         </View>
       ) : (
@@ -159,9 +166,9 @@ export function BillingHistoryContent() {
                 color={item.type === "ads" ? "#b45309" : "#6366f1"}
               />
             </View>
-            <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+            <View style={{ marginStart: 12, flex: 1, minWidth: 0 }}>
               <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                {item.description ?? "Payment"}
+                {item.description ?? bh("paymentFallback")}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                 {formatCurrency(item.amount, item.currency)}
@@ -172,7 +179,7 @@ export function BillingHistoryContent() {
             </View>
             <View
               style={{
-                marginRight: 8,
+                marginEnd: 8,
                 borderRadius: 9999,
                 paddingHorizontal: 10,
                 paddingVertical: 4,
@@ -224,11 +231,11 @@ export function BillingHistoryContent() {
             opacity: loading ? 0.6 : 1,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Load more billing history"
+          accessibilityLabel={bh("loadMoreA11y")}
         >
           <Ionicons name="chevron-down" size={16} color={Colors.primary} />
-          <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
-            {loading ? "Loading…" : "Load more"}
+          <Text style={{ marginStart: 6, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+            {loading ? bh("loading") : bh("loadMore")}
           </Text>
         </TouchableOpacity>
       ) : null}

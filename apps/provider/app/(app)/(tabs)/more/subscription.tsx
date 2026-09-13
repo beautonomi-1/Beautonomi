@@ -12,6 +12,7 @@ import { Colors } from "@/constants/colors";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
+import { useTranslation } from "@beautonomi/i18n";
 
 const ACCENT = "#FF0077";
 
@@ -66,34 +67,36 @@ function currentPlanBullets(sub: Subscription | null): string[] {
   return raw.map((s) => stripHtmlToPlainText(s).trim()).filter(Boolean);
 }
 
-function currentSubscriptionPriceLine(sub: Subscription | null): string | null {
+function currentSubscriptionPriceLine(sub: Subscription | null, sh: (key: string, opts?: Record<string, unknown>) => string): string | null {
   if (!sub?.plan) return null;
   const p = sub.plan;
   const cur = sub.billing_period ?? "monthly";
-  if (p.is_free) return "Free";
+  if (p.is_free) return sh("free");
   if (cur === "yearly" && p.price_yearly != null) {
-    return `${formatCurrency(Number(p.price_yearly), p.currency ?? "ZAR")}/year`;
+    return sh("perYear", { amount: formatCurrency(Number(p.price_yearly), p.currency ?? "ZAR") });
   }
   if (p.price_monthly != null) {
-    return `${formatCurrency(Number(p.price_monthly), p.currency ?? "ZAR")}/month`;
+    return sh("perMonth", { amount: formatCurrency(Number(p.price_monthly), p.currency ?? "ZAR") });
   }
   return null;
 }
 
-function statusLabel(sub: Subscription): string {
-  if (sub.cancelled_at) return "Cancelling";
+function statusLabel(sub: Subscription, sh: (key: string) => string): string {
+  if (sub.cancelled_at) return sh("statusCancelling");
   const s = sub.status;
-  if (s === "active") return "Active";
-  if (s === "expired") return "Expired";
-  if (s === "past_due") return "Past due";
-  if (s === "trial" || s === "trialing") return "Trial";
-  if (s === "inactive") return "Inactive";
-  if (s === "cancelled") return "Cancelled";
+  if (s === "active") return sh("statusActive");
+  if (s === "expired") return sh("statusExpired");
+  if (s === "past_due") return sh("statusPastDue");
+  if (s === "trial" || s === "trialing") return sh("statusTrial");
+  if (s === "inactive") return sh("statusInactive");
+  if (s === "cancelled") return sh("statusCancelled");
   return s;
 }
 
 /** Content-only for use in Settings hub tab. */
 export function SubscriptionContent() {
+  const { t } = useTranslation();
+  const sh = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.screens.subscriptionHub.${key}`, opts) as string;
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -162,9 +165,9 @@ export function SubscriptionContent() {
       >
         <Ionicons name="diamond-outline" size={32} color={ACCENT} />
       </View>
-      <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>Plan & billing</Text>
+      <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>{sh("title")}</Text>
       <Text style={{ marginTop: 8, fontSize: 15, lineHeight: 22, color: Colors.gray[600] }}>
-        Same plans and features as our public pricing. Open Subscription for upgrades, billing period changes, and renewals.
+        {sh("intro")}
       </Text>
 
       {visibleBillingIssue ? (
@@ -181,10 +184,10 @@ export function SubscriptionContent() {
             )}
           >
             {visibleBillingIssue.type === "payment_failed"
-              ? "Payment was not completed"
+              ? sh("paymentNotCompleted")
               : visibleBillingIssue.type === "past_due"
-                ? "Payment action needed"
-                : "Billing action needed"}
+                ? sh("paymentActionNeeded")
+                : sh("billingActionNeeded")}
           </Text>
           <Text
             style={twStyle(
@@ -208,10 +211,10 @@ export function SubscriptionContent() {
           name={isUrgentIssue ? "alert-circle-outline" : "settings-outline"}
           size={20}
           color="#fff"
-          style={{ marginRight: 8 }}
+          style={{ marginEnd: 8 }}
         />
         <Text style={twStyle("text-base font-bold text-white")}>
-          {visibleBillingIssue ? "Resolve billing issue" : "Manage plan & billing"}
+          {visibleBillingIssue ? sh("resolveBilling") : sh("managePlan")}
         </Text>
       </TouchableOpacity>
 
@@ -221,9 +224,9 @@ export function SubscriptionContent() {
             twStyle("mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 p-5"),
           ]}
         >
-          <Text style={twStyle("text-base font-semibold text-gray-800")}>No active subscription</Text>
+          <Text style={twStyle("text-base font-semibold text-gray-800")}>{sh("noSubscriptionTitle")}</Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>
-            Tap the button above to choose a plan or activate the free tier. All marketing features from the website are listed on the full subscription screen.
+            {sh("noSubscriptionBody")}
           </Text>
         </View>
       ) : (
@@ -234,33 +237,32 @@ export function SubscriptionContent() {
           ]}
         >
           <View style={twStyle("flex-row items-start justify-between")}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
+            <View style={{ flex: 1, paddingEnd: 12 }}>
               <Text style={twStyle("text-xl font-bold text-gray-900")}>
-                {plan?.name ?? "Plan"}
+                {plan?.name ?? sh("planFallback")}
               </Text>
               {plan?.description ? (
                 <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>
                   {stripHtmlToPlainText(plan.description)}
                 </Text>
               ) : null}
-              {currentSubscriptionPriceLine(sub) ? (
+              {currentSubscriptionPriceLine(sub, sh) ? (
                 <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>
-                  {currentSubscriptionPriceLine(sub)}
+                  {currentSubscriptionPriceLine(sub, sh)}
                 </Text>
               ) : null}
               {sub.cancelled_at ? (
                 <Text style={twStyle("mt-2 text-sm text-amber-800")}>
-                  Cancelling — access until{" "}
-                  {sub.expires_at ? formatDate(sub.expires_at) : "period end"}
+                  {sh("cancellingUntil", { date: sub.expires_at ? formatDate(sub.expires_at) : sh("periodEnd") })}
                 </Text>
               ) : (
                 <Text style={twStyle("mt-2 text-sm text-gray-600")}>
                   {sub.expires_at
                     ? status === "active"
-                      ? `Renews ${formatDate(sub.expires_at)}`
+                      ? sh("renews", { date: formatDate(sub.expires_at) })
                       : status === "expired"
-                        ? `Expired ${formatDate(sub.expires_at)}`
-                        : `Access until ${formatDate(sub.expires_at)}`
+                        ? sh("expiredOn", { date: formatDate(sub.expires_at) })
+                        : sh("accessUntil", { date: formatDate(sub.expires_at) })
                     : null}
                 </Text>
               )}
@@ -291,7 +293,7 @@ export function SubscriptionContent() {
                   }`
                 )}
               >
-                {statusLabel(sub)}
+                {statusLabel(sub, sh)}
               </Text>
             </View>
           </View>
@@ -299,11 +301,11 @@ export function SubscriptionContent() {
           {bullets.length > 0 ? (
             <View style={twStyle("mt-5 border-t border-pink-100 pt-4")}>
               <Text style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-500")}>
-                What&apos;s included
+                {sh("whatsIncluded")}
               </Text>
               {bullets.map((line, i) => (
                 <View key={`${i}-${line.slice(0, 24)}`} style={twStyle("mb-3 flex-row items-start")}>
-                  <Ionicons name="checkmark-circle" size={20} color={ACCENT} style={{ marginTop: 0, marginRight: 10 }} />
+                  <Ionicons name="checkmark-circle" size={20} color={ACCENT} style={{ marginTop: 0, marginEnd: 10 }} />
                   <Text style={twStyle("flex-1 text-[15px] leading-[22px] text-gray-800")}>{line}</Text>
                 </View>
               ))}

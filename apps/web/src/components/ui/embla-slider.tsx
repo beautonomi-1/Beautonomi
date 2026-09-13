@@ -81,7 +81,7 @@ const EmblaSlider = React.forwardRef<HTMLDivElement, EmblaSliderProps>(
     const basisPercent = slidesToShow > 0 ? 100 / slidesToShow : 100;
 
     return (
-      <div ref={ref} className={cn("relative", className)}>
+      <div ref={ref} dir="ltr" className={cn("ltr-island relative", className)}>
         <div ref={emblaRef} className="overflow-hidden">
           <div
             className={cn(

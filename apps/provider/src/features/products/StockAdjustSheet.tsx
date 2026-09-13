@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useApiMutation } from "@/hooks/useApi";
@@ -16,7 +17,19 @@ type Props = {
   onSuccess?: () => void;
 };
 
+const REASON_KEYS: Record<string, string> = {
+  stock_count: "reasonStockCount",
+  received: "reasonReceived",
+  returned: "reasonReturned",
+  damaged: "reasonDamaged",
+  manual_in: "reasonManualIn",
+  manual_out: "reasonManualOut",
+};
+
 export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props) {
+  const { t } = useTranslation();
+  const pc = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.productsCatalog.${key}`, opts) as string;
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState<string>(STOCK_ADJUST_REASONS[0].value);
   const [note, setNote] = useState("");
@@ -41,11 +54,11 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
   const handleSubmit = async () => {
     const parsed = parseInt(delta, 10);
     if (!parsed || Number.isNaN(parsed) || parsed === 0) {
-      Alert.alert("Validation", "Enter a non-zero quantity change (+ to add, − to remove).");
+      Alert.alert(pc("validationTitle"), pc("stockDeltaRequired"));
       return;
     }
     if (hasVariants && !variantId) {
-      Alert.alert("Select variant", "Choose which variant to adjust.");
+      Alert.alert(pc("selectVariantTitle"), pc("selectVariantBody"));
       return;
     }
 
@@ -56,7 +69,7 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
       product_variant_id: variantId ?? undefined,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(pc("errorTitle"), error);
       return;
     }
     emitProviderProductsCatalogChanged();
@@ -65,12 +78,12 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Adjust stock">
+    <BottomSheet visible={visible} onClose={onClose} title={pc("adjustStock")}>
       <Text style={twStyle("mb-3 text-sm text-gray-600")}>{product.name}</Text>
 
       {hasVariants && (
         <View style={twStyle("mb-3")}>
-          <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>Variant</Text>
+          <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>{pc("variant")}</Text>
           {variants.map((v) => (
             <TouchableOpacity
               key={v.id}
@@ -80,22 +93,24 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
                 variantId === v.id ? twStyle("border-indigo-500 bg-indigo-50") : twStyle("border-gray-200 bg-white"),
               ]}
             >
-              <Text style={twStyle("text-sm text-gray-800")}>{variantLabel(v)} · qty {v.quantity ?? 0}</Text>
+              <Text style={twStyle("text-sm text-gray-800")}>
+                {pc("variantQty", { label: variantLabel(v), count: v.quantity ?? 0 })}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>Quantity change</Text>
+      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>{pc("quantityChange")}</Text>
       <TextInput
         style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base")}
-        placeholder="e.g. 5 or -2"
+        placeholder={pc("quantityChangePlaceholder")}
         keyboardType="numbers-and-punctuation"
         value={delta}
         onChangeText={setDelta}
       />
 
-      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>Reason</Text>
+      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>{pc("reason")}</Text>
       <View style={twStyle("mb-3 flex-row flex-wrap gap-2")}>
         {STOCK_ADJUST_REASONS.map((r) => (
           <TouchableOpacity
@@ -106,21 +121,23 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
               reason === r.value ? twStyle("border-indigo-500 bg-indigo-50") : twStyle("border-gray-200"),
             ]}
           >
-            <Text style={[twStyle("text-xs"), reason === r.value ? twStyle("text-indigo-700 font-medium") : twStyle("text-gray-600")]}>{r.label}</Text>
+            <Text style={[twStyle("text-xs"), reason === r.value ? twStyle("text-indigo-700 font-medium") : twStyle("text-gray-600")]}>
+              {pc(REASON_KEYS[r.value] ?? "reason")}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>Note (optional)</Text>
+      <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>{pc("noteOptional")}</Text>
       <TextInput
         style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base")}
-        placeholder="Optional note"
+        placeholder={pc("notePlaceholder")}
         value={note}
         onChangeText={setNote}
         multiline
       />
 
-      <ActionButton label={loading ? "Saving…" : "Save adjustment"} onPress={handleSubmit} disabled={loading} />
+      <ActionButton label={loading ? pc("saving") : pc("saveAdjustment")} onPress={handleSubmit} disabled={loading} />
       {loading && <ActivityIndicator style={twStyle("mt-2")} />}
     </BottomSheet>
   );

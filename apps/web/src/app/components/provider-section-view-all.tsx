@@ -175,7 +175,7 @@ export default function ProviderSectionViewAll({ section }: { section: SectionKe
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="mb-8 rounded-[2rem] border border-pink-100 bg-gradient-to-br from-pink-50 via-white to-amber-50 p-6 md:p-8">
           <Link href="/" className="inline-flex items-center text-sm text-gray-600 hover:text-[#FF0077] mb-5">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-4 w-4 me-2" />
             Back to home
           </Link>
           <h1 className="text-3xl md:text-5xl font-semibold tracking-tight text-gray-950">{title}</h1>
@@ -209,7 +209,7 @@ export default function ProviderSectionViewAll({ section }: { section: SectionKe
             {hasMore && (
               <div className="mt-10 flex justify-center">
                 <Button onClick={loadMore} disabled={isLoadingMore} size="lg" className="rounded-full px-8">
-                  {isLoadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  {isLoadingMore ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : null}
                   Load more providers
                 </Button>
               </div>

@@ -1,5 +1,6 @@
 import { View, Text, Modal, TouchableOpacity, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import type { SavedPaymentMethod } from "@/types/api";
 
@@ -15,10 +16,10 @@ export interface GiftCardPaymentConfirmSheetProps {
   onCancel: () => void;
 }
 
-function cardLabel(card: SavedPaymentMethod): string {
+function cardLabel(card: SavedPaymentMethod, fallback: string): string {
   const brand = card.card_type
     ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
-    : "Card";
+    : fallback;
   return card.last4 ? `${brand} •••• ${card.last4}` : brand;
 }
 
@@ -42,22 +43,25 @@ export function GiftCardPaymentConfirmSheet({
   onConfirm,
   onCancel,
 }: GiftCardPaymentConfirmSheetProps) {
+  const { t } = useTranslation();
+  const gc = (key: string, opts?: Record<string, string>) =>
+    t(`customer.mobile.components.giftCardPaymentConfirm.${key}`, opts) as string;
   const hasSaved = savedCards.length > 0;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent>
       <Pressable style={styles.scrim} onPress={onCancel}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.heading}>Confirm payment</Text>
+          <Text style={styles.heading}>{gc("title")}</Text>
           <Text style={styles.summary}>{summaryLine}</Text>
           <View style={styles.totalBox}>
-            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalLabel}>{gc("total")}</Text>
             <Text style={styles.totalValue}>{totalLabel}</Text>
           </View>
 
           {hasSaved ? (
             <View style={styles.cardSection}>
-              <Text style={styles.sectionTitle}>Payment method</Text>
+              <Text style={styles.sectionTitle}>{gc("paymentMethod")}</Text>
               <TouchableOpacity
                 style={[styles.option, !useNewCard && styles.optionSelected]}
                 onPress={() => onUseNewCardChange(false)}
@@ -67,10 +71,10 @@ export function GiftCardPaymentConfirmSheet({
                 <View style={[styles.radio, !useNewCard && styles.radioOn]} />
                 <View style={styles.optionTextWrap}>
                   <Text style={styles.optionText}>
-                    {defaultCard ? cardLabel(defaultCard) : "Saved card"}
+                    {defaultCard ? cardLabel(defaultCard, gc("cardFallback")) : gc("savedCard")}
                   </Text>
                   {defaultCard && cardExpiry(defaultCard) ? (
-                    <Text style={styles.optionSubtext}>Expires {cardExpiry(defaultCard)}</Text>
+                    <Text style={styles.optionSubtext}>{gc("expires", { date: cardExpiry(defaultCard) ?? "" })}</Text>
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -81,7 +85,7 @@ export function GiftCardPaymentConfirmSheet({
                 accessibilityState={{ selected: useNewCard }}
               >
                 <View style={[styles.radio, useNewCard && styles.radioOn]} />
-                <Text style={styles.optionText}>Pay with a new card (secure browser)</Text>
+                <Text style={styles.optionText}>{gc("payWithNewCard")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -91,21 +95,21 @@ export function GiftCardPaymentConfirmSheet({
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={styles.manageLink}
                 accessibilityRole="link"
-                accessibilityLabel="Manage saved cards"
+                accessibilityLabel={gc("manageSavedCards")}
               >
-                <Text style={styles.manageLinkText}>Manage saved cards</Text>
+                <Text style={styles.manageLinkText}>{gc("manageSavedCards")}</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={styles.hint}>You will complete payment in a secure browser window.</Text>
+            <Text style={styles.hint}>{gc("secureBrowserHint")}</Text>
           )}
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.btnSecondary} onPress={onCancel}>
-              <Text style={styles.btnSecondaryText}>Cancel</Text>
+              <Text style={styles.btnSecondaryText}>{t("common.cancel")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.btnPrimary} onPress={onConfirm}>
-              <Text style={styles.btnPrimaryText}>Confirm & pay</Text>
+              <Text style={styles.btnPrimaryText}>{gc("confirmPay")}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -185,7 +189,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 2,
     borderColor: "#D1D5DB",
-    marginRight: 12,
+    marginEnd: 12,
     alignItems: "center",
     justifyContent: "center",
   },

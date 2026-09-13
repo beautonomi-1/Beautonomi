@@ -70,7 +70,9 @@ export default function GiftCardPurchaseScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [useNewCard, setUseNewCard] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [processingMessage, setProcessingMessage] = useState(
+    () => gc("processingPayment") || "Processing payment…",
+  );
   const [successState, setSuccessState] = useState<"issued" | "pending" | null>(null);
   const [issuedGiftCardCodes, setIssuedGiftCardCodes] = useState<string[]>([]);
 
@@ -339,7 +341,9 @@ export default function GiftCardPurchaseScreen() {
         subtitle={
           successState === "issued"
             ? isGift && recipientEmail.trim()
-              ? `We've emailed the gift card to ${recipientEmail.trim()} with steps to redeem.${issuedGiftCardCodes.length > 0 ? " You can also copy or share the code below." : ""}`
+              ? issuedGiftCardCodes.length > 0
+                ? gc("giftCardReadyBodyEmailedWithCodes", { email: recipientEmail.trim() })
+                : gc("giftCardReadyBodyEmailed", { email: recipientEmail.trim() })
               : issuedGiftCardCodes.length > 0
                 ? gc("giftCardReadyBodyWithCodes")
                 : gc("giftCardReadyBody")
@@ -386,7 +390,7 @@ export default function GiftCardPurchaseScreen() {
               <TouchableOpacity
                 key={a}
                 onPress={() => { setAmount(a); setCustomAmount(""); }}
-                style={{ paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, borderWidth: 1, backgroundColor: amount === a && !customAmount ? Colors.primary : Colors.white, borderColor: amount === a && !customAmount ? Colors.primary : Colors.gray[200], marginRight: 8, marginBottom: 8 }}
+                style={{ paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, borderWidth: 1, backgroundColor: amount === a && !customAmount ? Colors.primary : Colors.white, borderColor: amount === a && !customAmount ? Colors.primary : Colors.gray[200], marginEnd: 8, marginBottom: 8 }}
               >
                 <Text style={{ fontWeight: "500", color: amount === a && !customAmount ? Colors.white : Colors.gray[700] }}>{a}</Text>
               </TouchableOpacity>
@@ -403,39 +407,39 @@ export default function GiftCardPurchaseScreen() {
           />
           <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{gc("quantityLabel")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 24 }}>
-            <TouchableOpacity onPress={() => setQuantity((q) => Math.max(1, q - 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginRight: 16 }}>
+            <TouchableOpacity onPress={() => setQuantity((q) => Math.max(1, q - 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginEnd: 16 }}>
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>−</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginRight: 16 }}>{quantity}</Text>
+            <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginEnd: 16 }}>{quantity}</Text>
             <TouchableOpacity onPress={() => setQuantity((q) => Math.min(10, q + 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>+</Text>
             </TouchableOpacity>
           </View>
           {/* Who is this for? Clear choice between keeping it and gifting it. */}
           <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
-            Who is this for?
+            {gc("whoIsThisFor")}
           </Text>
           <View style={{ flexDirection: "row", marginBottom: 12 }}>
             <TouchableOpacity
               onPress={() => setIsGift(false)}
-              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: !isGift ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: !isGift ? "#FDF2F8" : Colors.white, marginRight: 8, alignItems: "center" }}
+              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: !isGift ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: !isGift ? "#FDF2F8" : Colors.white, marginEnd: 8, alignItems: "center" }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: !isGift ? Colors.primary : Colors.gray[700] }}>For myself</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: !isGift ? Colors.primary : Colors.gray[700] }}>{gc("forMyself")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setIsGift(true)}
               style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: isGift ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: isGift ? "#FDF2F8" : Colors.white, alignItems: "center" }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: isGift ? Colors.primary : Colors.gray[700] }}>Send as a gift</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: isGift ? Colors.primary : Colors.gray[700] }}>{gc("sendAsGift")}</Text>
             </TouchableOpacity>
           </View>
 
           {isGift ? (
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Recipient email</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>{gc("recipientEmailLabel")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 10 }}
-                placeholder="friend@email.com"
+                placeholder={gc("recipientEmailPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={recipientEmail}
                 onChangeText={setRecipientEmail}
@@ -443,44 +447,46 @@ export default function GiftCardPurchaseScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Recipient name (optional)</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>{gc("recipientNameLabel")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 10 }}
-                placeholder="e.g. Thandi"
+                placeholder={gc("recipientNamePlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={recipientName}
                 onChangeText={setRecipientName}
               />
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Personal message (optional)</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>{gc("giftMessageLabel")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, minHeight: 72, textAlignVertical: "top" }}
-                placeholder="Happy birthday! Enjoy a treat on me 💛"
+                placeholder={gc("giftMessagePlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={giftMessage}
                 onChangeText={setGiftMessage}
                 multiline
                 maxLength={500}
               />
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 10, marginBottom: 6 }}>Send later (optional)</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 10, marginBottom: 6 }}>{gc("sendLaterLabel")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 }}
-                placeholder="YYYY-MM-DD HH:mm"
+                placeholder={gc("sendLaterPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={deliverAt}
                 onChangeText={setDeliverAt}
               />
               <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10, backgroundColor: "#FDF2F8", borderRadius: 10, padding: 12 }}>
                 <Ionicons name="mail-outline" size={16} color={Colors.primary} style={{ marginTop: 1 }} />
-                <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
-                  We&apos;ll email the code straight to {recipientEmail.trim() ? recipientEmail.trim() : "your recipient"} after payment, with simple steps to redeem it. If they already have a Beautonomi account, it also appears in their wallet automatically.
+                <Text style={{ flex: 1, marginStart: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
+                  {gc("giftDeliveryHint", {
+                    recipient: recipientEmail.trim() || gc("giftDeliveryRecipientFallback"),
+                  })}
                 </Text>
               </View>
             </View>
           ) : (
             <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16, backgroundColor: Colors.gray[50], borderRadius: 10, padding: 12 }}>
               <Ionicons name="information-circle-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
-              <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
-                The code{quantity > 1 ? "s" : ""} will be shown right after payment — you can copy or share {quantity > 1 ? "them" : "it"} anytime from Payments, or redeem to your wallet.
+              <Text style={{ flex: 1, marginStart: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
+                {quantity > 1 ? gc("selfKeepHintPlural") : gc("selfKeepHint")}
               </Text>
             </View>
           )}

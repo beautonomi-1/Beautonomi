@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -32,6 +33,7 @@ interface PayStub {
 }
 
 export default function MyEarningsPage() {
+  const { t } = useTranslation();
   const { format: fmtMoney } = useProviderMoneyFormat();
   const [payStubs, setPayStubs] = useState<PayStub[]>([]);
   const [live, setLive] = useState<Record<string, LiveTotals> | null>(null);
@@ -56,7 +58,7 @@ export default function MyEarningsPage() {
       setLive(payload?.live ?? null);
     } catch (err) {
       console.error("Failed to load earnings:", err);
-      toast.error("Failed to load earnings");
+      toast.error(t("web.provider.pages.team/my-earnings.failedToLoad"));
       setPayStubs([]);
     } finally {
       setIsLoading(false);
@@ -73,7 +75,7 @@ export default function MyEarningsPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="My Earnings" subtitle="View your pay stubs" />
+        <PageHeader title={t("web.provider.sidebar.items.myEarnings")} subtitle={t("web.provider.pages.team/my-earnings.subtitleShort")} />
         <SectionCard>
           <Skeleton className="h-48 w-full" />
         </SectionCard>
@@ -84,25 +86,24 @@ export default function MyEarningsPage() {
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6">
       <PageHeader
-        title="My Earnings"
-        subtitle="View your pay stubs and earnings history"
+        title={t("web.provider.sidebar.items.myEarnings")}
+        subtitle={t("web.provider.pages.team/my-earnings.subtitle")}
         breadcrumbs={[
-          { label: "Team", href: "/provider/team/members" },
-          { label: "My Earnings" },
+          { label: t("web.provider.sidebar.items.team"), href: "/provider/team/members" },
+          { label: t("web.provider.sidebar.items.myEarnings") },
         ]}
       />
 
       {live ? (
         <SectionCard className="p-4">
-          <p className="text-sm font-semibold text-gray-900 mb-3">Live earnings</p>
+          <p className="text-sm font-semibold text-gray-900 mb-3">{t("web.provider.pages.team/my-earnings.liveEarnings")}</p>
           <div className="grid grid-cols-3 gap-3 text-sm">
             {(["today", "week", "month"] as const).map((key) => (
               <div key={key}>
-                <p className="text-xs uppercase text-gray-500">{key}</p>
+                <p className="text-xs uppercase text-gray-500">{t(`web.provider.pages.team/my-earnings.period${key.charAt(0).toUpperCase()}${key.slice(1)}`)}</p>
                 <p className="font-medium">{fmtMoney(Number(live[key]?.total ?? 0))}</p>
                 <p className="text-xs text-gray-500">
-                  Commission {fmtMoney(Number(live[key]?.commission ?? 0))} · Tips{" "}
-                  {fmtMoney(Number(live[key]?.tips ?? 0))}
+                  {t("web.provider.pages.team/my-earnings.commissionTips", { commission: fmtMoney(Number(live[key]?.commission ?? 0)), tips: fmtMoney(Number(live[key]?.tips ?? 0)) })}
                 </p>
               </div>
             ))}
@@ -113,8 +114,8 @@ export default function MyEarningsPage() {
       {payStubs.length === 0 ? (
         <SectionCard className="p-8 text-center">
           <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="font-medium text-gray-900 mb-2">No pay stubs yet</h3>
-          <p className="text-sm text-gray-600">When your employer runs payroll, your pay stubs will appear here.</p>
+          <h3 className="font-medium text-gray-900 mb-2">{t("web.provider.pages.team/my-earnings.noPayStubs")}</h3>
+          <p className="text-sm text-gray-600">{t("web.provider.pages.team/my-earnings.noPayStubsHint")}</p>
         </SectionCard>
       ) : (
         <div className="space-y-3">
@@ -124,14 +125,14 @@ export default function MyEarningsPage() {
               <SectionCard key={stub.pay_run_id} className="overflow-hidden">
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : stub.pay_run_id)}
-                  className="w-full flex items-center justify-between py-2 text-left"
+                  className="w-full flex items-center justify-between py-2 text-start"
                 >
                   <div className="flex items-center gap-3">
                     <div>
                       <p className="font-medium">
                         {format(new Date(stub.pay_period_start), "MMM d")} – {format(new Date(stub.pay_period_end), "MMM d, yyyy")}
                       </p>
-                      <p className="text-xs text-gray-500">Net: {fmtMoney(Number(stub.net_pay))}</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.pages.team/my-earnings.netLabel", { amount: fmtMoney(Number(stub.net_pay)) })}</p>
                     </div>
                     <Badge className={statusColor(stub.status)}>{stub.status}</Badge>
                   </div>
@@ -144,27 +145,27 @@ export default function MyEarningsPage() {
                 {isExpanded && (
                   <div className="pt-4 mt-2 border-t space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Gross Pay</span>
+                      <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].csvGrossPay")}</span>
                       <span>{fmtMoney(Number(stub.gross_pay))}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Commission</span>
+                      <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].commission")}</span>
                       <span>{fmtMoney(Number(stub.commission_amount))}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Hourly</span>
+                      <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].hourly")}</span>
                       <span>{fmtMoney(Number(stub.hourly_amount))}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Salary</span>
+                      <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].salary")}</span>
                       <span>{fmtMoney(Number(stub.salary_amount))}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Tips</span>
+                      <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].tips")}</span>
                       <span>{fmtMoney(Number(stub.tips_amount))}</span>
                     </div>
                     <div className="flex justify-between text-red-600">
-                      <span>Deductions (Tax, UIF, Other)</span>
+                      <span>{t("web.provider.pages.team/my-earnings.deductions")}</span>
                       <span>
                         -{fmtMoney(
                           Number(stub.manual_deductions) +
@@ -174,7 +175,7 @@ export default function MyEarningsPage() {
                       </span>
                     </div>
                     <div className="flex justify-between font-semibold pt-2 border-t">
-                      <span>Net Pay</span>
+                      <span>{t("web.provider.pages.team/payroll/[id].csvNetPay")}</span>
                       <span>{fmtMoney(Number(stub.net_pay))}</span>
                     </div>
                   </div>

@@ -1,11 +1,13 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getPrimaryOnlinePaymentGatewayForRegion } from "@/lib/regions/payment-gateways";
+import { checkReportingCurrencyFreshness } from "@/lib/fx/assert-reporting-currency-ready";
 
 export type CountryLaunchCheckItem = {
   id: string;
   label: string;
   ok: boolean;
   detail?: string;
+  href?: string;
 };
 
 export type CountryLaunchValidationResult = {
@@ -58,7 +60,7 @@ export async function validateCountryLaunchReadiness(
 
   const { data: region } = await supabase
     .from("regions")
-    .select("id, code, default_currency, is_active")
+    .select("id, code, default_currency, default_language, supported_languages, is_active")
     .ilike("code", t.region_code)
     .maybeSingle();
 
@@ -139,20 +141,52 @@ export async function validateCountryLaunchReadiness(
     ok: Boolean(currencyRow?.code),
   });
 
+  const supportedLangs = Array.isArray((region as { supported_languages?: string[] | null } | null)?.supported_languages)
+    ? ((region as { supported_languages: string[] }).supported_languages ?? [])
+    : [];
+  items.push({
+    id: "supported_languages",
+    label: "Region supported_languages configured",
+    ok: supportedLangs.length > 0,
+    detail: supportedLangs.length ? supportedLangs.join(", ") : "empty",
+  });
+
+  const { data: languagesFlag } = await supabase
+    .from("feature_flags")
+    .select("enabled")
+    .eq("feature_key", "languages.enabled")
+    .maybeSingle();
+  items.push({
+    id: "languages_enabled_flag",
+    label: "languages.enabled feature flag",
+    ok: languagesFlag?.enabled === true,
+  });
+
+  if (supportedLangs.some((l) => l.toLowerCase().startsWith("ar"))) {
+    const { count: arTemplates } = await supabase
+      .from("notification_template_translations")
+      .select("id", { count: "exact", head: true })
+      .eq("language_code", "ar")
+      .eq("is_active", true);
+    items.push({
+      id: "notification_ar_templates",
+      label: "Arabic notification template translations seeded",
+      ok: (arTemplates ?? 0) >= 3,
+      detail: `${arTemplates ?? 0} row(s)`,
+    });
+  }
+
   if (t.default_currency && t.default_currency.toUpperCase() !== "ZAR") {
-    const { data: fxRow } = await supabase
-      .from("fx_reference_rates")
-      .select("rate")
-      .eq("base_currency", t.default_currency.toUpperCase())
-      .eq("quote_currency", "ZAR")
-      .order("rate_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const fxCheck = await checkReportingCurrencyFreshness(t.default_currency);
+    const fxDetail = fxCheck.ok
+      ? `${t.default_currency}→ZAR (${fxCheck.rateDate ?? "?"}, ${fxCheck.source ?? "?"})`
+      : `${fxCheck.ok === false ? fxCheck.message : "FX not ready"} — fix on Finance → FX rates`;
     items.push({
       id: "fx_reporting_rate",
       label: "FX reference rate for tenant currency → ZAR reporting",
-      ok: Boolean(fxRow?.rate),
-      detail: fxRow?.rate ? `${t.default_currency}→ZAR` : "missing",
+      ok: fxCheck.ok,
+      href: "/admin/fx-rates",
+      detail: fxDetail,
     });
   }
 

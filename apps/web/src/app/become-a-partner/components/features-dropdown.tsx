@@ -76,7 +76,7 @@ export default function FeaturesDropdown() {
                     const Icon = item.icon;
                     return (
                       <li key={item.name}>
-                        <button className="flex items-center gap-2 sm:gap-3 w-full text-left group hover:text-[#FF0077] transition-colors">
+                        <button className="flex items-center gap-2 sm:gap-3 w-full text-start group hover:text-[#FF0077] transition-colors">
                           <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center group-hover:border-[#FF0077] group-hover:bg-pink-50 transition-colors flex-shrink-0">
                             <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-600 group-hover:text-[#FF0077]" />
                           </div>

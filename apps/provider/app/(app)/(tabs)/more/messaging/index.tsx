@@ -25,7 +25,9 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { providerMessagingBaseFromPathname } from "@/lib/provider-messaging-routes";
+import { useTranslation } from "@beautonomi/i18n";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface Conversation {
   id: string;
@@ -41,10 +43,10 @@ interface Conversation {
   is_pinned?: boolean;
 }
 
-function formatDateTimeSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateTimeSafe(value: unknown, empty = "—"): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -54,6 +56,9 @@ function formatDateTimeSafe(value: unknown): string {
 }
 
 export default function MessagingListScreen() {
+  const { t } = useTranslation();
+  const ml = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.messagingList.${key}`, opts) as string;
   const router = useRouter();
   const pathname = usePathname();
   const threadBase = providerMessagingBaseFromPathname(pathname);
@@ -189,7 +194,7 @@ export default function MessagingListScreen() {
         { pinned: next },
       );
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Could not update pin");
+        Alert.alert(ml("errorTitle"), res.error.message || ml("couldNotUpdatePin"));
         return;
       }
       void refresh();
@@ -209,7 +214,7 @@ export default function MessagingListScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Messages" showBack={canGoBack} />
+        <ScreenHeader title={ml("title")} showBack={canGoBack} />
         <View style={{ flex: 1, paddingHorizontal: screenPadding, paddingTop: 12 }}>
           <SkeletonList rows={8} />
         </View>
@@ -220,7 +225,7 @@ export default function MessagingListScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Messages" showBack={canGoBack} />
+        <ScreenHeader title={ml("title")} showBack={canGoBack} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -231,9 +236,9 @@ export default function MessagingListScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Messages"
+        title={ml("title")}
         showBack={canGoBack}
-        subtitle={`${filteredConversations.length} conversation${filteredConversations.length === 1 ? "" : "s"}`}
+        subtitle={ml("conversationCount", { count: filteredConversations.length })}
       />
       {messagingDisabled ? (
         <View
@@ -247,8 +252,7 @@ export default function MessagingListScreen() {
           }}
         >
           <Text style={{ fontSize: 14, color: Colors.gray[600], lineHeight: 20, textAlign: "center" }}>
-            Direct messaging is turned off in your content & safety settings. You can still read past
-            conversations.
+            {ml("messagingDisabled")}
           </Text>
         </View>
       ) : null}
@@ -271,11 +275,11 @@ export default function MessagingListScreen() {
             paddingVertical: 8,
           }}
         >
-          <Ionicons name="search" size={18} color={Colors.gray[400]} style={{ marginRight: 6 }} />
+          <Ionicons name="search" size={18} color={Colors.gray[400]} style={{ marginEnd: 6 }} />
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search by name, message, or booking #"
+            placeholder={ml("searchPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
             autoCapitalize="none"
@@ -285,7 +289,7 @@ export default function MessagingListScreen() {
           {search.length > 0 ? (
             <TouchableOpacity
               onPress={() => setSearch("")}
-              accessibilityLabel="Clear search"
+              accessibilityLabel={ml("clearSearchA11y")}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
@@ -304,11 +308,11 @@ export default function MessagingListScreen() {
         {filteredConversations.length === 0 ? (
           <EmptyState
             icon="chatbubbles-outline"
-            title={conversations.length === 0 ? "No conversations yet" : "No matches"}
+            title={conversations.length === 0 ? ml("emptyTitle") : ml("noMatches")}
             description={
               conversations.length === 0
-                ? "When clients message you (e.g. from a booking or custom request), conversations will appear here."
-                : "Try a different search."
+                ? ml("emptyDesc")
+                : ml("noMatchesDesc")
             }
           />
         ) : (
@@ -321,10 +325,10 @@ export default function MessagingListScreen() {
               onLongPress={() => {
                 Alert.alert(conv.customer_name, undefined, [
                   {
-                    text: conv.is_pinned ? "Unpin chat" : "Pin chat",
+                    text: conv.is_pinned ? ml("unpinChat") : ml("pinChat"),
                     onPress: () => void togglePin(conv),
                   },
-                  { text: "Cancel", style: "cancel" },
+                  { text: ml("cancel"), style: "cancel" },
                 ]);
               }}
               style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
@@ -335,7 +339,7 @@ export default function MessagingListScreen() {
                 imageUrl={conv.customer_avatar}
                 size="md"
               />
-              <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ marginStart: 12, flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                     {conv.is_pinned ? (
@@ -357,13 +361,13 @@ export default function MessagingListScreen() {
                   )}
                 </View>
                 <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
-                  {conv.last_message_preview || "No messages yet"}
+                  {conv.last_message_preview || ml("noMessagesYet")}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>
-                  {formatDateTimeSafe(conv.last_message_at)}
+                  {formatDateTimeSafe(conv.last_message_at, ml("emptyValue"))}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           ))
         )}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getServerUserSafe } from "@/lib/supabase/auth-errors";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import {
   effectiveBrowseCountryCode,
@@ -1823,7 +1824,7 @@ export async function GET(request: Request) {
     const env = process.env.NODE_ENV === "production" ? "production" : "development";
     const supabaseAdmin = getSupabaseAdmin();
     const serverSupabase = await getSupabaseServer(request);
-    const { data: { user: homeUser } } = await serverSupabase.auth.getUser();
+    const homeUser = await getServerUserSafe(serverSupabase);
     const viewerSafety = await getViewerSafetyContext(homeUser?.id, request as import("next/server").NextRequest);
     const [adsRow, rankingRow, distanceRow] = await Promise.all([
       supabaseAdmin

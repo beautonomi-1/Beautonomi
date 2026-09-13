@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import EmptyState from "@/components/ui/empty-state";
 import { ProviderGalleryImage } from "@beautonomi/ui/web";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
 import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
@@ -25,6 +26,7 @@ interface PartnerPhotosProps {
 }
 
 const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessName, slug }) => {
+  const { pp } = usePartnerProfileT();
   const [_selectedImage, _setSelectedImage] = useState<number | null>(null);
 
   // Resolve image src to string (StaticImageData.src for static imports)
@@ -44,7 +46,7 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-      <h2 className="text-2xl font-semibold mb-6">Photos</h2>
+      <h2 className="text-2xl font-semibold mb-6">{pp("tabPhotos")}</h2>
       
       {displayImages.length > 0 ? (
         <>
@@ -92,8 +94,8 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
         </>
       ) : (
         <EmptyState
-          title="No photos available"
-          description="This provider hasn't added any photos yet"
+          title={pp("noPhotosAvailable")}
+          description={pp("noPhotosHint")}
         />
       )}
 
@@ -101,7 +103,7 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
         <div className="mt-6">
           <Link href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}>
             <button className="text-gray-600 hover:text-gray-900 underline text-sm">
-              See all images
+              {pp("seeAllImages")}
             </button>
           </Link>
         </div>

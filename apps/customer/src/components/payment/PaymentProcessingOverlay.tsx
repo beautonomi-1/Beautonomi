@@ -47,7 +47,7 @@ export function PaymentProcessingOverlay({
       <View style={styles.backdrop} pointerEvents="auto">
         <BrandGlyphPulse size={64} accentColor={Colors.primary} cardBackgroundColor="rgba(255,255,255,0.12)" />
 
-        <Text style={styles.title}>Please wait</Text>
+        <Text style={styles.title}>{t("customer.mobile.screens.inAppBrowser.pleaseWait")}</Text>
 
         <Animated.Text
           key={message}
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   stepSegmentGap: {
-    marginRight: 6,
+    marginEnd: 6,
   },
   stepSegmentActive: {
     backgroundColor: Colors.primary,

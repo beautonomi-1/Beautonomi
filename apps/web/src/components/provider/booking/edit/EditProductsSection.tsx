@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useState } from "react";
 import { Plus, Minus } from "lucide-react";
@@ -20,6 +21,7 @@ interface EditProductsSectionProps {
 }
 
 export function EditProductsSection({ products, onChange }: EditProductsSectionProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [catalog, setCatalog] = useState<
     Array<{ id: string; name: string; price: number; stock: number | null }>
@@ -94,21 +96,21 @@ export function EditProductsSection({ products, onChange }: EditProductsSectionP
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-2">Products</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.editProducts.label")}</BookingSectionLabel>
       {products.length > 0 ? (
         <ul className="space-y-2 mb-3">
           {products.map((p) => (
             <li key={p.productId} className="flex items-center justify-between gap-2 text-sm">
               <div className="min-w-0 flex-1">
                 <p className="font-medium truncate">{p.productVariantName ?? p.productName}</p>
-                <p className="text-xs text-gray-500">{formatMoney(p.unitPrice)} each</p>
+                <p className="text-xs text-gray-500">{t("web.editProducts.each", { price: formatMoney(p.unitPrice) })}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
                   className="p-2 rounded-lg border touch-manipulation min-h-[36px] min-w-[36px]"
                   onClick={() => updateQty(p.productId, -1)}
-                  aria-label="Decrease quantity"
+                  aria-label={t("web.editProducts.decreaseQty")}
                 >
                   <Minus className="h-3 w-3" />
                 </button>
@@ -117,29 +119,29 @@ export function EditProductsSection({ products, onChange }: EditProductsSectionP
                   type="button"
                   className="p-2 rounded-lg border touch-manipulation min-h-[36px] min-w-[36px]"
                   onClick={() => updateQty(p.productId, 1)}
-                  aria-label="Increase quantity"
+                  aria-label={t("web.editProducts.increaseQty")}
                 >
                   <Plus className="h-3 w-3" />
                 </button>
                 <button
                   type="button"
-                  className="text-xs text-red-600 underline ml-1"
+                  className="text-xs text-red-600 underline ms-1"
                   onClick={() => removeProduct(p.productId)}
                 >
-                  Remove
+                  {t("web.promoSection.remove")}
                 </button>
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500 mb-3">No products on this booking.</p>
+        <p className="text-sm text-gray-500 mb-3">{t("web.editProducts.empty")}</p>
       )}
 
       <div className="flex gap-2">
         <Select value={pickId} onValueChange={setPickId}>
           <SelectTrigger className="rounded-xl min-h-[44px] flex-1">
-            <SelectValue placeholder="Add product" />
+            <SelectValue placeholder={t("web.editProducts.addProduct")} />
           </SelectTrigger>
           <SelectContent>
             {catalog.map((p) => (

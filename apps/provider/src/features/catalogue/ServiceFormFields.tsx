@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Switch } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
@@ -156,6 +157,9 @@ export function ServiceFormFields({
   onNameFocus,
   onFieldFocus,
 }: ServiceFormFieldsProps) {
+  const { t } = useTranslation();
+  const sf = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.serviceForm.${key}`, opts) as string;
   const form = value;
   const setForm = (patch: Partial<ServiceFormState> | ((prev: ServiceFormState) => ServiceFormState)) => {
     if (typeof patch === "function") {
@@ -212,30 +216,30 @@ export function ServiceFormFields({
   return (
     <>
       <View style={twStyle("mb-3")} collapsable={false}>
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service name *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("serviceName")}</Text>
         {mode === "catalogue" ? (
           <Text style={twStyle("mb-2 text-xs text-gray-400")}>
-            This is what customers will see when browsing your services.
+            {sf("serviceNameHint")}
           </Text>
         ) : null}
         <TextInput
           ref={nameInputRef}
           style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="e.g. Signature Haircut"
+          placeholder={sf("serviceNamePlaceholder")}
           placeholderTextColor="#9ca3af"
           value={form.name}
-          onChangeText={(t) => patchForm({ name: t })}
+          onChangeText={(text) => patchForm({ name: text })}
           onFocus={() => onNameFocus?.()}
           returnKeyType="next"
           blurOnSubmit={false}
-          accessibilityLabel="Service name"
+          accessibilityLabel={sf("serviceNameA11y")}
         />
       </View>
 
       {showServiceType ? (
         <>
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service type</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("serviceType")}</Text>
             <TouchableOpacity
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
               onPress={() => setServiceTypeSheetOpen(true)}
@@ -246,29 +250,29 @@ export function ServiceFormFields({
             </TouchableOpacity>
             {form.serviceType === "variant" ? (
               <Text style={twStyle("mt-1 text-xs text-amber-700")}>
-                Tip: For multiple prices on one service, choose Basic and use booking options below instead.
+                {sf("variantTip")}
               </Text>
             ) : form.serviceType === "basic" ? (
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                Set price and duration below. Add more options if customers should choose (e.g. short vs long).
+                {sf("basicHint")}
               </Text>
             ) : null}
           </View>
 
           {form.serviceType === "package" ? (
             <ServiceIdsChips
-              label="Included services"
+              label={sf("includedServices")}
               selectedIds={form.includedServices}
               services={allServices}
               onPressEdit={() => setIncludedPickerOpen(true)}
-              emptyHint="Tap to select services included in this package"
+              emptyHint={sf("includedServicesEmpty")}
             />
           ) : null}
 
           {form.serviceType === "addon" ? (
             <>
               <View style={twStyle("mb-3")}>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Add-on category</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("addonCategory")}</Text>
                 <TouchableOpacity
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                   onPress={() => setAddonCategorySheetOpen(true)}
@@ -280,18 +284,18 @@ export function ServiceFormFields({
                 </TouchableOpacity>
               </View>
               <ServiceIdsChips
-                label="Applicable services"
+                label={sf("applicableServices")}
                 selectedIds={form.applicableServiceIds}
                 services={allServices}
                 onPressEdit={() => setApplicablePickerOpen(true)}
-                emptyHint="All services (tap to restrict)"
+                emptyHint={sf("applicableServicesEmpty")}
               />
               <View
                 style={twStyle(
                   "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
                 )}
               >
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Recommended add-on</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("recommendedAddon")}</Text>
                 <Switch
                   value={form.isRecommended}
                   onValueChange={(v) => setForm({ isRecommended: v })}
@@ -316,19 +320,19 @@ export function ServiceFormFields({
       ) : null}
 
       <View style={twStyle("mb-3")}>
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("categoryRequired")}</Text>
         <ChipCombobox
           singleSelect
           value={form.categoryId || null}
           onChange={(v) => patchForm({ categoryId: v ?? "" })}
           staticSuggestions={categories.map((c) => ({ value: c.id, label: c.name }))}
           onCreateNew={onCreateCategory}
-          placeholder="Select or add category"
+          placeholder={sf("categoryPlaceholder")}
         />
       </View>
 
       <FormField
-        label="Description (optional)"
+        label={sf("descriptionOptional")}
         value={form.description}
         onChangeText={(t) => setForm({ description: t })}
         multiline
@@ -337,7 +341,7 @@ export function ServiceFormFields({
 
       {mode === "catalogue" ? (
         <FormField
-          label="Aftercare instructions (optional)"
+          label={sf("aftercareOptional")}
           value={form.aftercareDescription}
           onChangeText={(t) => setForm({ aftercareDescription: t })}
           multiline
@@ -346,7 +350,7 @@ export function ServiceFormFields({
 
       <View style={twStyle("my-4 flex-row items-center gap-3")}>
         <View style={twStyle("h-px flex-1 bg-gray-200")} />
-        <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>Pricing</Text>
+        <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>{sf("pricing")}</Text>
         <View style={twStyle("h-px flex-1 bg-gray-200")} />
       </View>
 
@@ -365,7 +369,7 @@ export function ServiceFormFields({
       />
 
       <View style={twStyle("mb-3")}>
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Available for</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("availableFor")}</Text>
         <TouchableOpacity
           style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
           onPress={() => setAvailabilitySheetOpen(true)}
@@ -376,13 +380,13 @@ export function ServiceFormFields({
         </TouchableOpacity>
       </View>
 
-      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Location</Text>
+      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{sf("location")}</Text>
       <View
         style={twStyle(
           "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
         )}
       >
-        <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at salon</Text>
+        <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("availableAtSalon")}</Text>
         <Switch
           value={form.supportsAtSalon}
           onValueChange={(v) => setForm({ supportsAtSalon: v })}
@@ -393,36 +397,28 @@ export function ServiceFormFields({
           "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
         )}
       >
-        <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at home</Text>
+        <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("availableAtHome")}</Text>
         <Switch value={form.supportsAtHome} onValueChange={(v) => void handleAtHomeToggle(v)} />
       </View>
 
       {form.supportsAtHome ? (
         <>
           <FormField
-            label="At-home radius (km)"
+            label={sf("atHomeRadius")}
             value={form.atHomeRadiusKm}
             onChangeText={(t) => setForm({ atHomeRadiusKm: t })}
             keyboardType="decimal-pad"
-            placeholder={mode === "onboarding" ? "Unlimited" : undefined}
-            hint={
-              mode === "onboarding"
-                ? "Maximum distance from your base for at-home bookings. Leave blank for no limit."
-                : undefined
-            }
+            placeholder={mode === "onboarding" ? sf("unlimited") : undefined}
+            hint={mode === "onboarding" ? sf("atHomeRadiusHint") : undefined}
             onFieldFocus={onFieldFocus}
             inputAccessoryViewID="provider-service-at-home-radius"
           />
           <FormField
-            label={`At-home price adjustment (${getTenantDefaultCurrency()})`}
+            label={sf("atHomePriceAdjustment", { currency: getTenantDefaultCurrency() })}
             value={form.atHomePriceAdjustment}
             onChangeText={(t) => setForm({ atHomePriceAdjustment: t })}
             keyboardType="decimal-pad"
-            hint={
-              mode === "onboarding"
-                ? "Additional charge (or discount if negative) for at-home service."
-                : undefined
-            }
+            hint={mode === "onboarding" ? sf("atHomePriceHint") : undefined}
             onFieldFocus={onFieldFocus}
             inputAccessoryViewID="provider-service-at-home-price"
           />
@@ -443,12 +439,12 @@ export function ServiceFormFields({
         )}
       >
         <View style={twStyle("flex-row items-center justify-between")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Online bookable</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("onlineBookable")}</Text>
           <Switch value={form.onlineBookable} onValueChange={(v) => setForm({ onlineBookable: v })} />
         </View>
         {mode === "onboarding" ? (
           <Text style={twStyle("mt-2 text-xs text-gray-400")}>
-            When on, customers can book this service online through Beautonomi.
+            {sf("onlineBookableHint")}
           </Text>
         ) : null}
       </View>
@@ -456,7 +452,7 @@ export function ServiceFormFields({
       {showTeam ? (
         <>
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("teamMembers")}</Text>
             <ChipCombobox
               value={form.teamMemberIds}
               onChange={(ids) =>
@@ -465,10 +461,10 @@ export function ServiceFormFields({
                 })
               }
               staticSuggestions={[
-                { value: "__any__", label: "Any team member" },
+                { value: "__any__", label: sf("anyTeamMember") },
                 ...staff.map((m) => ({ value: m.id, label: m.name })),
               ]}
-              placeholder="Any or select staff"
+              placeholder={sf("teamPlaceholder")}
             />
           </View>
 
@@ -477,7 +473,7 @@ export function ServiceFormFields({
               "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
             )}
           >
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("teamCommission")}</Text>
             <Switch
               value={form.teamMemberCommissionEnabled}
               onValueChange={(v) => setForm({ teamMemberCommissionEnabled: v })}
@@ -492,7 +488,7 @@ export function ServiceFormFields({
         )}
       >
         <View style={twStyle("flex-row items-center justify-between")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("extraBufferTime")}</Text>
           <Switch
             value={form.extraTimeEnabled}
             onValueChange={(v) => setForm({ extraTimeEnabled: v })}
@@ -500,20 +496,20 @@ export function ServiceFormFields({
         </View>
         {mode === "onboarding" ? (
           <Text style={twStyle("mt-2 text-xs text-gray-400")}>
-            Add buffer time after the service for cleanup or transition between appointments.
+            {sf("extraBufferHint")}
           </Text>
         ) : null}
       </View>
       {form.extraTimeEnabled ? (
         <View style={twStyle("mb-3")}>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Extra time duration</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("extraTimeDuration")}</Text>
           <TouchableOpacity
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
             onPress={() => setExtraTimeSheetOpen(true)}
           >
             <Text style={twStyle("text-base text-gray-900")}>
               {extraTimeOptions.find((o) => o.value === form.extraTimeDuration)?.label ??
-                `${form.extraTimeDuration} min`}
+                sf("extraTimeMin", { minutes: form.extraTimeDuration })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -526,7 +522,7 @@ export function ServiceFormFields({
               "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
             )}
           >
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Reminder to rebook</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("reminderToRebook")}</Text>
             <Switch
               value={form.reminderToRebookEnabled}
               onValueChange={(v) => setForm({ reminderToRebookEnabled: v })}
@@ -534,7 +530,7 @@ export function ServiceFormFields({
           </View>
           {form.reminderToRebookEnabled ? (
             <FormField
-              label="Reminder (weeks)"
+              label={sf("reminderWeeks")}
               value={form.reminderToRebookWeeks}
               onChangeText={(t) =>
                 setForm({ reminderToRebookWeeks: t.replace(/[^0-9]/g, "") })
@@ -544,25 +540,25 @@ export function ServiceFormFields({
           ) : null}
 
           <FormField
-            label="Service cost %"
+            label={sf("serviceCostPercent")}
             value={form.serviceCostPercentage}
             onChangeText={(t) => setForm({ serviceCostPercentage: t })}
             keyboardType="decimal-pad"
           />
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-            Estimated cost amount: {getTenantDefaultCurrency()} {serviceCostAmount}
+            {sf("estimatedCost", { currency: getTenantDefaultCurrency(), amount: serviceCostAmount })}
           </Text>
         </>
       ) : null}
 
       <View style={twStyle("mb-3")}>
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax rate</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("taxRate")}</Text>
         <TouchableOpacity
           style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
           onPress={() => setTaxSheetOpen(true)}
         >
           <Text style={twStyle("text-base text-gray-900")}>
-            {taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}
+            {taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? sf("taxRatePercent", { rate: form.taxRate })}
           </Text>
         </TouchableOpacity>
       </View>
@@ -574,9 +570,9 @@ export function ServiceFormFields({
           )}
         >
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{sf("active")}</Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Inactive services won&apos;t appear in booking flows
+              {sf("inactiveHint")}
             </Text>
           </View>
           <Switch value={form.isActive} onValueChange={(v) => setForm({ isActive: v })} />
@@ -603,35 +599,35 @@ export function ServiceFormFields({
 
       <OptionSheet
         visible={serviceTypeSheetOpen}
-        title="Service type"
+        title={sf("serviceType")}
         options={serviceTypeOptions}
         onSelect={(v) => setForm({ serviceType: v })}
         onClose={() => setServiceTypeSheetOpen(false)}
       />
       <OptionSheet
         visible={availabilitySheetOpen}
-        title="Available for"
+        title={sf("availableFor")}
         options={availabilityOptions}
         onSelect={(v) => setForm({ availableFor: v })}
         onClose={() => setAvailabilitySheetOpen(false)}
       />
       <OptionSheet
         visible={taxSheetOpen}
-        title="Tax rate"
+        title={sf("taxRate")}
         options={taxRateOptions}
         onSelect={(v) => setForm({ taxRate: v })}
         onClose={() => setTaxSheetOpen(false)}
       />
       <OptionSheet
         visible={extraTimeSheetOpen}
-        title="Extra time"
+        title={sf("extraTime")}
         options={extraTimeOptions}
         onSelect={(v) => setForm({ extraTimeDuration: v })}
         onClose={() => setExtraTimeSheetOpen(false)}
       />
       <OptionSheet
         visible={addonCategorySheetOpen}
-        title="Add-on category"
+        title={sf("addonCategory")}
         options={addonCategoryOptions}
         onSelect={(v) => setForm({ addonCategory: v })}
         onClose={() => setAddonCategorySheetOpen(false)}

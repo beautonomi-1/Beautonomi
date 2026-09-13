@@ -1,25 +1,26 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Package, FileEdit, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { label: "Resources", href: "/provider/resources", icon: Package, description: "Manage resources and equipment for services" },
-  { label: "Forms", href: "/provider/forms", icon: FileEdit, description: "Intake, consent, and waiver forms for bookings" },
-];
-
 export default function ResourcesFormsHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    { label: t("web.provider.sidebar.items.resources"), href: "/provider/resources", icon: Package, description: t("web.provider.pages.resources-forms.resourcesDesc") },
+    { label: t("web.provider.sidebar.items.forms"), href: "/provider/forms", icon: FileEdit, description: t("web.provider.pages.resources-forms.formsDesc") },
+  ];
   return (
     <div>
       <PageHeader
-        title="Resources & Forms"
-        subtitle="Resources and intake forms"
+title={t("web.provider.pages.resources-forms.title")}
+subtitle={t("web.provider.pages.resources-forms.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Resources & Forms" },
+{ label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+{ label: t("web.provider.pages.resources-forms.title") },
         ]}
       />
 

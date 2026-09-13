@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -28,7 +30,7 @@ import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz"
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   Sheet,
   SheetContent,
@@ -140,6 +142,7 @@ const RateCustomerModal = dynamic(
 /** Inline calendar display preferences for the mobile Filter sheet */
 function MobileCalendarPreferencesSection() {
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     preferences,
     isLoaded,
@@ -155,13 +158,13 @@ function MobileCalendarPreferencesSection() {
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-gray-700 mb-3">Display preferences</h3>
+<h3 className="text-sm font-medium text-gray-700 mb-3">{t("web.provider.calendarPage.displayPreferences")}</h3>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Contrast className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Label htmlFor="mobile-high-contrast" className="text-sm font-normal cursor-pointer truncate">
-              High contrast
+              {t("web.provider.calendarPage.highContrast")}
             </Label>
           </div>
           <Switch
@@ -178,7 +181,7 @@ function MobileCalendarPreferencesSection() {
               <EyeOff className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             )}
             <Label htmlFor="mobile-show-canceled" className="text-sm font-normal cursor-pointer truncate">
-              Show canceled
+              {t("web.provider.calendarPage.showCanceled")}
             </Label>
           </div>
           <Switch
@@ -191,7 +194,7 @@ function MobileCalendarPreferencesSection() {
           <div className="flex items-center gap-2 min-w-0">
             <Grid3X3 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Label htmlFor="mobile-compact" className="text-sm font-normal cursor-pointer truncate">
-              Compact blocks
+              {t("web.provider.calendarPage.compactBlocks")}
             </Label>
           </div>
           <Switch
@@ -204,7 +207,7 @@ function MobileCalendarPreferencesSection() {
           <div className="flex items-center gap-2 min-w-0">
             <Tag className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Label htmlFor="mobile-show-icons" className="text-sm font-normal cursor-pointer truncate">
-              Show icons
+              {t("web.provider.calendarPage.showIcons")}
             </Label>
           </div>
           <Switch
@@ -217,7 +220,7 @@ function MobileCalendarPreferencesSection() {
           <div className="flex items-center gap-2 min-w-0">
             <DollarSign className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Label htmlFor="mobile-show-prices" className="text-sm font-normal cursor-pointer truncate">
-              Show prices
+              {t("web.provider.calendarPage.showPrices")}
             </Label>
           </div>
           <Switch
@@ -229,7 +232,7 @@ function MobileCalendarPreferencesSection() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Palette className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <Label className="text-sm font-normal">Color by</Label>
+<Label className="text-sm font-normal">{t("web.provider.calendarPage.colorBy")}</Label>
           </div>
           <Select
             value={preferences.colorBy}
@@ -241,9 +244,9 @@ function MobileCalendarPreferencesSection() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="status">Status</SelectItem>
-              <SelectItem value="service">Service</SelectItem>
-              <SelectItem value="team_member">Staff</SelectItem>
+<SelectItem value="status">{t("web.provider.common.statusLabel")}</SelectItem>
+<SelectItem value="service">{t("web.provider.common.service")}</SelectItem>
+<SelectItem value="team_member">{t("web.provider.calendarMobile.staff")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -251,7 +254,7 @@ function MobileCalendarPreferencesSection() {
           <div className="flex items-center gap-2 min-w-0">
             <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Label htmlFor="mobile-scroll-now" className="text-sm font-normal cursor-pointer truncate">
-              Scroll to now
+              {t("web.provider.calendarPage.scrollToNowPref")}
             </Label>
           </div>
           <Switch
@@ -268,7 +271,7 @@ function MobileCalendarPreferencesSection() {
           className="text-xs h-8"
           onClick={() => reset()}
         >
-          Reset to defaults
+          {t("web.provider.calendarPage.resetToDefaults")}
         </Button>
         <Button
           variant="link"
@@ -276,7 +279,7 @@ function MobileCalendarPreferencesSection() {
           className="text-xs text-muted-foreground p-0 h-auto"
           onClick={() => router.push("/provider/settings/calendar/display-preferences")}
         >
-          More display settings →
+          {t("web.provider.calendarPage.moreDisplaySettings")}
         </Button>
       </div>
     </div>
@@ -455,12 +458,12 @@ function rootBookingIdFromAppointment(apt: Appointment): string {
 }
 
 /** Build POS sale lines from calendar appointment (multi-service + booking products). */
-function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
+function buildSaleItemsFromAppointment(apt: Appointment, fallbacks: { service: string; product: string }): CheckoutSaleLine[] {
   const items: CheckoutSaleLine[] = [];
   const services = (apt as { services?: Array<Record<string, unknown>> }).services;
   if (Array.isArray(services) && services.length > 0) {
     services.forEach((s, idx) => {
-      const name = String(s.offering_name ?? s.service_name ?? s.name ?? "Service");
+      const name = String(s.offering_name ?? s.service_name ?? s.name ?? fallbacks.service);
       const unit = Number(s.price ?? 0);
       const oid = s.offering_id ?? s.service_id ?? s.id;
       items.push({
@@ -478,7 +481,7 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
   const products = (apt as { products?: Array<Record<string, unknown>> }).products;
   if (Array.isArray(products) && products.length > 0) {
     products.forEach((p, idx) => {
-      const name = String(p.product_name ?? p.name ?? "Product");
+      const name = String(p.product_name ?? p.name ?? fallbacks.product);
       const qty = Math.max(1, Number(p.quantity ?? 1));
       const unit = Number(p.unit_price ?? 0);
       const lineTotal = Number(p.total_price ?? unit * qty);
@@ -502,7 +505,7 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
     items.push({
       id: apt.service_id || apt.id,
       type: "service",
-      name: apt.service_name || "Service",
+      name: apt.service_name || fallbacks.service,
       quantity: 1,
       unit_price: Number(apt.price ?? 0),
       total: Number(apt.price ?? 0),
@@ -515,6 +518,7 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
 
 export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarInitialPayload }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { dateView, setDateView, provider, isLoading: isLoadingProvider, salons, selectedLocationId } = useProviderPortal();
   const { preferences: calendarPreferences } = useCalendarPreferences();
   const businessTz = resolveTz(provider?.timezone);
@@ -621,7 +625,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
   const [postCheckoutRateOpen, setPostCheckoutRateOpen] = useState(false);
   const [postCheckoutRateBookingId, setPostCheckoutRateBookingId] = useState<string | null>(null);
-  const [postCheckoutRateClientName, setPostCheckoutRateClientName] = useState<string>("Client");
+  const [postCheckoutRateClientName, setPostCheckoutRateClientName] = useState<string>("");
   const [isStatusManagerOpen, setIsStatusManagerOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isSetDayOffDialogOpen, setIsSetDayOffDialogOpen] = useState(false);
@@ -987,7 +991,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         });
       } catch (error: any) {
         console.error("Failed to load calendar data:", error);
-        setCalendarError(error?.message || "Failed to load calendar data");
+        setCalendarError(error?.message || t("web.provider.calendarPage.loadFailed"));
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -1465,7 +1469,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const _handleDeleteAppointment = async () => {
     if (!selectedAppointment) return;
     
-    if (confirm(`Are you sure you want to delete appointment ${selectedAppointment.ref_number}?`)) {
+    if (confirm(t("web.provider.calendarPage.deleteConfirm", { ref: selectedAppointment.ref_number }))) {
       try {
         await providerApi.deleteAppointment(selectedAppointment.id);
         setIsDetailsModalOpen(false);
@@ -1473,7 +1477,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         loadData();
       } catch (error) {
         console.error("Failed to delete appointment:", error);
-        alert("Failed to delete appointment. Please try again.");
+        alert(t("web.provider.calendarPage.deleteFailed"));
       }
     }
   };
@@ -1491,7 +1495,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       loadData();
     } catch (error) {
       console.error("Failed to update appointment status:", error);
-      alert("Failed to update appointment status. Please try again.");
+      alert(t("web.provider.calendarPage.statusUpdateFailed"));
     }
   };
 
@@ -1532,7 +1536,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const apt = selectedAppointment;
     const bookingIdForRating = rootBookingIdFromAppointment(apt);
     const clientIdForRating = apt.client_id?.trim() || "";
-    const clientNameForRating = apt.client_name?.trim() || "Client";
+    const clientNameForRating = apt.client_name?.trim() || t("web.provider.calendarPage.clientFallback");
 
     try {
       await providerApi.completeService(apt.id);
@@ -1547,7 +1551,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       if (!skipSaleRecord) {
         try {
-          const saleItems = buildSaleItemsFromAppointment(apt);
+          const saleItems = buildSaleItemsFromAppointment(apt, { service: t("web.provider.calendarPage.serviceFallback"), product: t("web.provider.calendarPage.productFallback") });
           const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
           const subtotalForSale = Number(apt.subtotal ?? lineSum);
           const taxForSale = Number(apt.tax_amount ?? 0);
@@ -1578,13 +1582,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             payment_method: paymentMethod,
             location_id: apt.location_id || undefined,
             team_member_id: apt.team_member_id || undefined,
-            notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: R${tipAmount})` : ""}`.trim() : undefined,
+            notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: ${formatCurrency(tipAmount)})` : ""}`.trim() : undefined,
             discount_amount: discountAmount,
           } as Parameters<typeof providerApi.createSale>[0]);
         } catch (error) {
           console.error("Failed to create sale record:", error);
           throw new Error(
-            "The appointment was completed, but the sale could not be recorded. Please retry checkout before closing this dialog.",
+            t("web.provider.calendarPage.saleRecordFailed"),
           );
         }
       } else if (options?.sendReceipt && bookingIdForRating && !options?.paycloudSettled) {
@@ -1667,9 +1671,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     } catch (error) {
       const status = (error as { status?: number })?.status;
       if (status === 409) {
-        toast.error("This booking changed, reload");
+        toast.error(t("web.provider.calendarPage.bookingChangedReload"));
       } else {
-        toast.error("Failed to reschedule appointment");
+        toast.error(t("web.provider.rescheduleDialog.failed"));
       }
       console.error("Failed to reschedule appointment:", error);
       throw error;
@@ -1734,7 +1738,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   if (isLoadingProvider || (isLoading && teamMembers.length === 0 && !calendarError)) {
     return (
       <LoadingTimeout
-        loadingMessage={isLoadingProvider ? "Loading provider data..." : "Loading calendar..."}
+        loadingMessage={isLoadingProvider ? t("web.provider.calendarPage.loadingProvider") : t("web.provider.calendarPage.loadingCalendar")}
         timeoutMs={PROVIDER_BOOTSTRAP_TIMEOUT_MS}
       />
     );
@@ -1746,10 +1750,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         <div className="rounded-full bg-red-50 p-4">
           <X className="h-8 w-8 text-red-500" />
         </div>
-        <h2 className="text-lg font-semibold text-gray-900">Failed to load calendar</h2>
+<h2 className="text-lg font-semibold text-gray-900">{t("web.provider.calendarPage.failedToLoadCalendar")}</h2>
         <p className="text-sm text-gray-500 text-center max-w-sm">{calendarError}</p>
         <Button onClick={() => loadData(true)} className="min-h-[44px]">
-          Try Again
+          {t("web.provider.common.tryAgain")}
         </Button>
       </div>
     );
@@ -1771,15 +1775,15 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           className="mx-3 mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex-1">
-            <span className="font-medium">Calendar couldn&apos;t refresh.</span>{" "}
+<span className="font-medium">{t("web.provider.calendarPage.refreshFailed")}</span>{" "}
             <span className="text-amber-800">{calendarError}</span>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => loadData(true)}>
-              Retry
+              {t("web.provider.common.retry")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setCalendarError(null)}>
-              Dismiss
+              {t("web.provider.common.dismiss")}
             </Button>
           </div>
         </div>
@@ -1788,7 +1792,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         <div
           className="flex flex-1 min-h-[50vh] md:min-h-[min(100vh,720px)] w-full items-center justify-center"
           aria-busy="true"
-          aria-label="Loading calendar layout"
+aria-label={t("web.provider.calendarPage.loadingLayout")}
         >
           <RefreshCw className="h-9 w-9 animate-spin text-primary/40" />
         </div>
@@ -1804,7 +1808,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         {isRefreshing && (
           <div className="absolute top-3 right-3 z-40 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-1.5 flex items-center gap-2 border border-gray-200 pointer-events-none">
             <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin" />
-            <span className="text-xs text-gray-600">Refreshing…</span>
+<span className="text-xs text-gray-600">{t("web.provider.calendarPage.refreshingEllipsis")}</span>
           </div>
         )}
         {/* Desktop Header - Mangomint Style */}
@@ -1818,7 +1822,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 onClick={goToToday}
                 className="font-semibold text-white hover:bg-white/10 h-9 px-2 lg:px-3 text-xs lg:text-sm"
               >
-                TODAY
+                {t("web.provider.dashboard.widgets.today")}
               </Button>
               
               <div className="flex items-center bg-white/10 rounded-lg">
@@ -1876,14 +1880,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   variant="ghost"
                   size="sm"
                   className="gap-1 lg:gap-2 text-white hover:bg-white/10 h-9 px-2 lg:px-4 flex-shrink-0"
-                  title="Filter by team members"
-                  aria-label="Filter by team members"
+                  title={t("web.provider.calendarPage.filterByTeam")}
+                  aria-label={t("web.provider.calendarPage.filterByTeam")}
                   aria-haspopup="true"
                 >
                   <SlidersHorizontal className="w-4 h-4" />
-                  <span className="hidden lg:inline">FILTERS</span>
+<span className="hidden lg:inline">{t("web.provider.calendarPage.filters")}</span>
                   {(selectedTeamMember !== "all" || selectedTeamMemberIds.length < teamMembers.length) && (
-                    <Badge className="text-[10px] h-4 px-1.5 bg-primary text-white ml-1">
+                    <Badge className="text-[10px] h-4 px-1.5 bg-primary text-white ms-1">
                       {selectedTeamMember !== "all" ? "1" : selectedTeamMemberIds.length}
                     </Badge>
                   )}
@@ -1894,7 +1898,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   <>
                     <div className="px-2 py-2 bg-blue-50 border-b border-blue-100">
                       <div className="text-xs font-medium text-blue-900 mb-1">
-                        Viewing: {teamMembers.find(m => m.id === selectedTeamMember)?.name}
+{t("web.provider.calendarMobile.viewing", { name: teamMembers.find(m => m.id === selectedTeamMember)?.name })}
                       </div>
                       <Button 
                         variant="ghost" 
@@ -1902,21 +1906,21 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                         className="text-xs h-7 text-blue-700 hover:text-blue-900 hover:bg-blue-100 w-full justify-start"
                         onClick={clearStaffFilter}
                       >
-                        Show All Staff Members
+                        {t("web.provider.calendarPage.showAllStaff")}
                       </Button>
                     </div>
                     <Separator />
                   </>
                 )}
                 <div className="px-2 py-1.5 text-xs font-medium text-gray-500 uppercase">
-                  Team Members
+                  {t("web.provider.calendarPage.teamMembers")}
                 </div>
                 <div className="flex gap-2 px-2 pb-2">
                   <Button variant="ghost" size="sm" className="text-xs h-7" onClick={selectAllTeamMembers}>
-                    Select All
+                    {t("web.provider.calendarPage.selectAll")}
                   </Button>
                   <Button variant="ghost" size="sm" className="text-xs h-7" onClick={deselectAllTeamMembers}>
-                    Reset
+                    {t("web.provider.common.reset")}
                   </Button>
                 </div>
                 <Separator />
@@ -1956,7 +1960,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   )}
                 >
-                  DAY
+                  {t("web.provider.calendarPage.day")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -1969,7 +1973,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   )}
                 >
-                  WEEK
+                  {t("web.provider.calendarPage.week")}
                 </Button>
               </div>
 
@@ -1999,17 +2003,17 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => router.push("/provider/settings/calendar/display-preferences")}>
-                    Display Preferences
+                    {t("web.provider.settings.pages.calendar/display-preferences.displayPreferences")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/provider/settings/calendar/colors-icons")}>
-                    Colors & Icons
+                    {t("web.provider.settings.pages.calendar/colors-icons.colorsIcons")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/provider/settings/calendar/links")}>
-                    Calendar Links
+                    {t("web.provider.settings.pages.calendar/links.calendarLinks")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/provider/settings/calendar-integration")}>
-                    Calendar Integration
+                    {t("web.provider.settings.pages.calendar-integration.calendarIntegration")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -2020,8 +2024,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 size="icon"
                 onClick={() => setIsPrintDialogOpen(true)}
                 className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-white/10 hidden md:flex"
-                title="Print Schedule"
-                aria-label="Print schedule"
+                title={t("web.provider.printSchedule.title")}
+                aria-label={t("web.provider.calendarPage.printScheduleAria")}
               >
                 <Printer className="w-4 h-4" />
               </Button>
@@ -2032,8 +2036,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 size="icon"
                 onClick={openGroupBookingFlow}
                 className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-white/10 hidden md:flex"
-                title="Group Booking"
-                aria-label="Create group booking"
+                title={t("web.provider.calendarPage.groupBooking")}
+                aria-label={t("web.provider.calendarPage.createGroupBookingAria")}
               >
                 <Users className="w-4 h-4" />
               </Button>
@@ -2045,8 +2049,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-primary/20 hover:text-white border border-white/20 hidden md:flex"
-                    title="New appointment"
-                    aria-label="New appointment"
+                    title={t("web.provider.calendarPage.newAppointment")}
+                    aria-label={t("web.provider.calendarPage.newAppointment")}
                   >
                     <Plus className="w-4 h-4" />
                   </Button>
@@ -2057,7 +2061,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     className="gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
-                    Add appointment
+                    {t("web.provider.calendarMobile.addAppointment")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -2086,7 +2090,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     className="gap-2 cursor-pointer"
                   >
                     <PersonStanding className="w-4 h-4 text-amber-600" />
-                    Walk-in
+                    {t("web.provider.appointmentReview.kindWalkIn")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -2102,10 +2106,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           <div className="flex-1 overflow-auto min-w-0 flex flex-col box-border p-4 transition-all duration-200">
             {teamMembers.length === 0 ? (
               <EmptyState
-                title="No team members"
-                description="Add team members in Settings → Team to see the calendar"
+                title={t("web.provider.calendarPage.noTeamMembers")}
+                description={t("web.provider.calendarPage.noTeamMembersHint")}
                 action={{
-                  label: "Add Team Member",
+                  label: t("web.provider.calendarPage.addTeamMember"),
                   onClick: () => router.push("/provider/team/members"),
                 }}
               />
@@ -2113,19 +2117,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               <div className="flex flex-1 flex-col min-h-0 min-w-0">
                 <div
                   className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pb-2 border-b border-border/60 mb-2 shrink-0"
-                  aria-label="Schedule legend"
+aria-label={t("web.provider.calendarPage.scheduleLegend")}
                 >
                   <span className="flex items-center gap-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden />
-                    Bookings
+                    {t("web.provider.common.breadcrumbBookings")}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/90" aria-hidden />
-                    Blocks & breaks
+                    {t("web.provider.calendarPage.blocksAndBreaks")}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-400/70" aria-hidden />
-                    Shifts / closed
+                    {t("web.provider.calendarPage.shiftsClosed")}
                   </span>
                 </div>
                 <CalendarDesktopWithDnd
@@ -2153,7 +2157,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   onStatusChange={async (apt, status) => {
                     try {
                       await providerApi.updateAppointment(apt.id, { status });
-                      toast.success("Booking status updated successfully");
+toast.success(t("web.provider.calendarPage.statusUpdated"));
                       loadData();
                       if (selectedAppointment && selectedAppointment.id === apt.id) {
                         const updated = await providerApi.getAppointment(apt.id);
@@ -2161,9 +2165,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                       }
                     } catch (error: any) {
                       console.error("Failed to update status:", error);
-                      const errorMessage = error?.message || error?.details || `Failed to update booking status to ${status}`;
+                      const errorMessage = error?.message || error?.details || t("web.provider.calendarPage.statusUpdateToFailed", { status });
                       toast.error(errorMessage, {
-                        description: error?.code ? `Error code: ${error.code}` : undefined,
+                        description: error?.code ? t("web.provider.calendarPage.errorCode", { code: error.code }) : undefined,
                       });
                     }
                   }}
@@ -2204,10 +2208,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         {teamMembers.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              title="No team members"
-              description="Add team members in Settings → Team to see the calendar"
+              title={t("web.provider.calendarPage.noTeamMembers")}
+              description={t("web.provider.calendarPage.noTeamMembersHint")}
               action={{
-                label: "Add Team Member",
+                label: t("web.provider.calendarPage.addTeamMember"),
                   onClick: () => router.push("/provider/team/members"),
                 }}
               />
@@ -2217,24 +2221,24 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             {isRefreshing && (
               <div className="absolute top-20 right-4 z-50 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex items-center gap-2 border border-gray-200">
                 <RefreshCw className="w-4 h-4 text-primary animate-spin" />
-                <span className="text-xs text-gray-600">Refreshing...</span>
+<span className="text-xs text-gray-600">{t("web.provider.calendarPage.refreshing")}</span>
               </div>
             )}
             <div
               className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 text-[11px] text-muted-foreground border-b border-border/50"
-              aria-label="Schedule legend"
+              aria-label={t("web.provider.calendarPage.scheduleLegend")}
             >
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-sm bg-primary" aria-hidden />
-                Bookings
+                {t("web.provider.common.breadcrumbBookings")}
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-sm bg-amber-400/90" aria-hidden />
-                Blocks & breaks
+                {t("web.provider.calendarPage.blocksAndBreaks")}
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-sm bg-slate-400/70" aria-hidden />
-                Shifts / closed
+                {t("web.provider.calendarPage.shiftsClosed")}
               </span>
             </div>
             <CalendarMobileWithDnd
@@ -2281,7 +2285,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               onStatusChange={async (apt, status) => {
                 try {
                   await providerApi.updateAppointment(apt.id, { status });
-                  toast.success("Booking status updated successfully");
+                  toast.success(t("web.provider.calendarPage.statusUpdated"));
                   loadData();
                   if (selectedAppointment && selectedAppointment.id === apt.id) {
                     const updated = await providerApi.getAppointment(apt.id);
@@ -2289,9 +2293,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   }
                 } catch (error: any) {
                   console.error("Failed to update status:", error);
-                  const errorMessage = error?.message || error?.details || `Failed to update booking status to ${status}`;
+                  const errorMessage = error?.message || error?.details || t("web.provider.calendarPage.statusUpdateToFailed", { status });
                   toast.error(errorMessage, {
-                    description: error?.code ? `Error code: ${error.code}` : undefined,
+                    description: error?.code ? t("web.provider.calendarPage.errorCode", { code: error.code }) : undefined,
                   });
                 }
               }}
@@ -2319,10 +2323,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("calendar-scroll-to-now"))}
                 className="fixed bottom-20 left-4 z-40 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-semibold shadow-lg active:scale-95 transition-transform"
-                aria-label="Scroll to current time"
+aria-label={t("web.provider.calendarPage.scrollToNow")}
               >
                 <Clock className="w-3.5 h-3.5" />
-                Now
+                {t("web.provider.common.now")}
               </button>
             )}
           </>
@@ -2349,14 +2353,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       {/* Mobile Filter Sheet */}
       <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
-        <SheetContent side="left" className="w-80 flex flex-col p-0 overflow-hidden">
+        <SheetContent side="start" className="w-80 flex flex-col p-0 overflow-hidden">
           <SheetHeader className="flex-shrink-0 px-6 pt-6 pb-3 border-b border-gray-100">
-            <SheetTitle>Filters</SheetTitle>
+<SheetTitle>{t("web.provider.calendarPage.filtersTitle")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-8 mt-4 space-y-6">
             {/* View Selector */}
             <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">View</h3>
+<h3 className="text-sm font-medium text-gray-700 mb-3">{t("web.provider.calendarPage.viewLabel")}</h3>
               <div className="flex gap-2">
                 <Button
                   variant={dateView === "day" ? "default" : "outline"}
@@ -2364,7 +2368,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   onClick={() => setDateView("day")}
                   className={dateView === "day" ? "bg-[#1a1f3c]" : ""}
                 >
-                  Day
+                  {t("web.provider.settings.pages.calendar/display-preferences.day")}
                 </Button>
                 <Button
                   variant={dateView === "3-days" ? "default" : "outline"}
@@ -2372,7 +2376,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   onClick={() => setDateView("3-days")}
                   className={dateView === "3-days" ? "bg-[#1a1f3c]" : ""}
                 >
-                  3 days
+                  {t("web.provider.calendarPage.threeDays")}
                 </Button>
                 <Button
                   variant={dateView === "week" ? "default" : "outline"}
@@ -2380,7 +2384,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   onClick={() => setDateView("week")}
                   className={dateView === "week" ? "bg-[#1a1f3c]" : ""}
                 >
-                  Week
+                  {t("web.provider.common.dateRange.week")}
                 </Button>
               </div>
             </div>
@@ -2390,7 +2394,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               {selectedTeamMember !== "all" && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm font-medium text-blue-900 mb-2">
-                    Viewing: {teamMembers.find(m => m.id === selectedTeamMember)?.name}
+{t("web.provider.calendarMobile.viewing", { name: teamMembers.find(m => m.id === selectedTeamMember)?.name })}
                   </div>
                   <Button 
                     variant="outline" 
@@ -2401,12 +2405,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                       setIsFilterSheetOpen(false);
                     }}
                   >
-                    Show All Staff Members
+                    {t("web.provider.calendarPage.showAllStaff")}
                   </Button>
                 </div>
               )}
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-700">Team Members</h3>
+<h3 className="text-sm font-medium text-gray-700">{t("web.provider.calendarPage.teamMembers")}</h3>
                 <div className="flex gap-2">
                   <Button 
                     variant="ghost" 
@@ -2414,7 +2418,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     className="text-xs h-7"
                     onClick={selectAllTeamMembers}
                   >
-                    Select All
+                    {t("web.provider.calendarPage.selectAll")}
                   </Button>
                   <Button 
                     variant="ghost" 
@@ -2422,7 +2426,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     className="text-xs h-7"
                     onClick={deselectAllTeamMembers}
                   >
-                    Clear
+                    {t("web.provider.common.clear")}
                   </Button>
                 </div>
               </div>
@@ -2457,7 +2461,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             {/* Quick Actions - Print, Group Booking, Walk-in, Settings */}
             <Separator />
             <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
+<h3 className="text-sm font-medium text-gray-700 mb-3">{t("web.provider.sidebar.quickActions")}</h3>
               <div className="space-y-2">
                 <Button
                   variant="outline"
@@ -2468,7 +2472,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   }}
                 >
                   <Printer className="w-4 h-4" />
-                  Print Schedule
+                  {t("web.provider.printSchedule.title")}
                 </Button>
                 <Button
                   variant="outline"
@@ -2479,7 +2483,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   }}
                 >
                   <Users className="w-4 h-4" />
-                  Create Group Booking
+                  {t("web.provider.calendarPage.createGroupBooking")}
                 </Button>
                 <Button
                   variant="outline"
@@ -2510,7 +2514,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   }}
                 >
                   <PersonStanding className="w-4 h-4" />
-                  Quick Walk-in
+                  {t("web.provider.calendarPage.quickWalkIn")}
                 </Button>
                 <Button
                   variant="outline"
@@ -2521,7 +2525,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   }}
                 >
                   <Settings className="w-4 h-4" />
-                  Calendar Settings
+                  {t("web.provider.calendarPage.calendarSettings")}
                 </Button>
               </div>
             </div>
@@ -2596,7 +2600,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       {/* Checkout Dialog */}
       {isCheckoutDialogOpen && selectedAppointment && (
         (() => {
-          const saleItems = buildSaleItemsFromAppointment(selectedAppointment);
+const saleItems = buildSaleItemsFromAppointment(selectedAppointment, { service: t("web.provider.calendarPage.serviceFallback"), product: t("web.provider.calendarPage.productFallback") });
           return (
             <CheckoutDialog
               isOpen
@@ -2607,7 +2611,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 client_id: selectedAppointment.client_id || "",
                 client_name: selectedAppointment.client_name,
                 client_email: selectedAppointment.client_email,
-                team_member_name: selectedAppointment.team_member_name || "Staff",
+team_member_name: selectedAppointment.team_member_name || t("web.provider.calendarMobile.staff"),
                 scheduled_date: selectedAppointment.scheduled_date,
                 scheduled_time: selectedAppointment.scheduled_time,
                 services: saleItems
@@ -2642,7 +2646,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             if (!open) setPostCheckoutRateBookingId(null);
           }}
           bookingId={postCheckoutRateBookingId}
-          customerName={postCheckoutRateClientName}
+          customerName={postCheckoutRateClientName || t("web.provider.calendarPage.clientFallback")}
           onSuccess={() => {
             setPostCheckoutRateOpen(false);
             setPostCheckoutRateBookingId(null);

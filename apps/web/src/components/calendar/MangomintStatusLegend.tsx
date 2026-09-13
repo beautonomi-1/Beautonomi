@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ChevronDown, ChevronUp, Info, Palette } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 import {
   AppointmentKind,
@@ -48,6 +49,7 @@ export function MangomintStatusLegend({
   showAvailabilityOverlays = false,
   compact = false,
 }: MangomintStatusLegendProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const legendContent = (
@@ -58,7 +60,7 @@ export function MangomintStatusLegend({
           "font-medium text-muted-foreground mb-2",
           compact ? "text-[10px] uppercase tracking-wide" : "text-xs"
         )}>
-          Status
+          {t("web.calendar.statusLegend.status")}
         </h4>
         <div className={cn(
           "grid gap-2",
@@ -96,7 +98,7 @@ export function MangomintStatusLegend({
               "font-medium text-muted-foreground mb-2",
               compact ? "text-[10px] uppercase tracking-wide" : "text-xs"
             )}>
-              Booking Type
+              {t("web.calendar.statusLegend.bookingType")}
             </h4>
             <div className={cn(
               "grid gap-2",
@@ -138,7 +140,7 @@ export function MangomintStatusLegend({
               "font-medium text-muted-foreground mb-2",
               compact ? "text-[10px] uppercase tracking-wide" : "text-xs"
             )}>
-              Blocks
+              {t("web.calendar.statusLegend.blocks")}
             </h4>
             <div className={cn(
               "grid gap-2",
@@ -160,7 +162,7 @@ export function MangomintStatusLegend({
                   "text-muted-foreground truncate",
                   compact ? "text-[10px]" : "text-xs"
                 )}>
-                  Time Block
+                  {t("web.calendar.statusLegend.timeBlock")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -179,7 +181,7 @@ export function MangomintStatusLegend({
                   "text-muted-foreground truncate",
                   compact ? "text-[10px]" : "text-xs"
                 )}>
-                  Travel Block
+                  {t("web.calendar.statusLegend.travelBlock")}
                 </span>
               </div>
             </div>
@@ -197,7 +199,7 @@ export function MangomintStatusLegend({
                 compact ? "text-[10px] uppercase tracking-wide" : "text-xs",
               )}
             >
-              Closed &amp; time off
+              {t("web.calendar.statusLegend.closedAndTimeOff")}
             </h4>
             <p
               className={cn(
@@ -205,7 +207,7 @@ export function MangomintStatusLegend({
                 compact ? "text-[10px] leading-snug" : "text-[11px] leading-snug",
               )}
             >
-              Same rules customers see when booking: staff PTO blocks that person; closed periods apply per location or everyone.
+              {t("web.calendar.statusLegend.closedHint")}
             </p>
             <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1")}>
               <div className="flex items-center gap-2">
@@ -219,7 +221,7 @@ export function MangomintStatusLegend({
                 <span
                   className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
                 >
-                  Staff time off / day off
+                  {t("web.calendar.statusLegend.staffTimeOff")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -233,7 +235,7 @@ export function MangomintStatusLegend({
                 <span
                   className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
                 >
-                  Unavailable (closed period)
+                  {t("web.calendar.statusLegend.unavailableClosed")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -247,7 +249,7 @@ export function MangomintStatusLegend({
                 <span
                   className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
                 >
-                  Break
+                  {t("web.calendar.statusLegend.break")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -261,7 +263,7 @@ export function MangomintStatusLegend({
                 <span
                   className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
                 >
-                  Maintenance
+                  {t("web.calendar.statusLegend.maintenance")}
                 </span>
               </div>
             </div>
@@ -289,7 +291,7 @@ export function MangomintStatusLegend({
             "text-muted-foreground",
             compact ? "text-[10px]" : "text-xs"
           )}>
-            Current time
+            {t("web.calendar.statusLegend.currentTime")}
           </span>
         </div>
       </div>
@@ -307,14 +309,14 @@ export function MangomintStatusLegend({
             className={cn("gap-1.5 h-8 text-xs", className)}
           >
             <Palette className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Legend</span>
+            <span className="hidden sm:inline">{t("web.calendar.statusLegend.legend")}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-72" align="end">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-semibold text-sm">Color Legend</h3>
+              <h3 className="font-semibold text-sm">{t("web.calendar.statusLegend.colorLegend")}</h3>
             </div>
             {legendContent}
           </div>
@@ -338,7 +340,7 @@ export function MangomintStatusLegend({
           >
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Color Legend</span>
+              <span className="text-sm font-medium">{t("web.calendar.statusLegend.colorLegend")}</span>
             </div>
             {isOpen ? (
               <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -359,7 +361,7 @@ export function MangomintStatusLegend({
     <div className={cn("p-3 border rounded-lg bg-card", className)}>
       <div className="flex items-center gap-2 mb-3">
         <Palette className="w-4 h-4 text-muted-foreground" />
-        <h3 className="font-semibold text-sm">Color Legend</h3>
+        <h3 className="font-semibold text-sm">{t("web.calendar.statusLegend.colorLegend")}</h3>
       </div>
       {legendContent}
     </div>

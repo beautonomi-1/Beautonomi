@@ -13,9 +13,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
 
 const LandingNavbar = () => {
+  const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -89,7 +91,7 @@ const LandingNavbar = () => {
           <form onSubmit={handleSearch} className="flex items-center bg-white rounded-full border border-gray-300 shadow-sm w-full">
             <Input
               type="text"
-              placeholder="Search for providers..."
+              placeholder={t("web.layout.searchProvidersPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-l-full px-4 py-2.5 text-sm"
@@ -115,7 +117,7 @@ const LandingNavbar = () => {
             <form onSubmit={handleSearch} className="flex items-center bg-white rounded-full border border-gray-300 shadow-sm hover:shadow-md transition-shadow w-full">
               <Input
                 type="text"
-                placeholder="Search for providers..."
+                placeholder={t("web.layout.searchProvidersPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-l-full px-6 py-3 text-sm"
@@ -132,7 +134,7 @@ const LandingNavbar = () => {
           {/* Right: Icons */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <Link href="/become-a-partner" className="text-sm font-normal text-gray-700 hover:text-[#FF0077] hidden lg:block">
-              Become service provider
+              {t("web.layout.landingNavbar.becomeServiceProvider")}
             </Link>
             {/* User Icon with Dropdown */}
             <div className="relative" ref={userDropdownRef}>
@@ -156,7 +158,7 @@ const LandingNavbar = () => {
                         className="block px-4 py-2 hover:bg-gray-100"
                         onClick={() => setIsUserDropdownOpen(false)}
                       >
-                        Become a partner
+                        {t("web.layout.landingNavbar.becomePartner")}
                       </Link>
                     </li>
                     <li>
@@ -166,9 +168,9 @@ const LandingNavbar = () => {
                           setIsLoginModalOpen(true);
                           setIsUserDropdownOpen(false);
                         }}
-                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                        className="block w-full text-start px-4 py-2 hover:bg-gray-100"
                       >
-                        Log In
+                        {t("auth.login")}
                       </button>
                     </li>
                     <li>
@@ -178,9 +180,9 @@ const LandingNavbar = () => {
                           setIsLoginModalOpen(true);
                           setIsUserDropdownOpen(false);
                         }}
-                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                        className="block w-full text-start px-4 py-2 hover:bg-gray-100"
                       >
-                        Sign Up
+                        {t("auth.signup")}
                       </button>
                     </li>
                   </ul>
@@ -203,15 +205,15 @@ const LandingNavbar = () => {
                         className="block px-4 py-2 hover:bg-gray-100"
                         onClick={() => setIsUserDropdownOpen(false)}
                       >
-                        Account &amp; profile
+                        {t("web.layout.landingNavbar.accountProfile")}
                       </Link>
                     </li>
                     <li>
                       <button
                         onClick={handleSignOut}
-                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                        className="block w-full text-start px-4 py-2 hover:bg-gray-100"
                       >
-                        Sign Out
+                        {t("web.layout.landingNavbar.signOut")}
                       </button>
                     </li>
                   </ul>
@@ -228,9 +230,9 @@ const LandingNavbar = () => {
 
       {/* Mobile Menu Sheet */}
       <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-        <SheetContent side="right">
+        <SheetContent side="end">
           <SheetHeader>
-            <SheetTitle>Menu</SheetTitle>
+            <SheetTitle>{t("web.layout.landingNavbar.menu")}</SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4">
             <Link
@@ -257,9 +259,9 @@ const LandingNavbar = () => {
                   setIsLoginModalOpen(true);
                   setIsMenuOpen(false);
                 }}
-                className="block w-full text-left text-base font-normal text-gray-700 hover:text-[#FF0077]"
+                className="block w-full text-start text-base font-normal text-gray-700 hover:text-[#FF0077]"
               >
-                Sign In
+                {t("web.layout.landingNavbar.signIn")}
               </button>
             )}
             <Link
@@ -267,7 +269,7 @@ const LandingNavbar = () => {
               className="block text-base font-normal text-gray-700 hover:text-[#FF0077]"
               onClick={() => setIsMenuOpen(false)}
             >
-              Help Center
+              {t("web.layout.landingNavbar.helpCenter")}
             </Link>
           </div>
         </SheetContent>

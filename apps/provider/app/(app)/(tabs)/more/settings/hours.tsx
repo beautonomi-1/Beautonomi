@@ -17,6 +17,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   type DayHours,
   type RawDayHours,
@@ -70,6 +71,12 @@ interface LocationHours {
 
 /* ─── Screen ─── */
 export default function OperatingHoursScreen() {
+  const { t } = useTranslation();
+  const oh = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.operatingHoursSettings.${key}`, opts) as string,
+    [t],
+  );
   const {
     data: locations,
     loading,
@@ -207,7 +214,7 @@ export default function OperatingHoursScreen() {
       const openMin = timeToMinutes(day.open_time);
       const closeMin = timeToMinutes(day.close_time);
       if (closeMin <= openMin) {
-        return `${day.day}: Closing time must be after opening time`;
+        return oh("closeAfterOpen", { day: day.day });
       }
       for (let i = 0; i < day.breaks.length; i++) {
         const brk = day.breaks[i];
@@ -215,10 +222,10 @@ export default function OperatingHoursScreen() {
         const bStart = timeToMinutes(brk.start);
         const bEnd = timeToMinutes(brk.end);
         if (bEnd <= bStart) {
-          return `${day.day}: Break ${i + 1} end must be after start`;
+          return oh("breakEndAfterStart", { day: day.day, index: i + 1 });
         }
         if (bStart < openMin || bEnd > closeMin) {
-          return `${day.day}: Break ${i + 1} must be within operating hours`;
+          return oh("breakWithinHours", { day: day.day, index: i + 1 });
         }
       }
     }
@@ -229,12 +236,12 @@ export default function OperatingHoursScreen() {
   const handleSave = useCallback(async () => {
     const validationError = validateSchedule();
     if (validationError) {
-      Alert.alert("Validation Error", validationError);
+      Alert.alert(oh("validationTitle"), validationError);
       return;
     }
 
     if (!selectedLocationId) {
-      Alert.alert("Error", "No location selected");
+      Alert.alert(oh("noLocationTitle"), oh("noLocationBody"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -243,10 +250,10 @@ export default function OperatingHoursScreen() {
       { locationId: selectedLocationId, workingHours: scheduleToWorkingHours(schedule) },
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(oh("errorTitle"), error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Saved", "Operating hours updated successfully.");
+      Alert.alert(oh("savedTitle"), oh("savedBody"));
       setHasChanges(false);
       refresh();
     }
@@ -258,7 +265,7 @@ export default function OperatingHoursScreen() {
   if (loading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Operating Hours" showBack />
+        <ScreenHeader title={oh("title")} showBack />
         <LoadingState />
       </ScreenContainer>
     );
@@ -267,7 +274,7 @@ export default function OperatingHoursScreen() {
   if (fetchError && !locations) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Operating Hours" showBack />
+        <ScreenHeader title={oh("title")} showBack />
         <ErrorState message={fetchError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -276,37 +283,37 @@ export default function OperatingHoursScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Operating Hours"
+        title={oh("title")}
         showBack
-        subtitle="Set your business hours for each day"
+        subtitle={oh("subtitle")}
       />
 
       {locations && locations.length === 0 && (
         <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginBottom: 4 }}>No locations found</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginBottom: 4 }}>{oh("noLocationsTitle")}</Text>
           <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
-            Add a business location in your Business Profile settings before setting operating hours.
+            {oh("noLocationsBody")}
           </Text>
         </View>
       )}
 
       <View style={{ backgroundColor: "#DBEAFE", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#1E40AF", lineHeight: 18 }}>
-          These hours determine when customers can book at this location. Staff without custom work hours will follow these hours automatically.
+          {oh("infoBanner")}
         </Text>
       </View>
 
       {/* Location picker (if multiple) */}
       {locations && locations.length > 1 && (
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
-          <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Location</Text>
+          <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>{oh("locationLabel")}</Text>
           <View style={twStyle("flex-row flex-wrap")}>
             {locations.map((loc) => (
               <TouchableOpacity
                 key={loc.locationId}
-                style={[twStyle(`rounded-lg px-3 py-1.5 ${loc.locationId === selectedLocationId ? "bg-indigo-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
+                style={[twStyle(`rounded-lg px-3 py-1.5 ${loc.locationId === selectedLocationId ? "bg-indigo-600" : "bg-gray-100"}`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() => handleLocationChange(loc.locationId)}
-                accessibilityLabel={`Select ${loc.locationName}`}
+                accessibilityLabel={oh("selectLocationA11y", { name: loc.locationName })}
               >
                 <Text style={twStyle(`text-sm font-medium ${loc.locationId === selectedLocationId ? "text-white" : "text-gray-700"}`)}>
                   {loc.locationName}
@@ -320,7 +327,7 @@ export default function OperatingHoursScreen() {
       {/* Day rows */}
       <View
         style={twStyle("rounded-2xl border border-gray-100 bg-white")}
-        accessibilityLabel="Weekly schedule"
+        accessibilityLabel={oh("weeklyScheduleA11y")}
       >
         {schedule.map((day, i) => (
           <View
@@ -334,10 +341,10 @@ export default function OperatingHoursScreen() {
                 onValueChange={() => toggleDay(i)}
                 trackColor={{ false: "#d1d5db", true: "#818cf8" }}
                 thumbColor={day.is_open ? "#6366f1" : "#f3f4f6"}
-                accessibilityLabel={`${day.day} open toggle`}
+                accessibilityLabel={oh("dayOpenToggleA11y", { day: day.day })}
               />
               <Text
-                style={twStyle(`ml-3 w-24 text-sm font-semibold ${day.is_open ? "text-gray-900" : "text-gray-400"}`)}
+                style={twStyle(`ms-3 w-24 text-sm font-semibold ${day.is_open ? "text-gray-900" : "text-gray-400"}`)}
               >
                 {day.day}
               </Text>
@@ -345,24 +352,24 @@ export default function OperatingHoursScreen() {
               {day.is_open ? (
                 <View style={twStyle("flex-1 flex-row items-center justify-end")}>
                   <TouchableOpacity
-                    style={[twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5"), { marginRight: 4 }]}
+                    style={[twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5"), { marginEnd: 4 }]}
                     onPress={() =>
                       openTimePicker({ dayIndex: i, field: "open_time" })
                     }
-                    accessibilityLabel={`${day.day} opening time ${formatTimeLabel(day.open_time)}`}
+                    accessibilityLabel={oh("openingTimeA11y", { day: day.day, time: formatTimeLabel(day.open_time) })}
                     accessibilityRole="button"
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-700")}>
                       {formatTimeLabel(day.open_time)}
                     </Text>
                   </TouchableOpacity>
-                  <Text style={[twStyle("text-xs text-gray-400"), { marginRight: 4 }]}>to</Text>
+                    <Text style={[twStyle("text-xs text-gray-400"), { marginEnd: 4 }]}>{oh("timeTo")}</Text>
                   <TouchableOpacity
                     style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5")}
                     onPress={() =>
                       openTimePicker({ dayIndex: i, field: "close_time" })
                     }
-                    accessibilityLabel={`${day.day} closing time ${formatTimeLabel(day.close_time)}`}
+                    accessibilityLabel={oh("closingTimeA11y", { day: day.day, time: formatTimeLabel(day.close_time) })}
                     accessibilityRole="button"
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-700")}>
@@ -371,24 +378,24 @@ export default function OperatingHoursScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <Text style={twStyle("flex-1 text-right text-sm text-gray-400")}>
-                  Closed
+                <Text style={twStyle("flex-1 text-end text-sm text-gray-400")}>
+                  {oh("closed")}
                 </Text>
               )}
             </View>
 
             {/* Breaks */}
             {day.is_open && (
-              <View style={twStyle("ml-14 mt-2")}>
+              <View style={twStyle("ms-14 mt-2")}>
                 {day.breaks.map((brk, bi) => (
                   <View
                     key={bi}
                     style={twStyle("mb-1.5 flex-row items-center")}
                   >
-                    <Ionicons name="cafe-outline" size={14} color="#9ca3af" style={{ marginRight: 4 }} />
-                    <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 4 }]}>Break:</Text>
+                    <Ionicons name="cafe-outline" size={14} color="#9ca3af" style={{ marginEnd: 4 }} />
+                    <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 4 }]}>{oh("breakLabel")}</Text>
                     <TouchableOpacity
-                      style={[twStyle("rounded-md border border-gray-200 bg-gray-50 px-2 py-1"), { marginRight: 4 }]}
+                      style={[twStyle("rounded-md border border-gray-200 bg-gray-50 px-2 py-1"), { marginEnd: 4 }]}
                       onPress={() =>
                         openTimePicker({
                           dayIndex: i,
@@ -396,16 +403,16 @@ export default function OperatingHoursScreen() {
                           breakIndex: bi,
                         })
                       }
-                      accessibilityLabel={`${day.day} break ${bi + 1} start time`}
+                      accessibilityLabel={oh("breakStartA11y", { day: day.day, index: bi + 1 })}
                       accessibilityRole="button"
                     >
                       <Text style={twStyle("text-xs text-gray-600")}>
                         {formatTimeLabel(brk.start)}
                       </Text>
                     </TouchableOpacity>
-                    <Text style={[twStyle("text-xs text-gray-400"), { marginRight: 4 }]}>-</Text>
+                    <Text style={[twStyle("text-xs text-gray-400"), { marginEnd: 4 }]}>-</Text>
                     <TouchableOpacity
-                      style={[twStyle("rounded-md border border-gray-200 bg-gray-50 px-2 py-1"), { marginRight: 4 }]}
+                      style={[twStyle("rounded-md border border-gray-200 bg-gray-50 px-2 py-1"), { marginEnd: 4 }]}
                       onPress={() =>
                         openTimePicker({
                           dayIndex: i,
@@ -413,7 +420,7 @@ export default function OperatingHoursScreen() {
                           breakIndex: bi,
                         })
                       }
-                      accessibilityLabel={`${day.day} break ${bi + 1} end time`}
+                      accessibilityLabel={oh("breakEndA11y", { day: day.day, index: bi + 1 })}
                       accessibilityRole="button"
                     >
                       <Text style={twStyle("text-xs text-gray-600")}>
@@ -423,7 +430,7 @@ export default function OperatingHoursScreen() {
                     <TouchableOpacity
                       onPress={() => removeBreak(i, bi)}
                       hitSlop={8}
-                      accessibilityLabel={`Remove ${day.day} break ${bi + 1}`}
+                      accessibilityLabel={oh("removeBreakA11y", { day: day.day, index: bi + 1 })}
                       accessibilityRole="button"
                     >
                       <Ionicons
@@ -438,12 +445,12 @@ export default function OperatingHoursScreen() {
                 <TouchableOpacity
                   style={twStyle("mt-1 flex-row items-center")}
                   onPress={() => addBreak(i)}
-                  accessibilityLabel={`Add break for ${day.day}`}
+                  accessibilityLabel={oh("addBreakA11y", { day: day.day })}
                   accessibilityRole="button"
                 >
                   <Ionicons name="add-circle-outline" size={16} color="#6366f1" />
-                  <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                    Add break
+                  <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                    {oh("addBreak")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -455,7 +462,7 @@ export default function OperatingHoursScreen() {
       {/* Save */}
       <View style={twStyle("mt-6")}>
         <ActionButton
-          label={saving ? "Saving…" : "Save Hours"}
+          label={saving ? oh("saving") : oh("saveHours")}
           onPress={handleSave}
           loading={saving}
           disabled={!hasChanges}
@@ -465,7 +472,7 @@ export default function OperatingHoursScreen() {
 
       {hasChanges && (
         <Text style={twStyle("mt-2 text-center text-xs text-amber-600")}>
-          You have unsaved changes
+          {oh("unsavedChanges")}
         </Text>
       )}
 

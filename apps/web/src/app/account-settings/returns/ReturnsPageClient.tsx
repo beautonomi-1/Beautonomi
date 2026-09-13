@@ -11,6 +11,7 @@ import { FetchError } from "@/lib/http/fetcher";
 import BackButton from "../components/back-button";
 import Breadcrumb from "../components/breadcrumb";
 import type { ReturnRequestListItem } from "./return-list-types";
+import { useTranslation } from "@beautonomi/i18n";
 
 type ReturnRequest = ReturnRequestListItem;
 
@@ -30,6 +31,7 @@ export default function MyReturnsPage({
 }: {
   initialReturns: ReturnRequestListItem[] | null;
 }) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const initialSnapshot = useRef(initialReturns);
@@ -67,7 +69,7 @@ export default function MyReturnsPage({
           ? e.message
           : e instanceof Error
             ? e.message
-            : "Could not escalate. Try again.";
+            : t("web.accountSettings.returns.escalateFailed");
       setActionError(msg);
     }
   };
@@ -83,7 +85,7 @@ export default function MyReturnsPage({
           ? e.message
           : e instanceof Error
             ? e.message
-            : "Could not cancel. Try again.";
+            : t("web.accountSettings.returns.cancelFailed");
       setActionError(msg);
     }
   };
@@ -93,31 +95,31 @@ export default function MyReturnsPage({
       <BackButton href="/account-settings" />
       <Breadcrumb
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Returns" },
+          { label: t("web.accountSettings.account"), href: "/account-settings" },
+          { label: t("web.accountSettings.returns.breadcrumbTitle") },
         ]}
       />
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Returns</h1>
-          <p className="text-sm text-gray-500 mt-1">Track your return requests and refunds</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("web.accountSettings.returns.title")}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t("web.accountSettings.returns.subtitle")}</p>
         </div>
         <Link
           href="/account-settings/orders"
           className="text-sm text-pink-600 hover:underline flex items-center gap-1"
         >
-          View Orders <ChevronRight className="w-4 h-4" />
+          {t("web.accountSettings.returns.viewOrders")} <ChevronRight className="w-4 h-4" />
         </Link>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading returns...</div>
+        <div className="text-center py-12 text-gray-500">{t("web.accountSettings.returns.loading")}</div>
       ) : returns.length === 0 ? (
         <div className="text-center py-16">
           <Undo2 className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-          <p className="text-gray-500 mb-2">No return requests yet</p>
+          <p className="text-gray-500 mb-2">{t("web.accountSettings.returns.emptyTitle")}</p>
           <p className="text-sm text-gray-400">
-            You can request a return from your order details within 14 days of delivery.
+            {t("web.accountSettings.returns.emptyDesc")}
           </p>
         </div>
       ) : (
@@ -131,15 +133,19 @@ export default function MyReturnsPage({
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[r.status] ?? "bg-gray-100 text-gray-700"}`}
                     >
-                      {r.status.replace(/_/g, " ")}
+                      {t(`web.accountSettings.returns.status.${r.status}`, { defaultValue: r.status.replace(/_/g, " ") })}
                     </span>
                   </div>
                   <p className="text-sm text-gray-700">{r.product_name}</p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {r.order?.provider?.business_name} · {r.reason.replace(/_/g, " ")} · Qty: {r.quantity}
+                    {t("web.accountSettings.returns.meta", {
+                      provider: r.order?.provider?.business_name,
+                      reason: t(`web.accountSettings.returns.reason.${r.reason}`, { defaultValue: r.reason.replace(/_/g, " ") }),
+                      qty: t("web.accountSettings.returns.qty", { count: r.quantity }),
+                    })}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <p className="text-lg font-bold text-gray-900">
                     {formatMoney(
                       Number(r.refund_amount),
@@ -156,7 +162,7 @@ export default function MyReturnsPage({
                     onClick={() => handleCancel(r.id)}
                     className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
                   >
-                    Cancel Request
+                    {t("web.accountSettings.returns.cancelRequest")}
                   </button>
                 )}
                 {r.status === "rejected" && (
@@ -165,7 +171,7 @@ export default function MyReturnsPage({
                     className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 flex items-center gap-1"
                   >
                     <AlertTriangle className="w-3 h-3" />
-                    Escalate to Support
+                    {t("web.accountSettings.returns.escalate")}
                   </button>
                 )}
               </div>

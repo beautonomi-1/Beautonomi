@@ -57,7 +57,7 @@ export default function ExploreMore() {
                 </div>
               ))}
             </div>
-          <div className="text-white py-8 rounded-lg ml-0 md:ml-4">
+          <div className="text-white py-8 rounded-lg ms-0 md:ms-4">
               <h3 className="text-[26px] font-normal  mb-4">
                 Need to get in touch?
               </h3>

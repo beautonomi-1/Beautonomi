@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -25,6 +26,7 @@ function bannerClass(tone: "amber" | "green" | "neutral") {
 }
 
 export function CreatedSuccessSheet({ onViewBooking }: CreatedSuccessSheetProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { mode, successAppointmentId, successPayload, closeSidebar } = useAppointmentSidebar();
   const open = mode === "success" && !!successAppointmentId;
@@ -73,9 +75,9 @@ export function CreatedSuccessSheet({ onViewBooking }: CreatedSuccessSheetProps)
         body: JSON.stringify({ status: "booked" }),
       });
       setConfirmedInline(true);
-      toast.success("Booking confirmed");
+      toast.success(t("web.createdSuccess.confirmed"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not confirm booking");
+      toast.error(error instanceof Error ? error.message : t("web.createdSuccess.confirmFailed"));
     } finally {
       setConfirming(false);
     }
@@ -111,11 +113,11 @@ export function CreatedSuccessSheet({ onViewBooking }: CreatedSuccessSheetProps)
         <BookingActionButton disabled={confirming} onClick={() => void handleConfirm()}>
           {confirming ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Confirming…
+              <Loader2 className="me-2 h-4 w-4 animate-spin" />
+              {t("web.createdSuccess.confirming")}
             </>
           ) : (
-            "Confirm booking"
+            t("booking.confirmBooking")
           )}
         </BookingActionButton>
       ) : null}
@@ -124,26 +126,26 @@ export function CreatedSuccessSheet({ onViewBooking }: CreatedSuccessSheetProps)
           onClick={() => void handleCollectInSheet("paycloud")}
           data-testid="post-create-collect-paycloud"
         >
-          Collect on terminal
+          {t("web.createdSuccess.collectOnTerminal")}
         </BookingActionButton>
       ) : null}
       {payload?.postCreateCollect === "yoco" && (payload.cardChargeAmount ?? 0) > 0 ? (
         <BookingActionButton onClick={() => void handleCollectInSheet("yoco")}>
-          Collect with Yoco
+          {t("web.createdSuccess.collectYoco")}
         </BookingActionButton>
       ) : null}
       {payload?.postCreateCollect === "paystack" && (payload.cardChargeAmount ?? 0) > 0 ? (
         <BookingActionButton onClick={() => void handleCollectInSheet("paystack")}>
-          Collect on Paystack terminal
+          {t("web.createdSuccess.collectPaystack")}
         </BookingActionButton>
       ) : null}
       {model?.showReviewCta || model?.showViewCta ? (
         <BookingActionButton variant="outline" onClick={() => void handleViewInSheet()}>
-          View booking
+          {t("web.createdSuccess.viewBooking")}
         </BookingActionButton>
       ) : null}
       <BookingActionButton variant="outline" onClick={closeSidebar}>
-        Done
+        {t("common.done")}
       </BookingActionButton>
     </div>
   );
@@ -155,13 +157,13 @@ export function CreatedSuccessSheet({ onViewBooking }: CreatedSuccessSheetProps)
         if (!next) closeSidebar();
       }}
       mode="view"
-      title={model?.title ?? "Booking created"}
+      title={model?.title ?? t("web.createdSuccess.createdFallback")}
       footer={footer}
     >
       <BookingSectionCard className="py-4 space-y-4">
         <div className="flex flex-col items-center text-center">
           <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-3" />
-          <p className="text-sm text-gray-600">{model?.subtitle ?? "The appointment was created successfully."}</p>
+          <p className="text-sm text-gray-600">{model?.subtitle ?? t("web.createdSuccess.createdSubtitle")}</p>
         </div>
 
         {model?.bannerTitle ? (

@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Front Desk | Beautonomi Provider",
-  description: "Manage today's appointments, check-ins, and payments",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/provider/front-desk",
+    titleKey: "web.seo.frontDeskTitle",
+    descriptionKey: "web.seo.frontDeskDescription",
+    robots: "noindex, nofollow",
+  });
+}
 
 export default function FrontDeskLayout({
   children,

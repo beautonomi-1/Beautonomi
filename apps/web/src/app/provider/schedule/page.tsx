@@ -1,25 +1,26 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { CalendarRange, CalendarOff, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { label: "Time Blocks", href: "/provider/time-blocks", icon: CalendarRange, description: "Block out breaks, meetings, and unavailable periods" },
-  { label: "Days Off", href: "/provider/team/days-off", icon: CalendarOff, description: "Manage team days off and time off requests" },
-];
-
 export default function ScheduleHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    { label: t("web.provider.sidebar.items.timeBlocks"), href: "/provider/time-blocks", icon: CalendarRange, description: t("web.provider.pages.schedule.timeBlocksDesc") },
+    { label: t("web.provider.sidebar.items.daysOff"), href: "/provider/team/days-off", icon: CalendarOff, description: t("web.provider.pages.schedule.daysOffDesc") },
+  ];
   return (
     <div>
       <PageHeader
-        title="Schedule"
-        subtitle="Time blocks and team days off"
+title={t("web.provider.sidebar.items.schedule")}
+subtitle={t("web.provider.pages.schedule.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Schedule" },
+{ label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+{ label: t("web.provider.sidebar.items.schedule") },
         ]}
       />
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { Home, MapPin } from "lucide-react";
 import type { Appointment } from "@/lib/provider-portal/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
@@ -10,6 +12,8 @@ interface BookingTravelSectionProps {
 }
 
 export function BookingTravelSection({ appointment }: BookingTravelSectionProps) {
+  const { t } = useTranslation();
+  const { format: formatMoney } = useProviderMoneyFormat();
   if (appointment.location_type !== "at_home") return null;
 
   const raw = appointment as unknown as Record<string, unknown>;
@@ -18,7 +22,6 @@ export function BookingTravelSection({ appointment }: BookingTravelSectionProps)
   const city = String(raw.address_city ?? "");
   const state = String(raw.address_state ?? "");
   const postal = String(raw.address_postal_code ?? "");
-  const { format: formatMoney } = useProviderMoneyFormat();
 
   const addressParts = [line1, city, state, postal].filter(Boolean);
   if (addressParts.length === 0 && travelFee <= 0) return null;
@@ -27,7 +30,7 @@ export function BookingTravelSection({ appointment }: BookingTravelSectionProps)
     <BookingSectionCard>
       <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
         <Home className="h-4 w-4" />
-        At-home visit
+        {t("web.provider.bookings.detail.atHome.title")}
       </BookingSectionLabel>
       {addressParts.length > 0 ? (
         <p className="text-sm text-gray-700 flex items-start gap-1.5 mb-2">
@@ -35,7 +38,7 @@ export function BookingTravelSection({ appointment }: BookingTravelSectionProps)
           {addressParts.join(", ")}
         </p>
       ) : null}
-      {travelFee > 0 ? <BookingSummaryRow label="Travel fee" value={formatMoney(travelFee)} /> : null}
+      {travelFee > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentDetails.travelFee")} value={formatMoney(travelFee)} /> : null}
     </BookingSectionCard>
   );
 }

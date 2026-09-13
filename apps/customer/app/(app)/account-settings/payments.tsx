@@ -164,7 +164,7 @@ export default function PaymentsScreen() {
     if (res.error) {
       Alert.alert(t("common.error"), res.error.message ?? "Failed to resend gift card");
     } else {
-      Alert.alert("Sent", "Gift card resent to the recipient.");
+      Alert.alert(t("customer.paymentsScreen.giftCardResentTitle"), t("customer.paymentsScreen.giftCardResentBody"));
     }
   };
 
@@ -229,7 +229,7 @@ export default function PaymentsScreen() {
         return;
       }
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
-        title: t("customer.paymentsScreen.addCardTitle", "Add card") as string,
+        title: t("customer.paymentsScreen.addCard", "Add card") as string,
         returnUrl: callbackUrl,
         matchSuccess: (u) => matchesExpoReturnUrl(u, callbackUrl) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
@@ -342,7 +342,7 @@ export default function PaymentsScreen() {
                       alignItems: "center",
                     }}
                   >
-                    <View style={{ flex: 1, paddingRight: 12 }}>
+                    <View style={{ flex: 1, paddingEnd: 12 }}>
                       <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                         {m.last4 ? `•••• ${m.last4}` : m.type || t("customer.paymentsScreen.card")}
                       </Text>
@@ -391,7 +391,7 @@ export default function PaymentsScreen() {
                     name="add-circle-outline"
                     size={20}
                     color={Colors.primary}
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   />
                   <Text style={{ fontWeight: "500", color: Colors.primary }}>
                     {t("customer.paymentsScreen.addCard")}
@@ -516,7 +516,7 @@ export default function PaymentsScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 10,
                     color: Colors.gray[900],
-                    marginRight: 8,
+                    marginEnd: 8,
                   }}
                   accessibilityLabel={t("customer.paymentsScreen.couponCodeA11y")}
                   returnKeyType="done"

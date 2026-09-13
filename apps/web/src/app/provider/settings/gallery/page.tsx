@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ interface _GalleryImage {
 }
 
 export default function GalleryManagementPage() {
+  const { t } = useTranslation();
   const [gallery, setGallery] = useState<string[]>([]);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export default function GalleryManagementPage() {
       // Don't show toast on initial load to avoid annoying users
       // Only show error if we already have some data (retry scenario)
       if (gallery.length > 0 || thumbnailUrl) {
-        toast.error("Failed to load gallery");
+        toast.error(t("web.provider.settings.pages.gallery.failedToLoadGallery"));
       }
     } finally {
       // Always set loading to false, even on error
@@ -84,11 +86,11 @@ export default function GalleryManagementPage() {
     // Validate files
     for (const file of fileArray) {
       if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-        toast.error(`${file.name}: Invalid file type. Only JPEG, PNG, and WebP are allowed.`);
+        toast.error(t("web.provider.settings.pages.gallery.invalidFileTypeNamed", { name: file.name }));
         continue;
       }
       if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
-        toast.error(`${file.name}: File too large. Maximum size is 5MB.`);
+        toast.error(t("web.provider.settings.pages.gallery.fileTooLargeNamed", { name: file.name }));
         continue;
       }
       validFiles.push(file);
@@ -114,7 +116,7 @@ export default function GalleryManagementPage() {
       const providerId = providerResponse.data?.id;
 
       if (!providerId) {
-        throw new Error("Provider ID not found");
+        throw new Error(t("web.provider.settings.pages.gallery.providerIdNotFound"));
       }
 
       // Compress images before upload (optimized for speed)
@@ -159,7 +161,7 @@ export default function GalleryManagementPage() {
         const avgCompression = compressionResults.reduce((sum, r) => sum + r.compressionRatio, 0) / compressedCount;
         
         toast.success(
-          `Compressed ${compressedCount} image(s): ${avgCompression.toFixed(1)}% reduction`
+          t("web.provider.settings.pages.gallery.compressedImages", { count: compressedCount, percent: avgCompression.toFixed(1) })
         );
       }
 
@@ -174,7 +176,7 @@ export default function GalleryManagementPage() {
             });
         const uploadPromise = uploadProviderGalleryImage(providerId, fileToUpload, gallery.length + index);
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Upload timeout for ${files[index].name}`)), 30000)
+          setTimeout(() => reject(new Error(t("web.provider.settings.pages.gallery.uploadTimeoutNamed", { name: files[index].name }))), 30000)
         );
         return Promise.race([uploadPromise, timeoutPromise]) as Promise<{ publicUrl: string }>;
       });
@@ -194,13 +196,13 @@ export default function GalleryManagementPage() {
         console.error("Failed to save gallery to database:", error);
         // Reload from server to get correct state
         loadGallery();
-        toast.error("Uploaded images but failed to save. Please refresh the page.");
+        toast.error(t("web.provider.settings.pages.gallery.uploadedImagesButFailedToSave"));
       });
       
       // Clear compression progress
       setCompressionProgress({});
       
-      toast.success(`Successfully uploaded ${files.length} image(s)`);
+      toast.success(t("web.provider.settings.pages.gallery.successfullyUploadedImages", { count: files.length }));
     } catch (error) {
       console.error("Upload error:", error);
       console.error("Error details:", {
@@ -208,8 +210,8 @@ export default function GalleryManagementPage() {
         stack: error instanceof Error ? error.stack : undefined,
       });
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to upload images";
-      toast.error(`Upload failed: ${errorMessage}. Please check console for details.`);
+        error instanceof Error ? error.message : t("web.provider.settings.pages.gallery.failedToUploadImages");
+      toast.error(t("web.provider.settings.pages.gallery.uploadFailedDetails", { message: errorMessage }));
       setCompressionProgress({});
       // Revert optimistic update on error
       setGallery(gallery); // Revert to original gallery
@@ -224,11 +226,11 @@ export default function GalleryManagementPage() {
     if (!file) return;
 
     if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-      toast.error("Invalid file type. Only JPEG, PNG, and WebP are allowed.");
+      toast.error(t("web.provider.settings.pages.gallery.invalidFileTypeOnlyJpegPng"));
       return;
     }
     if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
-      toast.error("File too large. Maximum size is 5MB.");
+      toast.error(t("web.provider.settings.pages.gallery.fileTooLargeMaximumSizeIs"));
       return;
     }
 
@@ -240,7 +242,7 @@ export default function GalleryManagementPage() {
       const providerId = providerResponse.data?.id;
 
       if (!providerId) {
-        throw new Error("Provider ID not found");
+        throw new Error(t("web.provider.settings.pages.gallery.providerIdNotFound"));
       }
 
       // Compress thumbnail before upload (skip if very small)
@@ -265,7 +267,7 @@ export default function GalleryManagementPage() {
         
         if (compressionResult.compressionRatio > 0) {
           toast.success(
-            `Compressed: ${compressionResult.compressionRatio.toFixed(1)}% reduction`
+            t("web.provider.settings.pages.gallery.compressedPercent", { percent: compressionResult.compressionRatio.toFixed(1) })
           );
         }
       }
@@ -289,7 +291,7 @@ export default function GalleryManagementPage() {
         upsert: true, // Allow overwriting existing thumbnail
       });
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Upload timeout - please try again")), 30000)
+        setTimeout(() => reject(new Error(t("web.provider.settings.pages.gallery.uploadTimeoutTryAgain"))), 30000)
       );
       
       const result = await Promise.race([uploadPromise, timeoutPromise]) as Awaited<ReturnType<typeof uploadFile>>;
@@ -303,10 +305,10 @@ export default function GalleryManagementPage() {
         console.error("Failed to save thumbnail to database:", error);
         // Reload from server to get correct state
         loadGallery();
-        toast.error("Uploaded thumbnail but failed to save. Please refresh the page.");
+        toast.error(t("web.provider.settings.pages.gallery.uploadedThumbnailButFailedToSave"));
       });
       
-      toast.success("Thumbnail updated successfully");
+      toast.success(t("web.provider.settings.pages.gallery.thumbnailUpdatedSuccessfully"));
 
       // Reset input
       if (thumbnailInputRef.current) {
@@ -319,8 +321,8 @@ export default function GalleryManagementPage() {
         stack: error instanceof Error ? error.stack : undefined,
       });
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to upload thumbnail";
-      toast.error(`Thumbnail upload failed: ${errorMessage}. Please check console for details.`);
+        error instanceof Error ? error.message : t("web.provider.settings.pages.gallery.failedToUploadThumbnail");
+      toast.error(t("web.provider.settings.pages.gallery.thumbnailUploadFailedDetails", { message: errorMessage }));
       // Revert optimistic update on error
       setThumbnailUrl(thumbnailUrl); // Revert to original
       // Don't reload here to avoid double loading
@@ -334,11 +336,11 @@ export default function GalleryManagementPage() {
     if (!file) return;
 
     if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-      toast.error("Invalid file type. Only JPEG, PNG, and WebP are allowed.");
+      toast.error(t("web.provider.settings.pages.gallery.invalidFileTypeOnlyJpegPng"));
       return;
     }
     if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
-      toast.error("File too large. Maximum size is 5MB.");
+      toast.error(t("web.provider.settings.pages.gallery.fileTooLargeMaximumSizeIs"));
       return;
     }
 
@@ -347,7 +349,7 @@ export default function GalleryManagementPage() {
 
       const providerResponse = await fetcher.get<{ data: { id: string } }>("/api/me/provider");
       const providerId = providerResponse.data?.id;
-      if (!providerId) throw new Error("Provider ID not found");
+      if (!providerId) throw new Error(t("web.provider.settings.pages.gallery.providerIdNotFound"));
 
       let compressionResult: { file: File | Blob; originalSize: number; compressedSize: number; compressionRatio: number };
       if (file.size < 2 * 1024 * 1024) {
@@ -390,11 +392,11 @@ export default function GalleryManagementPage() {
       });
       if (response.data?.avatar_url !== undefined) setAvatarUrl(response.data.avatar_url);
       invalidateSetupStatusCache();
-      toast.success("Profile circle image updated. It appears in the circle on your listing card.");
+      toast.success(t("web.provider.settings.pages.gallery.profileCircleImageUpdatedItAppears"));
 
       if (avatarInputRef.current) avatarInputRef.current.value = "";
     } catch (error) {
-      const msg = error instanceof FetchError ? error.message : "Failed to upload profile image.";
+      const msg = error instanceof FetchError ? error.message : t("web.provider.settings.pages.gallery.failedToUploadProfileImage");
       toast.error(msg);
     } finally {
       setIsUploadingAvatar(false);
@@ -424,7 +426,7 @@ export default function GalleryManagementPage() {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to save gallery. Please try again.";
+          : t("web.provider.settings.pages.gallery.failedToSaveGallery");
       throw new Error(errorMessage);
     } finally {
       setIsSaving(false);
@@ -432,7 +434,7 @@ export default function GalleryManagementPage() {
   };
 
   const handleDeleteImage = async (index: number) => {
-    if (!confirm("Are you sure you want to delete this image?")) return;
+    if (!confirm(t("web.provider.settings.pages.gallery.confirmDeleteImage"))) return;
 
     try {
       const updatedGallery = gallery.filter((_, i) => i !== index);
@@ -448,12 +450,12 @@ export default function GalleryManagementPage() {
         setAvatarUrl(null);
         await fetcher.patch("/api/provider/profile", { avatar_url: null }).catch(() => {});
       }
-      toast.success("Image deleted successfully");
+      toast.success(t("web.provider.settings.pages.gallery.imageDeletedSuccessfully"));
     } catch (error) {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to delete image. Please try again.";
+          : t("web.provider.settings.pages.gallery.failedToDeleteImage");
       toast.error(errorMessage);
     }
   };
@@ -462,12 +464,12 @@ export default function GalleryManagementPage() {
     try {
       await saveGallery(gallery, url);
       setThumbnailUrl(url);
-      toast.success("Thumbnail set successfully");
+      toast.success(t("web.provider.settings.pages.gallery.thumbnailSetSuccessfully"));
     } catch (error) {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to set thumbnail. Please try again.";
+          : t("web.provider.settings.pages.gallery.failedToSetThumbnail");
       toast.error(errorMessage);
     }
   };
@@ -480,10 +482,10 @@ export default function GalleryManagementPage() {
       });
       if (response.data?.avatar_url !== undefined) setAvatarUrl(response.data.avatar_url);
       invalidateSetupStatusCache();
-      toast.success("Profile image updated. It appears in the circle on your listing card.");
+      toast.success(t("web.provider.settings.pages.gallery.profileImageUpdatedItAppearsIn"));
     } catch (error) {
       const errorMessage =
-        error instanceof FetchError ? error.message : "Failed to set profile image. Please try again.";
+        error instanceof FetchError ? error.message : t("web.provider.settings.pages.gallery.failedToSetProfileImage");
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);
@@ -504,12 +506,12 @@ export default function GalleryManagementPage() {
         `/api/provider/gallery/${editIndex}`,
         { caption: editCaption.trim() || null }
       );
-      toast.success("Photo details saved");
+      toast.success(t("web.provider.settings.pages.gallery.photoDetailsSaved"));
       setEditDetailsOpen(false);
       setEditIndex(null);
       setEditCaption("");
     } catch (_err) {
-      toast.error("Failed to save photo details");
+      toast.error(t("web.provider.settings.pages.gallery.failedToSavePhotoDetails"));
     } finally {
       setIsSavingDetails(false);
     }
@@ -523,12 +525,12 @@ export default function GalleryManagementPage() {
     try {
       await saveGallery(newGallery, thumbnailUrl);
       setGallery(newGallery);
-      toast.success("Gallery reordered successfully");
+      toast.success(t("web.provider.settings.pages.gallery.galleryReorderedSuccessfully"));
     } catch (error) {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to reorder gallery. Please try again.";
+          : t("web.provider.settings.pages.gallery.failedToReorderGallery");
       toast.error(errorMessage);
     }
   };
@@ -538,19 +540,19 @@ export default function GalleryManagementPage() {
       <RoleGuard allowedRoles={["provider_owner"]} redirectTo="/provider/dashboard" showLoading={false}>
         <div className="min-h-screen bg-white">
           <PageHeader 
-            title="Gallery Management" 
-            subtitle="Manage your business photos"
+            title={t("web.provider.settings.categories.appointmentActivity.items.gallery.title")} 
+            subtitle={t("web.provider.settings.categories.appointmentActivity.items.gallery.description")}
             breadcrumbs={[
-              { label: "Home", href: "/" },
-              { label: "Provider", href: "/provider" },
-              { label: "Settings", href: "/provider/settings" },
-              { label: "Gallery" }
+              { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+              { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+              { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+              { label: t("web.provider.settings.pages.gallery.gallery") }
             ]}
           />
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading...</p>
+              <p className="text-gray-600">{t("common.loading")}</p>
             </div>
           </div>
         </div>
@@ -562,13 +564,13 @@ export default function GalleryManagementPage() {
     <RoleGuard allowedRoles={["provider_owner"]} redirectTo="/provider/dashboard" showLoading={false}>
       <div className="min-h-screen bg-white">
         <PageHeader
-          title="Gallery Management"
-          subtitle="Upload and manage photos of your business"
+          title={t("web.provider.settings.categories.appointmentActivity.items.gallery.title")}
+          subtitle={t("web.provider.settings.categories.appointmentActivity.items.gallery.description")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Settings", href: "/provider/settings" },
-            { label: "Gallery" }
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+            { label: t("web.provider.settings.pages.gallery.gallery") }
           ]}
         />
 
@@ -576,29 +578,28 @@ export default function GalleryManagementPage() {
           <Alert>
             <Info className="w-4 h-4" />
             <AlertDescription>
-              <strong>Listing image (thumbnail):</strong> The main photo on your card in search and on your profile header. 
-              Use a professional photo of yourself or your salon.
+              <strong>{t("web.provider.settings.pages.gallery.listingImageThumbnailStrong")}</strong> {t("web.provider.settings.pages.gallery.listingImageHelp")} 
               <br />
-              <strong>Profile circle:</strong> The small circular “face” of your business on listing cards. Upload directly or pick from your gallery.
+              <strong>{t("web.provider.settings.pages.gallery.profileCircleStrong")}</strong> {t("web.provider.settings.pages.gallery.profileCircleHelp")}
               <br />
-              <strong>Portfolio Gallery:</strong> Showcase your work and service examples.
+              <strong>{t("web.provider.settings.pages.gallery.portfolioGalleryStrong")}</strong> {t("web.provider.settings.pages.gallery.portfolioGalleryHelp")}
               <br />
-              <strong>Images are automatically compressed.</strong> Max 5MB per image. Formats: JPEG, PNG, WebP.
+              <strong>{t("web.provider.settings.pages.gallery.imagesCompressedStrong")}</strong> {t("web.provider.settings.pages.gallery.maxImageConstraints")}
             </AlertDescription>
           </Alert>
 
           {/* Profile circle (business face) - direct upload */}
           <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Profile circle (business face)</h3>
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">{t("web.provider.settings.pages.gallery.profileCircleBusinessFace")}</h3>
             <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-              This image appears in the small circle on your listing card. Upload a clear headshot or logo so clients recognize your business at a glance.
+              {t("web.provider.settings.pages.gallery.profileCircleUploadHint")}
             </p>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
               {avatarUrl ? (
                 <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-indigo-500 flex-shrink-0 bg-gray-100">
                   <img
                     src={avatarUrl}
-                    alt="Profile circle"
+                    alt={t("web.provider.settings.pages.gallery.profileCircleAlt")}
                     className="w-full h-full object-cover"
                     decoding="async"
                     onError={(e) => {
@@ -607,7 +608,7 @@ export default function GalleryManagementPage() {
                   />
                   <div className="absolute bottom-0 right-0 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl flex items-center gap-1">
                     <CircleUser className="w-3 h-3" />
-                    <span className="hidden sm:inline">Face</span>
+                    <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.face")}</span>
                   </div>
                 </div>
               ) : (
@@ -631,27 +632,27 @@ export default function GalleryManagementPage() {
                 >
                   {isUploadingAvatar ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Uploading...
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                      {t("web.provider.settings.pages.gallery.uploading")}
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      <span className="hidden sm:inline">{avatarUrl ? "Change profile image" : "Upload profile image"}</span>
-                      <span className="sm:hidden">{avatarUrl ? "Change" : "Upload"}</span>
+                      <Upload className="w-4 h-4 me-2" />
+                      <span className="hidden sm:inline">{avatarUrl ? t("web.provider.settings.pages.gallery.changeProfileImage") : t("web.provider.settings.pages.gallery.uploadProfileImage")}</span>
+                      <span className="sm:hidden">{avatarUrl ? t("web.provider.settings.pages.gallery.change") : t("web.provider.settings.pages.gallery.upload")}</span>
                     </>
                   )}
                 </Button>
-                <p className="text-xs text-gray-500 mt-2">Or choose from your gallery below and click “Profile” on any image.</p>
+                <p className="text-xs text-gray-500 mt-2">{t("web.provider.settings.pages.gallery.orChooseFromGallery")}</p>
               </div>
             </div>
           </div>
 
           {/* Listing image (thumbnail) - direct upload */}
           <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Listing image (thumbnail)</h3>
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">{t("web.provider.settings.pages.gallery.listingImageThumbnail")}</h3>
             <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-              The main image on your card in search and on your profile header. Upload a professional photo of yourself or your salon.
+              {t("web.provider.settings.pages.gallery.listingImageUploadHint")}
             </p>
             
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
@@ -665,7 +666,7 @@ export default function GalleryManagementPage() {
                 >
                   <img
                     src={thumbnailUrl}
-                    alt="Thumbnail"
+                    alt={t("web.provider.settings.pages.gallery.thumbnail")}
                     className="w-full h-full object-cover"
                     style={{ imageRendering: 'auto' }}
                     decoding="async"
@@ -676,7 +677,7 @@ export default function GalleryManagementPage() {
                   />
                   <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1">
                     <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
-                    <span className="hidden sm:inline">Thumbnail</span>
+                    <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.thumbnail")}</span>
                   </div>
                 </div>
               ) : (
@@ -701,14 +702,14 @@ export default function GalleryManagementPage() {
                 >
                   {isUploading ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Uploading...
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                      {t("web.provider.settings.pages.gallery.uploading")}
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      <span className="hidden sm:inline">{thumbnailUrl ? "Change Thumbnail" : "Upload Thumbnail"}</span>
-                      <span className="sm:hidden">{thumbnailUrl ? "Change" : "Upload"}</span>
+                      <Upload className="w-4 h-4 me-2" />
+                      <span className="hidden sm:inline">{thumbnailUrl ? t("web.provider.settings.pages.gallery.changeThumbnail") : t("web.provider.settings.pages.gallery.uploadThumbnail")}</span>
+                      <span className="sm:hidden">{thumbnailUrl ? t("web.provider.settings.pages.gallery.change") : t("web.provider.settings.pages.gallery.upload")}</span>
                     </>
                   )}
                 </Button>
@@ -720,13 +721,12 @@ export default function GalleryManagementPage() {
           <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold">Portfolio / Work Gallery</h3>
+                <h3 className="text-base sm:text-lg font-semibold">{t("web.provider.settings.pages.gallery.portfolioWorkGallery")}</h3>
                 <p className="text-xs sm:text-sm text-gray-600 mb-2">
-                  Showcase your completed work, before/after transformations, and service examples. 
-                  This is your portfolio that helps clients see the quality of your work.
+                  {t("web.provider.settings.pages.gallery.portfolioWorkHint")}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-500">
-                  {gallery.length} image{gallery.length !== 1 ? "s" : ""} uploaded
+                  {t("web.provider.settings.pages.gallery.imagesUploaded", { count: gallery.length })}
                 </p>
               </div>
               <div className="w-full sm:w-auto">
@@ -743,21 +743,21 @@ export default function GalleryManagementPage() {
                   disabled={isUploading || isSaving}
                   className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {isUploading ? "Uploading..." : "Upload Images"}
+                  <Upload className="w-4 h-4 me-2" />
+                  {isUploading ? t("web.provider.settings.pages.gallery.uploading") : t("web.provider.settings.pages.gallery.uploadImages")}
                 </Button>
               </div>
             </div>
 
             {isUploading && Object.keys(compressionProgress).length > 0 && (
               <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800 mb-2">Preparing images for upload...</p>
+                <p className="text-sm text-blue-800 mb-2">{t("web.provider.settings.pages.gallery.preparingImages")}</p>
                 <div className="space-y-2">
                   {Object.entries(compressionProgress).map(([fileName, result]) => (
                     <div key={fileName} className="text-xs text-blue-700">
                       {fileName}: {result.compressionRatio > 0 
-                        ? `Compressed ${result.compressionRatio.toFixed(1)}%`
-                        : 'Ready to upload'}
+                        ? t("web.provider.settings.pages.gallery.compressedPercentShort", { percent: result.compressionRatio.toFixed(1) })
+                        : t("web.provider.settings.pages.gallery.readyToUpload")}
                     </div>
                   ))}
                 </div>
@@ -767,17 +767,17 @@ export default function GalleryManagementPage() {
             {gallery.length === 0 ? (
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 sm:p-12 text-center">
                 <ImageIcon className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-                <p className="text-sm sm:text-base text-gray-600 mb-2">No portfolio images uploaded yet</p>
+                <p className="text-sm sm:text-base text-gray-600 mb-2">{t("web.provider.settings.pages.gallery.noPortfolioImages")}</p>
                 <p className="text-xs sm:text-sm text-gray-500 mb-4">
-                  Upload photos of your completed work, before/after transformations, and service examples
+                  {t("web.provider.settings.pages.gallery.uploadPhotosHint")}
                 </p>
                 <Button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading || isSaving}
                   className="bg-primary hover:bg-primary-hover text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {isUploading ? "Uploading..." : "Upload Photos"}
+                  <Upload className="w-4 h-4 me-2" />
+                  {isUploading ? t("web.provider.settings.pages.gallery.uploading") : t("web.provider.settings.pages.gallery.uploadPhotos")}
                 </Button>
               </div>
             ) : (
@@ -791,7 +791,7 @@ export default function GalleryManagementPage() {
                     >
                       <img
                         src={url}
-                        alt={`Gallery image ${index + 1}`}
+                        alt={t("web.provider.settings.pages.gallery.galleryImageAlt", { index: index + 1 })}
                         className="w-full h-full object-cover"
                         style={{ imageRendering: 'auto' }}
                         loading="lazy"
@@ -813,7 +813,7 @@ export default function GalleryManagementPage() {
                           className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm touch-manipulation"
                         >
                           <Maximize2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span className="hidden sm:inline ml-1">View</span>
+                          <span className="hidden sm:inline ms-1">{t("web.provider.settings.pages.gallery.view")}</span>
                         </Button>
                         
                         {/* Action buttons - Stacked on mobile, side-by-side on desktop */}
@@ -830,10 +830,10 @@ export default function GalleryManagementPage() {
                                 : 'bg-white/90 hover:bg-white text-gray-900 border-0'
                             }`}
                             disabled={thumbnailUrl === url}
-                            title={thumbnailUrl === url ? "Listing image" : "Set as listing image (card hero)"}
+                            title={thumbnailUrl === url ? t("web.provider.settings.pages.gallery.listingImage") : t("web.provider.settings.pages.gallery.setAsListingImage")}
                           >
                             <Star className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden sm:inline ml-1">{thumbnailUrl === url ? "Thumbnail" : "Set"}</span>
+                            <span className="hidden sm:inline ms-1">{thumbnailUrl === url ? t("web.provider.settings.pages.gallery.thumbnail") : t("web.provider.settings.pages.gallery.set")}</span>
                           </Button>
                           <Button
                             size="sm"
@@ -847,10 +847,10 @@ export default function GalleryManagementPage() {
                                 : 'bg-white/90 hover:bg-white text-gray-900 border-0'
                             }`}
                             disabled={avatarUrl === url}
-                            title={avatarUrl === url ? "Profile circle" : "Set as profile circle (face of business)"}
+                            title={avatarUrl === url ? t("web.provider.settings.pages.gallery.profileCircleAlt") : t("web.provider.settings.pages.gallery.setAsProfileCircleFace")}
                           >
                             <CircleUser className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden sm:inline ml-1">{avatarUrl === url ? "Face" : "Profile"}</span>
+                            <span className="hidden sm:inline ms-1">{avatarUrl === url ? t("web.provider.settings.pages.gallery.face") : t("web.provider.settings.pages.gallery.profile")}</span>
                           </Button>
                           <Button
                             size="sm"
@@ -861,7 +861,7 @@ export default function GalleryManagementPage() {
                             className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-red-600/90 hover:bg-red-700 text-white shadow-md font-medium h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm touch-manipulation border-0"
                           >
                             <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden sm:inline ml-1">Delete</span>
+                            <span className="hidden sm:inline ms-1">{t("web.provider.common.delete")}</span>
                           </Button>
                         </div>
                       </div>
@@ -870,13 +870,13 @@ export default function GalleryManagementPage() {
                       {thumbnailUrl === url && (
                         <div className="absolute top-1 right-1 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
-                          <span className="hidden sm:inline">Listing</span>
+                          <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.listing")}</span>
                         </div>
                       )}
                       {avatarUrl === url && (
                         <div className="absolute bottom-1 right-1 bg-indigo-600 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <CircleUser className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                          <span className="hidden sm:inline">Face</span>
+                          <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.face")}</span>
                         </div>
                       )}
                       
@@ -889,7 +889,7 @@ export default function GalleryManagementPage() {
                             handleReorder(index, index - 1);
                           }}
                           className="absolute top-1 left-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
-                          title="Move up"
+                          title={t("web.provider.settings.pages.gallery.moveUp")}
                         >
                           ↑
                         </Button>
@@ -902,7 +902,7 @@ export default function GalleryManagementPage() {
                             handleReorder(index, index + 1);
                           }}
                           className="absolute bottom-1 left-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
-                          title="Move down"
+                          title={t("web.provider.settings.pages.gallery.moveDown")}
                         >
                           ↓
                         </Button>
@@ -918,7 +918,7 @@ export default function GalleryManagementPage() {
                       <div className="relative w-full h-full flex items-center justify-center p-4 sm:p-0">
                         <img
                           src={gallery[selectedImageIndex]}
-                          alt={`Gallery image ${selectedImageIndex + 1}`}
+                          alt={t("web.provider.settings.pages.gallery.galleryImageAlt", { index: selectedImageIndex + 1 })}
                           className="max-w-full max-h-[calc(100vh-8rem)] sm:max-h-[90vh] object-contain rounded-lg"
                           style={{ imageRendering: 'auto' }}
                           decoding="async"
@@ -941,8 +941,8 @@ export default function GalleryManagementPage() {
                             } border-0 shadow-md touch-manipulation w-full sm:w-auto`}
                             disabled={thumbnailUrl === gallery[selectedImageIndex]}
                           >
-                            <Star className="w-4 h-4 mr-1" />
-                            <span className="text-xs sm:text-sm">{thumbnailUrl === gallery[selectedImageIndex] ? "Thumbnail" : "Set as Thumbnail"}</span>
+                            <Star className="w-4 h-4 me-1" />
+                            <span className="text-xs sm:text-sm">{thumbnailUrl === gallery[selectedImageIndex] ? t("web.provider.settings.pages.gallery.thumbnail") : t("web.provider.settings.pages.gallery.setAsThumbnail")}</span>
                           </Button>
                           <Button
                             type="button"
@@ -960,8 +960,8 @@ export default function GalleryManagementPage() {
                             } border-0 shadow-md touch-manipulation w-full sm:w-auto`}
                             disabled={avatarUrl === gallery[selectedImageIndex]}
                           >
-                            <CircleUser className="w-4 h-4 mr-1" />
-                            <span className="text-xs sm:text-sm">{avatarUrl === gallery[selectedImageIndex] ? "Profile circle" : "Set as profile circle"}</span>
+                            <CircleUser className="w-4 h-4 me-1" />
+                            <span className="text-xs sm:text-sm">{avatarUrl === gallery[selectedImageIndex] ? t("web.provider.settings.pages.gallery.profileCircleAlt") : t("web.provider.settings.pages.gallery.setAsProfileCircle")}</span>
                           </Button>
                           <Button
                             type="button"
@@ -973,8 +973,8 @@ export default function GalleryManagementPage() {
                             }}
                             className="min-h-[44px] sm:min-h-0 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation w-full sm:w-auto"
                           >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            <span className="text-xs sm:text-sm">Edit details</span>
+                            <Pencil className="w-4 h-4 me-1" />
+                            <span className="text-xs sm:text-sm">{t("web.provider.settings.pages.gallery.editDetails")}</span>
                           </Button>
                           <Button
                             type="button"
@@ -987,8 +987,8 @@ export default function GalleryManagementPage() {
                             }}
                             className="min-h-[44px] sm:min-h-0 bg-red-600 hover:bg-red-700 text-white border-0 shadow-md touch-manipulation w-full sm:w-auto"
                           >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            <span className="text-xs sm:text-sm">Delete</span>
+                            <Trash2 className="w-4 h-4 me-1" />
+                            <span className="text-xs sm:text-sm">{t("web.provider.common.delete")}</span>
                           </Button>
                         </div>
                         <div className="absolute top-2 sm:top-4 right-2 sm:right-4 text-white text-xs sm:text-sm bg-black/70 backdrop-blur-sm rounded px-2 py-1">
@@ -1004,7 +1004,7 @@ export default function GalleryManagementPage() {
                               setSelectedImageIndex(selectedImageIndex - 1);
                             }}
                             className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
-                            aria-label="Previous image"
+                            aria-label={t("web.provider.settings.pages.gallery.previousImage")}
                           >
                             ←
                           </Button>
@@ -1019,7 +1019,7 @@ export default function GalleryManagementPage() {
                               setSelectedImageIndex(selectedImageIndex + 1);
                             }}
                             className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
-                            aria-label="Next image"
+                            aria-label={t("web.provider.settings.pages.gallery.nextImage")}
                           >
                             →
                           </Button>
@@ -1033,22 +1033,22 @@ export default function GalleryManagementPage() {
                 <Dialog open={editDetailsOpen} onOpenChange={setEditDetailsOpen}>
                   <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
                     <DialogHeader>
-                      <DialogTitle>Edit photo details</DialogTitle>
+                      <DialogTitle>{t("web.provider.settings.pages.gallery.editPhotoDetails")}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                       <div className="space-y-2">
-                        <Label htmlFor="edit-caption">Caption (optional)</Label>
+                        <Label htmlFor="edit-caption">{t("web.provider.settings.pages.gallery.captionOptional")}</Label>
                         <Input
                           id="edit-caption"
                           value={editCaption}
                           onChange={(e) => setEditCaption(e.target.value)}
-                          placeholder="Add a caption for this photo"
+                          placeholder={t("web.provider.settings.pages.gallery.addACaptionForThisPhoto")}
                           className="touch-manipulation"
                         />
                       </div>
                       <div className="flex gap-2 justify-end">
                         <Button type="button" variant="outline" onClick={() => setEditDetailsOpen(false)}>
-                          Cancel
+                          {t("web.provider.common.cancel")}
                         </Button>
                         <Button
                           type="button"
@@ -1058,11 +1058,11 @@ export default function GalleryManagementPage() {
                         >
                           {isSavingDetails ? (
                             <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
+                              <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                              {t("web.provider.common.saving")}
                             </>
                           ) : (
-                            "Save"
+                            t("web.provider.common.save")
                           )}
                         </Button>
                       </div>

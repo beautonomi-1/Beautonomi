@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
@@ -34,6 +35,7 @@ export function SearchQueryBarWithSuggestions({
   onQueryChange,
   onApply,
 }: SearchQueryBarProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
@@ -143,9 +145,9 @@ export function SearchQueryBarWithSuggestions({
               setOpen(false);
             }
           }}
-          placeholder="Search providers, services, or categories…"
-          className="pl-10 h-11 bg-white border-gray-200"
-          aria-label="Search providers"
+          placeholder={t("web.search.placeholder")}
+          className="ps-10 h-11 bg-white border-gray-200"
+          aria-label={t("web.search.providersAriaLabel")}
           aria-autocomplete="list"
           aria-expanded={open && suggestions.length > 0}
           aria-controls="search-suggestions-list"
@@ -166,7 +168,7 @@ export function SearchQueryBarWithSuggestions({
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-gray-50",
+                    "flex w-full items-center gap-3 px-3 py-2.5 text-start text-sm hover:bg-gray-50",
                     i === highlight && "bg-gray-50"
                   )}
                   onMouseDown={(e) => e.preventDefault()}
@@ -189,11 +191,11 @@ export function SearchQueryBarWithSuggestions({
                     <span className="block truncate font-medium text-gray-900">{s.name}</span>
                     <span className="block text-xs text-gray-500 capitalize mt-0.5">
                       {s.type === "service" && s.category ? `${s.category} · ` : ""}
-                      {s.type === "service" ? "Service" : s.type === "provider" ? "Provider" : "Category"}
+                      {s.type === "service" ? t("web.search.suggestion.service") : s.type === "provider" ? t("web.search.suggestion.provider") : t("web.search.suggestion.category")}
                     </span>
                     {s.type === "provider" && s.distance_km != null ? (
                       <span className="block text-xs text-gray-500 mt-0.5">
-                        {s.distance_km < 1 ? "< 1 km away" : `${s.distance_km.toFixed(1)} km away`}
+                        {s.distance_km < 1 ? t("web.search.distanceUnder1km") : t("web.search.distanceAway", { km: s.distance_km.toFixed(1) })}
                       </span>
                     ) : null}
                   </span>
@@ -204,7 +206,7 @@ export function SearchQueryBarWithSuggestions({
         ) : null}
       </div>
       <Button type="button" onClick={() => { setOpen(false); onApply(); }} className="shrink-0 h-11 px-6">
-        Search
+        {t("web.search.searchCta")}
       </Button>
     </div>
   );

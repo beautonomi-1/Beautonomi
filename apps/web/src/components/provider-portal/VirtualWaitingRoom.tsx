@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface VirtualWaitingRoomProps {
   onEntrySelect?: (entry: WaitingRoomEntry) => void;
@@ -19,6 +20,7 @@ interface VirtualWaitingRoomProps {
 }
 
 export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }: VirtualWaitingRoomProps) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<WaitingRoomEntry[]>([]);
   const [_isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,7 +37,6 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
 
   useEffect(() => {
     loadEntries();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(loadEntries, 30000);
     return () => clearInterval(interval);
   }, [statusFilter, locationId]);
@@ -70,7 +71,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
       setEntries(response);
     } catch (error) {
       console.error("Failed to load waiting room entries:", error);
-      toast.error("Failed to load waiting room");
+      toast.error(t("web.provider.portal.waitingRoom.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -79,11 +80,11 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
   const handleStatusChange = async (entryId: string, newStatus: WaitingRoomEntry["status"]) => {
     try {
       await providerApi.updateWaitingRoomEntry(entryId, { status: newStatus });
-      toast.success("Status updated");
+      toast.success(t("web.provider.portal.waitingRoom.statusUpdated"));
       loadEntries();
     } catch (error) {
       console.error("Failed to update status:", error);
-      toast.error("Failed to update status");
+      toast.error(t("web.provider.portal.waitingRoom.statusUpdateFailed"));
     }
   };
 
@@ -117,22 +118,36 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
     }
   };
 
+  const statusLabel = (status: WaitingRoomEntry["status"]) => {
+    switch (status) {
+      case "waiting":
+        return t("web.provider.portal.waitingRoom.waiting");
+      case "in_service":
+        return t("web.provider.portal.waitingRoom.inService");
+      case "completed":
+        return t("web.provider.portal.waitingRoom.completed");
+      case "left":
+        return t("web.provider.portal.waitingRoom.left");
+      default:
+        return status;
+    }
+  };
+
   const formatWaitTime = (checkedInTime: string) => {
     const now = new Date();
     const checkedIn = new Date(checkedInTime);
     const diffMinutes = Math.floor((now.getTime() - checkedIn.getTime()) / 60000);
     
     if (diffMinutes < 60) {
-      return `${diffMinutes} min`;
+      return t("web.provider.portal.waitingRoom.waitMinutes", { minutes: diffMinutes });
     }
     const hours = Math.floor(diffMinutes / 60);
     const minutes = diffMinutes % 60;
-    return `${hours}h ${minutes}m`;
+    return t("web.provider.portal.waitingRoom.waitHours", { hours, minutes });
   };
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0 max-w-full overflow-x-hidden">
-      {/* Header with Stats — stack on very narrow viewports */}
       <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
@@ -140,7 +155,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
               <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Waiting</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.portal.waitingRoom.waiting")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {waitingEntries.length}
               </div>
@@ -153,7 +168,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
               <User className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">In Service</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.portal.waitingRoom.inService")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {inServiceEntries.length}
               </div>
@@ -166,7 +181,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
               <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Completed</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.portal.waitingRoom.completed")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {completedEntries.length}
               </div>
@@ -179,7 +194,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
               <Eye className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Total</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.portal.waitingRoom.total")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {filteredEntries.length}
               </div>
@@ -188,15 +203,14 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
         </SectionCard>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search by client name or service..."
+            placeholder={t("web.provider.portal.waitingRoom.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 min-h-[44px] touch-manipulation"
+            className="ps-10 min-h-[44px] touch-manipulation"
           />
         </div>
         <Button
@@ -204,28 +218,26 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
           onClick={loadEntries}
           className="min-h-[44px] touch-manipulation"
         >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          <span className="hidden sm:inline">Refresh</span>
+          <RefreshCw className="w-4 h-4 me-2" />
+          <span className="hidden sm:inline">{t("web.provider.portal.waitingRoom.refresh")}</span>
         </Button>
       </div>
 
-      {/* Waiting Room Entries - Mobile First */}
       {filteredEntries.length === 0 ? (
         <SectionCard className="p-8 sm:p-12 text-center">
           <Clock className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No one in waiting room</h3>
+          <h3 className="text-lg font-semibold mb-2">{t("web.provider.portal.waitingRoom.emptyTitle")}</h3>
           <p className="text-sm text-gray-500">
-            Clients will appear here when they check in
+            {t("web.provider.portal.waitingRoom.emptyDescription")}
           </p>
         </SectionCard>
       ) : (
         <div className="space-y-4">
-          {/* Waiting */}
           {waitingEntries.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <Clock className="w-4 h-4" />
-                Waiting ({waitingEntries.length})
+                {t("web.provider.portal.waitingRoom.waitingCount", { count: waitingEntries.length })}
               </h3>
               <div className="space-y-3">
                 {waitingEntries.map((entry) => (
@@ -245,34 +257,36 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1 text-xs sm:text-sm text-gray-600 ml-12">
+                        <div className="space-y-1 text-xs sm:text-sm text-gray-600 ms-12">
                           {entry.team_member_name && (
-                            <div>With: {entry.team_member_name}</div>
+                            <div>{t("web.provider.portal.waitingRoom.withStaff", { name: entry.team_member_name })}</div>
                           )}
                           <div className="flex items-center gap-2">
                             <Clock className="w-3 h-3" />
-                            <span>Waiting: {formatWaitTime(entry.checked_in_time)}</span>
+                            <span>{t("web.provider.portal.waitingRoom.waitingTime", { time: formatWaitTime(entry.checked_in_time) })}</span>
                             {entry.position && (
                               <span className="text-primary font-medium">
-                                • Position #{entry.position}
+                                {t("web.provider.portal.waitingRoom.position", { position: entry.position })}
                               </span>
                             )}
                           </div>
                           <div>
-                            Checked in: {format(new Date(entry.checked_in_time), "h:mm a")}
+                            {t("web.provider.portal.waitingRoom.checkedIn", {
+                              time: format(new Date(entry.checked_in_time), "h:mm a"),
+                            })}
                           </div>
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 items-end">
                         <Badge className={getStatusColor(entry.status)}>
-                          {entry.status}
+                          {statusLabel(entry.status)}
                         </Badge>
                         <Button
                           size="sm"
                           onClick={() => handleStatusChange(entry.id, "in_service")}
                           className="bg-primary hover:bg-primary-hover text-white min-h-[36px] touch-manipulation"
                         >
-                          Start Service
+                          {t("web.provider.portal.waitingRoom.startService")}
                         </Button>
                       </div>
                     </div>
@@ -282,12 +296,11 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
             </div>
           )}
 
-          {/* In Service */}
           {inServiceEntries.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <User className="w-4 h-4" />
-                In Service ({inServiceEntries.length})
+                {t("web.provider.portal.waitingRoom.inServiceCount", { count: inServiceEntries.length })}
               </h3>
               <div className="space-y-3">
                 {inServiceEntries.map((entry) => (
@@ -307,25 +320,27 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1 text-xs sm:text-sm text-gray-600 ml-12">
+                        <div className="space-y-1 text-xs sm:text-sm text-gray-600 ms-12">
                           {entry.team_member_name && (
-                            <div>With: {entry.team_member_name}</div>
+                            <div>{t("web.provider.portal.waitingRoom.withStaff", { name: entry.team_member_name })}</div>
                           )}
                           <div>
-                            Started: {format(new Date(entry.checked_in_time), "h:mm a")}
+                            {t("web.provider.portal.waitingRoom.started", {
+                              time: format(new Date(entry.checked_in_time), "h:mm a"),
+                            })}
                           </div>
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 items-end">
                         <Badge className={getStatusColor(entry.status)}>
-                          {entry.status}
+                          {statusLabel(entry.status)}
                         </Badge>
                         <Button
                           size="sm"
                           onClick={() => handleStatusChange(entry.id, "completed")}
                           className="bg-green-600 hover:bg-green-700 text-white min-h-[36px] touch-manipulation"
                         >
-                          Complete
+                          {t("web.provider.portal.waitingRoom.complete")}
                         </Button>
                       </div>
                     </div>
@@ -335,12 +350,11 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
             </div>
           )}
 
-          {/* Completed */}
           {completedEntries.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <CheckCircle className="w-4 h-4" />
-                Completed ({completedEntries.length})
+                {t("web.provider.portal.waitingRoom.completedCount", { count: completedEntries.length })}
               </h3>
               <div className="space-y-3">
                 {completedEntries.map((entry) => (
@@ -360,12 +374,14 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
                             </div>
                           </div>
                         </div>
-                        <div className="text-xs sm:text-sm text-gray-600 ml-12">
-                          Completed: {format(new Date(entry.checked_in_time), "h:mm a")}
+                        <div className="text-xs sm:text-sm text-gray-600 ms-12">
+                          {t("web.provider.portal.waitingRoom.completedAt", {
+                            time: format(new Date(entry.checked_in_time), "h:mm a"),
+                          })}
                         </div>
                       </div>
                       <Badge className={getStatusColor(entry.status)}>
-                        {entry.status}
+                        {statusLabel(entry.status)}
                       </Badge>
                     </div>
                   </SectionCard>

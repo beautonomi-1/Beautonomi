@@ -5,6 +5,7 @@ import {
   applyPendingBookingsScope,
   applyPendingGroupsScope,
 } from "@/lib/server/provider/pending-bookings-scope";
+import { countExpiringSoonPendingForProvider } from "@/lib/bookings/pending-confirmation-nudges";
 
 const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "ready_for_collection", "shipped"];
 
@@ -131,9 +132,16 @@ export async function GET(request: NextRequest) {
       openReturnsCount = openReturnRequests.count ?? 0;
     }
 
+    const expiringSoonPending = await countExpiringSoonPendingForProvider(
+      supabase,
+      providerId,
+      locationId,
+    );
+
     const counts = {
       pending_bookings: (pendingBookings.count ?? 0) + (pendingGroupBookings.count ?? 0),
       stale_pending_bookings: (staleBookings.count ?? 0) + (staleGroupBookings.count ?? 0),
+      expiring_soon_pending: expiringSoonPending,
       active_product_orders: activeProductOrders.count ?? 0,
       unread_messages: (unreadConversations.data ?? []).reduce(
         (sum: number, row: { unread_count_provider?: number | null }) => sum + Number(row.unread_count_provider ?? 0),

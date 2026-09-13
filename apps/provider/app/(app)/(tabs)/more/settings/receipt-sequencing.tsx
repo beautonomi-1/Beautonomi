@@ -2,8 +2,9 @@
  * Native Receipt sequencing – receipt number prefix and next number.
  * GET/PATCH /api/provider/settings/sales/receipt
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -23,6 +24,12 @@ interface ReceiptSettings {
 }
 
 export default function ReceiptSequencingScreen() {
+  const { t } = useTranslation();
+  const rs = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.receiptSequencing.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [prefix, setPrefix] = useState("REC");
@@ -45,11 +52,11 @@ export default function ReceiptSequencingScreen() {
   const handleSave = async () => {
     const num = parseInt(nextNumber, 10);
     if (isNaN(num) || num < 1) {
-      Alert.alert("Invalid", "Next number must be at least 1.");
+      Alert.alert(rs("invalidTitle"), rs("invalidNextNumber"));
       return;
     }
     if (!/^[A-Za-z0-9-]+$/.test(prefix.trim())) {
-      Alert.alert("Invalid", "Prefix can only contain letters, numbers, and dashes.");
+      Alert.alert(rs("invalidTitle"), rs("invalidPrefix"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -60,7 +67,7 @@ export default function ReceiptSequencingScreen() {
       receipt_footer: footer.trim() || null,
     });
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(rs("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -70,7 +77,7 @@ export default function ReceiptSequencingScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Receipt sequencing" onBack={() => router.back()} />
+        <ScreenHeader title={rs("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -81,8 +88,8 @@ export default function ReceiptSequencingScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Receipt sequencing"
-        subtitle="Receipt numbers and format"
+        title={rs("title")}
+        subtitle={rs("subtitle")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -95,17 +102,17 @@ export default function ReceiptSequencingScreen() {
           <View style={twStyle("rounded-xl bg-red-50 border border-red-200 p-3 mb-4")}>
             <Text style={twStyle("text-sm text-red-800")}>{error}</Text>
             <TouchableOpacity onPress={() => refresh()} style={twStyle("mt-2")}>
-              <Text style={twStyle("text-sm font-medium text-red-600")}>Retry</Text>
+              <Text style={twStyle("text-sm font-medium text-red-600")}>{rs("retry")}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Receipt prefix</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{rs("prefixLabel")}</Text>
           <TextInput
             value={prefix}
             onChangeText={setPrefix}
-            placeholder="e.g. REC"
+            placeholder={rs("prefixPlaceholder")}
             placeholderTextColor="#9ca3af"
             style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
             autoCapitalize="characters"
@@ -113,11 +120,11 @@ export default function ReceiptSequencingScreen() {
         </View>
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Next receipt number</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{rs("nextNumberLabel")}</Text>
           <TextInput
             value={nextNumber}
             onChangeText={setNextNumber}
-            placeholder="1"
+            placeholder={rs("nextNumberPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
             style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
@@ -125,11 +132,11 @@ export default function ReceiptSequencingScreen() {
         </View>
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Header (optional)</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{rs("headerLabel")}</Text>
           <TextInput
             value={header}
             onChangeText={setHeader}
-            placeholder="Text at top of receipt"
+            placeholder={rs("headerPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900 min-h-[80px]")}
@@ -137,18 +144,18 @@ export default function ReceiptSequencingScreen() {
         </View>
 
         <View style={twStyle("mb-6")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Footer (optional)</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{rs("footerLabel")}</Text>
           <TextInput
             value={footer}
             onChangeText={setFooter}
-            placeholder="Text at bottom of receipt"
+            placeholder={rs("footerPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900 min-h-[80px]")}
           />
         </View>
 
-        <ActionButton label={saving ? "Saving…" : "Save"} onPress={handleSave} loading={saving} fullWidth />
+        <ActionButton label={saving ? rs("saving") : rs("save")} onPress={handleSave} loading={saving} fullWidth />
       </ScrollView>
     </ScreenContainer>
   );

@@ -85,16 +85,16 @@ export function StepServices({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          {categoryName ? `${categoryName} Menu` : "What would you like?"}
+          {categoryName ? t("web.book.engine.categoryMenu", { categoryName }) : t("web.book.engine.whatWouldYouLike")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
           {categoryName
-            ? "Choose a service from this category"
+            ? t("web.book.engine.chooseFromCategory")
             : hidePackagesSection
-              ? "Your bundle is included — add or adjust services below if needed"
-              : "Choose a package or a single service"}
+              ? t("web.book.engine.bundleIncludedHint")
+              : t("web.book.engine.choosePackageOrService")}
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export function StepServices({
         <div className="p-5 space-y-4 rounded-3xl" style={cardStyle}>
           <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
             <Sparkles className="h-4 w-4" style={{ color: BOOKING_ACCENT }} />
-            Packages
+            {t("web.book.engine.packages")}
           </h3>
           <div className="space-y-3">
             {packages.map((pkg, _i) => {
@@ -141,7 +141,7 @@ export function StepServices({
                     }
                   }}
                   className={cn(
-                    "w-full text-left rounded-2xl border-2 p-4 transition-all touch-manipulation relative overflow-hidden",
+                    "w-full text-start rounded-2xl border-2 p-4 transition-all touch-manipulation relative overflow-hidden",
                     MIN_TAP,
                     BOOKING_ACTIVE_SCALE
                   )}
@@ -155,7 +155,7 @@ export function StepServices({
                       className="absolute top-3 right-3 text-xs font-semibold px-2.5 py-1 rounded-full text-white"
                       style={{ backgroundColor: BOOKING_ACCENT }}
                     >
-                      Save {discount}%
+                      {t("web.book.engine.savePercentBadge", { percent: discount })}
                     </span>
                   )}
                   <span className="font-semibold block" style={{ color: BOOKING_TEXT_PRIMARY }}>
@@ -167,7 +167,7 @@ export function StepServices({
                     </p>
                   )}
                   <p className="text-sm mt-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                    {pkg.services?.length ?? pkg.items?.length ?? 0} included ·{" "}
+                    {t("web.book.engine.includedCount", { count: pkg.services?.length ?? pkg.items?.length ?? 0 })}
                     <strong style={{ color: BOOKING_ACCENT }}>{formatCurrency(pkg.price, pkg.currency)}</strong>
                   </p>
                 </button>
@@ -178,8 +178,8 @@ export function StepServices({
       )}
 
       <div className="p-5 space-y-4 rounded-3xl" style={cardStyle}>
-        <h3 className="text-sm font-medium text-left" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Services
+        <h3 className="text-sm font-medium text-start" style={{ color: BOOKING_TEXT_SECONDARY }}>
+          {t("web.book.engine.services")}
         </h3>
         {showHouseCallPricingHints ? <HouseCallAtHomePricesBanner t={t} /> : null}
         <div className="space-y-2">
@@ -205,13 +205,15 @@ export function StepServices({
                   className="rounded-2xl border overflow-hidden"
                   style={{ borderColor: BOOKING_BORDER, backgroundColor: "rgba(0,0,0,0.02)" }}
                 >
-                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 border-b text-left touch-manipulation min-h-[48px]" style={{ borderColor: BOOKING_EDGE }}>
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 border-b text-start touch-manipulation min-h-[48px]" style={{ borderColor: BOOKING_EDGE }}>
                     <div className="min-w-0 flex-1">
                       <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>
                         {svc.title}
                       </span>
                       <span className="text-xs mt-0.5 block" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                        {variants.length} options · tap to {expanded ? "hide" : "show"}
+                        {expanded
+                          ? t("web.book.engine.optionsTapHide", { count: variants.length })
+                          : t("web.book.engine.optionsTapShow", { count: variants.length })}
                       </span>
                     </div>
                     <ChevronDown
@@ -269,10 +271,10 @@ export function StepServices({
                                 isAtHome={isAtHome}
                                 currency={v.currency}
                                 t={t}
-                                className="text-left"
+                                className="text-start"
                               />
                               {variantDuration ? (
-                                <span className="block mt-0.5 opacity-90">{variantDuration} min</span>
+                                <span className="block mt-0.5 opacity-90">{t("web.book.engine.durationMinShort", { minutes: variantDuration })}</span>
                               ) : null}
                             </span>
                           </button>
@@ -312,7 +314,7 @@ export function StepServices({
                   );
                 }}
                 className={cn(
-                  "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+                  "w-full text-start rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
                   MIN_TAP,
                   BOOKING_ACTIVE_SCALE
                 )}
@@ -327,7 +329,7 @@ export function StepServices({
                   </span>
                   <p className="text-sm mt-0.5 flex items-center gap-1.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
                     <Clock className="h-3.5 w-3.5 shrink-0" />
-                    {svc.duration_minutes} min
+                    {t("web.book.engine.durationMinShort", { minutes: svc.duration_minutes })}
                   </p>
                 </div>
                 <HouseCallServicePriceLabel
@@ -336,7 +338,7 @@ export function StepServices({
                   isAtHome={isAtHome}
                   currency={svc.currency}
                   t={t}
-                  className="text-sm shrink-0 text-right"
+                  className="text-sm shrink-0 text-end"
                 />
                 <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
               </button>
@@ -360,7 +362,7 @@ export function StepServices({
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

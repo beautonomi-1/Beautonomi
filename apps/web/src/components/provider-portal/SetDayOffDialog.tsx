@@ -16,6 +16,7 @@ import { format, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface SetDayOffDialogProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function SetDayOffDialog({
   selectedDate: initialDate,
   onSuccess,
 }: SetDayOffDialogProps) {
+  const { t } = useTranslation();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate || new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => initialDate || new Date());
   const [reason, setReason] = useState("");
@@ -55,12 +57,12 @@ export function SetDayOffDialog({
 
   const handleSave = async () => {
     if (!staffMember) {
-      toast.error("No staff member selected");
+      toast.error(t("web.provider.portal.setDayOff.noStaff"));
       return;
     }
 
     if (!selectedDate) {
-      toast.error("Please select a date");
+      toast.error(t("web.provider.portal.setDayOff.selectDate"));
       return;
     }
 
@@ -74,12 +76,12 @@ export function SetDayOffDialog({
         ...(trimmed ? { reason: trimmed } : {}),
       });
 
-      toast.success(`Day off set for ${staffMember.name}`);
+      toast.success(t("web.provider.portal.setDayOff.success", { name: staffMember.name }));
       onOpenChange(false);
       onSuccess?.();
     } catch (error: unknown) {
       console.error("Failed to set day off:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to set day off");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.setDayOff.failed"));
     } finally {
       setIsSaving(false);
     }
@@ -89,22 +91,22 @@ export function SetDayOffDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Day Off</DialogTitle>
+          <DialogTitle>{t("web.provider.portal.setDayOff.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label>Staff Member</Label>
+            <Label>{t("web.provider.portal.setDayOff.staffMember")}</Label>
             <div className="text-sm text-gray-600 font-medium">
-              {staffMember?.name || "No staff member selected"}
+              {staffMember?.name || t("web.provider.portal.setDayOff.noStaff")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Date</Label>
-            <p className="text-xs text-muted-foreground">Choose a day on the calendar below.</p>
+            <Label>{t("web.provider.portal.setDayOff.date")}</Label>
+            <p className="text-xs text-muted-foreground">{t("web.provider.portal.setDayOff.calendarHint")}</p>
             <div className="rounded-xl border bg-card p-2 shadow-sm">
               <div className="mb-2 text-sm font-medium tabular-nums">
-                {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : "Pick a date"}
+                {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : t("web.provider.portal.setDayOff.pickDate")}
               </div>
               <Calendar
                 mode="single"
@@ -123,10 +125,10 @@ export function SetDayOffDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="reason">Reason (Optional)</Label>
+            <Label htmlFor="reason">{t("web.provider.portal.setDayOff.reasonOptional")}</Label>
             <Input
               id="reason"
-              placeholder="e.g., Vacation, Sick leave, Personal"
+              placeholder={t("web.provider.portal.setDayOff.reasonPlaceholder")}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
@@ -134,10 +136,10 @@ export function SetDayOffDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={isSaving || !selectedDate}>
-            {isSaving ? "Saving..." : "Set Day Off"}
+            {isSaving ? t("web.provider.portal.setDayOff.saving") : t("web.provider.portal.setDayOff.setDayOff")}
           </Button>
         </DialogFooter>
       </DialogContent>

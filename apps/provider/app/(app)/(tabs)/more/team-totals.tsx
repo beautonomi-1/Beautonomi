@@ -26,6 +26,8 @@ import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { resolveReportTimezone } from "@/lib/reportDateRanges";
 import { formatCurrency } from "@/lib/format";
 import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /**
  * Calendar anchor (local noon) for the provider-timezone civil date of `instant`.
@@ -56,6 +58,12 @@ interface StaffMember {
 }
 
 export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const tt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamTotals.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { selectedLocationId, provider } = useProvider();
   const { screenPadding } = useResponsive();
@@ -176,7 +184,7 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
             style={[twStyle("flex-1 py-2.5 rounded-lg"), period === "daily" ? twStyle("bg-white shadow-sm") : undefined]}
           >
             <Text style={twStyle(`text-center font-medium ${period === "daily" ? "text-gray-900" : "text-gray-500"}`)}>
-              Daily
+              {tt("daily")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -184,7 +192,7 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
             style={[twStyle("flex-1 py-2.5 rounded-lg"), period === "weekly" ? twStyle("bg-white shadow-sm") : undefined]}
           >
             <Text style={twStyle(`text-center font-medium ${period === "weekly" ? "text-gray-900" : "text-gray-500"}`)}>
-              Weekly
+              {tt("weekly")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -193,16 +201,16 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
         <View style={twStyle("flex-row items-center justify-between mb-4")}>
           <View style={twStyle("flex-row items-center gap-2")}>
             <TouchableOpacity onPress={goPrev} style={twStyle("w-10 h-10 rounded-xl border border-gray-200 items-center justify-center")}>
-              <Ionicons name="chevron-back" size={20} color="#374151" />
+              <DirectionalIcon name="chevron-back" size={20} color="#374151" />
             </TouchableOpacity>
             <TouchableOpacity onPress={goToToday} style={twStyle("rounded-xl border border-gray-200 py-2 px-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Today</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{tt("today")}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={goNext} style={twStyle("w-10 h-10 rounded-xl border border-gray-200 items-center justify-center")}>
-              <Ionicons name="chevron-forward" size={20} color="#374151" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#374151" />
             </TouchableOpacity>
           </View>
-          <Text style={twStyle("text-sm font-medium text-gray-600 flex-1 ml-2")} numberOfLines={1}>
+          <Text style={twStyle("text-sm font-medium text-gray-600 flex-1 ms-2")} numberOfLines={1}>
             {periodLabel}
           </Text>
         </View>
@@ -210,17 +218,17 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
         {/* Staff filter */}
         {staffList.length > 0 && !calendarScopeOwn && (
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Staff</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{tt("staff")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <TouchableOpacity
                 onPress={() => setSelectedMemberId("all")}
                 style={[
-                  twStyle("rounded-xl py-2 px-4 mr-2"),
+                  twStyle("rounded-xl py-2 px-4 me-2"),
                   (selectedMemberId === "all" || !selectedMemberId) ? twStyle("bg-gray-900") : twStyle("bg-gray-100"),
                 ]}
               >
                 <Text style={(selectedMemberId === "all" || !selectedMemberId) ? twStyle("text-white font-medium") : twStyle("text-gray-600")}>
-                  All
+                  {tt("all")}
                 </Text>
               </TouchableOpacity>
               {staffList.map((s) => (
@@ -228,7 +236,7 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
                   key={s.id}
                   onPress={() => setSelectedMemberId(s.id)}
                   style={[
-                    twStyle("rounded-xl py-2 px-4 mr-2"),
+                    twStyle("rounded-xl py-2 px-4 me-2"),
                     selectedMemberId === s.id ? twStyle("bg-gray-900") : twStyle("bg-gray-100"),
                   ]}
                 >
@@ -248,31 +256,31 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
         ) : totals.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center")}>
             <Ionicons name="calendar-outline" size={48} color="#9ca3af" />
-            <Text style={twStyle("mt-4 text-base font-medium text-gray-900")}>No data for this period</Text>
-            <Text style={twStyle("mt-1 text-sm text-gray-500")}>Select a different date or week</Text>
+            <Text style={twStyle("mt-4 text-base font-medium text-gray-900")}>{tt("noDataTitle")}</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>{tt("noDataBody")}</Text>
           </View>
         ) : (
           <>
             {/* Stats row */}
             <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Appointments</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tt("appointments")}</Text>
                 <Text style={twStyle("text-lg font-semibold text-gray-900")}>{stats.appointments}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Revenue</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tt("revenue")}</Text>
                 <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.revenue)}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Tips</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tt("tips")}</Text>
                 <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.tips)}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Hours</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{stats.hours.toFixed(1)}h</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tt("hours")}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{tt("hoursValue", { hours: stats.hours.toFixed(1) })}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Commission</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tt("commission")}</Text>
                 <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.commission)}</Text>
               </View>
             </View>
@@ -280,12 +288,12 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
             {/* Table */}
             <View style={twStyle("rounded-2xl border border-gray-200 bg-white overflow-hidden")}>
               <View style={twStyle("flex-row bg-gray-50 border-b border-gray-200 px-3 py-2")}>
-                <Text style={twStyle("flex-1 text-xs font-semibold text-gray-600")}>Staff</Text>
-                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>#</Text>
-                <Text style={twStyle("w-16 text-xs font-semibold text-gray-600 text-right")}>Revenue</Text>
-                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>Tips</Text>
-                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>Hrs</Text>
-                <Text style={twStyle("w-16 text-xs font-semibold text-gray-600 text-right")}>Commission</Text>
+                <Text style={twStyle("flex-1 text-xs font-semibold text-gray-600")}>{tt("staff")}</Text>
+                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>{tt("countCol")}</Text>
+                <Text style={twStyle("w-16 text-xs font-semibold text-gray-600 text-right")}>{tt("revenue")}</Text>
+                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>{tt("tips")}</Text>
+                <Text style={twStyle("w-12 text-xs font-semibold text-gray-600 text-right")}>{tt("hrsCol")}</Text>
+                <Text style={twStyle("w-16 text-xs font-semibold text-gray-600 text-right")}>{tt("commission")}</Text>
               </View>
               {totals.map((t) => (
                 <View key={t.team_member_id} style={twStyle("flex-row border-b border-gray-100 px-3 py-3")}>
@@ -314,8 +322,8 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Team totals"
-        subtitle="Revenue = ledger provider_earnings allocated by appointment (scheduled date)"
+        title={tt("title")}
+        subtitle={tt("subtitle")}
         onBack={() => router.back()}
       />
       {scrollBody}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -19,6 +21,7 @@ interface UsageData {
 }
 
 export default function UsageSummary() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [usageData, setUsageData] = useState<UsageData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,7 @@ export default function UsageSummary() {
   }, [user]);
 
   if (loading) {
-    return <LoadingTimeout loadingMessage="Loading usage..." />;
+    return <LoadingTimeout loadingMessage={t("web.subscriptionsUsage.loading")} />;
   }
 
   if (usageData.length === 0) {
@@ -58,10 +61,10 @@ export default function UsageSummary() {
 
   const getFeatureLabel = (type: string) => {
     const labels: Record<string, string> = {
-      bookings: "Bookings This Month",
-      messages: "Messages This Month",
-      staff: "Staff Members",
-      locations: "Locations",
+      bookings: t("web.subscriptionsUsage.bookingsMonth"),
+      messages: t("web.subscriptionsUsage.messagesMonth"),
+      staff: t("web.subscriptionsUsage.staffMembers"),
+      locations: t("web.subscriptionsUsage.locations"),
     };
     return labels[type] || type;
   };
@@ -69,9 +72,9 @@ export default function UsageSummary() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Subscription Usage</CardTitle>
+        <CardTitle>{t("web.subscriptionsUsage.title")}</CardTitle>
         <CardDescription>
-          Track your current usage against plan limits
+          {t("web.subscriptionsUsage.subtitle")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -84,7 +87,7 @@ export default function UsageSummary() {
                     {getFeatureLabel(usage.feature_type)}
                   </span>
                   <span className="text-sm text-green-600 font-semibold">
-                    Unlimited
+                    {t("web.subscriptionsUsage.unlimited")}
                   </span>
                 </div>
               </div>
@@ -129,7 +132,7 @@ export default function UsageSummary() {
                   currentUsage={usage.current_usage}
                   limit={usage.limit_value}
                   percentageUsed={percentage}
-                  planName="Current Plan"
+                  planName={t("web.subscriptionsUsage.currentPlan")}
                 />
               )}
             </div>

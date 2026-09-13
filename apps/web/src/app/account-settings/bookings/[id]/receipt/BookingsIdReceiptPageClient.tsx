@@ -16,6 +16,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 /** Normalize `/api/bookings/.../receipt` JSON (flat `{ receipt }` vs `{ data: { receipt } }`). */
 function unwrapReceiptResponse(body: unknown): Receipt | null {
@@ -125,26 +126,35 @@ interface Receipt {
 }
 
 function paymentMethodWebLabel(
+  t: TFunction,
   paymentMethod?: string | null,
   paymentProvider?: string | null,
 ): string {
   const m = String(paymentMethod ?? "").toLowerCase();
   const p = String(paymentProvider ?? "").toLowerCase();
-  if (m === "wallet" || p === "wallet") return "Wallet";
-  if (m === "gift_card" || p === "gift_card") return "Gift card";
-  if (m === "cash" || p === "cash") return "Cash";
-  if (m === "bank_transfer") return "EFT";
+  if (m === "wallet" || p === "wallet") return t("web.accountSettings.bookingReceipt.methodWallet");
+  if (m === "gift_card" || p === "gift_card") return t("web.accountSettings.bookingReceipt.methodGiftCard");
+  if (m === "cash" || p === "cash") return t("web.accountSettings.bookingReceipt.methodCash");
+  if (m === "bank_transfer") return t("web.accountSettings.bookingReceipt.methodEft");
   if (m === "card") {
-    if (p === "yoco") return "Card (Yoco)";
-    if (p === "other") return "Card (manual)";
-    return "Card";
+    if (p === "yoco") return t("web.accountSettings.bookingReceipt.methodCardYoco");
+    if (p === "other") return t("web.accountSettings.bookingReceipt.methodCardManual");
+    return t("web.accountSettings.bookingReceipt.methodCard");
   }
-  if (m === "saved_card" || m === "new_card") return "Card";
-  if (m === "other") return p ? `Other (${p})` : "Other";
-  return paymentMethod ? String(paymentMethod) : "Payment";
+  if (m === "saved_card" || m === "new_card") return t("web.accountSettings.bookingReceipt.methodCard");
+  if (m === "other") return p ? t("web.accountSettings.bookingReceipt.methodOtherWithProvider", { provider: p }) : t("web.accountSettings.bookingReceipt.methodOther");
+  return paymentMethod ? String(paymentMethod) : t("web.accountSettings.bookingReceipt.methodPayment");
+}
+
+function chargeStatusLabel(status: string, t: TFunction): string {
+  if (status === "paid") return t("web.accountSettings.bookingReceipt.chargePaid");
+  if (status === "pending") return t("web.accountSettings.bookingReceipt.chargePending");
+  if (status === "unpaid") return t("web.accountSettings.bookingReceipt.chargeUnpaid");
+  return status;
 }
 
 export default function ReceiptPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const bookingId = params.id as string;
   const locale = useTenantLocaleTag();
@@ -175,18 +185,18 @@ export default function ReceiptPage() {
       console.error("Failed to load receipt:", error);
       if (error instanceof FetchError) {
         if (error.status === 403) {
-          setErrorMessage("You don't have permission to view this receipt.");
-          toast.error("Access denied");
+          setErrorMessage(t("web.accountSettings.bookingReceipt.noPermission"));
+          toast.error(t("web.accountSettings.bookingReceipt.accessDenied"));
         } else if (error.status === 404) {
-          setErrorMessage("Receipt not found. The booking may not exist or has been removed.");
-          toast.error("Receipt not found");
+          setErrorMessage(t("web.accountSettings.bookingReceipt.notFound"));
+          toast.error(t("web.accountSettings.bookingReceipt.notFoundShort"));
         } else {
-          setErrorMessage(error.message || "Something went wrong loading the receipt.");
-          toast.error("Failed to load receipt");
+          setErrorMessage(error.message || t("web.accountSettings.bookingReceipt.loadFailed"));
+          toast.error(t("web.accountSettings.bookingReceipt.loadFailedToast"));
         }
       } else {
-        setErrorMessage("An unexpected error occurred. Please try again.");
-        toast.error("Failed to load receipt");
+        setErrorMessage(t("web.accountSettings.bookingReceipt.unexpectedError"));
+        toast.error(t("web.accountSettings.bookingReceipt.loadFailedToast"));
       }
     } finally {
       setIsLoading(false);
@@ -220,10 +230,10 @@ export default function ReceiptPage() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast.success("PDF receipt downloaded.");
+      toast.success(t("web.accountSettings.bookingReceipt.pdfDownloaded"));
     } catch (error) {
       console.error("Failed to download PDF:", error);
-      toast.error("Failed to download receipt. Please try again.");
+      toast.error(t("web.accountSettings.bookingReceipt.downloadFailed"));
     }
   };
 
@@ -243,12 +253,14 @@ export default function ReceiptPage() {
   };
 
   const platformFeePercent = formatPercent(receipt?.platform_fee_percentage ?? receipt?.service_fee_percentage);
-  const platformFeeLabel = platformFeePercent ? `Platform fee (${platformFeePercent}%)` : "Platform fee";
+  const platformFeeLabel = platformFeePercent
+    ? t("web.accountSettings.bookingReceipt.platformFeeWithPct", { pct: platformFeePercent })
+    : t("web.accountSettings.bookingReceipt.platformFee");
 
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading receipt..." />
+        <LoadingTimeout loadingMessage={t("web.accountSettings.bookingReceipt.loading")} />
       </div>
     );
   }
@@ -257,10 +269,10 @@ export default function ReceiptPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <p className="text-gray-500">{errorMessage || "Receipt not found"}</p>
+          <p className="text-gray-500">{errorMessage || t("web.accountSettings.bookingReceipt.notFoundShort")}</p>
           <Link href={`/account-settings/bookings/${bookingId}`}>
             <Button variant="outline" className="mt-4">
-              Back to Booking
+              {t("web.accountSettings.bookingReceipt.backToBooking")}
             </Button>
           </Link>
         </div>
@@ -287,19 +299,19 @@ export default function ReceiptPage() {
         <div className="flex justify-between items-center mb-6 print:hidden">
           <Link href={`/account-settings/bookings/${bookingId}`}>
             <Button variant="ghost">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Booking
+              <ArrowLeft className="w-4 h-4 me-2" />
+              {t("web.accountSettings.bookingReceipt.backToBooking")}
             </Button>
           </Link>
           <div className="flex gap-2">
-            <ShareReceiptButton kind="customer-booking" subjectId={bookingId} label="Share" />
+            <ShareReceiptButton kind="customer-booking" subjectId={bookingId} label={t("web.accountSettings.bookingReceipt.share")} />
             <Button variant="outline" onClick={handleDownload}>
-              <Download className="w-4 h-4 mr-2" />
-              Download PDF
+              <Download className="w-4 h-4 me-2" />
+              {t("web.accountSettings.bookingReceipt.downloadPdf")}
             </Button>
             <Button variant="outline" onClick={handlePrint}>
-              <Printer className="w-4 h-4 mr-2" />
-              Print
+              <Printer className="w-4 h-4 me-2" />
+              {t("web.accountSettings.bookingReceipt.print")}
             </Button>
           </div>
         </div>
@@ -311,9 +323,9 @@ export default function ReceiptPage() {
             )}
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between print:flex-row print:items-end print:justify-between">
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-rose-300 print:text-rose-700">Beautonomi</p>
-                <CardTitle className="text-4xl font-semibold tracking-tight print:text-3xl">Receipt</CardTitle>
-                <p className="text-sm text-slate-300 print:text-slate-600">Booking #{receipt.booking_number}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-rose-300 print:text-rose-700">{t("web.accountSettings.bookingReceipt.brand")}</p>
+                <CardTitle className="text-4xl font-semibold tracking-tight print:text-3xl">{t("web.accountSettings.bookingReceipt.receipt")}</CardTitle>
+                <p className="text-sm text-slate-300 print:text-slate-600">{t("web.accountSettings.bookingReceipt.bookingNumber", { number: receipt.booking_number })}</p>
               </div>
               <Badge
                 className={
@@ -324,7 +336,7 @@ export default function ReceiptPage() {
                     : "w-fit border border-red-200 bg-red-50 px-3 py-1 text-red-800"
                 }
               >
-                {paymentDisplay.isPaymentSettled && <CheckCircle2 className="mr-1 h-3 w-3" />}
+                {paymentDisplay.isPaymentSettled && <CheckCircle2 className="me-1 h-3 w-3" />}
                 {paymentDisplay.label}
               </Badge>
             </div>
@@ -339,23 +351,23 @@ export default function ReceiptPage() {
           <CardContent className="space-y-7 p-8 print:p-0 print:pt-5">
             <div className="grid gap-4 sm:grid-cols-3 print:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</h3>
-                <p className="text-sm font-semibold text-slate-950">{receipt.customer?.full_name || "N/A"}</p>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("web.accountSettings.bookingReceipt.customer")}</h3>
+                <p className="text-sm font-semibold text-slate-950">{receipt.customer?.full_name || t("web.accountSettings.bookingReceipt.notAvailable")}</p>
                 <p className="text-sm text-slate-600">{receipt.customer?.email || ""}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Provider</h3>
-                <p className="text-sm font-semibold text-slate-950">{receipt.provider?.business_name || "Provider"}</p>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("web.accountSettings.bookingReceipt.provider")}</h3>
+                <p className="text-sm font-semibold text-slate-950">{receipt.provider?.business_name || t("web.accountSettings.bookingReceipt.providerFallback")}</p>
                 {receipt.provider?.owner_email && (
                   <p className="text-sm text-slate-600">{receipt.provider.owner_email}</p>
                 )}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Dates</h3>
-                <p className="text-sm text-slate-600">Booked <span className="font-semibold text-slate-950">{formatDate(receipt.booking_date)}</span></p>
-                <p className="text-sm text-slate-600">Service <span className="font-semibold text-slate-950">{formatDate(receipt.service_date)}</span></p>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("web.accountSettings.bookingReceipt.dates")}</h3>
+                <p className="text-sm text-slate-600">{t("web.accountSettings.bookingReceipt.booked")} <span className="font-semibold text-slate-950">{formatDate(receipt.booking_date)}</span></p>
+                <p className="text-sm text-slate-600">{t("web.accountSettings.bookingReceipt.service")} <span className="font-semibold text-slate-950">{formatDate(receipt.service_date)}</span></p>
                 {receipt.package_name && (
-                  <p className="text-sm text-slate-600">Package <span className="font-semibold text-slate-950">{receipt.package_name}</span></p>
+                  <p className="text-sm text-slate-600">{t("web.accountSettings.bookingReceipt.package")} <span className="font-semibold text-slate-950">{receipt.package_name}</span></p>
                 )}
               </div>
             </div>
@@ -363,7 +375,7 @@ export default function ReceiptPage() {
             {(receipt.services.length > 0 || (receipt.addons?.length ?? 0) > 0 || receipt.products.length > 0) && (
               <div className="rounded-2xl border border-slate-200 print:rounded-lg">
                 <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 print:bg-white">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Items</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{t("web.accountSettings.bookingReceipt.items")}</h3>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {receipt.services.map((service, index) => {
@@ -371,14 +383,14 @@ export default function ReceiptPage() {
                     const taxRate = ts?.rate != null ? Number(ts.rate) : null;
                     const taxRateDisplay =
                       taxRate != null && taxRate > 0
-                        ? `VAT ${taxRate <= 1 ? `${(taxRate * 100).toFixed(0)}%` : `${taxRate}%`}${ts?.is_inclusive ? " incl." : ""}`
+                        ? t(ts?.is_inclusive ? "web.accountSettings.bookingReceipt.vatIncl" : "web.accountSettings.bookingReceipt.vatRate", { rate: taxRate <= 1 ? (taxRate * 100).toFixed(0) : String(taxRate) })
                         : null;
                     return (
                       <div key={index} className="flex items-start justify-between gap-4 px-5 py-4">
                         <div>
                           <p className="font-medium text-slate-950">{service.name}</p>
                           <p className="text-sm text-slate-500">
-                            Quantity: {service.quantity} × {formatCurrency(service.price)}
+                            {t("web.accountSettings.bookingReceipt.quantityLine", { quantity: service.quantity, price: formatCurrency(service.price) })}
                           </p>
                           {taxRateDisplay && (
                             <p className="text-xs text-slate-400">{taxRateDisplay}</p>
@@ -391,9 +403,9 @@ export default function ReceiptPage() {
                   {(receipt.addons ?? []).map((addon, index) => (
                     <div key={`addon-${index}`} className="flex items-start justify-between gap-4 px-5 py-4">
                       <div>
-                        <p className="font-medium text-slate-950">Add-on: {addon.name}</p>
+                        <p className="font-medium text-slate-950">{t("web.accountSettings.bookingReceipt.addOnName", { name: addon.name })}</p>
                         <p className="text-sm text-slate-500">
-                          Quantity: {addon.quantity} × {formatCurrency(addon.price)}
+                          {t("web.accountSettings.bookingReceipt.quantityLine", { quantity: addon.quantity, price: formatCurrency(addon.price) })}
                         </p>
                       </div>
                       <p className="font-semibold text-slate-950">{formatCurrency(addon.total)}</p>
@@ -404,7 +416,7 @@ export default function ReceiptPage() {
                       <div>
                         <p className="font-medium text-slate-950">{product.name}</p>
                         <p className="text-sm text-slate-500">
-                          Quantity: {product.quantity} × {formatCurrency(product.price)}
+                          {t("web.accountSettings.bookingReceipt.quantityLine", { quantity: product.quantity, price: formatCurrency(product.price) })}
                         </p>
                       </div>
                       <p className="font-semibold text-slate-950">{formatCurrency(product.total)}</p>
@@ -414,20 +426,20 @@ export default function ReceiptPage() {
               </div>
             )}
 
-            <div className="ml-auto max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-lg print:shadow-none">
+            <div className="ms-auto max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-lg print:shadow-none">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Subtotal</span>
+                <span className="text-slate-600">{t("web.accountSettings.bookingReceipt.subtotal")}</span>
                 <span>{formatCurrency(receipt.subtotal)}</span>
               </div>
               {(receipt.travel_fee ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Travel fee</span>
+                  <span className="text-slate-600">{t("web.accountSettings.bookingReceipt.travelFee")}</span>
                   <span>{formatCurrency(receipt.travel_fee!)}</span>
                 </div>
               )}
               {receipt.tax > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
+                  <span className="text-slate-600">{receipt.tax_rate ? t("web.accountSettings.bookingReceipt.taxWithRate", { rate: receipt.tax_rate }) : t("web.accountSettings.bookingReceipt.tax")}</span>
                   <span>{formatCurrency(receipt.tax)}</span>
                 </div>
               )}
@@ -439,13 +451,13 @@ export default function ReceiptPage() {
               )}
               {(receipt.tip_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Tip</span>
+                  <span className="text-slate-600">{t("web.accountSettings.bookingReceipt.tip")}</span>
                   <span>{formatCurrency(receipt.tip_amount!)}</span>
                 </div>
               )}
               {(receipt.cancellation_fee ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-amber-800">
-                  <span>Cancellation fee (retained)</span>
+                  <span>{t("web.accountSettings.bookingReceipt.cancellationFeeRetained")}</span>
                   <span>{formatCurrency(receipt.cancellation_fee!)}</span>
                 </div>
               )}
@@ -455,61 +467,61 @@ export default function ReceiptPage() {
                   Number(receipt.membership_discount_amount || 0) +
                   Number(receipt.loyalty_discount_amount || 0) === 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Discount{receipt.discount_reason ? ` (${receipt.discount_reason})` : ""}</span>
+                  <span>{receipt.discount_reason ? t("web.accountSettings.bookingReceipt.discountWithReason", { reason: receipt.discount_reason }) : t("web.accountSettings.bookingReceipt.discount")}</span>
                   <span>-{formatCurrency(receipt.discount)}</span>
                 </div>
               )}
               {(receipt.package_discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Package discount</span>
+                  <span>{t("web.accountSettings.bookingReceipt.packageDiscount")}</span>
                   <span>-{formatCurrency(receipt.package_discount_amount!)}</span>
                 </div>
               )}
               {(receipt.promotion_discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Promotion discount</span>
+                  <span>{t("web.accountSettings.bookingReceipt.promotionDiscount")}</span>
                   <span>-{formatCurrency(receipt.promotion_discount_amount!)}</span>
                 </div>
               )}
               {(receipt.membership_discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Membership discount</span>
+                  <span>{t("web.accountSettings.bookingReceipt.membershipDiscount")}</span>
                   <span>-{formatCurrency(receipt.membership_discount_amount!)}</span>
                 </div>
               )}
               {(receipt.loyalty_discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Loyalty discount</span>
+                  <span>{t("web.accountSettings.bookingReceipt.loyaltyDiscount")}</span>
                   <span>-{formatCurrency(receipt.loyalty_discount_amount!)}</span>
                 </div>
               )}
               <div className="mt-3 flex justify-between border-t pt-3 text-lg font-bold text-slate-950">
-                <span>Total</span>
+                <span>{t("web.accountSettings.bookingReceipt.total")}</span>
                 <span>{formatCurrency(receipt.total)}</span>
               </div>
               {receipt.deposit_required && receipt.payment_option === "deposit" && (
                 <div className="pt-2 border-t border-dashed space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span>Deposit{receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}</span>
+                    <span>{receipt.deposit_percentage ? t("web.accountSettings.bookingReceipt.depositWithPct", { pct: receipt.deposit_percentage }) : t("web.accountSettings.bookingReceipt.deposit")}</span>
                     <span>{formatCurrency(receipt.deposit_amount || 0)}</span>
                   </div>
                 </div>
               )}
               {(receipt.amount_paid ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Amount Paid</span>
+                  <span>{t("web.accountSettings.bookingReceipt.amountPaid")}</span>
                   <span>{formatCurrency(receipt.amount_paid!)}</span>
                 </div>
               )}
               {(receipt.total_refunded ?? 0) > 0 && (
                 <div className="flex justify-between text-sm text-amber-700">
-                  <span>Refunded</span>
+                  <span>{t("web.accountSettings.bookingReceipt.refunded")}</span>
                   <span>-{formatCurrency(receipt.total_refunded!)}</span>
                 </div>
               )}
               {(receipt.balance_due ?? 0) > 0 && (
                 <div className="flex justify-between text-sm font-semibold text-red-700">
-                  <span>Balance Due</span>
+                  <span>{t("web.accountSettings.bookingReceipt.balanceDue")}</span>
                   <span>{formatCurrency(receipt.balance_due!)}</span>
                 </div>
               )}
@@ -526,21 +538,21 @@ export default function ReceiptPage() {
               return (
                 <div className="rounded-2xl border border-slate-200 p-5 print:rounded-lg">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                    Payments
+                    {t("web.accountSettings.bookingReceipt.payments")}
                   </h3>
                   <div className="space-y-2">
-                    {completed.map((t, i) => (
-                      <div key={t.id ?? `pay-${i}`} className="flex justify-between text-sm">
+                    {completed.map((tx, i) => (
+                      <div key={tx.id ?? `pay-${i}`} className="flex justify-between text-sm">
                         <span className="text-slate-700">
-                          {paymentMethodWebLabel(t.payment_method ?? null, t.payment_provider ?? null)}
-                          {t.created_at && (
-                            <span className="ml-2 text-xs text-slate-500">
-                              {new Date(t.created_at).toLocaleDateString()}
+                          {paymentMethodWebLabel(t, tx.payment_method ?? null, tx.payment_provider ?? null)}
+                          {tx.created_at && (
+                            <span className="ms-2 text-xs text-slate-500">
+                              {new Date(tx.created_at).toLocaleDateString()}
                             </span>
                           )}
                         </span>
                         <span className="font-medium text-slate-900">
-                          {formatCurrency(Number(t.amount || 0))}
+                          {formatCurrency(Number(tx.amount || 0))}
                         </span>
                       </div>
                     ))}
@@ -551,7 +563,7 @@ export default function ReceiptPage() {
 
             {(receipt.additional_charges?.length ?? 0) > 0 && (
               <div className="rounded-2xl border border-slate-200 p-5 print:rounded-lg">
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Additional Charges</h3>
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">{t("web.accountSettings.bookingReceipt.additionalCharges")}</h3>
                 <div className="space-y-3">
                   {receipt.additional_charges!.map((charge) => (
                     <div key={charge.id}>
@@ -560,12 +572,12 @@ export default function ReceiptPage() {
                         <div className="flex items-center gap-2">
                           <span>{formatCurrency(charge.amount)}</span>
                           <Badge variant="outline" className={`text-xs ${charge.status === "paid" ? "bg-green-50 text-green-700 border-green-200" : ""}`}>
-                            {charge.status}
+                            {chargeStatusLabel(charge.status, t)}
                           </Badge>
                         </div>
                       </div>
                       {charge.paid_at && (
-                        <p className="text-xs text-gray-500 mt-0.5">Paid on {new Date(charge.paid_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{t("web.accountSettings.bookingReceipt.paidOn", { date: new Date(charge.paid_at).toLocaleDateString() })}</p>
                       )}
                     </div>
                   ))}
@@ -574,7 +586,7 @@ export default function ReceiptPage() {
             )}
 
             <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm text-rose-950 print:rounded-lg print:bg-white">
-              This receipt is generated from Beautonomi booking and payment records. Keep it for your personal payment history.
+              {t("web.accountSettings.bookingReceipt.footerNote")}
             </div>
           </CardContent>
           {receipt.receipt_footer && (

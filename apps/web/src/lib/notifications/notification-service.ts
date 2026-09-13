@@ -18,6 +18,7 @@ import {
   type BookingLikeForRecipients,
 } from "@/lib/notifications/resolve-booking-notification-recipients";
 import { formatCurrency } from "@/lib/utils";
+import { buildFormatLocale, normalizeLanguageCode } from "@beautonomi/i18n/language-registry";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
@@ -167,10 +168,11 @@ function bookingCurrency(booking: { currency?: string | null } | null | undefine
 }
 
 /** Format amounts for OneSignal / email template variables (locale-aware). */
-function fmt(amount: number | string | null | undefined, currency?: string | null): string {
+function fmt(amount: number | string | null | undefined, currency?: string | null, language?: string | null): string {
   const n = typeof amount === "string" ? parseFloat(amount) : Number(amount ?? 0);
   const code = (currency && currency.trim()) || LAST_RESORT_CURRENCY;
-  return formatCurrency(Number.isFinite(n) ? n : 0, code);
+  const locale = language ? buildFormatLocale(normalizeLanguageCode(language), undefined) : undefined;
+  return formatCurrency(Number.isFinite(n) ? n : 0, code, locale);
 }
 
 /**
@@ -200,7 +202,7 @@ async function getBookingDetails(bookingId: string): Promise<any> {
     .select(`
       *,
       customer:users!bookings_customer_id_fkey(id, full_name, email, phone),
-      provider:providers!bookings_provider_id_fkey(id, business_name, user_id, timezone),
+      provider:providers!bookings_provider_id_fkey(id, business_name, slug, user_id, timezone),
       package:service_packages!package_id(id, name),
       booking_services(
         *,
@@ -1160,6 +1162,97 @@ export async function notifyCustomerRunningLate(bookingId: string, channels?: No
     withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
+  );
+}
+
+/**
+ * Notify provider team that the customer reported running late.
+ */
+export async function notifyProviderCustomerRunningLate(
+  bookingId: string,
+  delayMinutes: number,
+  channels?: NotificationChannel[],
+) {
+  const booking = await getBookingDetails(bookingId);
+  if (!booking) return { success: false, error: "Booking not found" };
+
+  const serviceName = formatBookingServicesLineForTemplates(booking) || "Appointment";
+  const variables = {
+    customer_name: booking.customer?.full_name || "Customer",
+    delay_minutes: delayMinutes.toString(),
+    service_name: serviceName,
+    time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_id: bookingId,
+  };
+
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider?.user_id,
+    booking,
+  );
+
+  return await dispatchTemplateNotification(
+    "provider_customer_running_late",
+    recipients,
+    withTenantVariable(booking.tenant_id, variables),
+    channels,
+    { appType: "provider" },
+  );
+}
+
+/**
+ * Lifecycle §A: customer abandoned card checkout / card declined and the
+ * `pending_payment` row was released by the cron. One nudge with a rebook CTA.
+ * Never sent to the provider (they never saw the booking as real).
+ */
+export async function notifyCustomerCheckoutNotCompleted(
+  bookingId: string,
+  channels?: NotificationChannel[],
+) {
+  const booking = await getBookingDetails(bookingId);
+  if (!booking) return { success: false, error: "Booking not found" };
+
+  const variables = {
+    provider_name: booking.provider?.business_name || "Provider",
+    provider_slug: booking.provider?.slug || "",
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
+    services: formatBookingServicesLineForTemplates(booking),
+    booking_id: bookingId,
+  };
+
+  return await dispatchTemplateNotification(
+    "booking_checkout_not_completed",
+    [booking.customer_id],
+    withTenantVariable(booking.tenant_id, variables),
+    channels,
+    { appType: "customer" },
+  );
+}
+
+/**
+ * Notify customer that the provider acknowledged their running-late report.
+ */
+export async function notifyCustomerRunningLateAck(
+  bookingId: string,
+  adjustedTime: Date,
+  channels?: NotificationChannel[],
+) {
+  const booking = await getBookingDetails(bookingId);
+  if (!booking) return { success: false, error: "Booking not found" };
+
+  const variables = {
+    provider_name: booking.provider?.business_name || "Provider",
+    adjusted_time: formatBookingTime(adjustedTime.toISOString(), providerTimezoneOf(booking)),
+    booking_id: bookingId,
+  };
+
+  return await dispatchTemplateNotification(
+    "customer_running_late_ack",
+    [booking.customer_id],
+    withTenantVariable(booking.tenant_id, variables),
+    channels,
+    { appType: "customer" },
   );
 }
 

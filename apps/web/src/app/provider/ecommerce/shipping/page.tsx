@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { Save } from "lucide-react";
@@ -41,6 +43,7 @@ const DEFAULTS: ShippingConfig = {
 
 export default function ProviderShippingConfigPage() {
   const { currency } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ShippingConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,7 +73,7 @@ export default function ProviderShippingConfigPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
-      toast.error("Failed to save shipping configuration. Please try again.");
+      toast.error(t("web.provider.pages.ecommerce/shipping.failedToSave"));
     }
     setSaving(false);
   };
@@ -78,7 +81,7 @@ export default function ProviderShippingConfigPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
-        Loading shipping configuration...
+        {t("web.provider.pages.ecommerce/shipping.loading")}
       </div>
     );
   }
@@ -86,17 +89,17 @@ export default function ProviderShippingConfigPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Shipping & Collection</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t("web.provider.pages.ecommerce/shipping.title")}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Configure how customers receive their product orders
+          {t("web.provider.pages.ecommerce/shipping.subtitle")}
         </p>
       </div>
 
       <div className="bg-white rounded-xl border p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <Label className="text-base font-medium">Enable Delivery</Label>
-            <p className="text-sm text-gray-500 mt-0.5">Allow customers to have products delivered</p>
+            <Label className="text-base font-medium">{t("web.provider.pages.ecommerce/shipping.enableDelivery")}</Label>
+            <p className="text-sm text-gray-500 mt-0.5">{t("web.provider.pages.ecommerce/shipping.enableDeliveryHint")}</p>
           </div>
           <Switch
             checked={config.offers_delivery}
@@ -105,9 +108,9 @@ export default function ProviderShippingConfigPage() {
         </div>
 
         {config.offers_delivery && (
-          <div className="pl-4 border-l-2 border-pink-200 space-y-4">
+          <div className="ps-4 border-s-2 border-pink-200 space-y-4">
             <div>
-              <Label>Delivery Fee Model</Label>
+              <Label>{t("web.provider.pages.ecommerce/shipping.deliveryFeeModel")}</Label>
               <select
                 value={config.delivery_fee_type}
                 onChange={(e) =>
@@ -118,13 +121,13 @@ export default function ProviderShippingConfigPage() {
                 }
                 className="mt-1 max-w-[260px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="flat">Flat fee</option>
-                <option value="weight_based">Base fee + weight rate</option>
-                <option value="distance_based">Base fee + distance rate</option>
+                <option value="flat">{t("web.provider.pages.ecommerce/shipping.flatFee")}</option>
+                <option value="weight_based">{t("web.provider.pages.ecommerce/shipping.basePlusWeight")}</option>
+                <option value="distance_based">{t("web.provider.pages.ecommerce/shipping.basePlusDistance")}</option>
               </select>
             </div>
             <div>
-              <Label>Base Delivery Fee ({currency})</Label>
+<Label>{t("web.provider.pages.ecommerce/shipping.baseDeliveryFee", { currency })}</Label>
               <Input
                 type="number"
                 min={0}
@@ -136,7 +139,7 @@ export default function ProviderShippingConfigPage() {
             </div>
             {config.delivery_fee_type === "weight_based" && (
               <div>
-                <Label>Weight Rate ({currency} per kg)</Label>
+<Label>{t("web.provider.pages.ecommerce/shipping.weightRate", { currency })}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -154,9 +157,9 @@ export default function ProviderShippingConfigPage() {
             )}
             {config.delivery_fee_type === "distance_based" && (
               <div>
-                <Label>Distance Rate ({currency} per km)</Label>
+<Label>{t("web.provider.pages.ecommerce/shipping.distanceRate", { currency })}</Label>
                 <p className="text-xs text-gray-400 mb-1">
-                  Applied when customer and provider coordinates are available; otherwise only the base fee applies.
+                  {t("web.provider.pages.ecommerce/shipping.distanceRateHint")}
                 </p>
                 <Input
                   type="number"
@@ -174,8 +177,8 @@ export default function ProviderShippingConfigPage() {
               </div>
             )}
             <div>
-              <Label>Free Delivery Threshold ({currency})</Label>
-              <p className="text-xs text-gray-400 mb-1">Leave empty for no free delivery</p>
+<Label>{t("web.provider.pages.ecommerce/shipping.freeDeliveryThreshold", { currency })}</Label>
+              <p className="text-xs text-gray-400 mb-1">{t("web.provider.pages.ecommerce/shipping.leaveEmptyNoFree")}</p>
               <Input
                 type="number"
                 min={0}
@@ -187,12 +190,12 @@ export default function ProviderShippingConfigPage() {
                     free_delivery_threshold: e.target.value ? parseFloat(e.target.value) : null,
                   })
                 }
-                placeholder="e.g. 500"
+                placeholder={t("web.provider.pages.ecommerce/shipping.eG500")}
                 className="mt-1 max-w-[200px]"
               />
             </div>
             <div>
-              <Label>Delivery Radius (km)</Label>
+              <Label>{t("web.provider.pages.ecommerce/shipping.deliveryRadius")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -203,12 +206,12 @@ export default function ProviderShippingConfigPage() {
                     delivery_radius_km: e.target.value ? parseInt(e.target.value) : null,
                   })
                 }
-                placeholder="e.g. 30"
+                placeholder={t("web.provider.pages.ecommerce/shipping.eG30")}
                 className="mt-1 max-w-[200px]"
               />
             </div>
             <div>
-              <Label>Estimated Delivery Days</Label>
+              <Label>{t("web.provider.pages.ecommerce/shipping.estimatedDeliveryDays")}</Label>
               <Input
                 type="number"
                 min={1}
@@ -221,13 +224,9 @@ export default function ProviderShippingConfigPage() {
               />
             </div>
             <div>
-              <Label>Courier Booking</Label>
+              <Label>{t("web.provider.pages.ecommerce/shipping.courierBooking")}</Label>
               <p className="text-xs text-gray-400 mb-1">
-                Optional. Customer checkout still uses your delivery fees above. If a courier is
-                selected and platform shipping is enabled (Admin → Integrations → Courier
-                shipping, with live courier keys), Beautonomi books that courier after
-                payment using live rates (Courier Guy/ShipLogic, Bob Go, or Aramex). Leave manual
-                unless Beautonomi has configured courier credentials.
+                {t("web.provider.pages.ecommerce/shipping.courierBookingHint")}
               </p>
               <select
                 value={config.shipping_provider_preference ?? ""}
@@ -239,30 +238,29 @@ export default function ProviderShippingConfigPage() {
                 }
                 className="mt-1 max-w-[260px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">Manual tracking only</option>
-                <option value="aramex">Aramex</option>
-                <option value="courier-guy">Courier Guy</option>
-                <option value="bob-go">Bob Go</option>
+                <option value="">{t("web.provider.pages.ecommerce/shipping.manualTrackingOnly")}</option>
+                <option value="aramex">{t("web.provider.pages.ecommerce/shipping.aramex")}</option>
+                <option value="courier-guy">{t("web.provider.pages.ecommerce/shipping.courierGuy")}</option>
+                <option value="bob-go">{t("web.provider.pages.ecommerce/shipping.bobGo")}</option>
               </select>
               {config.shipping_provider_preference ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <p className="text-xs text-gray-500">
-                    Probe live courier rates for a destination. This is the courier’s booking
-                    cost, not the delivery fee charged to the customer.
+                    {t("web.provider.pages.ecommerce/shipping.probeLiveRates")}
                   </p>
                   <div className="grid gap-2 sm:grid-cols-3">
                     <Input
-                      placeholder="Street"
+                      placeholder={t("web.provider.pages.ecommerce/shipping.street")}
                       value={quoteLine1}
                       onChange={(e) => setQuoteLine1(e.target.value)}
                     />
                     <Input
-                      placeholder="City"
+                      placeholder={t("web.provider.pages.ecommerce/shipping.city")}
                       value={quoteCity}
                       onChange={(e) => setQuoteCity(e.target.value)}
                     />
                     <Input
-                      placeholder="Postal code"
+                      placeholder={t("web.provider.settings.pages.locations.postalCode")}
                       value={quotePostal}
                       onChange={(e) => setQuotePostal(e.target.value)}
                     />
@@ -293,10 +291,10 @@ export default function ProviderShippingConfigPage() {
                         if (payload?.skipped) {
                           setQuoteResult(
                             payload.skipped === "shipping_globally_disabled"
-                              ? "Live courier booking is off until a superadmin enables it under Integrations → Courier shipping."
+                              ? t("web.provider.pages.ecommerce/shipping.liveCourierOff")
                               : payload.skipped === "no_shipping_preference"
-                                ? "Save a courier above first."
-                                : `Courier not configured (${payload.skipped}).`,
+                                ? t("web.provider.pages.ecommerce/shipping.saveCourierFirst")
+                                : t("web.provider.pages.ecommerce/shipping.courierNotConfigured", { reason: payload.skipped }),
                           );
                         } else if (payload?.error) {
                           setQuoteResult(payload.error);
@@ -307,31 +305,31 @@ export default function ProviderShippingConfigPage() {
                               .join(" · "),
                           );
                         } else {
-                          setQuoteResult("Courier returned no rates for this route.");
+                          setQuoteResult(t("web.provider.pages.ecommerce/shipping.noRatesForRoute"));
                         }
                       } catch (err) {
                         setQuoteResult(
-                          err instanceof Error ? err.message : "Could not load courier rates.",
+                          err instanceof Error ? err.message : t("web.provider.pages.ecommerce/shipping.couldNotLoadRates"),
                         );
                       }
                       setQuoting(false);
                     }}
                     className="text-xs font-medium text-pink-600 disabled:opacity-50"
                   >
-                    {quoting ? "Checking rates…" : "Check live courier rates"}
+                    {quoting ? t("web.provider.pages.ecommerce/shipping.checkingRates") : t("web.provider.pages.ecommerce/shipping.checkLiveRates")}
                   </button>
                   {quoteResult ? <p className="text-xs text-gray-600">{quoteResult}</p> : null}
                 </div>
               ) : null}
             </div>
             <div>
-              <Label>Delivery Notes</Label>
+              <Label>{t("web.provider.pages.ecommerce/shipping.deliveryNotes")}</Label>
               <textarea
                 value={config.delivery_notes ?? ""}
                 onChange={(e) =>
                   setConfig({ ...config, delivery_notes: e.target.value || null })
                 }
-                placeholder="Any special delivery instructions for customers..."
+                placeholder={t("web.provider.pages.ecommerce/shipping.deliveryNotesPlaceholder")}
                 rows={3}
                 className="mt-1 w-full border rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
               />
@@ -342,9 +340,9 @@ export default function ProviderShippingConfigPage() {
         <div className="pt-4 border-t space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label className="text-base font-medium">Enable Collection</Label>
+              <Label className="text-base font-medium">{t("web.provider.pages.ecommerce/shipping.enableCollection")}</Label>
               <p className="text-sm text-gray-500 mt-0.5">
-                Allow customers to pick up orders from your location
+                {t("web.provider.pages.ecommerce/shipping.enableCollectionHint")}
               </p>
             </div>
             <Switch
@@ -354,17 +352,17 @@ export default function ProviderShippingConfigPage() {
           </div>
 
           {config.offers_collection && (
-            <div className="pl-4 border-l-2 border-pink-200">
-              <Label>Collection Notes</Label>
+            <div className="ps-4 border-s-2 border-pink-200">
+              <Label>{t("web.provider.pages.ecommerce/shipping.collectionNotes")}</Label>
               <p className="text-xs text-gray-400 mb-1">
-                Shown to customers at checkout (e.g. hours, entrance, what to bring)
+                {t("web.provider.pages.ecommerce/shipping.collectionNotesHint")}
               </p>
               <textarea
                 value={config.collection_notes ?? ""}
                 onChange={(e) =>
                   setConfig({ ...config, collection_notes: e.target.value || null })
                 }
-                placeholder="e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation."
+                placeholder={t("web.provider.pages.ecommerce/shipping.collectionNotesPlaceholder")}
                 rows={3}
                 maxLength={500}
                 className="mt-1 w-full border rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
@@ -379,7 +377,7 @@ export default function ProviderShippingConfigPage() {
           className="flex items-center gap-2 px-5 py-2.5 bg-pink-600 text-white rounded-lg font-medium hover:bg-pink-700 disabled:opacity-50 transition-colors"
         >
           <Save className="w-4 h-4" />
-          {saving ? "Saving..." : saved ? "Saved!" : "Save Configuration"}
+          {saving ? t("web.provider.common.saving") : saved ? t("web.provider.pages.ecommerce/shipping.saved") : t("web.provider.pages.ecommerce/shipping.saveConfiguration")}
         </button>
       </div>
     </div>

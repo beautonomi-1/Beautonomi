@@ -118,7 +118,7 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel="Search clients, appointments, services"
             accessibilityRole="button"
-            style={{ marginRight: Platform.OS === "web" ? 16 : 12 }}
+            style={{ marginEnd: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="search-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
@@ -130,7 +130,7 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel={showNotificationBadge ? `${unreadCount} unread notifications` : "Notifications"}
             accessibilityRole="button"
-            style={{ position: "relative", marginRight: Platform.OS === "web" ? 16 : 12 }}
+            style={{ position: "relative", marginEnd: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="notifications-outline" size={iconSize} color={iconColor} />
             {showNotificationBadge && (
@@ -162,12 +162,12 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel="Quick actions menu"
             accessibilityRole="button"
-            style={showLocationSwitcher ? undefined : { marginRight: Platform.OS === "web" ? 16 : 12 }}
+            style={showLocationSwitcher ? undefined : { marginEnd: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="add-circle-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
           {showLocationSwitcher && (
-            <View style={{ marginLeft: 4, flexShrink: 0, maxWidth: "42%" }}>
+            <View style={{ marginStart: 4, flexShrink: 0, maxWidth: "42%" }}>
               <LocationSwitcher />
             </View>
           )}
@@ -188,7 +188,7 @@ export function AppHeader() {
         onRequestClose={closeQuickActions}
       >
         <Pressable
-          style={{ flex: 1, justifyContent: "flex-start", alignItems: "flex-end", paddingTop: insets.top + 54, paddingRight: 16 }}
+          style={{ flex: 1, justifyContent: "flex-start", alignItems: "flex-end", paddingTop: insets.top + 54, paddingEnd: 16 }}
           onPress={closeQuickActions}
         >
           <Pressable
@@ -218,7 +218,7 @@ export function AppHeader() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name={item.icon} size={20} color="#374151" style={{ marginRight: 12 }} />
+                  <Ionicons name={item.icon} size={20} color="#374151" style={{ marginEnd: 12 }} />
                   <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{item.label}</Text>
                 </TouchableOpacity>
               ))}

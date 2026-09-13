@@ -1,5 +1,8 @@
+"use client";
+
 import type { SVGProps } from "react";
 import Image, { type StaticImageData } from "next/image";
+import { useTranslation } from "@beautonomi/i18n";
 
 import Paid from "./../../public/images/getting-paid-optimized.jpg";
 import Experience from "./../../public/images/managing-your-experience-optimized.jpg";
@@ -20,43 +23,44 @@ interface Guide {
   mobileSrc: ImgSrc;
 }
 
-const guides: Guide[] = [
-  {
-    src: Paid,
-    alt: "Getting paid",
-    description: "Getting paid",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: Experience,
-    alt: "Managing your experience",
-    description: "Managing your experience",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: Changes,
-    alt: "Changes and cancellations",
-    description: "Changes and cancellations",
-    mobileSrc: Started,
-    link: "/",
-  },
-  {
-    src: Collaboration,
-    alt: "Working with collaborators on an experience",
-    description: "Collaboration and team roles",
-    mobileSrc: Started,
-    link: "/",
-  },
-];
-
 export default function ExperienceProviderTab() {
+  const { t } = useTranslation();
+  const guides: Guide[] = [
+    {
+      src: Paid,
+      alt: t("web.helpGuides.gettingPaid"),
+      description: t("web.helpGuides.gettingPaid"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: Experience,
+      alt: t("web.helpGuides.managingExperience"),
+      description: t("web.helpGuides.managingExperience"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: Changes,
+      alt: t("web.helpGuides.changesCancellations"),
+      description: t("web.helpGuides.changesCancellations"),
+      mobileSrc: Started,
+      link: "/",
+    },
+    {
+      src: Collaboration,
+      alt: t("web.helpGuides.collaborationAlt"),
+      description: t("web.helpGuides.collaborationRoles"),
+      mobileSrc: Started,
+      link: "/",
+    },
+  ];
+
   return (
     <div className="max-w-6xl mx-auto py-5 sm:py-8">
       <div className="block sm:flex justify-between items-center mb-6">
         <h2 className="text-[26px] mb-5 sm:mb-1 font-normal  text-secondary">
-          Guides for experience providers
+          {t("web.helpGuides.experienceProviderTitle")}
         </h2>
         <div className="block sm:hidden">
           {guides.map((guide, index) => (
@@ -72,7 +76,7 @@ export default function ExperienceProviderTab() {
                     {guide.description}
                   </h2>
                 </div>
-                <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+                <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
               </div>
             </Link>
           ))}
@@ -82,10 +86,10 @@ export default function ExperienceProviderTab() {
             href="#"
             className="flex items-center font-normal  text-lg sm:text-sm text-secondary"
           >
-            Browse all topics{" "}
-            <ArrowRightIcon className="hidden sm:block ml-1 h-4 w-4" />
+            {t("web.helpGuides.browseAllTopics")}{" "}
+            <ArrowRightIcon className="hidden sm:block ms-1 h-4 w-4" />
           </a>
-          <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+          <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
         </div>
       </div>
       <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0">

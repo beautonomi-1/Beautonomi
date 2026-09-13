@@ -11,6 +11,7 @@
  */
 import { api } from "@/lib/api-client";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 const trimSlash = (s: string) => s.replace(/\/$/, "");
 
@@ -341,7 +342,7 @@ export type AdsSuccessCopy = { title: string; body: string };
 
 function formatMoney(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(getDefaultMoneyLocale(), {
       style: "currency",
       currency,
       maximumFractionDigits: 2,
@@ -353,7 +354,7 @@ function formatMoney(amount: number, currency: string): string {
 
 function formatCount(n: number): string {
   try {
-    return new Intl.NumberFormat(undefined).format(n);
+    return new Intl.NumberFormat(getDefaultMoneyLocale()).format(n);
   } catch {
     return String(n);
   }

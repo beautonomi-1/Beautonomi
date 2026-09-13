@@ -70,7 +70,7 @@ export default function PortalMockup({ activeTab }: PortalMockupProps) {
         <div className="mb-8 md:mb-10 lg:mb-12" />
 
         <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-center lg:gap-16">
-          <div className="order-2 max-w-md text-center lg:order-1 lg:text-left">
+          <div className="order-2 max-w-md text-center lg:order-1 lg:text-start">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Provider mobile app</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">{copy.headline}</h2>
             <p className="mt-3 text-base leading-relaxed text-gray-600">{copy.body}</p>

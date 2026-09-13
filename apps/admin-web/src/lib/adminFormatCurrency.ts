@@ -1,8 +1,10 @@
+const ADMIN_FORMAT_LOCALE = "en-ZA";
+
 /** Consistent money display for admin metrics (ledger amounts are major units). */
 export function formatAdminCurrency(amount: number, currency = "ZAR"): string {
   if (!Number.isFinite(amount)) return "—";
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(ADMIN_FORMAT_LOCALE, {
       style: "currency",
       currency,
       maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
@@ -14,5 +16,5 @@ export function formatAdminCurrency(amount: number, currency = "ZAR"): string {
 
 export function formatAdminNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat().format(n);
+  return new Intl.NumberFormat(ADMIN_FORMAT_LOCALE).format(n);
 }

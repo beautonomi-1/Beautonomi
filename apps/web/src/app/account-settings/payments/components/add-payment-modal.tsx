@@ -10,11 +10,10 @@ import Amex from "./../../../../../public/images/logo_amex.84088b520ca1b3384cb71
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-
-const SAVE_CARD_INFO =
-  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
+import { useTranslation } from "@beautonomi/i18n";
 
 const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; onClose: () => void; onCardAdded?: () => void }) => {
+  const { t } = useTranslation();
   const [addingCard, setAddingCard] = useState(false);
 
   const handleAddCardNow = async () => {
@@ -26,15 +25,15 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
       );
       const url = res?.data?.authorization_url;
       if (!url) {
-        toast.error(res?.error?.message || "Could not start card verification");
+        toast.error(res?.error?.message || t("web.accountSettings.payments.startVerificationFailed"));
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
-      toast.info("Complete verification in the new tab, then refresh this page.");
+      toast.info(t("web.accountSettings.payments.completeVerification"));
       onClose();
       onCardAdded?.();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Could not add card");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.payments.addCardFailed"));
     } finally {
       setAddingCard(false);
     }
@@ -48,12 +47,12 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold tracking-tighter text-gray-900">
-                Add Payment Method
+                {t("web.accountSettings.payments.addModal.title")}
               </h2>
               <button
                 onClick={onClose}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 <X className="h-5 w-5 text-gray-500" />
               </button>
@@ -65,13 +64,13 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                 <CreditCard className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-blue-900 mb-2">
-                    Add or save a card
+                    {t("web.accountSettings.payments.addModal.addOrSaveCard")}
                   </p>
                   <p className="text-sm text-blue-700">
-                    {SAVE_CARD_INFO}
+                    {t("web.accountSettings.payments.saveCardInfo")}
                   </p>
                   <p className="text-sm text-blue-700 mt-2">
-                    You can also save a card during checkout by selecting &quot;Save this card for future payments&quot;.
+                    {t("web.accountSettings.payments.addModal.saveDuringCheckout")}
                   </p>
                 </div>
               </div>
@@ -80,15 +79,15 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
             {/* How it works */}
             <div className="mb-6">
               <h3 className="text-lg font-semibold tracking-tighter mb-4 text-gray-900">
-                How to save a payment method:
+                {t("web.accountSettings.payments.addModal.howToSave")}
               </h3>
               <ol className="space-y-3">
                 {[
-                  "Book a service with a provider",
-                  "Proceed to checkout and payment",
-                  "Pay with your card",
-                  "Select 'Save this card for future payments'",
-                  "Your card will be saved for future bookings"
+                  t("web.accountSettings.payments.addModal.stepBook"),
+                  t("web.accountSettings.payments.addModal.stepCheckout"),
+                  t("web.accountSettings.payments.addModal.stepPay"),
+                  t("web.accountSettings.payments.addModal.stepSaveCard"),
+                  t("web.accountSettings.payments.addModal.stepSaved"),
                 ].map((step, index) => (
                   <li
                     key={index}
@@ -105,7 +104,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
 
             {/* Supported Cards */}
             <div className="mb-6">
-              <p className="text-sm font-medium text-gray-700 mb-3">Supported payment methods:</p>
+              <p className="text-sm font-medium text-gray-700 mb-3">{t("web.accountSettings.payments.addModal.supportedMethods")}</p>
               <div className="flex gap-4">
                 <Image src={Visa} alt="Visa" className="h-8 w-auto" />
                 <Image src={MasterCard} alt="MasterCard" className="h-8 w-auto" />
@@ -119,8 +118,8 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-green-800">
-                  <strong>Secure:</strong> All payment information is encrypted and processed securely. 
-                  We never store your full card details.
+                  <strong>{t("web.accountSettings.payments.addModal.secureTitle")}</strong>{" "}
+                  {t("web.accountSettings.payments.addModal.secureBody")}
                 </p>
               </div>
             </div>
@@ -134,11 +133,11 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                 className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {addingCard ? (
-                  <span>Opening...</span>
+                  <span>{t("web.accountSettings.payments.opening")}</span>
                 ) : (
                   <>
                     <Plus className="w-4 h-4" />
-                    Add card now
+                    {t("web.accountSettings.payments.addModal.addCardNow")}
                   </>
                 )}
               </button>
@@ -147,7 +146,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                   href="/"
                   className="flex-1 w-full border-2 border-[#FF0077] text-[#FF0077] hover:bg-pink-50 px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-center"
                 >
-                  Browse Services
+                  {t("web.accountSettings.payments.addModal.browseServices")}
                   <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Button
@@ -155,7 +154,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                   onClick={onClose}
                   className="flex-1 border-gray-300 hover:bg-gray-50"
                 >
-                  Close
+                  {t("common.close")}
                 </Button>
               </div>
             </div>

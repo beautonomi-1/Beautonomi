@@ -165,6 +165,17 @@ Examples:
 | `provider_eta_updated` | booking_id, eta_minutes, previous_eta_minutes, running_late | Web, Provider |
 | `provider_arrived` | booking_id, portal | Web, Provider |
 
+### Booking lifecycle (7 events)
+| Event | Properties | Platforms |
+|-------|-----------|-----------|
+| `pending_request_expired` | booking_id, provider_id, reason | Web, Server |
+| `pending_request_nudge_sent` | booking_id, provider_id, hours_until_slot | Web, Server |
+| `booking_closeout_prompted` | booking_id, provider_id, portal | Web, Server |
+| `booking_closeout_bulk_completed` | provider_id, count, portal | Web, Provider |
+| `booking_running_late_reported` | booking_id, minutes_late, portal | Web, Customer |
+| `booking_running_late_acked` | booking_id, provider_id, portal | Web, Provider |
+| `salon_running_behind_broadcast` | provider_id, minutes_behind, booking_ids, portal | Web, Provider |
+
 ### Support tickets (8 events)
 | Event | Properties | Platforms |
 |-------|-----------|-----------|
@@ -257,6 +268,13 @@ Examples:
 | locations_count | number | Number of locations |
 | staff_count | number | Number of staff members |
 | total_revenue | number | Lifetime revenue |
+
+
+### Locale preferences (2 events)
+| Event | Properties | Platforms |
+|-------|-----------|-----------|
+| `locale_language_changed` | from, to, surface (header / footer / account / navbar / mobile), authenticated | Web |
+| `locale_display_currency_changed` | from, to, surface, authenticated | Web |
 
 ## Implementation Files
 

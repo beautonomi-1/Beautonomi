@@ -29,6 +29,7 @@ import {
   type AuthSecuritySnapshot,
 } from "@beautonomi/utils";
 import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
+import { useTranslation } from "@beautonomi/i18n";
 import type { PrivacyPageInitial } from "./privacy-initial-types";
 
 const tabs = [
@@ -57,6 +58,7 @@ const PrivacyPage = ({
   accountHomeLabel?: string;
   loginSecurityHref?: string;
 }) => {
+  const { t } = useTranslation();
   const s = initial?.settings;
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -180,7 +182,7 @@ const PrivacyPage = ({
       setAnalyticsConsent(settings.analytics_consent ?? true);
     } catch (error: unknown) {
       console.error("Failed to load privacy settings:", error);
-      toast.error("Failed to load privacy settings. Please try again.");
+      toast.error(t("web.accountSettings.privacyAndSharing.loadFailed"));
     } finally {
       setIsLoadingSettings(false);
     }
@@ -191,10 +193,10 @@ const PrivacyPage = ({
       await fetcher.patch("/api/me/privacy-settings", {
         [setting]: value,
       });
-      toast.success("Setting updated successfully");
+      toast.success(t("web.accountSettings.privacyAndSharing.settingUpdated"));
       await loadPrivacySettings();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to update setting. Please try again.");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.privacyAndSharing.updateFailed"));
       throw error;
     }
   };
@@ -253,7 +255,7 @@ const PrivacyPage = ({
           downloadUrl: responseData.downloadUrl,
           fileName: responseData.fileName || `beautonomi-data-export-${new Date().toISOString().split('T')[0]}.json`,
         });
-        toast.success("Your data export is ready for download!");
+        toast.success(t("web.accountSettings.privacyAndSharing.exportReadyToast"));
 
         // Trigger download
         if (responseData.downloadUrl.startsWith("data:")) {
@@ -268,11 +270,11 @@ const PrivacyPage = ({
           window.open(responseData.downloadUrl, '_blank');
         }
       } else {
-        toast.success(responseData.message ?? "Your data request has been submitted.");
+        toast.success(responseData.message ?? t("web.accountSettings.privacyAndSharing.requestSubmitted"));
         await loadDataExportStatus();
       }
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to request your data. Please try again.");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.privacyAndSharing.requestFailed"));
     } finally {
       setIsRequestingData(false);
     }
@@ -292,7 +294,7 @@ const PrivacyPage = ({
         window.open(dataExportStatus.downloadUrl, '_blank');
       }
     } else {
-      toast.error("Download URL not available. Please request your data again.");
+      toast.error(t("web.accountSettings.privacyAndSharing.downloadUnavailable"));
     }
   };
 
@@ -308,7 +310,7 @@ const PrivacyPage = ({
       if (error) throw error;
       toast.success(deleteOtpDestination.codeSentMessage);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.privacyAndSharing.sendCodeFailed"));
     } finally {
       setIsRequestingDeleteNonce(false);
     }
@@ -316,19 +318,19 @@ const PrivacyPage = ({
 
   const handleDeleteAccount = async () => {
     if (!deleteAuthSecurityLoaded) {
-      toast.error("Still loading account security settings. Please try again.");
+      toast.error(t("web.accountSettings.privacyAndSharing.securityLoading"));
       return;
     }
     if (deleteHasPassword && !deletePassword.trim()) {
-      toast.error("Password is required to delete your account");
+      toast.error(t("web.accountSettings.privacyAndSharing.passwordRequired"));
       return;
     }
     if (!deleteHasPassword && !deleteVerificationNonce.trim()) {
-      toast.error("Enter the verification code to delete your account");
+      toast.error(t("web.accountSettings.privacyAndSharing.codeRequired"));
       return;
     }
     if (deleteConfirmText.trim().toUpperCase() !== DELETE_CONFIRM_PHRASE) {
-      toast.error(`Type ${DELETE_CONFIRM_PHRASE} to confirm deletion`);
+      toast.error(t("web.accountSettings.privacyAndSharing.typeDeleteToConfirm", { phrase: DELETE_CONFIRM_PHRASE }));
       return;
     }
 
@@ -347,8 +349,8 @@ const PrivacyPage = ({
       toast.success(
         response?.message ??
           (scheduled
-            ? `Your account is scheduled for deletion in ${response?.grace_days ?? 30} days. Check your email to cancel.`
-            : "Your account has been deleted. You will be signed out."),
+            ? t("web.accountSettings.privacyAndSharing.deletedScheduled", { days: response?.grace_days ?? 30 })
+            : t("web.accountSettings.privacyAndSharing.deletedImmediate")),
       );
       setShowDeleteDialog(false);
       setDeletePassword("");
@@ -359,7 +361,7 @@ const PrivacyPage = ({
         window.location.href = scheduled ? "/?deletion_scheduled=1" : "/";
       }, 2000);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete your account. Please try again.");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.privacyAndSharing.deleteFailed"));
     } finally {
       setIsDeletingAccount(false);
     }
@@ -369,7 +371,7 @@ const PrivacyPage = ({
     return (
       <div className="min-h-screen bg-zinc-50/50">
           <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-            <LoadingTimeout loadingMessage="Loading privacy settings..." />
+            <LoadingTimeout loadingMessage={t("web.accountSettings.privacyAndSharing.loading")} />
           </div>
         </div>
     );
@@ -385,14 +387,14 @@ const PrivacyPage = ({
             <Breadcrumb
               items={[
                 { label: accountHomeLabel, href: accountHomeHref },
-                { label: "Privacy & sharing" },
+                { label: t("web.accountSettings.privacyAndSharing.breadcrumb") },
               ]}
             />
 
             <h1
               className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 border-b border-gray-200 mb-6 pb-4 mt-4 md:mt-6"
             >
-              Privacy and sharing
+              {t("web.accountSettings.privacyAndSharing.title")}
             </h1>
 
             <Tabs
@@ -409,7 +411,7 @@ const PrivacyPage = ({
                     value={tab.value}
                     className="text-xs md:text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
                   >
-                    {tab.label}
+                    {t(`web.accountSettings.privacyAndSharing.tab${tab.value.charAt(0).toUpperCase()}${tab.value.slice(1)}`)}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -420,10 +422,10 @@ const PrivacyPage = ({
                 >
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Privacy and sharing
+                      {t("web.accountSettings.privacyAndSharing.title")}
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Manage your privacy settings and how your information is shared.
+                      {t("web.accountSettings.privacyAndSharing.subtitle")}
                     </p>
 
                     <div className="space-y-6">
@@ -438,10 +440,10 @@ const PrivacyPage = ({
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
-                                  Account visibility
+                                  {t("web.accountSettings.privacyAndSharing.accountVisibility")}
                                 </h3>
                                 <p className="text-sm font-light text-gray-600">
-                                  Control who can see your profile and account information.
+                                  {t("web.accountSettings.privacyAndSharing.accountVisibilityDesc")}
                                 </p>
                               </div>
                             </div>
@@ -474,10 +476,10 @@ const PrivacyPage = ({
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
-                                  Profile information
+                                  {t("web.accountSettings.privacyAndSharing.profileInformation")}
                                 </h3>
                                 <p className="text-sm font-light text-gray-600">
-                                  Manage what information is visible on your public profile.
+                                  {t("web.accountSettings.privacyAndSharing.profileInformationDesc")}
                                 </p>
                               </div>
                             </div>
@@ -506,10 +508,10 @@ const PrivacyPage = ({
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex-1">
                             <h3 className="text-base font-semibold text-gray-900">
-                              Product analytics
+                              {t("web.accountSettings.privacyAndSharing.productAnalytics")}
                             </h3>
                             <p className="text-sm font-light text-gray-600">
-                              Allow Beautonomi to use analytics to improve the product (e.g. usage and performance). You can disable this at any time.
+                              {t("web.accountSettings.privacyAndSharing.productAnalyticsDesc")}
                             </p>
                           </div>
                           <Switch
@@ -532,12 +534,13 @@ const PrivacyPage = ({
                       <div
                         className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
                       >
-                        <h3 className="text-base font-semibold text-gray-900">This browser</h3>
+                        <h3 className="text-base font-semibold text-gray-900">{t("web.accountSettings.privacyAndSharing.thisBrowser")}</h3>
                         <p className="mt-2 text-sm font-light leading-relaxed text-gray-600">
-                          Account-level analytics above applies to your profile. Cookies and similar storage on{" "}
-                          <span className="text-gray-800">this device</span> are managed separately—use{" "}
-                          <CookieSettingsFooterLink variant="inline" className="inline p-0 align-baseline" /> to adjust
-                          optional cookies on this browser.
+                          {t("web.accountSettings.privacyAndSharing.thisBrowserBefore")}
+                          <span className="text-gray-800">{t("web.accountSettings.privacyAndSharing.thisDevice")}</span>
+                          {t("web.accountSettings.privacyAndSharing.thisBrowserMid")}
+                          <CookieSettingsFooterLink variant="inline" className="inline p-0 align-baseline" />
+                          {t("web.accountSettings.privacyAndSharing.thisBrowserAfter")}
                         </p>
                       </div>
                     </div>
@@ -553,15 +556,15 @@ const PrivacyPage = ({
                       </div>
                       <div className="flex-1">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">
-                          Committed to privacy
+                          {t("web.accountSettings.privacyAndSharing.committedTitle")}
                         </h3>
                         <p className="text-sm font-light text-gray-600 mb-3">
-                          Beautonomi is committed to keeping your data protected. See details in our{" "}
+                          {t("web.accountSettings.privacyAndSharing.committedBefore")}
                           <a
                             href="/privacy-policy"
                             className="text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                           >
-                            Privacy Policy
+                            {t("web.accountSettings.privacyAndSharing.privacyPolicy")}
                           </a>
                           .
                         </p>
@@ -577,7 +580,7 @@ const PrivacyPage = ({
                 >
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Manage your account data
+                      {t("web.accountSettings.privacyAndSharing.manageDataTitle")}
                     </h2>
 
                     <div className="space-y-6 mt-6">
@@ -590,10 +593,10 @@ const PrivacyPage = ({
                           </div>
                           <div className="flex-1">
                             <h3 className="text-base font-semibold text-gray-900 mb-1">
-                              Request your personal data
+                              {t("web.accountSettings.privacyAndSharing.requestPersonalData")}
                             </h3>
                             <p className="text-sm font-light text-gray-600">
-                              We&apos;ll create a file for you to download your personal data.
+                              {t("web.accountSettings.privacyAndSharing.requestPersonalDataDesc")}
                             </p>
                           </div>
                         </div>
@@ -601,32 +604,32 @@ const PrivacyPage = ({
                         {dataExportStatus?.isReady && dataExportStatus.downloadUrl ? (
                           <div className="space-y-3">
                             <p className="text-sm text-green-600 font-medium">
-                              ✓ Your data export is ready!
+                              {t("web.accountSettings.privacyAndSharing.exportReady")}
                             </p>
                             <div className="flex gap-3">
                               <Button
                                 onClick={handleDownloadData}
                                 className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
                               >
-                                <Download className="w-4 h-4 mr-2" />
-                                Download your data
+                                <Download className="w-4 h-4 me-2" />
+                                {t("web.accountSettings.privacyAndSharing.downloadYourData")}
                               </Button>
                               <Button
                                 onClick={handleRequestData}
                                 disabled={isRequestingData}
                                 variant="outline"
                               >
-                                Request new export
+                                {t("web.accountSettings.privacyAndSharing.requestNewExport")}
                               </Button>
                             </div>
                           </div>
                         ) : dataExportStatus?.isPending ? (
                           <div className="space-y-3">
                             <p className="text-sm text-yellow-600 font-medium">
-                              ⏳ Your data export is being processed...
+                              {t("web.accountSettings.privacyAndSharing.exportProcessing")}
                             </p>
                             <Button onClick={loadDataExportStatus} variant="outline">
-                              Check status
+                              {t("web.accountSettings.privacyAndSharing.checkStatus")}
                             </Button>
                           </div>
                         ) : (
@@ -635,7 +638,7 @@ const PrivacyPage = ({
                             disabled={isRequestingData}
                             className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
                           >
-                            {isRequestingData ? "Requesting..." : "Request your data"}
+                            {isRequestingData ? t("web.accountSettings.privacyAndSharing.requesting") : t("web.accountSettings.privacyAndSharing.requestYourData")}
                           </Button>
                         )}
                       </div>
@@ -652,28 +655,27 @@ const PrivacyPage = ({
                       </div>
                       <div className="flex-1">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">
-                          Committed to privacy
+                          {t("web.accountSettings.privacyAndSharing.committedTitle")}
                         </h3>
                         <p className="text-sm font-light text-gray-600 mb-3">
-                          Beautonomi is committed to keeping your data protected. See details in our{" "}
+                          {t("web.accountSettings.privacyAndSharing.committedBefore")}
                           <a
                             href="/privacy-policy"
                             className="text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                           >
-                            Privacy Policy
+                            {t("web.accountSettings.privacyAndSharing.privacyPolicy")}
                           </a>
                           .
                         </p>
-                        <h4 className="text-sm font-semibold text-gray-900 mb-1">Give feedback</h4>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">{t("web.accountSettings.privacyAndSharing.giveFeedback")}</h4>
                         <p className="text-sm font-light text-gray-600 mb-2">
-                          Share feedback on requesting your personal data to help us improve your
-                          experience
+                          {t("web.accountSettings.privacyAndSharing.feedbackBody")}
                         </p>
                         <a
                           href="/help-center?topic=data-export-feedback"
                           className="text-sm font-medium text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                         >
-                          Share your feedback
+                          {t("web.accountSettings.privacyAndSharing.shareFeedback")}
                         </a>
                       </div>
                     </div>
@@ -681,20 +683,19 @@ const PrivacyPage = ({
 
                   <div className="pt-6 border-t border-gray-200/80">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                      Advanced
+                      {t("web.accountSettings.privacyAndSharing.advanced")}
                     </p>
                     <p className="text-sm text-gray-500 font-light mb-3 max-w-xl">
-                      To permanently delete your account we require your password or a verification code, and typing{" "}
-                      <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm. When enabled,
-                      deletion is scheduled for 30 days (account locked); cancel via the email link or support — not by
-                      logging in. Prefer a break first? Use{" "}
+                      {t("web.accountSettings.privacyAndSharing.deleteAccountHintBefore")}
+                      <span className="font-mono font-medium text-gray-600">{DELETE_CONFIRM_PHRASE}</span>
+                      {t("web.accountSettings.privacyAndSharing.deleteAccountHintMid")}
                       <a
                         href={loginSecurityHref}
                         className="text-gray-700 underline underline-offset-2 hover:text-gray-900"
                       >
-                        Login &amp; security
-                      </a>{" "}
-                      to deactivate.
+                        {t("web.accountSettings.privacyAndSharing.loginSecurity")}
+                      </a>
+                      {t("web.accountSettings.privacyAndSharing.deleteAccountHintEnd")}
                     </p>
                     <button
                       type="button"
@@ -702,7 +703,7 @@ const PrivacyPage = ({
                       disabled={isDeletingAccount}
                       className="text-sm text-gray-500 hover:text-gray-800 underline underline-offset-2 decoration-gray-400 hover:decoration-gray-600 transition-colors disabled:opacity-50"
                     >
-                      Request permanent account deletion…
+                      {t("web.accountSettings.privacyAndSharing.requestDeletion")}
                     </button>
                   </div>
                 </div>
@@ -714,10 +715,10 @@ const PrivacyPage = ({
                 >
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Activity sharing
+                      {t("web.accountSettings.privacyAndSharing.activitySharing")}
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Decide how your profile and activity are shown to others.
+                      {t("web.accountSettings.privacyAndSharing.activitySharingDesc")}
                     </p>
 
                     <div className="space-y-6">
@@ -732,15 +733,15 @@ const PrivacyPage = ({
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
-                                  Read Receipts
+                                  {t("web.accountSettings.privacyAndSharing.readReceipts")}
                                 </h3>
                                 <p className="text-sm font-light text-gray-600">
-                                  When this is on, we&apos;ll show people that you&apos;ve read their messages.{" "}
+                                  {t("web.accountSettings.privacyAndSharing.readReceiptsDesc")}
                                   <a
                                     href="/help-center"
                                     className="text-[#FF0077] hover:text-[#D60565] underline"
                                   >
-                                    Learn more
+                                    {t("web.accountSettings.privacyAndSharing.learnMore")}
                                   </a>
                                 </p>
                               </div>
@@ -774,11 +775,10 @@ const PrivacyPage = ({
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
-                                  Include my listing(s) in search engines
+                                  {t("web.accountSettings.privacyAndSharing.includeInSearch")}
                                 </h3>
                                 <p className="text-sm font-light text-gray-600">
-                                  Turning this on means search engines, like Google, will display
-                                  your listing page(s) in search results.
+                                  {t("web.accountSettings.privacyAndSharing.includeInSearchDesc")}
                                 </p>
                               </div>
                             </div>
@@ -803,16 +803,15 @@ const PrivacyPage = ({
 
                     <div className="mt-8 pt-6 border-t border-gray-200">
                       <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                        Reviews
+                        {t("web.accountSettings.privacyAndSharing.reviews")}
                       </h2>
                       <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                        Choose what&apos;s shared when you write a review. Updating this setting will
-                        change what&apos;s displayed for all past reviews.{" "}
+                        {t("web.accountSettings.privacyAndSharing.reviewsDesc")}
                         <a
                           href="/help-center"
                           className="text-[#FF0077] hover:text-[#D60565] underline"
                         >
-                          Learn more
+                          {t("web.accountSettings.privacyAndSharing.learnMore")}
                         </a>
                       </p>
 
@@ -823,11 +822,10 @@ const PrivacyPage = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <h3 className="text-base font-semibold text-gray-900 mb-1">
-                                Show my home city and country
+                                {t("web.accountSettings.privacyAndSharing.showHomeCity")}
                               </h3>
                               <p className="text-sm font-light text-gray-600">
-                                When this is on, your home location (ex: city and country) may be
-                                included with your reviews.
+                                {t("web.accountSettings.privacyAndSharing.showHomeCityDesc")}
                               </p>
                             </div>
                             <Switch
@@ -853,10 +851,10 @@ const PrivacyPage = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <h3 className="text-base font-semibold text-gray-900 mb-1">
-                                Show my booking type
+                                {t("web.accountSettings.privacyAndSharing.showBookingType")}
                               </h3>
                               <p className="text-sm font-light text-gray-600">
-                                When this is on, your booking type (ex: individual appointment, group booking, event booking, or special occasion) may be included with your reviews.
+                                {t("web.accountSettings.privacyAndSharing.showBookingTypeDesc")}
                               </p>
                             </div>
                             <Switch
@@ -882,10 +880,10 @@ const PrivacyPage = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <h3 className="text-base font-semibold text-gray-900 mb-1">
-                                Show my service duration
+                                {t("web.accountSettings.privacyAndSharing.showServiceDuration")}
                               </h3>
                               <p className="text-sm font-light text-gray-600">
-                                When this is on, an approximate service duration (ex: quick service, standard appointment, or extended session) may be included with your reviews.
+                                {t("web.accountSettings.privacyAndSharing.showServiceDurationDesc")}
                               </p>
                             </div>
                             <Switch
@@ -918,27 +916,26 @@ const PrivacyPage = ({
                       </div>
                       <div className="flex-1">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">
-                          Committed to privacy
+                          {t("web.accountSettings.privacyAndSharing.committedTitle")}
                         </h3>
                         <p className="text-sm font-light text-gray-600 mb-3">
-                          Beautonomi is committed to keeping your data protected. See details in our{" "}
+                          {t("web.accountSettings.privacyAndSharing.committedBefore")}
                           <a
                             href="/privacy-policy"
                             className="text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                           >
-                            Privacy Policy
+                            {t("web.accountSettings.privacyAndSharing.privacyPolicy")}
                           </a>
                           .
                         </p>
-                        <h4 className="text-sm font-semibold text-gray-900 mb-1">Give feedback</h4>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">{t("web.accountSettings.privacyAndSharing.giveFeedback")}</h4>
                         <p className="text-sm font-light text-gray-600">
-                          Share feedback on requesting your personal data to help us improve your
-                          experience.{" "}
+                          {t("web.accountSettings.privacyAndSharing.sharingFeedbackBody")}
                           <a
                             href="/help-center?topic=data-export-feedback"
                             className="text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                           >
-                            Share your feedback
+                            {t("web.accountSettings.privacyAndSharing.shareFeedback")}
                           </a>
                         </p>
                       </div>
@@ -952,13 +949,13 @@ const PrivacyPage = ({
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                    Connected services
+                    {t("web.accountSettings.privacyAndSharing.connectedServices")}
                   </h2>
                   <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                    View services that you&apos;ve connected to your Beautonomi account
+                    {t("web.accountSettings.privacyAndSharing.connectedServicesDesc")}
                   </p>
                   <p className="text-sm md:text-base font-light text-gray-500">
-                    No services connected at the moment
+                    {t("web.accountSettings.privacyAndSharing.noServicesConnected")}
                   </p>
                 </div>
               </TabsContent>
@@ -981,32 +978,34 @@ const PrivacyPage = ({
         >
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle className="text-red-700">Permanently delete your account</DialogTitle>
+              <DialogTitle className="text-red-700">{t("web.accountSettings.privacyAndSharing.deleteDialogTitle")}</DialogTitle>
               <DialogDescription asChild>
                 <div className="space-y-2 text-sm text-gray-600">
                   <p>
-                    This will <strong>permanently</strong> remove your account and all associated data,
-                    including bookings, messages, preferences, and profile. This action{" "}
-                    <strong>cannot be undone</strong>.
+                    {t("web.accountSettings.privacyAndSharing.deleteDialogP1Before")}
+                    <strong>{t("web.accountSettings.privacyAndSharing.permanently")}</strong>
+                    {t("web.accountSettings.privacyAndSharing.deleteDialogP1Mid")}
+                    <strong>{t("web.accountSettings.privacyAndSharing.cannotBeUndone")}</strong>
+                    {t("web.accountSettings.privacyAndSharing.deleteDialogP1End")}
                   </p>
-                  <p>If you prefer to take a break, use &quot;Deactivate account&quot; in Login &amp; security instead.</p>
+                  <p>{t("web.accountSettings.privacyAndSharing.deleteDialogP2")}</p>
                 </div>
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               {!deleteAuthSecurityLoaded ? (
-                <p className="text-sm text-gray-500">Loading verification options…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.privacyAndSharing.loadingVerification")}</p>
               ) : deleteHasPassword ? (
                 <div>
                   <label htmlFor="delete-password" className="text-sm font-medium mb-2 block">
-                    Enter your password
+                    {t("web.accountSettings.privacyAndSharing.enterPassword")}
                   </label>
                   <Input
                     id="delete-password"
                     type="password"
                     value={deletePassword}
                     onChange={(e) => setDeletePassword(e.target.value)}
-                    placeholder="Your password"
+                    placeholder={t("web.accountSettings.privacyAndSharing.passwordPlaceholder")}
                     disabled={isDeletingAccount}
                     className="w-full"
                   />
@@ -1014,18 +1013,18 @@ const PrivacyPage = ({
               ) : (
                 <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3">
                   <p className="text-sm text-gray-600">
-                    Confirm with a one-time verification code. {deleteOtpDestination.sendButtonHint}.
+                    {t("web.accountSettings.privacyAndSharing.otpConfirmHint", { hint: deleteOtpDestination.sendButtonHint })}
                   </p>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex-1">
                       <label htmlFor="delete-verification-code" className="text-sm font-medium mb-2 block">
-                        Verification code
+                        {t("web.accountSettings.privacyAndSharing.verificationCode")}
                       </label>
                       <Input
                         id="delete-verification-code"
                         value={deleteVerificationNonce}
                         onChange={(e) => setDeleteVerificationNonce(e.target.value.replace(/\D/g, ""))}
-                        placeholder="Enter code"
+                        placeholder={t("web.accountSettings.privacyAndSharing.enterCode")}
                         inputMode="numeric"
                         autoComplete="one-time-code"
                         disabled={isDeletingAccount}
@@ -1038,14 +1037,14 @@ const PrivacyPage = ({
                       onClick={handleRequestDeleteNonce}
                       disabled={isRequestingDeleteNonce || !deleteCanVerifyWithCode || isDeletingAccount}
                     >
-                      {isRequestingDeleteNonce ? "Sending..." : "Send code"}
+                      {isRequestingDeleteNonce ? t("web.accountSettings.privacyAndSharing.sending") : t("web.accountSettings.privacyAndSharing.sendCode")}
                     </Button>
                   </div>
                 </div>
               )}
               <div>
                 <label htmlFor="delete-confirm-text" className="text-sm font-medium mb-2 block">
-                  Type <span className="font-mono font-bold text-red-600">{DELETE_CONFIRM_PHRASE}</span> to confirm
+                  {t("web.accountSettings.privacyAndSharing.typePhraseToConfirm", { phrase: DELETE_CONFIRM_PHRASE })}
                 </label>
                 <Input
                   id="delete-confirm-text"
@@ -1060,13 +1059,13 @@ const PrivacyPage = ({
               </div>
               <div>
                 <label htmlFor="delete-reason" className="text-sm font-medium mb-2 block">
-                  Reason (optional)
+                  {t("web.accountSettings.privacyAndSharing.reasonOptional")}
                 </label>
                 <textarea
                   id="delete-reason"
                   value={deleteReason}
                   onChange={(e) => setDeleteReason(e.target.value)}
-                  placeholder="Tell us why you're deleting your account..."
+                  placeholder={t("web.accountSettings.privacyAndSharing.reasonPlaceholder")}
                   disabled={isDeletingAccount}
                   className="w-full min-h-[80px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
                 />
@@ -1084,14 +1083,14 @@ const PrivacyPage = ({
                 }}
                 disabled={isDeletingAccount}
               >
-                Cancel
+                {t("web.accountSettings.privacyAndSharing.cancel")}
               </Button>
               <Button
                 onClick={handleDeleteAccount}
                 disabled={isDeletingAccount || !canConfirmDelete}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {isDeletingAccount ? "Deleting..." : "Permanently delete account"}
+                {isDeletingAccount ? t("web.accountSettings.privacyAndSharing.deleting") : t("web.accountSettings.privacyAndSharing.permanentlyDeleteAccount")}
               </Button>
             </DialogFooter>
           </DialogContent>

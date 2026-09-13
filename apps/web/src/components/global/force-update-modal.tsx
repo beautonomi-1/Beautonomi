@@ -7,6 +7,7 @@ import { AlertCircle } from "lucide-react";
 import Image from "next/image";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ForceUpdateModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export default function ForceUpdateModal({
   currentVersion,
   updateUrl,
 }: ForceUpdateModalProps) {
+  const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -32,17 +34,17 @@ export default function ForceUpdateModal({
   const getStoreInfo = () => {
     if (platform === 'ios') {
       return {
-        name: 'App Store',
+        name: t("web.global.shareAppModal.appStore"),
         icon: Apple,
         defaultUrl: updateUrl || 'https://apps.apple.com/app/beautonomi',
-        buttonText: 'Update from App Store'
+        buttonText: t("web.global.forceUpdateModal.updateAppStore")
       };
     } else {
       return {
-        name: 'Google Play Store',
+        name: t("web.global.shareAppModal.googlePlay"),
         icon: GooglePlayStore,
         defaultUrl: updateUrl || 'https://play.google.com/store/apps/details?id=com.beautonomi',
-        buttonText: 'Update from Google Play'
+        buttonText: t("web.global.forceUpdateModal.updateGooglePlay")
       };
     }
   };
@@ -58,21 +60,22 @@ export default function ForceUpdateModal({
           <div className="flex items-center gap-3 mb-4">
             <AlertCircle className="h-6 w-6 text-orange-500" />
             <DialogTitle className="text-2xl font-semibold">
-              Update Required
+              {t("web.global.forceUpdateModal.title")}
             </DialogTitle>
           </div>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-gray-600">
-            A new version of Beautonomi is available. Please update to continue using the app.
+            {t("web.global.forceUpdateModal.body")}
           </p>
           {currentVersion && (
             <div className="bg-gray-50 p-3 rounded-md">
               <p className="text-sm text-gray-600">
-                <span className="font-medium">Current version:</span> {currentVersion}
+                <span className="font-medium">{t("web.global.forceUpdateModal.currentVersion")}</span> {currentVersion}
               </p>
               <p className="text-sm text-gray-600">
-                <span className="font-medium">Required version:</span> {minVersion} or higher
+                <span className="font-medium">{t("web.global.forceUpdateModal.requiredVersion")}</span>{" "}
+                {t("web.global.forceUpdateModal.orHigher", { version: minVersion })}
               </p>
             </div>
           )}
@@ -89,12 +92,12 @@ export default function ForceUpdateModal({
               <Image
                 src={storeInfo.icon}
                 alt={storeInfo.name}
-                className="h-5 w-5 mr-2"
+                className="h-5 w-5 me-2"
               />
               {storeInfo.buttonText}
             </Button>
             <p className="text-xs text-gray-500 text-center">
-              After updating, please restart the app
+              {t("web.global.forceUpdateModal.restartHint")}
             </p>
           </div>
         </div>

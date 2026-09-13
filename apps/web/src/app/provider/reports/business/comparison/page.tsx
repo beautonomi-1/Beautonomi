@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
@@ -46,19 +48,19 @@ interface BusinessComparisonData {
   };
 }
 
-const PERIOD_OPTIONS = [
-  { value: "month", label: "Month vs prior month" },
-  { value: "quarter", label: "Quarter vs prior quarter" },
-  { value: "year", label: "Year vs prior year" },
-];
-
-const BASIS_LABELS: Record<string, string> = {
-  currentWindow: "Current column",
-  previousWindow: "Previous column",
-  ledgerHeadline: "Ledger headline",
-  averagePerBooking: "Avg per booking",
-  bookings: "Booking counts",
-  growth: "Growth %",
+const PERIOD_OPTION_VALUES = ["month", "quarter", "year"] as const;
+const PERIOD_OPTION_KEYS = {
+  month: "monthVsPrior",
+  quarter: "quarterVsPrior",
+  year: "yearVsPrior",
+} as const;
+const BASIS_LABEL_KEYS: Record<string, string> = {
+  currentWindow: "currentColumn",
+  previousWindow: "previousColumn",
+  ledgerHeadline: "ledgerHeadline",
+  averagePerBooking: "avgPerBooking",
+  bookings: "bookingCounts",
+  growth: "growthPct",
 };
 
 function GrowthRow({
@@ -70,21 +72,22 @@ function GrowthRow({
   suffix?: string;
   isNew?: boolean;
 }) {
+  const { t } = useTranslation();
   if (isNew) {
     return (
       <div className="flex items-center gap-2 border-t pt-3">
         <TrendingUp className="h-5 w-5 shrink-0 text-emerald-600" />
-        <p className="text-lg font-semibold text-emerald-700">New</p>
-        <span className="text-xs text-gray-500">vs previous column</span>
+        <p className="text-lg font-semibold text-emerald-700">{t("web.provider.reports.pages.business/comparison.new")}</p>
+        <span className="text-xs text-gray-500">{t("web.provider.reports.pages.business/comparison.vsPreviousColumn")}</span>
       </div>
     );
   }
   if (value === 0) {
     return (
       <div className="flex items-center gap-2 border-t pt-3">
-        <span className="h-5 w-5 shrink-0 text-center text-gray-500">—</span>
+        <span className="h-5 w-5 shrink-0 text-center text-gray-500">{t("web.provider.common.emDash")}</span>
         <p className="text-lg font-semibold tabular-nums text-gray-600">0{suffix}</p>
-        <span className="text-xs text-gray-500">vs previous column</span>
+        <span className="text-xs text-gray-500">{t("web.provider.reports.pages.business/comparison.vsPreviousColumn")}</span>
       </div>
     );
   }
@@ -97,7 +100,7 @@ function GrowthRow({
         {value.toFixed(1)}
         {suffix}
       </p>
-      <span className="text-xs text-gray-500">vs previous column</span>
+      <span className="text-xs text-gray-500">{t("web.provider.reports.pages.business/comparison.vsPreviousColumn")}</span>
     </div>
   );
 }
@@ -111,10 +114,11 @@ function LedgerSplitHint({
   lo: number;
   fmt: (n: number) => string;
 }) {
+  const { t } = useTranslation();
   if ((lb ?? 0) <= 0 || (lo ?? 0) <= 0) return null;
   return (
     <p className="mt-2 text-xs leading-snug text-emerald-900/85">
-      Bookings ledger {fmt(lb)} · Product orders {fmt(lo)}
+      {t("web.provider.reports.pages.business/comparison.bookingsLedgerSplit", { bookings: fmt(lb), orders: fmt(lo) })}
     </p>
   );
 }
@@ -122,6 +126,7 @@ function LedgerSplitHint({
 export default function BusinessComparisonReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessComparisonData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -171,10 +176,10 @@ export default function BusinessComparisonReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Period Comparison" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/comparison.title") },
         ]}
       >
         <ReportSkeleton />
@@ -186,15 +191,15 @@ export default function BusinessComparisonReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Period Comparison" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/comparison.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Period Comparison" />
-          <ReportSubscriptionRequired feature="Period Comparison" />
+          <PageHeader title={t("web.provider.reports.pages.business/comparison.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.business/comparison.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -204,13 +209,13 @@ export default function BusinessComparisonReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Period Comparison" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/comparison.title") },
         ]}
       >
-        <EmptyReportState title="Failed to load report" description={error || "Unable to load comparison data"} />
+        <EmptyReportState title={t("web.provider.common.failedToLoadReport")} description={error || t("web.provider.reports.pages.business/comparison.unableToLoad")} />
       </SettingsDetailLayout>
     );
   }
@@ -234,21 +239,21 @@ export default function BusinessComparisonReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Period Comparison" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.business/comparison.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Period comparison"
-          subtitle="Ledger headline vs scheduled bookings — asymmetric windows by design"
+          title={t("web.provider.reports.pages.business/comparison.titleSentence")}
+          subtitle={t("web.provider.reports.pages.business/comparison.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              Export
+              <Download className="me-2 h-4 w-4" />
+              {t("web.provider.dataTableShell.export")}
             </Button>
           }
         />
@@ -259,25 +264,25 @@ export default function BusinessComparisonReport() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+              {PERIOD_OPTION_VALUES.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {t(`web.provider.reports.pages.business/comparison.${PERIOD_OPTION_KEYS[value]}`)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {data.timezone ? <p className="text-sm text-gray-600">Timezone · {data.timezone}</p> : null}
+          {data.timezone ? <p className="text-sm text-gray-600">{t("web.provider.reports.common.timezoneDot", { tz: data.timezone })}</p> : null}
         </div>
 
         {wc?.fromYmd && wc?.toYmd ? (
           <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-4 py-3 text-sm">
             <p>
-              <span className="font-medium text-gray-800">Current:</span> {wc.fromYmd} → {wc.toYmd}
+              <span className="font-medium text-gray-800">{t("web.provider.reports.pages.business/comparison.currentRange")}</span> {wc.fromYmd} → {wc.toYmd}
               {wc.description ? <span className="text-gray-600"> · {wc.description}</span> : null}
             </p>
             {wp?.fromYmd && wp?.toYmd ? (
               <p className="mt-1">
-                <span className="font-medium text-gray-800">Previous:</span> {wp.fromYmd} → {wp.toYmd}
+                <span className="font-medium text-gray-800">{t("web.provider.reports.pages.business/comparison.previousRange")}</span> {wp.fromYmd} → {wp.toYmd}
                 {wp.description ? <span className="text-gray-600"> · {wp.description}</span> : null}
               </p>
             ) : null}
@@ -289,7 +294,7 @@ export default function BusinessComparisonReport() {
             <div className="flex items-start gap-2">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">What this report compares</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">{t("web.provider.reports.pages.business/comparison.whatThisCompares")}</p>
                 <p className="mt-2 leading-relaxed">{basisText}</p>
               </div>
             </div>
@@ -298,11 +303,11 @@ export default function BusinessComparisonReport() {
 
         {basisEntries.length > 0 ? (
           <div className="rounded-xl border border-violet-100 bg-violet-50/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">Definitions</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">{t("web.provider.reports.common.definitions")}</p>
             <ul className="mt-2 space-y-2 text-sm text-violet-950">
               {basisEntries.map(([k, v]) => (
                 <li key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{t(`web.provider.reports.pages.business/comparison.${BASIS_LABEL_KEYS[k] ?? k}`, { defaultValue: k })} · </span>
                   {v}
                 </li>
               ))}
@@ -313,12 +318,12 @@ export default function BusinessComparisonReport() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="border-emerald-100 bg-emerald-50/35">
             <CardHeader>
-              <CardTitle className="text-lg">Ledger earnings</CardTitle>
-              <p className="text-sm font-normal text-emerald-900/85">provider_earnings · settlement window per column</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.business/overview.ledgerEarnings")}</CardTitle>
+              <p className="text-sm font-normal text-emerald-900/85">{t("web.provider.reports.pages.business/comparison.providerEarningsHint")}</p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="mb-1 text-sm text-emerald-900/90">Current</p>
+                <p className="mb-1 text-sm text-emerald-900/90">{t("web.provider.reports.common.current")}</p>
                 <p className="text-2xl font-semibold tabular-nums text-emerald-950">{fmt(data.current.revenue)}</p>
                 <LedgerSplitHint
                   lb={data.current.ledgerFromBookings ?? 0}
@@ -327,7 +332,7 @@ export default function BusinessComparisonReport() {
                 />
               </div>
               <div>
-                <p className="mb-1 text-sm text-emerald-900/90">Previous</p>
+                <p className="mb-1 text-sm text-emerald-900/90">{t("web.provider.reports.common.previous")}</p>
                 <p className="text-xl font-medium tabular-nums text-emerald-900">{fmt(data.previous.revenue)}</p>
                 <LedgerSplitHint
                   lb={data.previous.ledgerFromBookings ?? 0}
@@ -341,19 +346,19 @@ export default function BusinessComparisonReport() {
 
           <Card className="border-gray-200">
             <CardHeader>
-              <CardTitle className="text-lg">Scheduled bookings</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Excludes cancelled and no-show</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.business/overview.scheduledBookings")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.business/comparison.excludesCancelled")}</p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="mb-1 text-sm text-gray-600">Current</p>
+                <p className="mb-1 text-sm text-gray-600">{t("web.provider.reports.common.current")}</p>
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.current.bookings}</p>
-                <p className="mt-1 text-xs text-gray-500">{data.current.completed} completed</p>
+                <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.completedCount", { count: data.current.completed })}</p>
               </div>
               <div>
-                <p className="mb-1 text-sm text-gray-600">Previous</p>
+                <p className="mb-1 text-sm text-gray-600">{t("web.provider.reports.common.previous")}</p>
                 <p className="text-xl font-medium tabular-nums text-gray-700">{data.previous.bookings}</p>
-                <p className="mt-1 text-xs text-gray-500">{data.previous.completed} completed</p>
+                <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.completedCount", { count: data.previous.completed })}</p>
               </div>
               <GrowthRow value={data.growth.bookings} />
             </CardContent>
@@ -361,16 +366,16 @@ export default function BusinessComparisonReport() {
 
           <Card className="border-gray-200">
             <CardHeader>
-              <CardTitle className="text-lg">Distinct clients</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Unique customer_id on bookings above</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.business/overview.distinctClients")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.business/comparison.uniqueCustomerHint")}</p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="mb-1 text-sm text-gray-600">Current</p>
+                <p className="mb-1 text-sm text-gray-600">{t("web.provider.reports.common.current")}</p>
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.current.clients}</p>
               </div>
               <div>
-                <p className="mb-1 text-sm text-gray-600">Previous</p>
+                <p className="mb-1 text-sm text-gray-600">{t("web.provider.reports.common.previous")}</p>
                 <p className="text-xl font-medium tabular-nums text-gray-700">{data.previous.clients}</p>
               </div>
               <GrowthRow value={data.growth.clients} />
@@ -379,18 +384,18 @@ export default function BusinessComparisonReport() {
 
           <Card className="border-indigo-100 bg-indigo-50/40">
             <CardHeader>
-              <CardTitle className="text-lg">Avg ledger / scheduled booking</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.business/comparison.avgLedgerPerBooking")}</CardTitle>
               <p className="text-sm font-normal text-indigo-900/85">
-                Booking-linked ledger only ÷ appointment count (not booking.total_amount)
+                  {t("web.provider.reports.pages.business/comparison.avgLedgerHint")}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="mb-1 text-sm text-indigo-900/90">Current</p>
+                <p className="mb-1 text-sm text-indigo-900/90">{t("web.provider.reports.common.current")}</p>
                 <p className="text-2xl font-semibold tabular-nums text-indigo-950">{fmt(curAvg)}</p>
               </div>
               <div>
-                <p className="mb-1 text-sm text-indigo-900/90">Previous</p>
+                <p className="mb-1 text-sm text-indigo-900/90">{t("web.provider.reports.common.previous")}</p>
                 <p className="text-xl font-medium tabular-nums text-indigo-900">{fmt(prevAvg)}</p>
               </div>
               <GrowthRow value={avgGrowth} />

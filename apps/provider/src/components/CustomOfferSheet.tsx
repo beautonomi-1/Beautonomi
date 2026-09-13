@@ -19,6 +19,7 @@ import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/Address
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { useProvider } from "@/providers/ProviderContext";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
@@ -65,6 +66,12 @@ export function CustomOfferSheet({
   conversationId,
   onSuccess,
 }: CustomOfferSheetProps) {
+  const { t } = useTranslation();
+  const co = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.customOfferSheet.${key}`, opts) as string,
+    [t],
+  );
   const { isTablet } = useResponsive();
   const { provider } = useProvider();
   const providerTz = provider?.timezone ?? null;
@@ -290,28 +297,28 @@ export function CustomOfferSheet({
   const validationHint = useMemo(() => {
     const d = description.trim();
     if (d.length > 0 && d.length < MIN_DESC) {
-      return `Add at least ${MIN_DESC - d.length} more character(s) to the description.`;
+      return co("descCharsNeeded", { count: MIN_DESC - d.length });
     }
-    if (d.length > 4000) return "Description must be 4000 characters or fewer.";
+    if (d.length > 4000) return co("descTooLong");
     if (price.trim() === "" || Number.isNaN(Number(price)) || Number(price) < 0) {
-      return "Enter a valid price (0 or more).";
+      return co("invalidPrice");
     }
-    if (duration.trim() === "") return "Enter duration in minutes (15–480).";
+    if (duration.trim() === "") return co("enterDuration");
     const dm = Number(duration);
     if (!Number.isFinite(dm) || dm < 15 || dm > 480) {
-      return "Duration must be between 15 and 480 minutes.";
+      return co("invalidDuration");
     }
-    if (expirationDays.trim() === "") return "Enter how many days until the offer expires (at least 1).";
+    if (expirationDays.trim() === "") return co("enterExpiration");
     const ex = Number(expirationDays);
-    if (!Number.isFinite(ex) || ex < 1) return "Expiration must be at least 1 day.";
+    if (!Number.isFinite(ex) || ex < 1) return co("invalidExpiration");
     if (locationType === "at_home" && !addressLine1.trim()) {
-      return "House-call offers need a service address.";
+      return co("houseCallNeedsAddress");
     }
     if (locationType === "at_salon" && !locationId) {
-      return "At-salon offers need a salon location.";
+      return co("salonNeedsLocation");
     }
     return null;
-  }, [description, price, duration, expirationDays, locationType, addressLine1, locationId]);
+  }, [co, description, price, duration, expirationDays, locationType, addressLine1, locationId]);
 
   const isValid = validationHint === null;
 
@@ -354,11 +361,11 @@ export function CustomOfferSheet({
       const res = await api.post("/api/provider/custom-offers/create", payload);
       if ((res as { error?: { message?: string; code?: string } }).error) {
         const err = (res as { error: { message?: string; code?: string } }).error;
-        const msg = err.message ?? "Failed to send custom offer";
-        const title = err.code === "CUSTOM_OFFERS_DISABLED" ? "Custom offers unavailable" : "Error";
+        const msg = err.message ?? co("sendFailed");
+        const title = err.code === "CUSTOM_OFFERS_DISABLED" ? co("unavailableTitle") : co("errorTitle");
         const body =
           err.code === "CUSTOM_OFFERS_DISABLED"
-            ? `${msg}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.`
+            ? co("disabledBody", { message: msg })
             : msg;
         Alert.alert(title, body);
         return;
@@ -368,7 +375,7 @@ export function CustomOfferSheet({
       resetForm();
       onClose();
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to send custom offer");
+      Alert.alert(co("errorTitle"), e?.message ?? co("sendFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -379,32 +386,32 @@ export function CustomOfferSheet({
       key={visible ? "open" : "closed"}
       visible={visible}
       onClose={handleClose}
-      title="Send custom offer"
-      subtitle={customerName ? `To ${customerName}` : "To customer"}
+      title={co("title")}
+      subtitle={customerName ? co("subtitleToName", { name: customerName }) : co("subtitleToCustomer")}
       snapHeight={isTablet ? "full" : "auto"}
       showHandle={true}
     >
       <View style={isTablet ? { maxWidth: 480, alignSelf: "center", width: "100%" } : undefined}>
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Service name (optional)
+          {co("serviceNameOptional")}
         </Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={serviceName}
           onChangeText={setServiceName}
-          placeholder="e.g. Haircut & Styling"
+          placeholder={co("serviceNamePlaceholder")}
           placeholderTextColor="#9ca3af"
         />
 
         {globalCategories.length > 0 && (
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{co("categoryOptional")}</Text>
             {globalCategories.length > 12 ? (
               <TextInput
                 style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                 value={categoryQuery}
                 onChangeText={setCategoryQuery}
-                placeholder="Search categories…"
+                placeholder={co("searchCategories")}
                 placeholderTextColor="#9ca3af"
               />
             ) : null}
@@ -412,9 +419,9 @@ export function CustomOfferSheet({
               <View style={twStyle("flex-row")}>
                 <TouchableOpacity
                   onPress={() => setServiceCategoryId(null)}
-                  style={[twStyle(`rounded-full border px-3 py-2 ${serviceCategoryId == null ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                  style={[twStyle(`rounded-full border px-3 py-2 ${serviceCategoryId == null ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginEnd: 8 }]}
                 >
-                  <Text style={twStyle(`text-xs font-semibold ${serviceCategoryId == null ? "text-primary" : "text-gray-600"}`)}>Any category</Text>
+                  <Text style={twStyle(`text-xs font-semibold ${serviceCategoryId == null ? "text-primary" : "text-gray-600"}`)}>{co("anyCategory")}</Text>
                 </TouchableOpacity>
                 {filteredGlobalCategories.map((cat) => {
                   const active = serviceCategoryId === cat.id;
@@ -422,7 +429,7 @@ export function CustomOfferSheet({
                     <TouchableOpacity
                       key={cat.id}
                       onPress={() => setServiceCategoryId(active ? null : cat.id)}
-                      style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                      style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginEnd: 8 }]}
                     >
                       <Text style={twStyle(`text-xs font-semibold ${active ? "text-primary" : "text-gray-600"}`)}>{cat.name}</Text>
                     </TouchableOpacity>
@@ -434,13 +441,13 @@ export function CustomOfferSheet({
         )}
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Service description <Text style={twStyle("text-red-500")}>*</Text>
+          {co("descriptionLabel")} <Text style={twStyle("text-red-500")}>*</Text>
         </Text>
         <TextInput
           style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={description}
           onChangeText={setDescription}
-          placeholder={`Describe the service (${MIN_DESC}–4000 characters)`}
+          placeholder={co("descriptionPlaceholder", { min: MIN_DESC })}
           placeholderTextColor="#9ca3af"
           multiline
           textAlignVertical="top"
@@ -454,24 +461,24 @@ export function CustomOfferSheet({
             }`,
           )}
         >
-          {description.trim().length} / {MIN_DESC}–4000 characters
+          {co("charCount", { current: description.trim().length, min: MIN_DESC })}
         </Text>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Price ({tenantCurrency}) <Text style={twStyle("text-red-500")}>*</Text>
+          {co("priceLabel", { currency: tenantCurrency })} <Text style={twStyle("text-red-500")}>*</Text>
         </Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={price}
           onChangeText={setPrice}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={co("pricePlaceholder")}
           placeholderTextColor="#9ca3af"
         />
 
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min)</Text>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("durationLabel")}</Text>
             <TextInput
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={duration}
@@ -482,7 +489,7 @@ export function CustomOfferSheet({
             />
           </View>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Expires (days)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("expiresLabel")}</Text>
             <TextInput
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={expirationDays}
@@ -494,7 +501,7 @@ export function CustomOfferSheet({
           </View>
         </View>
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Location</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{co("location")}</Text>
         <View style={twStyle("mb-3 flex-row")}>
           {LOCATION_OPTIONS.map((opt, i) => (
             <TouchableOpacity
@@ -511,14 +518,14 @@ export function CustomOfferSheet({
                 locationType === opt.value
                   ? "border-primary bg-primary/10"
                   : "border-gray-200 bg-gray-50"
-              }`), i < LOCATION_OPTIONS.length - 1 ? { marginRight: 8 } : undefined]}
+              }`), i < LOCATION_OPTIONS.length - 1 ? { marginEnd: 8 } : undefined]}
             >
               <Text
                 style={twStyle(`text-sm font-medium ${
                   locationType === opt.value ? "text-primary" : "text-gray-600"
                 }`)}
               >
-                {opt.label}
+                {opt.value === "at_salon" ? co("locationAtSalon") : co("locationAtHome")}
               </Text>
             </TouchableOpacity>
           ))}
@@ -527,15 +534,14 @@ export function CustomOfferSheet({
         {locationType === "at_salon" && locations.length === 0 && (
           <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
             <Text style={twStyle("text-sm text-amber-800")}>
-              Add a salon location in Settings before sending an at-salon offer, or switch this
-              offer to a house call.
+              {co("noSalonLocation")}
             </Text>
           </View>
         )}
 
         {locationType === "at_salon" && locations.length > 0 && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("venue")}</Text>
             <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {locations.map((loc) => (
                 <TouchableOpacity
@@ -543,7 +549,7 @@ export function CustomOfferSheet({
                   onPress={() => setLocationId(loc.id)}
                   style={[twStyle(`rounded-xl border px-3 py-2 ${
                     locationId === loc.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`), { marginRight: 8, marginBottom: 8 }]}
+                  }`), { marginEnd: 8, marginBottom: 8 }]}
                 >
                   <Text style={twStyle(`text-sm ${locationId === loc.id ? "text-primary font-medium" : "text-gray-600"}`)}>
                     {loc.name}
@@ -556,7 +562,7 @@ export function CustomOfferSheet({
 
         {staffList.length > 0 && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Assigned staff (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("assignedStaffOptional")}</Text>
             <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {staffList.map((s) => (
                 <TouchableOpacity
@@ -564,7 +570,7 @@ export function CustomOfferSheet({
                   onPress={() => setStaffId(staffId === s.id ? null : s.id)}
                   style={[twStyle(`rounded-xl border px-3 py-2 ${
                     staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`), { marginRight: 8, marginBottom: 8 }]}
+                  }`), { marginEnd: 8, marginBottom: 8 }]}
                 >
                   <Text style={twStyle(`text-sm ${staffId === s.id ? "text-primary font-medium" : "text-gray-600"}`)}>
                     {s.name}
@@ -575,9 +581,9 @@ export function CustomOfferSheet({
           </>
         )}
 
-        <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>Appointment slot</Text>
+        <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>{co("appointmentSlot")}</Text>
         <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-          Slots come from the same availability engine used for new appointments.
+          {co("slotsHint")}
         </Text>
         {/* Date strip — 14-day window matches the offer flow */}
         <View style={twStyle("mb-3")}>
@@ -611,12 +617,12 @@ export function CustomOfferSheet({
 
         {locationType === "at_home" && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Address (for at home)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("addressForHome")}</Text>
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-              Search for the client&apos;s address, then edit lines below if needed.
+              {co("addressHint")}
             </Text>
             <AddressAutocomplete
-              label="Search address"
+              label={co("searchAddress")}
               value={addressSearchValue}
               countryCode={countryFilterIso2FromStorage(addressCountry) ?? "ZA"}
               defaultCountryName={
@@ -624,7 +630,7 @@ export function CustomOfferSheet({
                 getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() ||
                 undefined
               }
-              placeholder="Start typing street or area…"
+              placeholder={co("searchAddressPlaceholder")}
               onSelect={(addr: ParsedAddress) => {
                 setAddressSearchValue(addr.full_address);
                 setAddressLine1(addr.address_line1);
@@ -639,61 +645,61 @@ export function CustomOfferSheet({
                 if (!addressLine1.trim() && q.trim()) setAddressLine1(q.trim());
               }}
             />
-            <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line</Text>
+            <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>{co("streetLine")}</Text>
             <TextInput
               style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={addressLine1}
               onChangeText={setAddressLine1}
-              placeholder="Street address"
+              placeholder={co("streetPlaceholder")}
               placeholderTextColor="#9ca3af"
             />
-            <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Unit / suite (optional)</Text>
+            <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{co("unitOptional")}</Text>
             <TextInput
               style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={addressLine2}
               onChangeText={setAddressLine2}
-              placeholder="Apartment, estate gate, etc."
+              placeholder={co("unitPlaceholder")}
               placeholderTextColor="#9ca3af"
             />
             <View style={twStyle("mb-2 flex-row")}>
               <TextInput
-                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginEnd: 8 }]}
                 value={addressCity}
                 onChangeText={setAddressCity}
-                placeholder="City"
+                placeholder={co("cityPlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
               <TextInput
                 style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={addressCountry}
                 onChangeText={setAddressCountry}
-                placeholder="Country"
+                placeholder={co("countryPlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={twStyle("mb-2 flex-row")}>
               <TextInput
-                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginEnd: 8 }]}
                 value={addressState}
                 onChangeText={setAddressState}
-                placeholder="Province / state"
+                placeholder={co("provincePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
               <TextInput
                 style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={addressPostalCode}
                 onChangeText={setAddressPostalCode}
-                placeholder="Postal code"
+                placeholder={co("postalPlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Travel fee ({tenantCurrency}) — from address (override optional)
+              {co("travelFeeLabel", { currency: tenantCurrency })}
             </Text>
             {travelFeePreviewLoading ? (
               <View style={twStyle("mb-2 flex-row items-center")}>
                 <ActivityIndicator size="small" color="#6366f1" />
-                <Text style={twStyle("ml-2 text-xs text-gray-600")}>Calculating travel fee…</Text>
+                <Text style={twStyle("ms-2 text-xs text-gray-600")}>{co("calculatingTravelFee")}</Text>
               </View>
             ) : null}
             <TextInput
@@ -704,21 +710,21 @@ export function CustomOfferSheet({
                 setTravelFee(t);
               }}
               keyboardType="decimal-pad"
-              placeholder="e.g. 50"
+              placeholder={co("travelFeePlaceholder")}
               placeholderTextColor="#9ca3af"
             />
             <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-              Fee updates when you pick or edit the address. Edit the amount above to override.
+              {co("travelFeeHint")}
             </Text>
           </>
         )}
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("notesOptional")}</Text>
         <TextInput
           style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={notes}
           onChangeText={setNotes}
-          placeholder="Additional details..."
+          placeholder={co("notesPlaceholder")}
           placeholderTextColor="#9ca3af"
           multiline
           textAlignVertical="top"
@@ -729,7 +735,7 @@ export function CustomOfferSheet({
         ) : null}
 
         <ActionButton
-          label="Send offer"
+          label={co("sendOffer")}
           onPress={handleSubmit}
           loading={submitting}
           fullWidth

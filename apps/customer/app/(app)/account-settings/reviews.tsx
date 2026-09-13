@@ -6,6 +6,7 @@ import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
@@ -15,6 +16,9 @@ function formatDateSafe(value: unknown): string {
 }
 
 export default function ReviewsScreen() {
+  const { t } = useTranslation();
+  const rv = (key: string, opts?: Record<string, string | number>) =>
+    t(`customer.mobile.screens.reviews.${key}`, opts) as string;
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [data, setData] = useState<any>(null);
@@ -28,10 +32,10 @@ export default function ReviewsScreen() {
     setError(null);
     try {
       const res = await api.get<any>("/api/me/reviews");
-      if (res.error) setError(res.error.message || "Failed to load");
+      if (res.error) setError(res.error.message || rv("loadFailed"));
       else setData(res.data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : rv("loadFailed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -46,7 +50,7 @@ export default function ReviewsScreen() {
   const list = Array.isArray(reviews) ? reviews : [];
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: "No reviews yet" }} isEmpty={list.length === 0}>
+    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: rv("emptyTitle") }} isEmpty={list.length === 0}>
       {list.length > 0 && (
         <ScrollView
           style={{ flex: 1 }}
@@ -64,32 +68,32 @@ export default function ReviewsScreen() {
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         {provider?.thumbnail_url && (
-                          <Image source={{ uri: provider.thumbnail_url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
+                          <Image source={{ uri: provider.thumbnail_url }} style={{ width: 40, height: 40, borderRadius: 20, marginEnd: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
                         )}
                         <View>
-                          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || "Provider"}</Text>
+                          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || rv("providerFallback")}</Text>
                           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                             <Text style={{ color: "#EAB308", fontSize: 14 }}>★</Text>
-                            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginLeft: 4 }}>{r.rating}/5</Text>
+                            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginStart: 4 }}>{r.rating}/5</Text>
                             {booking?.scheduled_at && (
-                              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>
+                              <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>
                                 · {formatDateSafe(booking.scheduled_at)}
                               </Text>
                             )}
                           </View>
                         </View>
                       </View>
-                      <Text style={{ color: Colors.gray[600], marginTop: 8 }}>{r.comment || r.body || "No comment"}</Text>
+                      <Text style={{ color: Colors.gray[600], marginTop: 8 }}>{r.comment || r.body || rv("noComment")}</Text>
                       {r.photos?.length > 0 && (
                         <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}>
                           {r.photos.slice(0, 3).map((url: string, i: number) => (
-                            <Image key={i} source={{ uri: url }} style={{ width: 64, height: 64, borderRadius: 8, marginRight: 8, marginBottom: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
+                            <Image key={i} source={{ uri: url }} style={{ width: 64, height: 64, borderRadius: 8, marginEnd: 8, marginBottom: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
                           ))}
                         </View>
                       )}
                       {r.provider_response ? (
                         <View style={{ marginTop: 12, backgroundColor: Colors.primaryLight, borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
-                          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>Provider reply</Text>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>{rv("providerReply")}</Text>
                           <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>{r.provider_response}</Text>
                           {r.provider_response_at && (
                             <Text style={{ fontSize: 11, color: Colors.gray[400], marginTop: 4 }}>{formatDateSafe(r.provider_response_at)}</Text>
@@ -110,9 +114,9 @@ export default function ReviewsScreen() {
                             },
                           })
                         }
-                        style={{ marginLeft: 8 }}
+                        style={{ marginStart: 8 }}
                       >
-                        <Text style={{ color: Colors.primary, fontWeight: "500" }}>Edit</Text>
+                        <Text style={{ color: Colors.primary, fontWeight: "500" }}>{rv("editCta")}</Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>

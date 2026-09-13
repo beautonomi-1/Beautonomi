@@ -11,6 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { displayRetailPriceMin, effectiveStockQuantity } from "@/lib/product-inventory-metrics";
 import { formatCurrency } from "@/lib/format";
@@ -48,11 +49,11 @@ interface ProductMetricsResponse {
 type FilterKey = "all" | "active" | "inactive" | "low_stock" | "out_of_stock";
 
 const FILTER_CHIPS = [
-  { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "inactive", label: "Inactive" },
-  { key: "low_stock", label: "Low stock" },
-  { key: "out_of_stock", label: "Out of stock" },
+  { key: "all", labelKey: "filterAll" },
+  { key: "active", labelKey: "filterActive" },
+  { key: "inactive", labelKey: "filterInactive" },
+  { key: "low_stock", labelKey: "filterLowStock" },
+  { key: "out_of_stock", labelKey: "filterOutOfStock" },
 ];
 
 const EMPTY: ProductItem[] = [];
@@ -74,6 +75,12 @@ function stockBadge(p: ProductItem): "low" | "out" | null {
 }
 
 export function ProductsContent() {
+  const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.productsCatalog.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -84,8 +91,8 @@ export function ProductsContent() {
   const [barcodeOpen, setBarcodeOpen] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
@@ -133,24 +140,24 @@ export function ProductsContent() {
   const sections = useMemo(() => groupProductsIntoSections(displayProducts), [displayProducts]);
 
   const handleDelete = (p: ProductItem) => {
-    Alert.alert("Delete product", `Delete "${p.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(pr("deleteTitle"), pr("deleteBody", { name: p.name }), [
+      { text: pr("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: pr("delete"),
         style: "destructive",
         onPress: async () => {
           const { error: err, data } = await deleteProduct(`/api/provider/products/${p.id}`);
           if (err?.includes("PRODUCT_HAS_BOOKINGS") || (data as { error?: { code?: string } })?.error?.code === "PRODUCT_HAS_BOOKINGS") {
             Alert.alert(
-              "Cannot delete",
-              "This product is linked to bookings. Archive it instead?",
+              pr("cannotDeleteTitle"),
+              pr("cannotDeleteBody"),
               [
-                { text: "Cancel", style: "cancel" },
+                { text: pr("cancel"), style: "cancel" },
                 {
-                  text: "Archive",
+                  text: pr("archive"),
                   onPress: async () => {
                     const { error: archErr } = await deleteProduct(`/api/provider/products/${p.id}?archive=true`);
-                    if (archErr) Alert.alert("Error", archErr);
+                    if (archErr) Alert.alert(pr("errorTitle"), archErr);
                     else emitProviderProductsCatalogChanged();
                   },
                 },
@@ -158,7 +165,7 @@ export function ProductsContent() {
             );
             return;
           }
-          if (err) Alert.alert("Error", err);
+          if (err) Alert.alert(pr("errorTitle"), err);
           else emitProviderProductsCatalogChanged();
         },
       },
@@ -167,7 +174,7 @@ export function ProductsContent() {
 
   const handleDuplicate = async (p: ProductItem) => {
     const { error: err } = await createProduct("/api/provider/products", {
-      name: `${p.name} (copy)`,
+      name: pr("copySuffix", { name: p.name }),
       category: p.category,
       brand: p.brand,
       retail_price: p.retail_price,
@@ -177,7 +184,7 @@ export function ProductsContent() {
       retail_sales_enabled: p.retail_sales_enabled,
       image_urls: p.image_urls ?? [],
     });
-    if (err) Alert.alert("Error", err);
+    if (err) Alert.alert(pr("errorTitle"), err);
     else emitProviderProductsCatalogChanged();
   };
 
@@ -185,7 +192,7 @@ export function ProductsContent() {
     const { error: err } = await patchProduct(`/api/provider/products/${p.id}`, {
       is_active: p.is_active === false,
     });
-    if (err) Alert.alert("Error", err);
+    if (err) Alert.alert(pr("errorTitle"), err);
     else emitProviderProductsCatalogChanged();
   };
 
@@ -196,11 +203,11 @@ export function ProductsContent() {
       quantity: p.quantity,
       variants: p.variants?.map((v) => ({ quantity: v.quantity, retail_price: v.retail_price })),
     });
-    return p.has_variants && (p.variants?.length ?? 0) > 0 ? `From ${formatCurrency(min)}` : formatCurrency(min);
+    return p.has_variants && (p.variants?.length ?? 0) > 0 ? pr("priceFrom", { amount: formatCurrency(min) }) : formatCurrency(min);
   };
 
   const productStockLabel = (p: ProductItem) => {
-    if (p.track_stock_quantity === false) return "Stock not tracked";
+    if (p.track_stock_quantity === false) return pr("stockNotTracked");
     const q =
       typeof p.effective_quantity === "number"
         ? p.effective_quantity
@@ -209,7 +216,7 @@ export function ProductsContent() {
             quantity: p.quantity,
             variants: p.variants?.map((v) => ({ quantity: v.quantity, retail_price: v.retail_price })),
           });
-    return `${q} in stock`;
+    return pr("inStock", { count: q });
   };
 
   const totalPages = productsData?.total_pages ?? 1;
@@ -232,7 +239,7 @@ export function ProductsContent() {
         <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <View style={{ flex: 1 }}>
-              <SearchBar value={search} onChangeText={setSearch} placeholder="Search name, SKU, barcode…" />
+              <SearchBar value={search} onChangeText={setSearch} placeholder={pr("searchPlaceholder")} />
             </View>
             <TouchableOpacity
               onPress={() => setBarcodeOpen(true)}
@@ -242,7 +249,7 @@ export function ProductsContent() {
             </TouchableOpacity>
           </View>
           <FilterChipGroup
-            options={FILTER_CHIPS.map((c) => ({ label: c.label, value: c.key }))}
+            options={FILTER_CHIPS.map((c) => ({ label: pr(c.labelKey), value: c.key }))}
             selected={filter}
             onSelect={(k) => setFilter(k as FilterKey)}
           />
@@ -252,23 +259,23 @@ export function ProductsContent() {
           <LoadingState />
         ) : displayProducts.length === 0 ? (
           <View style={{ padding: 32, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[500] }}>No products match your filters.</Text>
+            <Text style={{ color: Colors.gray[500] }}>{pr("empty")}</Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}
               style={{ marginTop: 16, backgroundColor: "#8b5cf6", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}
             >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Add product</Text>
+              <Text style={{ color: "#fff", fontWeight: "600" }}>{pr("addProduct")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={{ paddingHorizontal: 16 }}>
             <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <View style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], padding: 12 }}>
-                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Active products</Text>
-                <Text style={{ fontSize: 18, fontWeight: "700" }}>{metricsData?.totalProducts ?? "—"}</Text>
+                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{pr("activeProducts")}</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700" }}>{metricsData?.totalProducts ?? pr("emptyValue")}</Text>
               </View>
               <View style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], padding: 12 }}>
-                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Low / out</Text>
+                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{pr("lowOut")}</Text>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: "#dc2626" }}>
                   {(metricsData?.lowStockProducts ?? 0) + (metricsData?.outOfStockProducts ?? 0)}
                 </Text>
@@ -280,13 +287,13 @@ export function ProductsContent() {
               style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#c4b5fd", backgroundColor: "#f5f3ff", paddingVertical: 12 }}
             >
               <Ionicons name="add" size={18} color="#8b5cf6" />
-              <Text style={{ marginLeft: 8, fontWeight: "500", color: "#6d28d9" }}>Add product</Text>
+              <Text style={{ marginStart: 8, fontWeight: "500", color: "#6d28d9" }}>{pr("addProduct")}</Text>
             </TouchableOpacity>
 
             {sections.map((section) => (
               <View key={section.sectionKey} style={{ marginBottom: 20 }}>
                 <Text style={{ marginBottom: 10, fontSize: 12, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase", color: Colors.gray[600] }}>
-                  {section.title} · {section.items.length}
+                  {pr("sectionCount", { title: section.title, count: section.items.length })}
                 </Text>
                 {section.items.map((p) => {
                   const thumb = p.image_urls?.[0];
@@ -298,20 +305,20 @@ export function ProductsContent() {
                       style={{ marginBottom: 10, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
                     >
                       {thumb ? (
-                        <Image source={{ uri: thumb }} style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }} contentFit="cover" />
+                        <Image source={{ uri: thumb }} style={{ width: 48, height: 48, borderRadius: 8, marginEnd: 12 }} contentFit="cover" />
                       ) : (
-                        <View style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
+                        <View style={{ width: 48, height: 48, borderRadius: 8, marginEnd: 12, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
                           <Ionicons name="cube-outline" size={22} color="#9ca3af" />
                         </View>
                       )}
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
                           <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
-                          {p.is_active === false && <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>INACTIVE</Text>}
-                          {p.retail_sales_enabled === false && <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[500] }}>INTERNAL</Text>}
-                          {p.has_variants && <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>VARIANTS</Text>}
-                          {badge === "low" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#ca8a04" }}>LOW</Text>}
-                          {badge === "out" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#dc2626" }}>OUT</Text>}
+                          {p.is_active === false && <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>{pr("inactiveBadge")}</Text>}
+                          {p.retail_sales_enabled === false && <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[500] }}>{pr("internalBadge")}</Text>}
+                          {p.has_variants && <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>{pr("variantsBadge")}</Text>}
+                          {badge === "low" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#ca8a04" }}>{pr("lowBadge")}</Text>}
+                          {badge === "out" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#dc2626" }}>{pr("outBadge")}</Text>}
                         </View>
                         <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{productDisplayPrice(p)}</Text>
                         <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{productStockLabel(p)}</Text>
@@ -328,11 +335,11 @@ export function ProductsContent() {
             {totalPages > 1 && (
               <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 8 }}>
                 <TouchableOpacity disabled={page <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}>
-                  <Text style={{ color: page <= 1 ? Colors.gray[300] : "#6366f1" }}>Previous</Text>
+                  <Text style={{ color: page <= 1 ? Colors.gray[300] : "#6366f1" }}>{pr("previous")}</Text>
                 </TouchableOpacity>
-                <Text style={{ color: Colors.gray[600] }}>Page {page} / {totalPages}</Text>
+                <Text style={{ color: Colors.gray[600] }}>{pr("pageOf", { page, total: totalPages })}</Text>
                 <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)}>
-                  <Text style={{ color: page >= totalPages ? Colors.gray[300] : "#6366f1" }}>Next</Text>
+                  <Text style={{ color: page >= totalPages ? Colors.gray[300] : "#6366f1" }}>{pr("next")}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -340,25 +347,25 @@ export function ProductsContent() {
         )}
       </ScrollView>
 
-      <BottomSheet visible={!!menuProduct} onClose={() => setMenuProduct(null)} title={menuProduct?.name ?? "Product"}>
+      <BottomSheet visible={!!menuProduct} onClose={() => setMenuProduct(null)} title={menuProduct?.name ?? pr("productFallback")}>
         {menuProduct && (
           <View>
             {[
-              { label: "Edit", onPress: () => { setMenuProduct(null); router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: menuProduct.id } } as never); } },
+              { label: pr("edit"), onPress: () => { setMenuProduct(null); router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: menuProduct.id } } as never); } },
               {
-                label: "Adjust stock",
+                label: pr("adjustStock"),
                 onPress: () => {
                   if (menuProduct.has_variants && (menuProduct.variants?.length ?? 0) > 1) {
-                    Alert.alert("Variants", "Open the product to adjust stock per variant.");
+                    Alert.alert(pr("variantsAlertTitle"), pr("variantsAlertBody"));
                     return;
                   }
                   setMenuProduct(null);
                   setAdjustProduct(menuProduct);
                 },
               },
-              { label: "Duplicate", onPress: () => { setMenuProduct(null); void handleDuplicate(menuProduct); } },
-              { label: menuProduct.is_active === false ? "Activate" : "Deactivate", onPress: () => { setMenuProduct(null); void toggleActive(menuProduct); } },
-              { label: "Delete", destructive: true, onPress: () => { setMenuProduct(null); handleDelete(menuProduct); } },
+              { label: pr("duplicate"), onPress: () => { setMenuProduct(null); void handleDuplicate(menuProduct); } },
+              { label: menuProduct.is_active === false ? pr("activate") : pr("deactivate"), onPress: () => { setMenuProduct(null); void toggleActive(menuProduct); } },
+              { label: pr("delete"), destructive: true, onPress: () => { setMenuProduct(null); handleDelete(menuProduct); } },
             ].map((action) => (
               <TouchableOpacity
                 key={action.label}
@@ -379,9 +386,14 @@ export function ProductsContent() {
 }
 
 export default function ProductsScreen() {
+  const { t } = useTranslation();
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Products" showBack subtitle="Product catalog" />
+      <ScreenHeader
+        title={t("provider.mobile.screens.productsCatalog.title")}
+        showBack
+        subtitle={t("provider.mobile.screens.productsCatalog.subtitle")}
+      />
       <ProductsContent />
     </ScreenContainer>
   );

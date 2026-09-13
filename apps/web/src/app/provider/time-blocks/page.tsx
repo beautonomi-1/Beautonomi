@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TimeBlock, BlockedTimeType } from "@/lib/provider-portal/types";
@@ -17,6 +19,7 @@ import { BlockedTimeTypeDialog } from "@/components/provider-portal/BlockedTimeT
 import { toast } from "sonner";
 
 export default function TimeBlocksPage() {
+  const { t } = useTranslation();
   const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([]);
   const [blockedTimeTypes, setBlockedTimeTypes] = useState<BlockedTimeType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,7 +40,7 @@ export default function TimeBlocksPage() {
       setBlockedTimeTypes(types);
     } catch (error) {
       console.error("Failed to load time blocks:", error);
-      toast.error("Failed to load time blocks");
+      toast.error(t("web.provider.timeBlocksPage.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -58,7 +61,7 @@ export default function TimeBlocksPage() {
   };
 
   const handleDeleteBlock = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this time block?")) return;
+    if (!confirm(t("web.provider.timeBlocksPage.deleteConfirm"))) return;
 
     // Optimistic removal so the row disappears immediately
     const prev = timeBlocks;
@@ -66,14 +69,14 @@ export default function TimeBlocksPage() {
 
     try {
       await providerApi.deleteTimeBlock(id);
-      toast.success("Time block deleted");
+      toast.success(t("web.provider.timeBlocksPage.deleted"));
       // Bust the GET cache so the background refresh returns fresh data
       const { clearFetcherCache } = await import("@/lib/http/fetcher");
       clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete time block:", error);
-      toast.error("Failed to delete time block");
+      toast.error(t("web.provider.timeBlocksPage.deleteFailed"));
       setTimeBlocks(prev);
     }
   };
@@ -89,70 +92,68 @@ export default function TimeBlocksPage() {
   };
 
   const handleDeleteType = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this blocked time type?")) return;
+    if (!confirm(t("web.provider.timeBlocksPage.deleteTypeConfirm"))) return;
 
     const prev = blockedTimeTypes;
     setBlockedTimeTypes((types) => types.filter((t) => t.id !== id));
 
     try {
       await providerApi.deleteBlockedTimeType(id);
-      toast.success("Blocked time type deleted");
+      toast.success(t("web.provider.timeBlocksPage.typeDeleted"));
       const { clearFetcherCache } = await import("@/lib/http/fetcher");
       clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete blocked time type:", error);
-      toast.error("Failed to delete blocked time type");
+      toast.error(t("web.provider.timeBlocksPage.deleteTypeFailed"));
       setBlockedTimeTypes(prev);
     }
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading time blocks..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.timeBlocksPage.loading")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Time Blocks"
-        subtitle="Block out time for breaks, meetings, or unavailable periods"
+        title={t("web.provider.timeBlocksPage.title")}
+        subtitle={t("web.provider.timeBlocksPage.subtitle")}
       />
 
       <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-sm text-amber-800">
-          <strong>How time blocks work:</strong> Time blocks prevent customers from booking during specific periods
-          (e.g. lunch breaks, team meetings). They apply within operating hours and staff schedules.
-          Recurring blocks repeat automatically each week. Blocks assigned to &quot;All team members&quot; apply to everyone.
+          <strong>{t("web.provider.timeBlocksPage.howTitle")}</strong> {t("web.provider.timeBlocksPage.howBody")}
         </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="blocks">
-            <Clock className="w-4 h-4 mr-2" />
-            Time Blocks
+            <Clock className="w-4 h-4 me-2" />
+            {t("web.provider.timeBlocksPage.title")}
           </TabsTrigger>
           <TabsTrigger value="types">
-            <Calendar className="w-4 h-4 mr-2" />
-            Blocked Time Types
+            <Calendar className="w-4 h-4 me-2" />
+            {t("web.provider.timeBlocksPage.blockedTimeTypes")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="blocks" className="mt-6">
           <div className="mb-4 flex justify-end">
             <Button onClick={handleCreateBlock} className="bg-primary hover:bg-primary-hover">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Time Block
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.timeBlocksPage.addTimeBlock")}
             </Button>
           </div>
 
           {timeBlocks.length === 0 ? (
             <SectionCard className="p-12">
               <EmptyState
-                title="No time blocks"
-                description="Create time blocks to mark unavailable periods on your calendar"
+                title={t("web.provider.timeBlocksPage.emptyTitle")}
+                description={t("web.provider.timeBlocksPage.emptyDescription")}
                 action={{
-                  label: "Add Time Block",
+                  label: t("web.provider.timeBlocksPage.addTimeBlock"),
                   onClick: handleCreateBlock,
                 }}
               />
@@ -167,13 +168,13 @@ export default function TimeBlocksPage() {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">{block.name}</p>
                         <p className="text-sm text-gray-600 mt-0.5">
-                          {block.team_member_name || "All team members"}
+                          {block.team_member_name || t("web.provider.timeBlocksPage.allTeamMembers")}
                         </p>
                       </div>
                       {block.is_active ? (
-                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                        <Badge className="bg-green-100 text-green-800 shrink-0">{t("web.provider.common.active")}</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">{t("web.provider.common.inactive")}</Badge>
                       )}
                     </div>
 
@@ -189,7 +190,7 @@ export default function TimeBlocksPage() {
                       {block.is_recurring && (
                         <span className="flex items-center gap-1">
                           <Repeat className="w-3.5 h-3.5 text-gray-400" />
-                          Recurring
+                          {t("web.provider.timeBlocksPage.recurring")}
                         </span>
                       )}
                     </div>
@@ -201,8 +202,8 @@ export default function TimeBlocksPage() {
                         className="min-h-[44px] flex-1"
                         onClick={() => handleEditBlock(block)}
                       >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
+                        <Edit className="w-4 h-4 me-1" />
+                        {t("web.provider.common.edit")}
                       </Button>
                       <Button
                         variant="outline"
@@ -210,8 +211,8 @@ export default function TimeBlocksPage() {
                         className="min-h-[44px] text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteBlock(block.id)}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete
+                        <Trash2 className="w-4 h-4 me-1" />
+                        {t("web.provider.common.delete")}
                       </Button>
                     </div>
                   </div>
@@ -223,14 +224,14 @@ export default function TimeBlocksPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Team Member</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Recurring</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t("web.provider.common.name")}</TableHead>
+                      <TableHead>{t("web.provider.timeBlocksPage.date")}</TableHead>
+                      <TableHead>{t("web.provider.timeBlocksPage.time")}</TableHead>
+                      <TableHead>{t("web.provider.timeBlocksPage.teamMember")}</TableHead>
+                      <TableHead>{t("web.provider.common.type")}</TableHead>
+                      <TableHead>{t("web.provider.timeBlocksPage.recurring")}</TableHead>
+                      <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -243,40 +244,40 @@ export default function TimeBlocksPage() {
                         </TableCell>
                         <TableCell>
                           {block.team_member_name || (
-                            <span className="text-gray-400">All team members</span>
+                            <span className="text-gray-400">{t("web.provider.timeBlocksPage.allTeamMembers")}</span>
                           )}
                         </TableCell>
                         <TableCell>
                           {block.blocked_time_type_name || (
-                            <span className="text-gray-400">-</span>
+                            <span className="text-gray-400">{t("web.provider.common.hyphen")}</span>
                           )}
                         </TableCell>
                         <TableCell>
                           {block.is_recurring ? (
                             <div className="flex items-center gap-1">
                               <Repeat className="w-3 h-3 text-gray-400" />
-                              <span className="text-sm">Yes</span>
+                              <span className="text-sm">{t("web.provider.common.yes")}</span>
                             </div>
                           ) : (
-                            <span className="text-gray-400">No</span>
+                            <span className="text-gray-400">{t("web.provider.common.no")}</span>
                           )}
                         </TableCell>
                         <TableCell>
                           {block.is_active ? (
-                            <Badge className="bg-green-100 text-green-800">Active</Badge>
+                            <Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+                            <Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleEditBlock(block)}
                             >
-                              <Edit className="w-3 h-3 mr-1" />
-                              Edit
+                              <Edit className="w-3 h-3 me-1" />
+                              {t("web.provider.common.edit")}
                             </Button>
                             <Button
                               variant="outline"
@@ -284,8 +285,8 @@ export default function TimeBlocksPage() {
                               onClick={() => handleDeleteBlock(block.id)}
                               className="text-red-600 hover:text-red-700"
                             >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Delete
+                              <Trash2 className="w-3 h-3 me-1" />
+                              {t("web.provider.common.delete")}
                             </Button>
                           </div>
                         </TableCell>
@@ -301,18 +302,18 @@ export default function TimeBlocksPage() {
         <TabsContent value="types" className="mt-6">
           <div className="mb-4 flex justify-end">
             <Button onClick={handleCreateType} className="bg-primary hover:bg-primary-hover">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Type
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.timeBlocksPage.addType")}
             </Button>
           </div>
 
           {blockedTimeTypes.length === 0 ? (
             <SectionCard className="p-12">
               <EmptyState
-                title="No blocked time types"
-                description="Create types like 'Lunch Break', 'Training', or 'Meeting' to categorize time blocks"
+                title={t("web.provider.timeBlocksPage.emptyTypesTitle")}
+                description={t("web.provider.timeBlocksPage.emptyTypesDescription")}
                 action={{
-                  label: "Add Type",
+                  label: t("web.provider.timeBlocksPage.addType"),
                   onClick: handleCreateType,
                 }}
               />
@@ -337,9 +338,9 @@ export default function TimeBlocksPage() {
                         </div>
                       </div>
                       {type.is_active ? (
-                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                        <Badge className="bg-green-100 text-green-800 shrink-0">{t("web.provider.common.active")}</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">{t("web.provider.common.inactive")}</Badge>
                       )}
                     </div>
 
@@ -350,8 +351,8 @@ export default function TimeBlocksPage() {
                         className="min-h-[44px] flex-1"
                         onClick={() => handleEditType(type)}
                       >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
+                        <Edit className="w-4 h-4 me-1" />
+                        {t("web.provider.common.edit")}
                       </Button>
                       <Button
                         variant="outline"
@@ -359,8 +360,8 @@ export default function TimeBlocksPage() {
                         className="min-h-[44px] text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteType(type.id)}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete
+                        <Trash2 className="w-4 h-4 me-1" />
+                        {t("web.provider.common.delete")}
                       </Button>
                     </div>
                   </div>
@@ -372,11 +373,11 @@ export default function TimeBlocksPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Color</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t("web.provider.common.name")}</TableHead>
+                      <TableHead>{t("web.provider.common.description")}</TableHead>
+                      <TableHead>{t("web.provider.timeBlocksPage.color")}</TableHead>
+                      <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -384,7 +385,7 @@ export default function TimeBlocksPage() {
                       <TableRow key={type.id}>
                         <TableCell className="font-medium">{type.name}</TableCell>
                         <TableCell className="max-w-xs truncate">
-                          {type.description || "-"}
+{type.description || t("web.provider.common.hyphen")}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -397,20 +398,20 @@ export default function TimeBlocksPage() {
                         </TableCell>
                         <TableCell>
                           {type.is_active ? (
-                            <Badge className="bg-green-100 text-green-800">Active</Badge>
+                            <Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+                            <Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleEditType(type)}
                             >
-                              <Edit className="w-3 h-3 mr-1" />
-                              Edit
+                              <Edit className="w-3 h-3 me-1" />
+                              {t("web.provider.common.edit")}
                             </Button>
                             <Button
                               variant="outline"
@@ -418,8 +419,8 @@ export default function TimeBlocksPage() {
                               onClick={() => handleDeleteType(type.id)}
                               className="text-red-600 hover:text-red-700"
                             >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Delete
+                              <Trash2 className="w-3 h-3 me-1" />
+                              {t("web.provider.common.delete")}
                             </Button>
                           </div>
                         </TableCell>

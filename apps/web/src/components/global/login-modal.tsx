@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -41,7 +41,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
 import { fetcher } from "@/lib/http/fetcher";
-import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { supportedLanguages, preferredLanguageFromDevice, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
 import {
   EVENT_SIGNUP_START,
   EVENT_SIGNUP_COMPLETE,
@@ -68,20 +68,10 @@ import { AccountLinkOffer } from "@/components/auth/AccountLinkOffer";
 import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
 import { lookupAccountLinkMethods } from "@/lib/auth/auth-otp-client";
 import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
-const LOGIN_MODAL_I18N_LABELS: Record<string, string> = {
-  "auth.preferredLanguage": "Preferred language",
-  "auth.howHearAboutUs": "How did you hear about us?",
-  "auth.signupSourceSkip": "Prefer not to say",
-  "auth.signupSource.social_media": "Social media",
-  "auth.signupSource.friend_family": "Friend or family",
-  "auth.signupSource.google_search": "Google search",
-  "auth.signupSource.advertisement": "Advertisement",
-  "auth.signupSource.other": "Other",
-};
-
 interface LoginModalProps {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -106,10 +96,12 @@ export default function LoginModal({
   redirectUrl,
   skipDefaultSignupRedirect = false,
 }: LoginModalProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { refreshUser, role: contextRole, user } = useAuth();
   const { track, isReady } = useAmplitude();
   const { bundle: configBundle } = useConfigBundle();
+  const visibleLanguages = useMemo(() => supportedLanguages, []);
   const authPolicy = configBundle?.auth ?? DEFAULT_PUBLIC_AUTH;
   const emailOtpLen = authPolicy.email_otp_length;
   const emailOtpExpiryMin = Math.max(1, Math.round(authPolicy.email_otp_expiration_seconds / 60));
@@ -197,13 +189,9 @@ export default function LoginModal({
   const [emailOtpResending, setEmailOtpResending] = useState(false);
   const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState<number | null>(null);
   const [emailOtpSecondsLeft, setEmailOtpSecondsLeft] = useState(0);
-  const [preferredLanguage, setPreferredLanguage] = useState(() => {
-    if (typeof navigator !== "undefined" && navigator.language) {
-      const code = navigator.language.split("-")[0];
-      return supportedLanguages.some((l) => l.code === code) ? code : "en";
-    }
-    return "en";
-  });
+  const [preferredLanguage, setPreferredLanguage] = useState(() =>
+    typeof navigator !== "undefined" ? preferredLanguageFromDevice(navigator.language) : "en",
+  );
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -212,7 +200,6 @@ export default function LoginModal({
     google: true,
     apple: true,
   });
-  const t = (key: string) => LOGIN_MODAL_I18N_LABELS[key] ?? key;
   const fieldClass =
     "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
@@ -310,12 +297,7 @@ export default function LoginModal({
       setEmailOtpResendCooldown(0);
       setEmailOtpExpiresAt(null);
       const langCode =
-        typeof navigator !== "undefined" && navigator.language
-          ? (() => {
-              const c = navigator.language.split("-")[0];
-              return supportedLanguages.some((l) => l.code === c) ? c : "en";
-            })()
-          : "en";
+        typeof navigator !== "undefined" ? preferredLanguageFromDevice(navigator.language) : "en";
       setPreferredLanguage(langCode);
       setSignupSource(null);
     }
@@ -389,7 +371,7 @@ export default function LoginModal({
 
   const handleEmailContinue = () => {
     if (!email) {
-      setError("Email is required");
+      setError(t("web.global.loginModal.errorEmailRequired"));
       return;
     }
     setShowPasswordField(true);
@@ -402,7 +384,7 @@ export default function LoginModal({
     setShowResendVerification(false);
 
     if (!email || !password) {
-      setError("Email and password are required");
+      setError(t("web.global.loginModal.errorEmailPasswordRequired"));
       return;
     }
 
@@ -411,7 +393,7 @@ export default function LoginModal({
     const trimmedPassword = password.trim();
 
     if (!trimmedEmail || !trimmedPassword) {
-      setError("Email and password are required");
+      setError(t("web.global.loginModal.errorEmailPasswordRequired"));
       return;
     }
 
@@ -424,7 +406,7 @@ export default function LoginModal({
       if (isSignup) {
         // Sign up new user
         if (!fullName) {
-          setError("Full name is required");
+          setError(t("web.global.loginModal.errorFullNameRequired"));
           setIsLoading(false);
           return;
         }
@@ -448,7 +430,7 @@ export default function LoginModal({
         // If email verification is enabled, session will be null until email is verified
         if (signupResult?.session) {
           if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
-          toast.success("Account created successfully! Welcome to Beautonomi.");
+          toast.success(t("web.global.loginModal.toastAccountCreated"));
 
           // Wait for auth state to update
           await refreshUser();
@@ -493,7 +475,7 @@ export default function LoginModal({
             // Check if login actually created a session
             if (loginResult?.session) {
               if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
-              toast.success("Account created successfully! Welcome to Beautonomi.");
+              toast.success(t("web.global.loginModal.toastAccountCreated"));
 
               // Wait for auth state to update
               await refreshUser();
@@ -539,14 +521,11 @@ export default function LoginModal({
             setPasswordSignupOtpCode("");
             setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
             setAwaitingEmailVerification(true);
-            toast.success(
-              "We sent a verification code to your email — enter it below to finish signing up.",
-              { duration: 4500 }
-            );
+            toast.success(t("web.global.loginModal.toastVerificationCodeSentSignup"), { duration: 4500 });
           }
         } else {
           // Unexpected case - user wasn't created
-          throw new Error("Failed to create account. Please try again.");
+          throw new Error(t("web.global.loginModal.errorFailedCreateAccount"));
         }
       } else {
         // Sign in existing user
@@ -607,7 +586,7 @@ export default function LoginModal({
           setError(null);
           setShowResendVerification(false);
           if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
-          toast.success("Logged in successfully!");
+          toast.success(t("web.global.loginModal.toastLoggedInSuccessfully"));
           setOpen(false);
           void refreshUser().catch(() => {});
 
@@ -640,7 +619,7 @@ export default function LoginModal({
           setError(null);
           setOpen(false);
           if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
-          toast.success("Logged in successfully!");
+          toast.success(t("web.global.loginModal.toastLoggedInSuccessfully"));
           router.replace("/portal");
           setIsLoading(false);
         }
@@ -648,7 +627,7 @@ export default function LoginModal({
     } catch (error: unknown) {
       console.error("Auth error:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Authentication failed. Please try again.";
+        error instanceof Error ? error.message : t("web.global.loginModal.errorAuthFailed");
 
       // Check for specific error types
       const lowerErrorMessage = errorMessage.toLowerCase();
@@ -659,9 +638,7 @@ export default function LoginModal({
         lowerErrorMessage.includes("email_not_confirmed") ||
         lowerErrorMessage.includes("verify your email")
       ) {
-        setError(
-          "Please verify your email address before logging in. Check your inbox for the verification email."
-        );
+        setError(t("web.global.loginModal.errorVerifyEmailBeforeLogin"));
         setShowResendVerification(true);
       }
       // Check if this is invalid credentials (could be wrong password OR unverified email)
@@ -670,7 +647,7 @@ export default function LoginModal({
         lowerErrorMessage.includes("invalid credentials")
       ) {
         // Show clear error message
-        setError("Invalid login credentials. Please check your email and password.");
+        setError(t("web.global.loginModal.errorInvalidCredentials"));
         // Show resend verification as a secondary option (less prominent)
         // This helps users who might have unverified emails, but doesn't assume that's the issue
         setShowResendVerification(true);
@@ -689,11 +666,11 @@ export default function LoginModal({
           setAccountLinkOffer(link.offer);
           setError(
             link.offer
-              ? "This email is already registered. Sign in with the method below."
-              : "An account with this email already exists. If a provider booked for you, check your inbox for a link to claim your account — otherwise log in instead."
+              ? t("web.global.loginModal.errorEmailAlreadyRegistered")
+              : t("web.global.loginModal.errorEmailAccountExists")
           );
           setShowResendVerification(false);
-          toast.success("Check your email to claim your account.");
+          toast.success(t("web.global.loginModal.toastCheckEmailClaim"));
           return; // handled — skip the generic error toast below
         } catch {
           setError(errorMessage);
@@ -718,7 +695,7 @@ export default function LoginModal({
 
   const handleResendVerification = async () => {
     if (!email) {
-      toast.error("Please enter your email address first");
+      toast.error(t("web.global.loginModal.errorEnterEmailFirst"));
       return;
     }
     if (signupVerificationResendCooldown > 0) return;
@@ -729,13 +706,13 @@ export default function LoginModal({
         email.trim(),
         buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl })
       );
-      toast.success("Verification code sent! Please check your inbox and spam folder.");
+      toast.success(t("web.global.loginModal.toastVerificationCodeSent"));
       setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setShowResendVerification(false);
     } catch (error: unknown) {
       console.error("Error resending verification email:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to send verification email.";
+        error instanceof Error ? error.message : t("web.global.loginModal.errorFailedSendVerification");
 
       // Check if the error indicates the email doesn't need verification or doesn't exist
       const lowerError = errorMessage.toLowerCase();
@@ -744,19 +721,15 @@ export default function LoginModal({
         lowerError.includes("email not found") ||
         lowerError.includes("no user found")
       ) {
-        toast.error(
-          "No account found with this email address. Please check your email or sign up."
-        );
+        toast.error(t("web.global.loginModal.errorNoAccountFound"));
       } else if (
         lowerError.includes("already verified") ||
         lowerError.includes("email already confirmed")
       ) {
-        toast.error(
-          "This email is already verified. Please check your password or try signing in again."
-        );
+        toast.error(t("web.global.loginModal.errorEmailAlreadyVerified"));
         setShowResendVerification(false);
       } else {
-        toast.error(errorMessage + " Please try again.");
+        toast.error(errorMessage + t("web.global.loginModal.pleaseTryAgainSuffix"));
       }
     } finally {
       setIsResendingVerification(false);
@@ -776,7 +749,7 @@ export default function LoginModal({
     try {
       await verifySignupEmailOtp(trimmedEmail, token);
       if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
-      toast.success("Email verified — welcome to Beautonomi!");
+      toast.success(t("web.global.loginModal.toastEmailVerifiedWelcome"));
 
       await refreshUser();
       try {
@@ -807,7 +780,7 @@ export default function LoginModal({
       }
       onAuthSuccess?.();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Invalid or expired code";
+      const msg = e instanceof Error ? e.message : t("web.global.loginModal.errorInvalidOrExpiredCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -823,7 +796,7 @@ export default function LoginModal({
     setIsSignup(signup);
     setError(null);
     // Passwordless-primary (mobile pattern): login lands on the email-code flow,
-    // with "Use password instead" as progressive disclosure.
+    // with "{t("web.global.loginModal.usePasswordInstead")}" as progressive disclosure.
     setEmailOtpMode(!signup);
     setEmailOtpSent(false);
     setEmailOtpCode("");
@@ -939,11 +912,11 @@ export default function LoginModal({
 
   const handlePhoneSendOtp = async () => {
     if (!authPolicy.phone_provider_enabled) {
-      setError("Phone sign-in is not available for this platform.");
+      setError(t("web.global.loginModal.errorPhoneSignInUnavailable"));
       return;
     }
     if (!isValidE164) {
-      setError("Please enter a valid phone number with country code (e.g. +27 82 345 6789)");
+      setError(t("web.global.loginModal.errorValidPhoneRequired"));
       return;
     }
     setIsLoading(true);
@@ -962,9 +935,9 @@ export default function LoginModal({
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("Check your phone for the verification code");
+      toast.success(t("web.global.loginModal.toastCheckPhoneForCode"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedSendCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -987,9 +960,9 @@ export default function LoginModal({
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      toast.success(t("web.global.loginModal.toastNewCodeSent"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to resend code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedResendCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1016,9 +989,9 @@ export default function LoginModal({
       setOpen(false);
       onAuthSuccess?.();
       await routeAfterOtpAuth();
-      toast.success("You're signed in");
+      toast.success(t("web.global.loginModal.toastSignedIn"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorInvalidCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1028,12 +1001,12 @@ export default function LoginModal({
 
   const handleSendEmailOtp = async () => {
     if (!authPolicy.email_provider_enabled) {
-      setError("Email sign-in is not available for this platform.");
+      setError(t("web.global.loginModal.errorEmailSignInUnavailable"));
       return;
     }
     const trimmed = email.trim();
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError("Please enter a valid email address");
+      setError(t("web.global.loginModal.errorValidEmailRequired"));
       return;
     }
     setIsLoading(true);
@@ -1052,11 +1025,9 @@ export default function LoginModal({
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success(
-        `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`
-      );
+      toast.success(t("web.global.loginModal.toastEmailOtpSent", { length: emailOtpLen, minutes: emailOtpExpiryMin }));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedSendCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1079,9 +1050,9 @@ export default function LoginModal({
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      toast.success(t("web.global.loginModal.toastNewCodeSent"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to resend code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedResendCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1108,9 +1079,9 @@ export default function LoginModal({
       setOpen(false);
       onAuthSuccess?.();
       await routeAfterOtpAuth();
-      toast.success("You're signed in");
+      toast.success(t("web.global.loginModal.toastSignedIn"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid code";
+      const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorInvalidCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1137,11 +1108,11 @@ export default function LoginModal({
       }
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
-      toast.info(provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...");
+      toast.info(provider === "google" ? t("web.global.loginModal.toastRedirectingGoogle") : t("web.global.loginModal.toastRedirectingApple"));
     } catch (error: unknown) {
       console.error("OAuth error:", error);
       const label = provider === "google" ? "Google" : "Apple";
-      const msg = error instanceof Error ? error.message : `Failed to sign in with ${label}`;
+      const msg = error instanceof Error ? error.message : t("web.global.loginModal.errorFailedSignInWith", { provider: label });
       setError(msg);
       toast.error(msg);
       setIsLoading(false);
@@ -1157,34 +1128,34 @@ export default function LoginModal({
           <button
             onClick={() => setOpen(false)}
             className="absolute left-4 top-4 sm:left-5 sm:top-5 text-gray-500 hover:text-gray-700 p-2 -m-2 rounded-full hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-            aria-label="Close"
+            aria-label={t("web.global.loginModal.closeAriaLabel")}
           >
             <X className="h-5 w-5" />
           </button>
           <DialogTitle className="text-center text-base sm:text-lg font-semibold sr-only">
-            Log in or sign up
+            {t("web.global.loginModal.welcomeBack")}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Log in or create a new Beautonomi account to access all features
+            {t("web.global.loginModal.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="px-5 sm:px-6 pb-6 sm:pb-8 pt-0">
           {showEmailForm && awaitingEmailVerification ? (
             <>
               <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">
-                Check your email
+                {t("web.global.loginModal.checkYourEmail")}
               </h2>
               <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">
-                Confirm your address to continue
+                {t("web.global.loginModal.confirmAddressToContinue")}
               </p>
             </>
           ) : (
             <>
               <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">
-                Welcome to Beautonomi
+                {t("web.global.loginModal.joinBeautonomi")}
               </h2>
               <p className="text-[13px] text-gray-500 mb-5">
-                Log in or sign up to continue — we&apos;ll set you up when you verify.
+                {t("web.global.loginModal.signInSubtitle")}
               </p>
             </>
           )}
@@ -1199,7 +1170,7 @@ export default function LoginModal({
               <div
                 className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1"
                 role="tablist"
-                aria-label="Sign-in method"
+                aria-label={t("web.global.loginModal.signInMethodAriaLabel")}
               >
                 <button
                   type="button"
@@ -1220,7 +1191,7 @@ export default function LoginModal({
                   }`}
                 >
                   <Smartphone className="h-4 w-4" aria-hidden />
-                  Phone
+                  {t("web.global.loginModal.phone")}
                 </button>
                 <button
                   type="button"
@@ -1235,7 +1206,7 @@ export default function LoginModal({
                   }`}
                 >
                   <Mail className="h-4 w-4" aria-hidden />
-                  Email
+                  {t("web.global.loginModal.emailTab")}
                 </button>
               </div>
             )}
@@ -1250,14 +1221,14 @@ export default function LoginModal({
                   {showResendVerification && (
                     <div className="mt-3">
                       <p className="text-[13px] text-gray-600 mb-2">
-                        If you haven&apos;t verified your email yet:
+                        {t("web.global.loginModal.ifNotVerifiedYet")}
                       </p>
                       <button
                         onClick={handleResendVerification}
                         disabled={isResendingVerification}
                         className="text-sm font-medium text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed py-1 rounded-lg touch-manipulation"
                       >
-                        {isResendingVerification ? "Sending…" : "Resend verification email"}
+                        {isResendingVerification ? t("web.global.loginModal.sending") : t("web.global.loginModal.resendVerificationEmail")}
                       </button>
                     </div>
                   )}
@@ -1271,24 +1242,26 @@ export default function LoginModal({
             <>
               <div className="mb-5">
                 <PhoneInput
-                  label="Phone number"
+                  label={t("web.global.loginModal.phoneNumberLabel")}
                   value={phoneFull}
                   onChange={setPhoneFull}
                   defaultCountryCode="+27"
-                  placeholder="e.g. 82 123 4567"
+                  placeholder={t("web.global.loginModal.phonePlaceholder")}
                 />
               </div>
 
               <p className="mb-6 text-[13px] leading-relaxed text-gray-500">
-                We&apos;ll text a {smsOtpLen}-digit code (about {smsOtpExpiryMin}{" "}
-                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By
-                continuing you agree to our{" "}
+                {t("web.global.loginModal.phoneOtpConsent", {
+                  length: smsOtpLen,
+                  minutes: smsOtpExpiryMin,
+                  minuteLabel: smsOtpExpiryMin === 1 ? t("web.global.loginModal.minute") : t("web.global.loginModal.minutes"),
+                })}{" "}
                 <Link
                   href="/terms-and-condition"
                   className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900"
                   onClick={() => setOpen(false)}
                 >
-                  Terms
+                  {t("web.global.loginModal.terms")}
                 </Link>{" "}
                 &amp;{" "}
                 <Link
@@ -1296,10 +1269,9 @@ export default function LoginModal({
                   className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900"
                   onClick={() => setOpen(false)}
                 >
-                  Privacy Policy
+                  {t("web.global.loginModal.privacyPolicy")}
                 </Link>{" "}
-                (incl. communications &amp; analytics; optional session replay when signed in —
-                adjust in account settings).
+                {t("web.global.loginModal.phoneOtpConsentSuffix")}
               </p>
 
               <Button
@@ -1311,10 +1283,10 @@ export default function LoginModal({
                 {isLoading ? (
                   <>
                     <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                    Sending code…
+                    {t("web.global.loginModal.sendingCode")}
                   </>
                 ) : (
-                  "Continue"
+                  t("web.global.loginModal.continue")
                 )}
               </Button>
             </>
@@ -1324,12 +1296,15 @@ export default function LoginModal({
           {!showEmailForm && otpSent && authPolicy.phone_provider_enabled && (
             <>
               <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
-                Enter verification code
+                {t("web.global.loginModal.enterVerificationCode")}
               </p>
               <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
-                We sent a {smsOtpLen}-digit code to{" "}
-                <span className="font-semibold text-gray-900">{sentPhoneE164}</span> (valid about{" "}
-                {smsOtpExpiryMin} {smsOtpExpiryMin === 1 ? "minute" : "minutes"}).
+                {t("web.global.loginModal.phoneOtpSentTo", {
+                  length: smsOtpLen,
+                  phone: sentPhoneE164,
+                  minutes: smsOtpExpiryMin,
+                  minuteLabel: smsOtpExpiryMin === 1 ? t("web.global.loginModal.minute") : t("web.global.loginModal.minutes"),
+                })}
               </p>
               <OtpDigitInput
                 value={otpCode}
@@ -1343,13 +1318,13 @@ export default function LoginModal({
                 }}
                 disabled={isLoading}
                 autoFocus
-                label="Phone verification code"
+                label={t("web.global.loginModal.phoneVerificationCodeLabel")}
                 className="mb-5"
                 length={smsOtpLen}
               />
               <div className="mb-4 flex items-center justify-between gap-3 text-xs">
                 <span className="text-gray-500">
-                  Code expires in{" "}
+                  {t("web.global.loginModal.codeExpiresIn")}{" "}
                   <span className="font-semibold text-gray-700">
                     {formatOtpCountdown(otpSecondsLeft)}
                   </span>
@@ -1361,10 +1336,10 @@ export default function LoginModal({
                   className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 >
                   {otpResending
-                    ? "Resending..."
+                    ? t("web.global.loginModal.resending")
                     : otpResendCooldown > 0
-                      ? `Resend in ${otpResendCooldown}s`
-                      : "Resend code"}
+                      ? t("web.global.loginModal.resendInSeconds", { seconds: otpResendCooldown })
+                      : t("web.global.loginModal.resendCode")}
                 </button>
               </div>
               <Button
@@ -1376,10 +1351,10 @@ export default function LoginModal({
                 {isLoading ? (
                   <>
                     <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                    Verifying…
+                    {t("web.global.loginModal.verifying")}
                   </>
                 ) : (
-                  "Verify"
+                  t("web.global.loginModal.verify")
                 )}
               </Button>
               <button
@@ -1392,7 +1367,7 @@ export default function LoginModal({
                 }}
                 className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
               >
-                Use different number
+                {t("web.global.loginModal.useDifferentNumber")}
               </button>
             </>
           )}
@@ -1403,17 +1378,18 @@ export default function LoginModal({
                 <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
               </div>
               <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">
-                Verify your email
+                {t("web.global.loginModal.verifyYourEmail")}
               </p>
               <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
-                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                {t("web.global.loginModal.signupOtpSentPrefix", { length: SUPABASE_AUTH_OTP_LENGTH })}
               </p>
               <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">
                 {email.trim()}
               </p>
               <p className="text-[13px] leading-relaxed text-gray-600 mb-5 text-center">
-                Enter the code below to finish creating your{" "}
-                {redirectContext === "provider" ? "provider " : ""}account.
+                {redirectContext === "provider"
+                  ? t("web.global.loginModal.signupOtpFinishProvider")
+                  : t("web.global.loginModal.signupOtpFinishCustomer")}
               </p>
               <OtpDigitInput
                 value={passwordSignupOtpCode}
@@ -1428,7 +1404,7 @@ export default function LoginModal({
                 }}
                 disabled={isVerifyingPasswordSignupOtp}
                 autoFocus
-                label="Signup verification code"
+                label={t("web.global.loginModal.signupVerificationCodeLabel")}
                 length={SUPABASE_AUTH_OTP_LENGTH}
                 className="mb-4"
               />
@@ -1450,11 +1426,11 @@ export default function LoginModal({
                 >
                   {isVerifyingPasswordSignupOtp ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
-                      Verifying…
+                      <Loader2 className="me-2 h-4 w-4 animate-spin inline" aria-hidden />
+                      {t("web.global.loginModal.verifying")}
                     </>
                   ) : (
-                    "Verify & continue"
+                    t("web.global.loginModal.verifyAndContinue")
                   )}
                 </Button>
                 <Button
@@ -1471,13 +1447,13 @@ export default function LoginModal({
                 >
                   {isResendingVerification ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
-                      Sending…
+                      <Loader2 className="me-2 h-4 w-4 animate-spin inline" aria-hidden />
+                      {t("web.global.loginModal.sending")}
                     </>
                   ) : signupVerificationResendCooldown > 0 ? (
-                    `Resend code in ${signupVerificationResendCooldown}s`
+                    t("web.global.loginModal.resendCodeInSeconds", { seconds: signupVerificationResendCooldown })
                   ) : (
-                    "Resend verification code"
+                    t("web.global.loginModal.resendVerificationCode")
                   )}
                 </Button>
                 <button
@@ -1493,10 +1469,10 @@ export default function LoginModal({
                     setShowResendVerification(false);
                   }}
                 >
-                  Wrong email? Go back and edit
+                  {t("web.global.loginModal.wrongEmailGoBack")}
                 </button>
                 <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-500">
-                  No code in your inbox? Check your spam folder, or resend the code above.
+                  {t("web.global.loginModal.noCodeInInbox")}
                 </p>
               </div>
             </div>
@@ -1535,7 +1511,7 @@ export default function LoginModal({
                       d="M15 19l-7-7 7-7"
                     />
                   </svg>
-                  Back to {authPolicy.phone_provider_enabled ? "phone or social" : "social"}
+                  {authPolicy.phone_provider_enabled ? t("web.global.loginModal.backToPhoneOrSocial") : t("web.global.loginModal.backToSocial")}
                 </button>
               )}
               {/* Step 1: Email Input (or both email and password for login mode) */}
@@ -1543,11 +1519,11 @@ export default function LoginModal({
                 <>
                   {isSignup && (
                     <div className="mb-4">
-                      <Label className={labelClass}>Full name</Label>
+                      <Label className={labelClass}>{t("auth.fullName")}</Label>
                       <Input
                         type="text"
                         className={`${fieldClass} min-h-[48px] h-12 rounded-2xl focus-visible:ring-2 focus-visible:ring-primary/20`}
-                        placeholder="Full name"
+                        placeholder={t("auth.fullName")}
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         onKeyDown={(e) => {
@@ -1561,11 +1537,11 @@ export default function LoginModal({
                     </div>
                   )}
                   <div className="mb-4">
-                    <Label className={labelClass}>Email</Label>
+                    <Label className={labelClass}>{t("auth.email")}</Label>
                     <Input
                       type="email"
                       className={`${fieldClass} min-h-[48px] h-12 rounded-2xl focus-visible:ring-2 focus-visible:ring-primary/20`}
-                      placeholder="Enter your email"
+                      placeholder={t("web.global.loginModal.enterYourEmail")}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onKeyDown={(e) => {
@@ -1576,7 +1552,7 @@ export default function LoginModal({
                           }
                           if (initialMode === "login") {
                             const passwordInput = document.querySelector(
-                              'input[type="password"], input[type="text"][placeholder="Password"]'
+                              'input[type="password"], input[type="text"][placeholder={t("auth.password")}]'
                             ) as HTMLInputElement;
                             if (passwordInput) {
                               passwordInput.focus();
@@ -1596,14 +1572,14 @@ export default function LoginModal({
                   {!isSignup && emailOtpSent && (
                     <>
                       <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
-                        Enter verification code
+                        {t("web.global.loginModal.enterVerificationCode")}
                       </p>
                       <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
-                        Enter the {emailOtpLen}-digit code we sent to{" "}
-                        <span className="font-semibold text-gray-900">
-                          {pendingEmailOtp || email.trim()}
-                        </span>{" "}
-                        (valid about {emailOtpExpiryMin} minutes)
+                        {t("web.global.loginModal.emailOtpEnterCode", {
+                          length: emailOtpLen,
+                          email: pendingEmailOtp || email.trim(),
+                          minutes: emailOtpExpiryMin,
+                        })}
                       </p>
                       <OtpDigitInput
                         value={emailOtpCode}
@@ -1617,13 +1593,13 @@ export default function LoginModal({
                         }}
                         disabled={isLoading}
                         autoFocus
-                        label="Email verification code"
+                        label={t("web.global.loginModal.emailVerificationCodeLabel")}
                         className="mb-5"
                         length={emailOtpLen}
                       />
                       <div className="mb-4 flex items-center justify-between gap-3 text-xs">
                         <span className="text-gray-500">
-                          Code valid for{" "}
+                          {t("web.global.loginModal.codeValidFor")}{" "}
                           <span className="font-semibold tabular-nums text-gray-700">
                             {formatOtpCountdown(emailOtpSecondsLeft)}
                           </span>
@@ -1635,10 +1611,10 @@ export default function LoginModal({
                           className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                         >
                           {emailOtpResending
-                            ? "Resending..."
+                            ? t("web.global.loginModal.resending")
                             : emailOtpResendCooldown > 0
                               ? `Resend in ${emailOtpResendCooldown}s`
-                              : "Resend code"}
+                              : t("web.global.loginModal.resendCode")}
                         </button>
                       </div>
                       <Button
@@ -1650,10 +1626,10 @@ export default function LoginModal({
                         {isLoading ? (
                           <>
                             <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                            Verifying…
+                            {t("web.global.loginModal.verifying")}
                           </>
                         ) : (
-                          "Verify"
+                          t("web.global.loginModal.verify")
                         )}
                       </Button>
                       <button
@@ -1668,27 +1644,29 @@ export default function LoginModal({
                         }}
                         className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100 mb-6"
                       >
-                        Use a different email
+                        {t("web.global.loginModal.useDifferentEmail")}
                       </button>
                     </>
                   )}
 
                   {!isSignup && emailOtpMode && !emailOtpSent && (
                     <p className="mb-5 text-[13px] leading-relaxed text-gray-600">
-                      We&apos;ll email you a {emailOtpLen}-digit verification code (valid about{" "}
-                      {emailOtpExpiryMin} minutes).
+                      {t("web.global.loginModal.emailOtpWillSend", {
+                        length: emailOtpLen,
+                        minutes: emailOtpExpiryMin,
+                      })}
                     </p>
                   )}
 
                   {/* Show password field immediately in login mode (when not signup and not email OTP flow) */}
                   {!isSignup && !emailOtpMode && !emailOtpSent && (
                     <div className="mb-5">
-                      <Label className={labelClass}>Password</Label>
+                      <Label className={labelClass}>{t("auth.password")}</Label>
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
-                          className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pr-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
-                          placeholder="Password"
+                          className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pe-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
+                          placeholder={t("auth.password")}
                           value={password}
                           onChange={(e) => {
                             setPassword(e.target.value);
@@ -1708,7 +1686,7 @@ export default function LoginModal({
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-label={showPassword ? t("web.global.loginModal.hidePassword") : t("web.global.loginModal.showPassword")}
                           tabIndex={0}
                         >
                           {showPassword ? (
@@ -1727,8 +1705,8 @@ export default function LoginModal({
                         onClick={() => setOpen(false)}
                         className="text-[15px] text-gray-500 hover:text-primary font-medium py-2 inline-block touch-manipulation"
                       >
-                        Forgot your password?{" "}
-                        <span className="text-primary font-semibold">Reset it</span>
+                        {t("web.global.loginModal.forgotPasswordReset")}{" "}
+                        <span className="text-primary font-semibold">{t("web.global.loginModal.resetIt")}</span>
                       </Link>
                     </div>
                   )}
@@ -1749,8 +1727,8 @@ export default function LoginModal({
                           }}
                           className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
                         >
-                          Sign in with{" "}
-                          <span className="text-primary font-semibold">email code</span> instead
+                          {t("web.global.loginModal.signInWithEmailCode")}{" "}
+                          <span className="text-primary font-semibold">{t("web.global.loginModal.emailCodeInstead")}</span> {t("web.global.loginModal.instead")}
                         </button>
                       </div>
                     )}
@@ -1767,7 +1745,7 @@ export default function LoginModal({
                         }}
                         className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
                       >
-                        Use password instead
+                        {t("web.global.loginModal.usePasswordInstead")}
                       </button>
                     </div>
                   )}
@@ -1778,7 +1756,7 @@ export default function LoginModal({
                       onClick={handleEmailContinue}
                       disabled={isLoading || !email}
                     >
-                      Continue
+                      {t("web.global.loginModal.continue")}
                     </Button>
                   )}
                   {!isSignup && !emailOtpSent && !emailOtpMode && (
@@ -1791,10 +1769,10 @@ export default function LoginModal({
                       {isLoading ? (
                         <>
                           <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                          Signing in…
+                          {t("web.global.loginModal.signingIn")}
                         </>
                       ) : (
-                        "Log in"
+                        t("auth.login")
                       )}
                     </Button>
                   )}
@@ -1808,10 +1786,10 @@ export default function LoginModal({
                       {isLoading ? (
                         <>
                           <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                          Sending…
+                          {t("web.global.loginModal.sending")}
                         </>
                       ) : (
-                        "Send code"
+                        t("web.global.loginModal.sendCode")
                       )}
                     </Button>
                   )}
@@ -1824,7 +1802,7 @@ export default function LoginModal({
                           <div className="flex items-center my-6">
                             <div className="flex-grow border-t border-gray-200 rounded-full"></div>
                             <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">
-                              or
+                              {t("web.global.loginModal.or")}
                             </span>
                             <div className="flex-grow border-t border-gray-200 rounded-full"></div>
                           </div>
@@ -1838,7 +1816,7 @@ export default function LoginModal({
                               disabled={isLoading}
                             >
                               <FaGoogle className="text-lg shrink-0" />
-                              <span>Continue with Google</span>
+                              <span>{t("auth.continueWithGoogle")}</span>
                             </Button>
                           )}
 
@@ -1850,7 +1828,7 @@ export default function LoginModal({
                               disabled={isLoading}
                             >
                               <FaApple className="text-lg shrink-0" />
-                              <span>Continue with Apple</span>
+                              <span>{t("auth.continueWithApple")}</span>
                             </Button>
                           )}
                         </>
@@ -1872,7 +1850,7 @@ export default function LoginModal({
                           disabled={isLoading}
                         >
                           <Smartphone className="w-5 h-5 shrink-0" aria-hidden />
-                          <span>Continue with Phone</span>
+                          <span>{t("web.global.loginModal.continueWithPhone")}</span>
                         </Button>
                       )}
 
@@ -1884,7 +1862,7 @@ export default function LoginModal({
                           }}
                           className="text-[15px] text-gray-500 hover:text-gray-900 font-medium py-2 touch-manipulation"
                         >
-                          Need help?
+                          {t("web.global.loginModal.needHelp")}
                         </button>
                       </div>
                     </>
@@ -1896,12 +1874,12 @@ export default function LoginModal({
               {showPasswordField && (
                 <>
                   <div className="mb-5">
-                    <Label className={labelClass}>Password</Label>
+                    <Label className={labelClass}>{t("auth.password")}</Label>
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pr-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
-                        placeholder="Password"
+                        className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pe-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
+                        placeholder={t("auth.password")}
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value);
@@ -1922,7 +1900,7 @@ export default function LoginModal({
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-label={showPassword ? t("web.global.loginModal.hidePassword") : t("web.global.loginModal.showPassword")}
                         tabIndex={0}
                       >
                         {showPassword ? (
@@ -1944,7 +1922,7 @@ export default function LoginModal({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {supportedLanguages.map((lang) => (
+                            {visibleLanguages.map((lang) => (
                               <SelectItem key={lang.code} value={lang.code}>
                                 {lang.nativeName}
                               </SelectItem>
@@ -1955,7 +1933,7 @@ export default function LoginModal({
                       <div className="mb-5">
                         <Label className={labelClass}>
                           {t("auth.howHearAboutUs")}{" "}
-                          <span className="text-gray-500 font-normal">(optional)</span>
+                          <span className="text-gray-500 font-normal">{t("web.global.loginModal.optional")}</span>
                         </Label>
                         <Select
                           value={signupSource ?? RADIX_SELECT_NONE}
@@ -1994,7 +1972,7 @@ export default function LoginModal({
                         onCheckedChange={(c) => setRememberMe(c === true)}
                       />
                       <label htmlFor="login-modal-remember" className="text-xs text-gray-600 cursor-pointer">
-                        Remember me for 30 days
+                        {t("auth.rememberMe")}
                       </label>
                     </div>
                   )}
@@ -2018,12 +1996,12 @@ export default function LoginModal({
                     {isLoading ? (
                       <>
                         <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                        {isSignup ? "Creating account…" : "Signing in…"}
+                        {isSignup ? t("web.global.loginModal.creatingAccount") : t("web.global.loginModal.signingIn")}
                       </>
                     ) : isSignup ? (
-                      "Sign up"
+                      t("auth.signup")
                     ) : (
-                      "Log in"
+                      t("auth.login")
                     )}
                   </Button>
                   <div className="text-center space-y-1">
@@ -2033,7 +2011,7 @@ export default function LoginModal({
                         onClick={() => setOpen(false)}
                         className="block w-full py-3 text-[15px] text-primary hover:underline font-medium touch-manipulation"
                       >
-                        Forgot your password?
+                        {t("web.global.loginModal.forgotPasswordReset")}
                       </Link>
                     )}
                     <button
@@ -2043,7 +2021,7 @@ export default function LoginModal({
                       }}
                       className="block w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >
-                      Back
+                      {t("web.global.loginModal.back")}
                     </button>
                     <button
                       onClick={() => {
@@ -2057,8 +2035,8 @@ export default function LoginModal({
                       className="block w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >
                       {isSignup
-                        ? "Already have an account? Log in"
-                        : "Don't have an account? Sign up"}
+                        ? `${t("auth.alreadyHaveAccount")} ${t("auth.login")}`
+                        : `${t("auth.dontHaveAccount")} ${t("auth.signup")}`}
                     </button>
                   </div>
                 </>
@@ -2070,7 +2048,7 @@ export default function LoginModal({
           {!showEmailForm && !otpSent && showAltAfterPhone && authPolicy.phone_provider_enabled && (
             <div className="flex items-center my-6">
               <div className="flex-grow border-t border-gray-200 rounded-full"></div>
-              <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
+              <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">{t("web.global.loginModal.or")}</span>
               <div className="flex-grow border-t border-gray-200 rounded-full"></div>
             </div>
           )}
@@ -2086,7 +2064,7 @@ export default function LoginModal({
                   disabled={isLoading}
                 >
                   <FaGoogle className="text-lg shrink-0" />
-                  <span>Continue with Google</span>
+                  <span>{t("auth.continueWithGoogle")}</span>
                 </Button>
               )}
 
@@ -2098,7 +2076,7 @@ export default function LoginModal({
                   disabled={isLoading}
                 >
                   <FaApple className="text-lg shrink-0" />
-                  <span>Continue with Apple</span>
+                  <span>{t("auth.continueWithApple")}</span>
                 </Button>
               )}
 
@@ -2111,7 +2089,7 @@ export default function LoginModal({
                   disabled={isLoading}
                 >
                   <CiMail className="text-lg shrink-0" />
-                  <span>Continue with email</span>
+                  <span>{t("web.global.loginModal.continueWithEmail")}</span>
                 </Button>
               )}
             </>

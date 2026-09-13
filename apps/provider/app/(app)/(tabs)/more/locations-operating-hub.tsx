@@ -7,9 +7,13 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function LocationsOperatingHubScreen() {
+  const { t } = useTranslation();
+  const lh = (key: string) => t(`provider.mobile.screens.locationsOperatingHub.${key}`) as string;
   const router = useRouter();
 
   function go(route: string) {
@@ -20,8 +24,8 @@ export default function LocationsOperatingHubScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Locations & operating hours"
-        subtitle="Manage branches and when you're open"
+        title={lh("title")}
+        subtitle={lh("subtitle")}
         showBack
       />
       <View style={{ paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
@@ -38,7 +42,7 @@ export default function LocationsOperatingHubScreen() {
             padding: 16,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Locations"
+          accessibilityLabel={lh("locations")}
         >
           <View
             style={{
@@ -52,13 +56,13 @@ export default function LocationsOperatingHubScreen() {
           >
             <Ionicons name="location-outline" size={22} color="#059669" />
           </View>
-          <View style={{ marginLeft: 14, flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Locations</Text>
+          <View style={{ marginStart: 14, flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{lh("locations")}</Text>
             <Text style={{ marginTop: 4, fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
-              Branches, addresses, maps & inactive sites
+              {lh("locationsDesc")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -74,7 +78,7 @@ export default function LocationsOperatingHubScreen() {
             padding: 16,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Operating hours"
+          accessibilityLabel={lh("hours")}
         >
           <View
             style={{
@@ -88,13 +92,13 @@ export default function LocationsOperatingHubScreen() {
           >
             <Ionicons name="time-outline" size={22} color="#2563eb" />
           </View>
-          <View style={{ marginLeft: 14, flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Operating hours</Text>
+          <View style={{ marginStart: 14, flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{lh("hours")}</Text>
             <Text style={{ marginTop: 4, fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
-              Opening & closing times, breaks & per-location schedules
+              {lh("hoursDesc")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
     </ScreenContainer>

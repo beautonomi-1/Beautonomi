@@ -20,6 +20,7 @@ import {
   paystackTerminalAllocatePayload,
 } from "@/lib/paystack-terminal-api";
 import type { PaystackTerminalMatchCandidate } from "@/hooks/usePaystackTerminal";
+import { useTranslation } from "@beautonomi/i18n";
 
 type IncomingPayment = {
   id: string;
@@ -47,6 +48,8 @@ function topSuggestion(payment: IncomingPayment): { entity_type: string; entity_
 }
 
 export function TerminalPaymentAlertListener() {
+  const { t } = useTranslation();
+  const tp = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.terminalPaymentAlert.${key}`, opts) as string;
   const router = useRouter();
   const { provider } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
@@ -87,16 +90,16 @@ export function TerminalPaymentAlertListener() {
         { timeout: 120_000 },
       );
       if (res.error) {
-        Alert.alert("Allocate payment", res.error.message ?? "Could not allocate this payment.");
+        Alert.alert(tp("allocateTitle"), res.error.message ?? tp("allocateFailed"));
         return;
       }
       setPayment(null);
     } catch (err) {
-      Alert.alert("Allocate payment", err instanceof Error ? err.message : "Could not allocate this payment.");
+      Alert.alert(tp("allocateTitle"), err instanceof Error ? err.message : tp("allocateFailed"));
     } finally {
       setAllocating(false);
     }
-  }, [payment, router]);
+  }, [payment, router, t]);
 
   useEffect(() => {
     if (!provider?.id || !paystackTerminalEnabled) return;
@@ -142,12 +145,11 @@ export function TerminalPaymentAlertListener() {
   const suggestion = payment ? topSuggestion(payment) : null;
 
   return (
-    <BottomSheet visible={!!payment} onClose={close} title="Payment received">
+    <BottomSheet visible={!!payment} onClose={close} title={tp("title")}>
       {payment ? (
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-3")}>
-            A Paystack Terminal payment just arrived. Confirm where it belongs, or review it later
-            from your terminal inbox.
+            {tp("body")}
           </Text>
           <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-3")}>
             <Text style={twStyle("text-3xl font-bold text-emerald-950")}>
@@ -155,15 +157,15 @@ export function TerminalPaymentAlertListener() {
             </Text>
             {expected != null ? (
               <Text style={twStyle("text-xs text-emerald-800 mt-1")}>
-                Expected: {currency} {expected.toFixed(2)}
+                {tp("expected", { currency, amount: expected.toFixed(2) })}
               </Text>
             ) : null}
             {payment.payer_name ? (
-              <Text style={twStyle("text-sm text-emerald-900 mt-2")}>From {payment.payer_name}</Text>
+              <Text style={twStyle("text-sm text-emerald-900 mt-2")}>{tp("from", { name: payment.payer_name })}</Text>
             ) : null}
             {payment.customer_reference ? (
               <Text style={twStyle("text-xs text-emerald-800 mt-1")}>
-                Booking/order note: {payment.customer_reference}
+                {tp("bookingOrderNote", { note: payment.customer_reference })}
               </Text>
             ) : null}
             <Text style={twStyle("font-mono text-xs text-emerald-700 mt-2")}>
@@ -173,12 +175,12 @@ export function TerminalPaymentAlertListener() {
 
           <View style={twStyle("rounded-xl border border-gray-100 bg-white p-3 mb-4")}>
             <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Suggested allocation
+              {tp("suggestedAllocation")}
             </Text>
             <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
               {suggestion
                 ? suggestion.label ?? `${suggestion.entity_type} ${suggestion.entity_id.slice(0, 8)}…`
-                : "No confident match — choose manually"}
+                : tp("noMatch")}
             </Text>
           </View>
 
@@ -188,7 +190,7 @@ export function TerminalPaymentAlertListener() {
             style={twStyle(`rounded-xl px-3 py-3 ${suggestion ? "bg-emerald-600" : "bg-gray-900"}`)}
           >
             <Text style={twStyle("text-center font-semibold text-white")}>
-              {allocating ? "Allocating…" : suggestion ? "Confirm & allocate" : "Assign to something else"}
+              {allocating ? tp("allocating") : suggestion ? tp("confirmAllocate") : tp("assignElsewhere")}
             </Text>
           </TouchableOpacity>
           {suggestion ? (
@@ -199,11 +201,11 @@ export function TerminalPaymentAlertListener() {
               }}
               style={twStyle("rounded-xl border border-gray-300 px-3 py-3 mt-2")}
             >
-              <Text style={twStyle("text-center font-semibold text-gray-700")}>Assign to something else</Text>
+              <Text style={twStyle("text-center font-semibold text-gray-700")}>{tp("assignElsewhere")}</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity onPress={close} style={twStyle("px-3 py-3 mt-1")}>
-            <Text style={twStyle("text-center font-semibold text-gray-500")}>Save for later</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-500")}>{tp("saveForLater")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

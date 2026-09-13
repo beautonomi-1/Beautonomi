@@ -9,6 +9,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { replaceInAppBrowser } from "@/lib/in-app-web";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 const DEFAULT_PATH = "/provider/dashboard";
 
@@ -18,13 +19,15 @@ function firstString(v: string | string[] | undefined): string | undefined {
 }
 
 export default function PortalScreen() {
+  const { t } = useTranslation();
+  const po = (key: string) => t(`provider.mobile.screens.portal.${key}`) as string;
   const router = useRouter();
   const params = useLocalSearchParams<{ path?: string | string[]; title?: string | string[] }>();
   const rawPath = firstString(params.path);
   const pathParam = rawPath ? decodeURIComponent(rawPath) : DEFAULT_PATH;
   const path = pathParam.startsWith("/") ? pathParam : `/${pathParam}`;
   const rawTitle = firstString(params.title);
-  const screenTitle = rawTitle ? decodeURIComponent(rawTitle) : "Portal";
+  const screenTitle = rawTitle ? decodeURIComponent(rawTitle) : po("titleFallback");
 
   useEffect(() => {
     const baseUrl = getWebProviderBaseUrl().replace(/\/$/, "");
@@ -37,7 +40,7 @@ export default function PortalScreen() {
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 28 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[600], textAlign: "center" }}>
-          Opening…
+          {po("opening")}
         </Text>
       </View>
     </SafeAreaView>

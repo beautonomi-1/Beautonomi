@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -44,6 +46,7 @@ export function ProductCreateEditDialog({
   product,
   onSave,
 }: ProductCreateEditDialogProps) {
+  const { t } = useTranslation();
   const { currencyCode } = useReportCurrency();
   const { getOptions } = useReferenceData(["product_unit", "tax_rate"]);
   const [brands, setBrands] = useState<{ name: string }[]>([]);
@@ -254,7 +257,7 @@ export function ProductCreateEditDialog({
 
   const handleCreateBrand = async () => {
     if (!newBrandName.trim()) {
-      toast.error("Brand name is required");
+      toast.error(t("web.provider.catalogue.productDialog.brandNameRequired"));
       return;
     }
     try {
@@ -282,11 +285,11 @@ export function ProductCreateEditDialog({
       
       // Set the brand in formData
       setFormData(prev => ({ ...prev, brand: brandName }));
-      toast.success("Brand created and selected");
+      toast.success(t("web.provider.catalogue.productDialog.brandCreated"));
     } catch (error: unknown) {
       console.error("Failed to create brand:", error);
       const err = error as { message?: string; details?: string };
-      const errorMessage = err?.message ?? err?.details ?? "Failed to create brand. Please check your permissions.";
+      const errorMessage = err?.message ?? err?.details ?? t("web.provider.catalogue.productDialog.brandCreateFailed");
       toast.error(errorMessage);
     }
   };
@@ -294,7 +297,7 @@ export function ProductCreateEditDialog({
   /** Add supplier via POST /api/provider/suppliers with body { name }. Compatible with product_suppliers table. */
   const handleCreateSupplier = async () => {
     if (!newSupplierName.trim()) {
-      toast.error("Supplier name is required");
+      toast.error(t("web.provider.catalogue.productDialog.supplierNameRequired"));
       return;
     }
     try {
@@ -322,18 +325,18 @@ export function ProductCreateEditDialog({
       
       // Set the supplier in formData
       setFormData(prev => ({ ...prev, supplier: supplierName }));
-      toast.success("Supplier created and selected");
+      toast.success(t("web.provider.catalogue.productDialog.supplierCreated"));
     } catch (error: unknown) {
       console.error("Failed to create supplier:", error);
       const err = error as { message?: string; details?: string };
-      const errorMessage = err?.message ?? err?.details ?? "Failed to create supplier. Please check your permissions.";
+      const errorMessage = err?.message ?? err?.details ?? t("web.provider.catalogue.productDialog.supplierCreateFailed");
       toast.error(errorMessage);
     }
   };
 
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) {
-      toast.error("Category name is required");
+      toast.error(t("provider.mobile.screens.productCategories.requiredBody"));
       return;
     }
     try {
@@ -362,11 +365,11 @@ export function ProductCreateEditDialog({
       
       // Set the category in formData
       setFormData(prev => ({ ...prev, category: categoryName }));
-      toast.success("Product category created and selected");
+      toast.success(t("web.provider.catalogue.productDialog.categoryCreated"));
     } catch (error: unknown) {
       console.error("Failed to create product category:", error);
       const err = error as { message?: string; details?: string };
-      const errorMessage = err?.message ?? err?.details ?? "Failed to create product category. Please check your permissions.";
+      const errorMessage = err?.message ?? err?.details ?? t("web.provider.catalogue.productDialog.categoryCreateFailed");
       toast.error(errorMessage);
     }
   };
@@ -423,7 +426,7 @@ export function ProductCreateEditDialog({
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("Could not read image"));
+        reject(new Error(t("web.provider.catalogue.productDialog.couldNotReadImage")));
       };
       img.src = url;
     });
@@ -435,27 +438,25 @@ export function ProductCreateEditDialog({
       // Validate file type
       const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
       if (!allowedTypes.includes(file.type)) {
-        toast.error("Invalid file type. Only images are allowed.");
+        toast.error(t("web.provider.catalogue.productDialog.invalidImageType"));
         return;
       }
 
       // Validate file size (max 5MB)
       const maxSize = 5 * 1024 * 1024; // 5MB
       if (file.size > maxSize) {
-        toast.error("File size exceeds 5MB limit");
+        toast.error(t("web.provider.catalogue.productDialog.fileTooLarge"));
         return;
       }
 
       try {
         const { w, h } = await readImageDimensions(file);
         if (w < 500 || h < 500) {
-          toast.warning(
-            "Image is quite small for product grids. Prefer at least 1000×1000px (1600×1600px is ideal), on a white or neutral background."
-          );
+          toast.warning(t("web.provider.catalogue.productDialog.imageSmall"));
         } else {
           const ratio = w / Math.max(h, 1);
           if (ratio < 0.9 || ratio > 1.1) {
-            toast.info("Tip: Square (1:1) images display most consistently in shop grids.");
+            toast.info(t("web.provider.catalogue.productDialog.squareTip"));
           }
         }
       } catch {
@@ -469,7 +470,7 @@ export function ProductCreateEditDialog({
 
       const data = await fetcher.post<{ data?: { url: string } }>("/api/upload", uploadFormData);
       const imageUrl = data.data?.url;
-      if (!imageUrl) throw new Error("No URL returned from upload");
+      if (!imageUrl) throw new Error(t("provider.mobile.screens.catalogueDetail.noUrlReturned"));
 
       if (isMain) {
         setFormData((prev) => {
@@ -490,10 +491,10 @@ export function ProductCreateEditDialog({
         });
       }
 
-      toast.success("Image uploaded successfully");
+      toast.success(t("web.provider.catalogue.productDialog.uploaded"));
     } catch (error) {
       console.error("Error uploading image:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to upload image");
+      toast.error(error instanceof Error ? error.message : t("web.provider.catalogue.productDialog.uploadFailed"));
     } finally {
       setUploadingImages(false);
     }
@@ -504,18 +505,18 @@ export function ProductCreateEditDialog({
       setUploadingImages(true);
       const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
       if (!allowedTypes.includes(file.type)) {
-        toast.error("Invalid file type. Only images are allowed.");
+        toast.error(t("web.provider.catalogue.productDialog.invalidImageType"));
         return;
       }
       const maxSize = 5 * 1024 * 1024;
       if (file.size > maxSize) {
-        toast.error("File size exceeds 5MB limit");
+        toast.error(t("web.provider.catalogue.productDialog.fileTooLarge"));
         return;
       }
       try {
         const { w, h } = await readImageDimensions(file);
         if (w < 400 || h < 400) {
-          toast.warning("Variant photos look best at 800×800px or larger on a white background.");
+          toast.warning(t("web.provider.catalogue.productDialog.variantPhotoHint"));
         }
       } catch {
         // ignore
@@ -525,17 +526,17 @@ export function ProductCreateEditDialog({
       uploadFormData.append("folder", "products");
       const data = await fetcher.post<{ data?: { url: string } }>("/api/upload", uploadFormData);
       const imageUrl = data.data?.url;
-      if (!imageUrl) throw new Error("No URL returned from upload");
+      if (!imageUrl) throw new Error(t("provider.mobile.screens.catalogueDetail.noUrlReturned"));
       setFormData((prev) => {
         const next = [...prev.variantRows];
         if (!next[rowIndex]) return prev;
         next[rowIndex] = { ...next[rowIndex], image_url: imageUrl };
         return { ...prev, variantRows: next };
       });
-      toast.success("Variant image saved");
+      toast.success(t("web.provider.catalogue.productDialog.variantImageSaved"));
     } catch (error) {
       console.error("Variant image upload:", error);
-      toast.error(error instanceof Error ? error.message : "Upload failed");
+      toast.error(error instanceof Error ? error.message : t("provider.mobile.components.variantMatrixEditor.uploadFailedTitle"));
     } finally {
       setUploadingImages(false);
     }
@@ -544,16 +545,16 @@ export function ProductCreateEditDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      toast.error("Product name is required");
+      toast.error(t("web.provider.catalogue.productDialog.nameRequired"));
       return;
     }
     const withVariants = formData.hasVariants && formData.variantRows.length > 0;
     if (withVariants && formData.variantRows.some((r) => r.retail_price === undefined || Number(r.retail_price) < 0)) {
-      toast.error("Each variant must have a retail price");
+      toast.error(t("web.provider.catalogue.productDialog.variantRetailRequired"));
       return;
     }
     if (!withVariants && formData.retailPrice === undefined) {
-      toast.error("Retail price is required");
+      toast.error(t("web.provider.catalogue.productDialog.retailRequired"));
       return;
     }
 
@@ -610,16 +611,16 @@ export function ProductCreateEditDialog({
 
       if (product) {
         await providerApi.updateProduct(product.id, productData);
-        toast.success("Product updated");
+        toast.success(t("web.provider.catalogue.productDialog.updated"));
       } else {
         await providerApi.createProduct(productData);
-        toast.success("Product created");
+        toast.success(t("web.provider.catalogue.productDialog.created"));
       }
 
       onSave();
     } catch (error) {
       console.error("Failed to save product:", error);
-      toast.error("Failed to save product");
+      toast.error(t("web.provider.catalogue.productDialog.saveFailed"));
     }
   };
 
@@ -652,7 +653,7 @@ export function ProductCreateEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>{product ? "Edit Product" : "Add a Product"}</DialogTitle>
+          <DialogTitle>{product ? t("provider.mobile.screens.productForm.editTitle") : t("web.provider.portal.appointmentDialog.addAProduct")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-8">
           
@@ -661,37 +662,37 @@ export function ProductCreateEditDialog({
             <div className="md:col-span-2 space-y-6">
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Product name</Label>
+                  <Label htmlFor="name">{t("web.provider.catalogue.productDialog.productName")}</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Product"
+                    placeholder={t("web.provider.catalogue.productDialog.productPlaceholder")}
                     required
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="barcode">Product barcode</Label>
+                  <Label htmlFor="barcode">{t("web.provider.catalogue.productDialog.barcode")}</Label>
                   <Input
                     id="barcode"
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    placeholder="UPC, EAN, GTN"
+                    placeholder={t("web.provider.catalogue.productDialog.barcodePlaceholder")}
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <Label htmlFor="brand">Product brand</Label>
+                    <Label htmlFor="brand">{t("web.provider.catalogue.productDialog.productBrand")}</Label>
                     <Button
                       type="button"
                       variant="link"
                       className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                       onClick={() => setIsBrandDialogOpen(true)}
                     >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add brand
+                      <Plus className="w-3 h-3 me-1" />
+                      {t("web.provider.catalogue.productDialog.addBrand")}
                     </Button>
                   </div>
                   <ChipCombobox
@@ -709,20 +710,20 @@ export function ProductCreateEditDialog({
                         return [];
                       }
                     }}
-                    placeholder="Select or type brand"
-                    aria-label="Product brand"
+                    placeholder={t("web.provider.catalogue.productDialog.selectBrand")}
+                    aria-label={t("web.provider.catalogue.productDialog.selectBrand")}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="measure">Measure</Label>
+                    <Label htmlFor="measure">{t("web.provider.catalogue.productDialog.measure")}</Label>
                     <Select 
                       value={formData.measure} 
                       onValueChange={(val) => setFormData({ ...formData, measure: val })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Milliliters (ml)" />
+                        <SelectValue placeholder={t("provider.mobile.screens.productForm.measureMl")} />
                       </SelectTrigger>
                       <SelectContent>
                         {getOptions("product_unit").map((opt) => (
@@ -734,13 +735,13 @@ export function ProductCreateEditDialog({
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="amount">Amount</Label>
+                    <Label htmlFor="amount">{t("web.provider.catalogue.productDialog.amount")}</Label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{formData.measure}</span>
                       <Input
                         id="amount"
                         type="number"
-                        className="pl-12"
+                        className="ps-12"
                         value={formData.amount}
                         onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
                         placeholder="0.00"
@@ -750,7 +751,7 @@ export function ProductCreateEditDialog({
                 </div>
 
                 <div>
-                  <Label htmlFor="shortDescription">Short description</Label>
+                  <Label htmlFor="shortDescription">{t("web.provider.catalogue.productDialog.shortDescription")}</Label>
                   <Input
                     id="shortDescription"
                     value={formData.shortDescription}
@@ -759,7 +760,7 @@ export function ProductCreateEditDialog({
                 </div>
 
                 <div>
-                  <Label htmlFor="description">Product description</Label>
+                  <Label htmlFor="description">{t("web.provider.catalogue.productDialog.description")}</Label>
                   <Textarea
                     id="description"
                     value={formData.description}
@@ -770,15 +771,15 @@ export function ProductCreateEditDialog({
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <Label htmlFor="category">Product category</Label>
+                    <Label htmlFor="category">{t("web.provider.catalogue.productDialog.productCategory")}</Label>
                     <Button
                       type="button"
                       variant="link"
                       className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                       onClick={() => setIsCategoryDialogOpen(true)}
                     >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add product category
+                      <Plus className="w-3 h-3 me-1" />
+                      {t("web.provider.catalogue.productDialog.addCategory")}
                     </Button>
                   </div>
                   <ChipCombobox
@@ -796,8 +797,8 @@ export function ProductCreateEditDialog({
                         return [];
                       }
                     }}
-                    placeholder="Select or type category"
-                    aria-label="Product category"
+                    placeholder={t("web.provider.catalogue.productDialog.selectCategory")}
+                    aria-label={t("provider.mobile.screens.productForm.categorySheetTitle")}
                   />
                 </div>
 
@@ -815,20 +816,20 @@ export function ProductCreateEditDialog({
                         }));
                       }}
                     />
-                    <Label htmlFor="hasVariants" className="font-normal text-gray-600">Has variants (e.g. size, volume)</Label>
+                    <Label htmlFor="hasVariants" className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.hasVariants")}</Label>
                   </div>
-                  <p className="text-xs text-gray-500">Enable to sell this product in multiple options (e.g. 250ml / 500ml) with separate SKU, price and stock per variant.</p>
+                  <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.hasVariantsHint")}</p>
                 </div>
 
                 {formData.hasVariants && (
                   <div className="space-y-3 rounded-lg border border-gray-200 p-4 bg-gray-50/50">
-                    <h4 className="font-medium">Variant options</h4>
-                    <p className="text-xs text-gray-500">Add one option type (e.g. Size) and its values. Then generate the variant matrix and fill SKU, price and stock per row.</p>
+                    <h4 className="font-medium">{t("web.provider.catalogue.productDialog.variantOptions")}</h4>
+                    <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.variantOptionsHint")}</p>
                     <div className="flex flex-wrap gap-2 items-end">
                       <div className="flex-1 min-w-[120px]">
-                        <Label className="text-xs">Option name (e.g. Size)</Label>
+                        <Label className="text-xs">{t("web.provider.catalogue.productDialog.optionName")}</Label>
                         <Input
-                          placeholder="e.g. Size"
+                          placeholder={t("web.provider.catalogue.productDialog.optionNamePlaceholder")}
                           value={formData.variantOptionTypes[0]?.name ?? ""}
                           onChange={(e) => {
                             const name = e.target.value;
@@ -842,7 +843,7 @@ export function ProductCreateEditDialog({
                         />
                       </div>
                       <div className="flex-1 min-w-[180px]">
-                        <Label className="text-xs">Values (e.g. 250ml, 500ml or S, M, L)</Label>
+                        <Label className="text-xs">{t("web.provider.catalogue.productDialog.optionValues")}</Label>
                         <ChipCombobox
                           singleSelect={false}
                           value={formData.variantOptionTypes[0]?.values ?? []}
@@ -851,17 +852,17 @@ export function ProductCreateEditDialog({
                               ...prev,
                               variantOptionTypes: prev.variantOptionTypes.length
                                 ? [{ ...prev.variantOptionTypes[0], values }]
-                                : [{ name: prev.variantOptionTypes[0]?.name ?? "Option", values }],
+                                : [{ name: prev.variantOptionTypes[0]?.name ?? t("web.provider.catalogue.productDialog.optionFallback"), values }],
                             }));
                           }}
                           staticSuggestions={[
                             "250ml", "500ml", "1L", "100ml", "200ml",
                             "S", "M", "L", "XL", "XXL",
-                            "Small", "Medium", "Large",
+                            t("web.provider.catalogue.productDialog.small"), t("web.provider.catalogue.productDialog.medium"), t("web.provider.catalogue.productDialog.large"),
                             "30ml", "50ml", "75ml",
                           ].map((v) => ({ value: v, label: v }))}
                           allowFreeForm
-                          placeholder="Add value..."
+                          placeholder={t("web.provider.catalogue.productDialog.addValue")}
                           className="mt-1"
                         />
                       </div>
@@ -872,7 +873,7 @@ export function ProductCreateEditDialog({
                         onClick={() => {
                           const opt = formData.variantOptionTypes[0];
                           if (!opt?.name || !opt.values?.length) {
-                            toast.error("Add option name and at least one value");
+                            toast.error(t("web.provider.catalogue.productDialog.addOptionHint"));
                             return;
                           }
                           const rows = opt.values.map((val, idx) => {
@@ -897,10 +898,10 @@ export function ProductCreateEditDialog({
                             };
                           });
                           setFormData((prev) => ({ ...prev, variantRows: rows }));
-                          toast.success(`${rows.length} variant(s) generated`);
+                          toast.success(t("web.provider.catalogue.productDialog.variantsGenerated", { count: rows.length }));
                         }}
                       >
-                        Generate variant matrix
+                        {t("web.provider.catalogue.productDialog.generateMatrix")}
                       </Button>
                     </div>
                     {formData.variantRows.length > 0 && (
@@ -908,13 +909,13 @@ export function ProductCreateEditDialog({
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b bg-gray-100">
-                              <th className="text-left p-2 font-medium">Variant</th>
-                              <th className="text-left p-2 font-medium min-w-[88px]">Photo</th>
-                              <th className="text-left p-2 font-medium">SKU</th>
-                              <th className="text-left p-2 font-medium">Barcode</th>
-                              <th className="text-left p-2 font-medium">Qty</th>
-                              <th className="text-left p-2 font-medium">Supply ({currencyCode})</th>
-                              <th className="text-left p-2 font-medium">Retail ({currencyCode})</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.variant")}</th>
+                              <th className="text-start p-2 font-medium min-w-[88px]">{t("web.provider.catalogue.productDialog.photo")}</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.sku")}</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.barcodeCol")}</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.qty")}</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.supplyCol", { currency: currencyCode })}</th>
+                              <th className="text-start p-2 font-medium">{t("web.provider.catalogue.productDialog.retailCol", { currency: currencyCode })}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -953,7 +954,7 @@ export function ProductCreateEditDialog({
                                       onClick={() => document.getElementById(`variant-photo-${idx}`)?.click()}
                                       disabled={uploadingImages}
                                     >
-                                      {row.image_url ? "Replace" : "Add photo"}
+                                      {row.image_url ? t("web.provider.catalogue.productDialog.replacePhoto") : t("web.provider.catalogue.productDialog.addPhotoShort")}
                                     </Button>
                                   </div>
                                 </td>
@@ -966,7 +967,7 @@ export function ProductCreateEditDialog({
                                       next[idx] = { ...next[idx], sku: e.target.value };
                                       setFormData((prev) => ({ ...prev, variantRows: next }));
                                     }}
-                                    placeholder="Auto"
+                                    placeholder={t("web.provider.catalogue.productDialog.auto")}
                                   />
                                 </td>
                                 <td className="p-2">
@@ -1034,17 +1035,17 @@ export function ProductCreateEditDialog({
               {!formData.hasVariants && (
               <>
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Pricing</h3>
+                <h3 className="text-lg font-semibold">{t("provider.mobile.screens.productForm.pricing")}</h3>
                 
                 <div>
-                  <Label htmlFor="supplyPrice">Supply price</Label>
+                  <Label htmlFor="supplyPrice">{t("web.provider.catalogue.productDialog.supplyPrice")}</Label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                     <Input
                       id="supplyPrice"
                       type="number"
                       step="0.01"
-                      className="pl-12"
+                      className="ps-12"
                       value={formData.supplyPrice}
                       onChange={(e) => handleSupplyPriceChange(parseFloat(e.target.value) || 0)}
                       placeholder="0.00"
@@ -1053,40 +1054,40 @@ export function ProductCreateEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="font-medium">Retail sales</h4>
+                  <h4 className="font-medium">{t("web.provider.catalogue.productDialog.retailSales")}</h4>
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={formData.retailSalesEnabled}
                       onCheckedChange={(checked) => setFormData({ ...formData, retailSalesEnabled: checked })}
                     />
-                    <Label className="font-normal text-gray-600">Enable retail sales</Label>
+                    <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.enableRetail")}</Label>
                   </div>
-                  <p className="text-xs text-gray-500">Allow sales of this product at checkout.</p>
+                  <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.enableRetailHint")}</p>
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="font-medium">Product status</h4>
+                  <h4 className="font-medium">{t("web.provider.catalogue.productDialog.productStatus")}</h4>
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={formData.isActive}
                       onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
                     />
-                    <Label className="font-normal text-gray-600">Active in catalog</Label>
+                    <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.activeInCatalog")}</Label>
                   </div>
-                  <p className="text-xs text-gray-500">Inactive products are hidden from retail and can be archived instead of deleted.</p>
+                  <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.inactiveHint")}</p>
                 </div>
 
                 {formData.retailSalesEnabled && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="retailPrice">Retail price</Label>
+                      <Label htmlFor="retailPrice">{t("web.provider.catalogue.productDialog.retailPrice")}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                         <Input
                           id="retailPrice"
                           type="number"
                           step="0.01"
-                          className="pl-12"
+                          className="ps-12"
                           value={formData.retailPrice}
                           onChange={(e) => handleRetailPriceChange(parseFloat(e.target.value) || 0)}
                           placeholder="0.00"
@@ -1094,14 +1095,14 @@ export function ProductCreateEditDialog({
                       </div>
                     </div>
                     <div>
-                      <Label htmlFor="markup">Markup</Label>
+                      <Label htmlFor="markup">{t("web.provider.catalogue.productDialog.markup")}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-gray-500 text-sm">%</span>
                         <Input
                           id="markup"
                           type="number"
                           step="0.01"
-                          className="pl-8"
+                          className="ps-8"
                           value={formData.markup}
                           onChange={(e) => {
                              // Reverse calc retail price if markup changes? Or just store markup?
@@ -1118,7 +1119,7 @@ export function ProductCreateEditDialog({
                 )}
 
                 <div>
-                  <Label htmlFor="taxRate">Tax</Label>
+                  <Label htmlFor="taxRate">{t("web.provider.catalogue.productDialog.tax")}</Label>
                   <Select 
                     value={formData.taxRate.toString()} 
                     onValueChange={(val) => {
@@ -1127,7 +1128,7 @@ export function ProductCreateEditDialog({
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Default: No Tax" />
+                      <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.defaultNoTax")} />
                     </SelectTrigger>
                     <SelectContent>
                       {getOptions("tax_rate").map((opt) => (
@@ -1140,14 +1141,14 @@ export function ProductCreateEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="font-medium">Team member commission</h4>
-                  <p className="text-xs text-gray-500">Calculate team member commission when this product is sold.</p>
+                  <h4 className="font-medium">{t("web.provider.catalogue.productDialog.commissionTitle")}</h4>
+                  <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.commissionHint")}</p>
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={formData.teamMemberCommissionEnabled}
                       onCheckedChange={(checked) => setFormData({ ...formData, teamMemberCommissionEnabled: checked })}
                     />
-                    <Label className="font-normal text-gray-600">Enable team member commission</Label>
+                    <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.enableCommission")}</Label>
                   </div>
                 </div>
               </div>
@@ -1155,33 +1156,33 @@ export function ProductCreateEditDialog({
               <Separator />
 
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Inventory</h3>
-                <p className="text-sm text-gray-500">Manage stock levels of this product through Beautonomi</p>
+                <h3 className="text-lg font-semibold">{t("web.provider.catalogue.productDialog.inventory")}</h3>
+                <p className="text-sm text-gray-500">{t("web.provider.catalogue.productDialog.inventoryHint")}</p>
                 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="sku">SKU (Stock Keeping Unit)</Label>
+                    <Label htmlFor="sku">{t("web.provider.catalogue.productDialog.skuLabel")}</Label>
                     <Button
                       variant="link"
                       className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                       onClick={generateSku}
                       type="button"
                     >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Generate SKU automatically
+                      <Plus className="w-3 h-3 me-1" />
+                      {t("web.provider.catalogue.productDialog.generateSku")}
                     </Button>
                   </div>
                   <Input
                     id="sku"
                     value={formData.sku}
                     onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    placeholder="Leave empty to auto-generate"
+                    placeholder={t("provider.mobile.screens.productForm.skuPlaceholder")}
                   />
-                  <p className="text-xs text-gray-500">SKU will be auto-generated on save if left empty.</p>
+                  <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.skuAutoHint")}</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="supplier">Supplier</Label>
+                  <Label htmlFor="supplier">{t("provider.mobile.screens.productForm.supplier")}</Label>
                   <div className="flex gap-2 items-center">
                     <ChipCombobox
                       singleSelect
@@ -1198,8 +1199,8 @@ export function ProductCreateEditDialog({
                           return [];
                         }
                       }}
-                      placeholder="Select or type supplier"
-                      aria-label="Supplier"
+                      placeholder={t("web.provider.catalogue.productDialog.selectSupplier")}
+                      aria-label={t("provider.mobile.screens.productForm.supplier")}
                       className="flex-1"
                     />
                     <Button
@@ -1207,7 +1208,7 @@ export function ProductCreateEditDialog({
                       variant="outline"
                       size="icon"
                       onClick={() => setIsSupplierDialogOpen(true)}
-                      title="Add new supplier"
+                      title={t("provider.mobile.screens.productForm.addNewSupplier")}
                     >
                       <Plus className="w-4 h-4" />
                     </Button>
@@ -1215,19 +1216,19 @@ export function ProductCreateEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="font-medium">Stock quantity</h4>
+                  <h4 className="font-medium">{t("web.provider.catalogue.productDialog.stockQuantity")}</h4>
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={formData.trackStockQuantity}
                       onCheckedChange={(checked) => setFormData({ ...formData, trackStockQuantity: checked })}
                     />
-                    <Label className="font-normal text-gray-600">Track stock quantity</Label>
+                    <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.trackStock")}</Label>
                   </div>
                 </div>
 
                 {formData.trackStockQuantity && (
                   <div>
-                    <Label htmlFor="quantity">Current stock quantity</Label>
+                    <Label htmlFor="quantity">{t("web.provider.catalogue.productDialog.currentStock")}</Label>
                     <Input
                       id="quantity"
                       type="number"
@@ -1242,12 +1243,12 @@ export function ProductCreateEditDialog({
               <Separator />
 
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Low stock and reordering</h3>
-                <p className="text-sm text-gray-500">Beautonomi will automatically notify you and pre-fill the reorder quantity set for future stock orders.</p>
+                <h3 className="text-lg font-semibold">{t("web.provider.catalogue.productDialog.lowStockTitle")}</h3>
+                <p className="text-sm text-gray-500">{t("web.provider.catalogue.productDialog.lowStockHint")}</p>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="lowStockLevel">Low stock level</Label>
+                    <Label htmlFor="lowStockLevel">{t("web.provider.catalogue.productDialog.lowStockLevel")}</Label>
                     <Input
                       id="lowStockLevel"
                       type="number"
@@ -1257,7 +1258,7 @@ export function ProductCreateEditDialog({
                     />
                   </div>
                   <div>
-                    <Label htmlFor="reorderQuantity">Reorder quantity</Label>
+                    <Label htmlFor="reorderQuantity">{t("web.provider.catalogue.productDialog.reorderQty")}</Label>
                     <Input
                       id="reorderQuantity"
                       type="number"
@@ -1273,7 +1274,7 @@ export function ProductCreateEditDialog({
                     checked={formData.receiveLowStockNotifications}
                     onCheckedChange={(checked) => setFormData({ ...formData, receiveLowStockNotifications: checked })}
                   />
-                  <Label className="font-normal text-gray-600">Receive low stock notifications</Label>
+                  <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.lowStockNotify")}</Label>
                 </div>
               </div>
               </>
@@ -1283,18 +1284,17 @@ export function ProductCreateEditDialog({
             {/* Right Column - Photos */}
             <div className="space-y-6">
                <div className="bg-pink-50 rounded-xl p-4 sm:p-6 text-center border-2 border-dashed border-pink-200 min-h-[min(400px,70vh)] flex flex-col">
-                  <h4 className="font-medium mb-1">Product Photo</h4>
+                  <h4 className="font-medium mb-1">{t("web.provider.catalogue.productDialog.productPhoto")}</h4>
                   <p className="text-xs text-gray-600 mb-4 max-w-sm mx-auto leading-snug">
-                    Use a <strong>square</strong> image where possible: <strong>1600×1600px</strong> (minimum 1000×1000px) for sharp catalog tiles.
-                    A <strong>white or very light background</strong> matches what buyers expect on major marketplaces (max 5MB).
+                    {t("web.provider.catalogue.productDialog.photoHint", { square: t("web.provider.catalogue.productDialog.photoHintSquare"), size: t("web.provider.catalogue.productDialog.photoHintSize"), bg: t("web.provider.catalogue.productDialog.photoHintBg") })}
                   </p>
                   
-                  {/* Main Photo */}
+                  {/* {t("web.provider.catalogue.productDialog.mainPhoto")} */}
                   {formData.mainImageUrl ? (
                     <div className="relative mb-4 w-full h-64 rounded-2xl overflow-hidden bg-white ring-1 ring-gray-100">
                       <Image
                         src={formData.mainImageUrl}
-                        alt="Main product"
+                        alt={t("web.provider.catalogue.productDialog.mainProductAlt")}
                         fill
                         className="object-contain p-2 rounded-2xl"
                         unoptimized
@@ -1309,7 +1309,7 @@ export function ProductCreateEditDialog({
                         <X className="h-4 w-4" />
                       </Button>
                       <div className="mt-2">
-                        <span className="text-xs bg-primary text-white px-2 py-1 rounded">Main Photo</span>
+                        <span className="text-xs bg-primary text-white px-2 py-1 rounded">{t("web.provider.catalogue.productDialog.mainPhoto")}</span>
                       </div>
                     </div>
                   ) : (
@@ -1337,8 +1337,8 @@ export function ProductCreateEditDialog({
                         onClick={() => document.getElementById("mainImageUpload")?.click()}
                         disabled={uploadingImages}
                       >
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploadingImages ? "Uploading..." : "Add Photo"}
+                        <Upload className="w-4 h-4 me-2" />
+                        {uploadingImages ? t("web.provider.catalogue.productDialog.uploading") : t("web.provider.catalogue.productDialog.addPhoto")}
                       </Button>
                     </div>
                   )}
@@ -1350,7 +1350,7 @@ export function ProductCreateEditDialog({
                       .slice(0, 2)
                       .map((url, index) => (
                         <div key={index} className="relative aspect-square bg-pink-100 rounded-lg overflow-hidden group">
-                          <Image src={url} alt={`Product ${index + 2}`} fill className="object-cover" unoptimized />
+                          <Image src={url} alt={t("web.provider.catalogue.productDialog.productNAlt", { n: index + 2 })} fill className="object-cover" unoptimized />
                           <Button
                             type="button"
                             variant="ghost"
@@ -1372,7 +1372,7 @@ export function ProductCreateEditDialog({
                         onClick={() => !uploadingImages && document.getElementById("additionalImageUpload")?.click()}
                       >
                         <Camera className="w-6 h-6 mb-1" />
-                        <span className="text-xs">{uploadingImages ? "Uploading..." : "Add more Photos"}</span>
+                        <span className="text-xs">{uploadingImages ? t("web.provider.catalogue.productDialog.uploading") : t("web.provider.catalogue.productDialog.addMorePhotos")}</span>
                       </div>
                     )}
                   </div>
@@ -1397,10 +1397,10 @@ export function ProductCreateEditDialog({
 
           <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white pb-4 z-10">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" className="bg-primary hover:bg-primary-hover min-w-[100px]">
-              Save
+              {t("common.save")}
             </Button>
           </div>
         </form>
@@ -1409,16 +1409,16 @@ export function ProductCreateEditDialog({
         <QuickDialog open={isBrandDialogOpen} onOpenChange={setIsBrandDialogOpen}>
           <QuickDialogContent>
             <QuickDialogHeader>
-              <QuickDialogTitle>Add New Brand</QuickDialogTitle>
+              <QuickDialogTitle>{t("web.provider.catalogue.productDialog.addNewBrand")}</QuickDialogTitle>
             </QuickDialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="newBrandName">Brand Name</Label>
+                <Label htmlFor="newBrandName">{t("web.provider.catalogue.productDialog.brandName")}</Label>
                 <Input
                   id="newBrandName"
                   value={newBrandName}
                   onChange={(e) => setNewBrandName(e.target.value)}
-                  placeholder="Enter brand name"
+                  placeholder={t("web.provider.catalogue.productDialog.enterBrand")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1430,10 +1430,10 @@ export function ProductCreateEditDialog({
             </div>
             <QuickDialogFooter>
               <Button variant="outline" onClick={() => setIsBrandDialogOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleCreateBrand} className="bg-primary hover:bg-primary-hover">
-                Add Brand
+                {t("web.provider.catalogue.productDialog.addBrandAction")}
               </Button>
             </QuickDialogFooter>
           </QuickDialogContent>
@@ -1443,16 +1443,16 @@ export function ProductCreateEditDialog({
         <QuickDialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
           <QuickDialogContent>
             <QuickDialogHeader>
-              <QuickDialogTitle>Add New Supplier</QuickDialogTitle>
+              <QuickDialogTitle>{t("web.provider.catalogue.productDialog.addNewSupplier")}</QuickDialogTitle>
             </QuickDialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="newSupplierName">Supplier Name</Label>
+                <Label htmlFor="newSupplierName">{t("web.provider.catalogue.productDialog.supplierName")}</Label>
                 <Input
                   id="newSupplierName"
                   value={newSupplierName}
                   onChange={(e) => setNewSupplierName(e.target.value)}
-                  placeholder="Enter supplier name"
+                  placeholder={t("web.provider.catalogue.productDialog.enterSupplier")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1464,10 +1464,10 @@ export function ProductCreateEditDialog({
             </div>
             <QuickDialogFooter>
               <Button variant="outline" onClick={() => setIsSupplierDialogOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleCreateSupplier} className="bg-primary hover:bg-primary-hover">
-                Add Supplier
+                {t("web.provider.catalogue.productDialog.addSupplier")}
               </Button>
             </QuickDialogFooter>
           </QuickDialogContent>
@@ -1477,16 +1477,16 @@ export function ProductCreateEditDialog({
         <QuickDialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
           <QuickDialogContent>
             <QuickDialogHeader>
-              <QuickDialogTitle>Add New Product Category</QuickDialogTitle>
+              <QuickDialogTitle>{t("web.provider.catalogue.productDialog.addNewCategory")}</QuickDialogTitle>
             </QuickDialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="newCategoryName">Product Category Name</Label>
+                <Label htmlFor="newCategoryName">{t("web.provider.catalogue.productDialog.categoryName")}</Label>
                 <Input
                   id="newCategoryName"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="Enter product category name"
+                  placeholder={t("web.provider.catalogue.productDialog.enterCategory")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1495,16 +1495,16 @@ export function ProductCreateEditDialog({
                   }}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  This category will be available for products only
+                  {t("web.provider.catalogue.productDialog.categoryProductsOnly")}
                 </p>
               </div>
             </div>
             <QuickDialogFooter>
               <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleCreateCategory} className="bg-primary hover:bg-primary-hover">
-                Add Product Category
+                {t("web.provider.catalogue.productDialog.addProductCategory")}
               </Button>
             </QuickDialogFooter>
           </QuickDialogContent>

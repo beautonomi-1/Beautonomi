@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Beautonomi Customer EULA",
-  description: "End User License Agreement for the Beautonomi customer mobile app.",
-  alternates: {
-    canonical: "/customer/eula",
-    languages: getHreflangAlternateUrls("/customer/eula"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/customer/eula",
+    titleKey: "web.seo.customerEulaTitle",
+    descriptionKey: "web.seo.customerEulaDescription",
+  });
+}
 
 export default function CustomerEulaLayout({ children }: { children: React.ReactNode }) {
   return children;

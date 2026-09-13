@@ -9,6 +9,7 @@ import { ReportProviderModal } from "@/components/report/ReportProviderModal";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 import {
   formatProviderDescriptionForProfilePreview,
   PROVIDER_GALLERY_OBJECT_POSITION,
@@ -56,6 +57,8 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
   current_badge,
 }) => {
   const { user, session, isLoading: authLoading } = useAuth();
+  const { t, pp } = usePartnerProfileT();
+  const providerFallback = pp("providerFallback");
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -149,10 +152,10 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           localStorage.setItem(cacheKey, String(newState));
         }
         
-        toast.success(action === "added" ? "Saved to wishlist" : "Removed from wishlist");
+        toast.success(action === "added" ? pp("savedToWishlist") : pp("removedFromWishlist"));
       }
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to update wishlist";
+      const msg = err instanceof FetchError ? err.message : pp("failedWishlistUpdate");
       toast.error(msg);
     } finally {
       setIsToggling(false);
@@ -192,7 +195,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         <Link
           href="/"
           className="absolute top-4 left-4 z-30 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg hover:bg-white transition-colors"
-          aria-label="Go back"
+          aria-label={pp("goBackCta")}
         >
           <ArrowLeft className="h-5 w-5 text-gray-900" />
         </Link>
@@ -224,14 +227,14 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
             <button
               onClick={prevImage}
               className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow-lg z-20"
-              aria-label="Previous image"
+              aria-label={t("web.a11y.previousImage")}
             >
               <ChevronLeft className="h-5 w-5 text-gray-900" />
             </button>
             <button
               onClick={nextImage}
               className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow-lg z-20"
-              aria-label="Next image"
+              aria-label={t("web.a11y.nextImage")}
             >
               <ChevronRight className="h-5 w-5 text-gray-900" />
             </button>
@@ -260,27 +263,27 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
               <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-500 via-yellow-500 to-amber-600 flex items-center justify-center">
                 <Check className="h-2.5 w-2.5 text-white stroke-[3]" />
               </div>
-              <span className="text-xs font-medium text-gray-900">Verified</span>
+              <span className="text-xs font-medium text-gray-900">{pp("verifiedTag")}</span>
             </div>
           )}
           {is_featured && (
             <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-              ⭐ Featured
+              ⭐ {pp("tagFeatured")}
             </div>
           )}
           {supports_house_calls && (
             <div className="bg-green-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-              House Calls
+              {pp("tagHouseCalls")}
             </div>
           )}
           {supports_salon && (
             <div className="bg-purple-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-              At Salon
+              {pp("atSalon")}
             </div>
           )}
           {business_type === 'freelancer' && (
             <div className="bg-orange-500/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg">
-              Freelancer
+              {pp("tagFreelancer")}
             </div>
           )}
         </div>
@@ -296,7 +299,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
                 ? "text-[#FF0077]" 
                 : "text-gray-700 hover:text-[#FF0077]"
             } disabled:opacity-70`}
-            aria-label={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+            aria-label={isInWishlist ? pp("removeFromWishlistA11y") : pp("addToWishlistA11y")}
           >
             <Heart className={`h-5 w-5 transition-all ${isInWishlist ? "fill-[#FF0077] text-[#FF0077]" : "text-gray-600"}`} />
           </button>
@@ -305,7 +308,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           <button
             onClick={() => setIsShareModalOpen(true)}
             className="bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-lg text-gray-700 hover:text-gray-900 transition-colors"
-            aria-label="Share profile"
+            aria-label={pp("shareAction")}
           >
             <Share2 className="h-5 w-5" />
           </button>
@@ -315,7 +318,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
             <Link
               href={`/account-settings/messages?provider=${id}`}
               className="bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-lg text-gray-700 hover:text-gray-900 transition-colors"
-              aria-label="Message provider"
+              aria-label={pp("messageProvider")}
             >
               <MessageCircle className="h-5 w-5" />
             </Link>
@@ -323,7 +326,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
             <button
               onClick={() => setIsLoginModalOpen(true)}
               className="bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-lg text-gray-700 hover:text-gray-900 transition-colors"
-              aria-label="Message provider"
+              aria-label={pp("messageProvider")}
               disabled={authLoading}
             >
               <MessageCircle className="h-5 w-5" />
@@ -334,7 +337,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           <button
             onClick={() => (user ? setIsReportModalOpen(true) : setIsLoginModalOpen(true))}
             className="bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-lg text-gray-700 hover:text-amber-600 transition-colors"
-            aria-label="Report provider"
+            aria-label={pp("reportThisProvider")}
           >
             <Flag className="h-5 w-5" />
           </button>
@@ -350,7 +353,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
               {thumbnail_url ? (
                 <Image
                   src={thumbnail_url}
-                  alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
+                  alt={businessName ? `${businessName} ${pp("profilePhoto")}` : pp("providerProfilePhoto")}
                   fill
                   sizes="72px"
                   className="object-cover"
@@ -367,7 +370,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         </div>
         <div className="mb-4 px-4">
           <h1 className="text-2xl font-bold leading-tight text-gray-900 md:text-3xl">
-            {businessName || "Provider"}
+            {businessName || providerFallback}
           </h1>
           {current_badge ? (
             <span
@@ -390,7 +393,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
               </div>
             )}
             {owner_name && (
-              <p className="text-sm text-gray-600">Work with {owner_name}</p>
+              <p className="text-sm text-gray-600">{pp("workWith", { name: owner_name })}</p>
             )}
           </div>
 
@@ -414,7 +417,9 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
             {review_count > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="text-sm text-gray-700">
-                  {review_count.toLocaleString()} {review_count === 1 ? "Review" : "Reviews"}
+                  {review_count === 1
+                    ? pp("reviewCountLabelOne", { count: review_count })
+                    : pp("reviewCountLabelOther", { count: review_count.toLocaleString() })}
                 </span>
               </div>
             )}
@@ -426,9 +431,9 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           {/* Left: Distance */}
           <div className="flex flex-col items-center flex-1">
             <MapPin className="h-5 w-5 text-gray-500 mb-1.5" />
-            <span className="text-xs text-gray-600 mb-0.5">Distance</span>
+            <span className="text-xs text-gray-600 mb-0.5">{pp("distanceLabel")}</span>
             <span className="text-sm font-semibold text-gray-900">
-              {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
+              {distance_km ? pp("distanceKm", { km: distance_km.toFixed(1) }) : "—"}
             </span>
           </div>
 
@@ -440,7 +445,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
                 {rating > 0 ? rating.toFixed(1) : "0.0"}
               </span>
             </div>
-            <span className="text-xs text-gray-600">Rating</span>
+            <span className="text-xs text-gray-600">{pp("ratingLabel")}</span>
           </div>
 
           {/* Right: Reviews */}
@@ -449,7 +454,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
               {review_count.toLocaleString()}
             </span>
             <span className="text-xs text-gray-600">
-              {review_count === 1 ? "Review" : "Reviews"}
+              {review_count === 1 ? pp("reviewLabelOne") : pp("reviewLabelOther")}
             </span>
           </div>
         </div>
@@ -457,7 +462,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         {/* What this provider offers - Bio/Description Section */}
         {profileDescription && (
           <div className="px-4 py-4 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-900 mb-2">What this provider offers:</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">{pp("whatThisProviderOffers")}</h2>
             <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
               {profileDescription}
             </p>
@@ -470,14 +475,14 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           open={isReportModalOpen}
           onOpenChange={setIsReportModalOpen}
           providerId={id}
-          providerName={businessName || "Provider"}
+          providerName={businessName || providerFallback}
         />
       )}
       {/* Share Modal */}
       <ShareModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
-        experienceTitle={businessName || "Provider"}
+        experienceTitle={businessName || providerFallback}
         experienceImage={(() => {
           const raw = displayImages[0]?.src ?? thumbnail_url ?? (gallery?.[0] ?? null);
           return typeof raw === "string" ? raw : (raw as { src?: string })?.src ?? "/images/logo-beatonomi.svg";

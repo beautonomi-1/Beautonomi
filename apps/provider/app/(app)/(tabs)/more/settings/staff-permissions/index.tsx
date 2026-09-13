@@ -4,7 +4,7 @@
 import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, FlatList } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Avatar } from "@/components/ui/Avatar";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface StaffMember {
   id: string;
@@ -28,13 +29,15 @@ interface TeamAccessPayload {
   can_manage_team: boolean;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  provider_owner: "Owner",
-  provider_manager: "Manager",
-  provider_staff: "Staff",
-};
-
 export default function StaffPermissionsListScreen() {
+  const { t } = useTranslation();
+  const sp = (key: string) => t(`provider.mobile.screens.staffPermissions.${key}`) as string;
+  const roleLabel = (role?: string) => {
+    if (role === "provider_owner") return sp("roleOwner");
+    if (role === "provider_manager") return sp("roleManager");
+    if (role === "provider_staff") return sp("roleStaff");
+    return role || sp("roleStaff");
+  };
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
@@ -57,7 +60,7 @@ export default function StaffPermissionsListScreen() {
   if (loading && !staffList) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading staff..." />
+        <LoadingState message={sp("loading")} />
       </ScreenContainer>
     );
   }
@@ -65,7 +68,7 @@ export default function StaffPermissionsListScreen() {
   if (staffError && !staffList) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Staff permissions" showBack subtitle="Edit per-staff access" />
+        <ScreenHeader title={sp("title")} showBack subtitle={sp("subtitleEdit")} />
         <ErrorState message={staffError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -76,20 +79,20 @@ export default function StaffPermissionsListScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Staff permissions"
+        title={sp("title")}
         showBack
-        subtitle={canManageTeam ? "Edit per-staff access" : "View permissions (read-only)"}
+        subtitle={canManageTeam ? sp("subtitleEdit") : sp("subtitleReadOnly")}
       />
       {!canManageTeam ? (
         <Text style={twStyle("mb-3 px-1 text-xs text-gray-500")}>
-          You can only open your own permissions. Ask an owner/manager with Manage team to update access.
+          {sp("readOnlyHint")}
         </Text>
       ) : null}
       {list.length === 0 ? (
         <EmptyState
           icon="people-outline"
-          title="No staff"
-          description="Add team members in Team settings first."
+          title={sp("emptyTitle")}
+          description={sp("emptyDescription")}
         />
       ) : (
         <FlatList
@@ -109,14 +112,14 @@ export default function StaffPermissionsListScreen() {
               disabled={!canManageTeam && ownStaffId !== item.id}
             >
               <Avatar name={item.name} size="md" />
-              <View style={twStyle("ml-3 flex-1")}>
+              <View style={twStyle("ms-3 flex-1")}>
                 <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  {item.role ? ROLE_LABEL[item.role] ?? item.role : "Staff"}
-                  {item.is_admin ? " • Admin" : ""}
+                  {roleLabel(item.role)}
+                  {item.is_admin ? sp("adminSuffix") : ""}
                 </Text>
               </View>
-              <Ionicons
+              <DirectionalIcon
                 name="chevron-forward"
                 size={18}
                 color={!canManageTeam && ownStaffId !== item.id ? "#d1d5db" : "#9ca3af"}

@@ -6,6 +6,14 @@ import {
   computePackageAppliedForDisplay,
 } from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
+import {
+  enrichBookingLifecycleFields,
+  mapProviderSettingsFromRow,
+} from "@/lib/bookings/lifecycle-booking-enrichment";
+import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmation-sla-copy";
+import { canCustomerReportRunningLate } from "@/lib/bookings/lifecycle-running-late";
+import { loadLocationWorkingHours } from "@/lib/bookings/lifecycle-pending-expiry";
+import type { WorkingHoursJson } from "@/lib/bookings/lifecycle-deadlines";
 /**
  * GET /api/me/bookings/[id]
  *
@@ -45,7 +53,8 @@ export async function GET(
           address_line1,
           address_line2,
           city,
-          country
+          country,
+          working_hours
         ),
         booking_services:booking_services(
           id,
@@ -55,6 +64,7 @@ export async function GET(
           price,
           guest_name,
           scheduled_start_at,
+          scheduled_end_at,
           offering:offerings(
             id,
             title,
@@ -158,6 +168,10 @@ export async function GET(
       id: string; booking_number?: string; status?: string; current_stage?: string;
       estimated_arrival?: string; provider_en_route_at?: string; provider_arrived_at?: string;
       provider_location?: unknown; scheduled_at?: string; location_type?: string;
+      location_id?: string | null;
+      created_at?: string;
+      recurring_series_id?: string | null;
+      payment_status?: string;
       total_amount?: number; currency?: string; total_paid?: number;
       booking_services?: unknown[]; booking_addons?: unknown[]; booking_products?: unknown[];
       additional_charges?: unknown[]; arrival_otp_verified?: boolean; arrival_otp_expires_at?: string;
@@ -167,7 +181,7 @@ export async function GET(
       qr_code_expires_at?: string | null;
       address_line1?: string; address_line2?: string; address_city?: string; address_state?: string;
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
-      location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
+      location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string; working_hours?: WorkingHoursJson | null };
       special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
       custom_offer?: {
         id?: string | null;
@@ -234,18 +248,90 @@ export async function GET(
     const resolvedSubtotal =
       storedSubtotal > 0 || linesSubtotalFallback === 0 ? storedSubtotal : linesSubtotalFallback;
 
+    const providerId = bookingRow.provider_id as string;
+    const { data: providerLifecycleRow } = await supabase
+      .from("providers")
+      .select(
+        "closeout_grace_minutes_salon, closeout_grace_minutes_at_home, late_arrival_grace_minutes, confirmation_sla_hours, unconfirmed_expire_hours_before_slot",
+      )
+      .eq("id", providerId)
+      .maybeSingle();
+    const lifecycle = enrichBookingLifecycleFields(
+      {
+        status: String(bookingData.status ?? ""),
+        scheduled_at: String(bookingData.scheduled_at ?? ""),
+        location_type: bookingData.location_type,
+        current_stage: bookingData.current_stage,
+        booking_services: (bookingData.booking_services ?? []) as Array<{
+          scheduled_start_at?: string | null;
+          scheduled_end_at?: string | null;
+          duration_minutes?: number | null;
+          offering?: { duration_minutes?: number | null } | null;
+        }>,
+      },
+      mapProviderSettingsFromRow(providerLifecycleRow ?? undefined),
+    );
+
+    const joinedWorkingHours = ((bookingData.location as { working_hours?: WorkingHoursJson | null } | undefined)
+      ?.working_hours ?? null);
+    const workingHours =
+      joinedWorkingHours &&
+      typeof joinedWorkingHours === "object" &&
+      !Array.isArray(joinedWorkingHours) &&
+      Object.keys(joinedWorkingHours).length > 0
+        ? joinedWorkingHours
+        : providerId
+          ? await loadLocationWorkingHours(supabase, providerId, bookingData.location_id)
+          : null;
+
+    const recurringSeriesId = bookingData.recurring_series_id ?? null;
+
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
       status: bookingData.status,
       current_stage: bookingData.current_stage ?? undefined,
+      lifecycle_hint: lifecycle.lifecycle_hint,
+      in_late_window: lifecycle.in_late_window,
+      end_at: lifecycle.end_at,
+      close_out_at: lifecycle.close_out_at,
+      can_report_running_late: canCustomerReportRunningLate({
+        status: String(bookingData.status ?? ""),
+        scheduled_at: String(bookingData.scheduled_at ?? ""),
+        location_type: bookingData.location_type,
+        current_stage: bookingData.current_stage,
+        customer_running_late_at:
+          (bookingData as Record<string, unknown>).customer_running_late_at as string | null,
+        booking_services: (bookingData.booking_services ?? []) as Array<{
+          scheduled_end_at?: string | null;
+          duration_minutes?: number | null;
+        }>,
+      }).ok,
+      pending_confirmation_sla: recurringSeriesId
+        ? null
+        : pendingConfirmationSlaDisplay({
+            scheduledAt: String(bookingData.scheduled_at ?? ""),
+            createdAt: String((bookingData as { created_at?: string }).created_at ?? ""),
+            paymentStatus: String((bookingData as { payment_status?: string }).payment_status ?? ""),
+            timezone: (bookingData.provider as { timezone?: string | null } | undefined)?.timezone,
+            workingHours,
+            settings: mapProviderSettingsFromRow(providerLifecycleRow ?? undefined),
+          }),
+      customer_running_late_at:
+        (bookingData as Record<string, unknown>).customer_running_late_at ?? undefined,
+      customer_running_late_minutes:
+        (bookingData as Record<string, unknown>).customer_running_late_minutes ?? undefined,
+      provider_late_ack_at:
+        (bookingData as Record<string, unknown>).provider_late_ack_at ?? undefined,
       estimated_arrival: bookingData.estimated_arrival ?? undefined,
       provider_en_route_at: bookingData.provider_en_route_at ?? undefined,
       provider_arrived_at: bookingData.provider_arrived_at ?? undefined,
       provider_location: bookingData.provider_location ?? undefined,
       selected_datetime: bookingData.scheduled_at,
       scheduled_at: bookingData.scheduled_at,
+      created_at: (bookingData as { created_at?: string }).created_at ?? undefined,
       completed_at: (bookingData as Record<string, unknown>).completed_at ?? undefined,
+      location_id: (bookingData as { location_id?: string | null }).location_id ?? null,
       location_type: bookingData.location_type === "at_salon" ? "at_salon" : "at_home",
       // Financial fields — all guarded with Number() to prevent undefined.toFixed() crashes
       // resolvedSubtotal falls back to summed line prices when stored subtotal is 0 but lines exist.
@@ -290,6 +376,7 @@ export async function GET(
       cancellation_reason: (bookingData as Record<string, unknown>).cancellation_reason ?? undefined,
       cancelled_at: (bookingData as Record<string, unknown>).cancelled_at ?? undefined,
       booking_source: (bookingData as Record<string, unknown>).booking_source ?? undefined,
+      recurring_series_id: recurringSeriesId,
       package_id: (() => {
         const pid = ((bookingData as Record<string, unknown>).package_id as string | null | undefined) ?? null;
         const applied = computePackageAppliedForDisplay({
@@ -322,18 +409,29 @@ export async function GET(
       })(),
       payment_provider: (bookingData as Record<string, unknown>).payment_provider ?? undefined,
       services: (bookingData.booking_services ?? []).map((bs: unknown) => {
-        const b = bs as { id: string; offering_id?: string; staff_id?: string; duration_minutes?: number; price?: number; guest_name?: string; offering?: { title?: string; duration_minutes?: number; price?: number }; staff?: { name?: string } };
+        const b = bs as {
+          id: string;
+          offering_id?: string;
+          staff_id?: string;
+          duration_minutes?: number;
+          scheduled_end_at?: string | null;
+          price?: number;
+          guest_name?: string;
+          offering?: { id?: string; title?: string; duration_minutes?: number; price?: number };
+          staff?: { name?: string };
+        };
         const offeringName = b.offering?.title ?? "Service";
         const durationMins = b.duration_minutes ?? b.offering?.duration_minutes ?? 0;
         return ({
         id: b.id,
-        offering_id: b.offering_id,
+        offering_id: b.offering_id ?? b.offering?.id,
         offering_name: offeringName,
         title: offeringName,
         staff_id: b.staff_id,
         staff_name: b.staff?.name ?? null,
         duration_minutes: durationMins,
         duration: durationMins,
+        scheduled_end_at: b.scheduled_end_at ?? undefined,
         price: b.price ?? b.offering?.price ?? 0,
         guest_name: b.guest_name ?? undefined,
       }); }),
@@ -375,14 +473,16 @@ export async function GET(
         latitude: bookingData.address_latitude || undefined,
         longitude: bookingData.address_longitude || undefined,
       } : null,
-      location: bookingData.location ? {
-        name: (bookingData.location as { name?: string }).name,
+      location: (bookingData.location || workingHours) ? {
+        id: (bookingData.location as { id?: string } | undefined)?.id,
+        name: (bookingData.location as { name?: string } | undefined)?.name,
         address: [
-          (bookingData.location as { address_line1?: string }).address_line1,
-          (bookingData.location as { address_line2?: string }).address_line2,
-          (bookingData.location as { city?: string }).city,
-          (bookingData.location as { country?: string }).country,
+          (bookingData.location as { address_line1?: string } | undefined)?.address_line1,
+          (bookingData.location as { address_line2?: string } | undefined)?.address_line2,
+          (bookingData.location as { city?: string } | undefined)?.city,
+          (bookingData.location as { country?: string } | undefined)?.country,
         ].filter(Boolean).join(", "),
+        working_hours: workingHours,
       } : undefined,
       client_info: {
         first_name: auth.user.user_metadata?.first_name || "",
@@ -413,6 +513,12 @@ export async function GET(
         phone: bookingData.provider.phone,
         email: bookingData.provider.email,
         timezone: (bookingData.provider as { timezone?: string | null }).timezone ?? null,
+        confirmation_sla_hours:
+          (providerLifecycleRow as { confirmation_sla_hours?: number | null } | null)
+            ?.confirmation_sla_hours ?? null,
+        unconfirmed_expire_hours_before_slot:
+          (providerLifecycleRow as { unconfirmed_expire_hours_before_slot?: number | null } | null)
+            ?.unconfirmed_expire_hours_before_slot ?? null,
         rating_average: Number((bookingData.provider as { rating_average?: number | null }).rating_average ?? 0) || null,
         review_count: Number((bookingData.provider as { review_count?: number | null }).review_count ?? 0) || null,
       } : undefined,

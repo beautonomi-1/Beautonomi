@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { formatCurrency } from "@/lib/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface Product {
   id: string;
@@ -27,6 +30,8 @@ const SORT_OPTIONS = [
 ];
 
 export default function ShopPage() {
+  const { bundle } = useConfigBundle();
+  const currency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -82,7 +87,7 @@ export default function ShopPage() {
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && fetchProducts()}
               placeholder="Search products..."
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pl-10 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 ps-10 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
             />
             <svg className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -166,7 +171,7 @@ export default function ShopPage() {
                     )}
                     <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">{product.name}</h3>
                     <p className="mt-1 text-xs text-gray-500">{product.provider.business_name}</p>
-                    <p className="mt-2 text-lg font-bold text-pink-600">R{product.retail_price.toFixed(2)}</p>
+                    <p className="mt-2 text-lg font-bold text-pink-600">{formatCurrency(product.retail_price, currency)}</p>
                   </div>
                 </Link>
               ))}

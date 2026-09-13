@@ -2,6 +2,11 @@ import React, { Component, type ReactNode } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { captureError } from "@/lib/sentry";
 import { Colors } from "@/constants/colors";
+import { i18n } from "@beautonomi/i18n";
+
+function eb(key: string): string {
+  return i18n.t(`provider.mobile.components.errorBoundary.${key}`) as string;
+}
 
 interface Props {
   children: ReactNode;
@@ -40,13 +45,13 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
           <Text style={{ marginBottom: 16, textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.error }}>
-            Something went wrong
+            {eb("title")}
           </Text>
           <TouchableOpacity
             style={{ borderRadius: 8, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}
             onPress={this.handleReset}
           >
-            <Text style={{ fontWeight: "500", color: Colors.white }}>Tap to retry</Text>
+            <Text style={{ fontWeight: "500", color: Colors.white }}>{eb("retry")}</Text>
           </TouchableOpacity>
         </View>
       );

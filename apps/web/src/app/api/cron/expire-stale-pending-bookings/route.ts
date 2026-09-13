@@ -1,35 +1,26 @@
 /**
  * GET /api/cron/expire-stale-pending-bookings
  *
- * §receipt-downloads 2026-07 — Stale pending bookings dead end.
+ * Two paths:
+ * 1. Pre-slot: customer-initiated online `pending` requests expire before the slot
+ *    (confirmation SLA + hours-before-slot), with full refund. Recurring series
+ *    visits (`recurring_series_id`) are excluded — they are confirmed on materialise.
+ * 2. Janitor: leftover non-recurring pending bookings whose slot started >1h ago.
  *
- * `status = 'pending'` bookings (and pending `group_bookings`) are shown to
- * the provider as booking requests awaiting confirmation. The Day-view date
- * strip is hard-capped at ±30 days ({@link PROVIDER_BOOKINGS_STRIP_HALF_DAYS}
- * in `packages/utils/src/booking/scheduleDisplay.ts}), but nothing previously
- * expired `pending` bookings whose appointment time had already passed — so
- * once a request scrolled outside that window it became a permanent,
- * un-actionable entry inflating the "pending" badge forever.
- *
- * This sweep cancels `pending` bookings (and pending group bookings) whose
- * `scheduled_at` is more than `STALE_PENDING_TTL_HOURS` (default 24h) in the
- * past — the provider never confirmed before the appointment time. Since the
- * provider never accepted the request, the customer is made whole: full
- * refund, zero cancellation fee, via the same shared settlement used by every
- * other cancellation path. Both the customer and the provider are notified.
- *
- * Meant to run hourly.
+ * Runs every 15 minutes.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
-import { settleBookingFinanceById } from "@/lib/bookings/settle-booking-cancellation";
-import { sendCancellationNotification } from "@/lib/bookings/notifications";
-import { matchWaitlistOnCancellation } from "@/lib/waitlist/matching";
-import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+import { cancelPendingBookingRequest } from "@/lib/bookings/cancel-pending-booking-request";
+import {
+  filterDuePreSlotPendingBookings,
+  groupHasConfirmedChild,
+  cancelGroupPendingParticipants,
+  type PendingBookingRow,
+} from "@/lib/bookings/lifecycle-pending-expiry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,110 +28,11 @@ export const maxDuration = 300;
 
 const JOB_NAME = "expire-stale-pending-bookings";
 
-/** Hours a booking request may sit unconfirmed past its appointment time before it auto-expires. */
-const DEFAULT_TTL_HOURS = 24;
+/** Janitor fires once the slot started more than 1h ago (plan: post-slot safety net). */
+const DEFAULT_TTL_HOURS = 1;
 const BOOKING_BATCH_LIMIT = 200;
 const GROUP_BATCH_LIMIT = 100;
-const CANCELLATION_REASON =
-  "Expired — the provider did not confirm this request before the appointment time";
-
-interface CancelOutcome {
-  ok: boolean;
-  reason?: string;
-}
-
-/**
- * Cancel a single stale `pending` booking: status flip (race-guarded),
- * full-refund/zero-fee finance settlement, package entitlement restore,
- * waitlist match, and customer+provider notification. Best-effort past the
- * status update — one bad row must not halt the sweep.
- */
-async function cancelStalePendingBooking(
-  admin: SupabaseClient,
-  bookingId: string,
-): Promise<CancelOutcome> {
-  const now = new Date().toISOString();
-  const { data: updatedRows, error: updateError } = await admin
-    .from("bookings")
-    .update({
-      status: "cancelled",
-      cancelled_at: now,
-      cancelled_by: null,
-      cancellation_reason: CANCELLATION_REASON,
-      cancellation_fee: 0,
-      updated_at: now,
-    })
-    .eq("id", bookingId)
-    .eq("status", "pending")
-    .select("id, currency, customer_id, customer_package_entitlement_id, group_booking_id")
-    .limit(1);
-
-  if (updateError) {
-    console.error("[expire-stale-pending-bookings] update failed", bookingId, updateError);
-    return { ok: false, reason: updateError.message };
-  }
-  const updated = updatedRows?.[0] as
-    | {
-        id: string;
-        currency?: string | null;
-        customer_id?: string | null;
-        customer_package_entitlement_id?: string | null;
-        group_booking_id?: string | null;
-      }
-    | undefined;
-  if (!updated) {
-    // Already confirmed/cancelled by the provider or customer in the meantime — skip silently.
-    return { ok: false, reason: "already_resolved" };
-  }
-
-  let walletRefundAmount: number | undefined;
-  try {
-    const settlement = await settleBookingFinanceById(admin, bookingId, "admin");
-    walletRefundAmount = settlement?.walletRefundAmount;
-  } catch (err) {
-    console.error("[expire-stale-pending-bookings] settlement failed", bookingId, err);
-  }
-
-  if (updated.customer_package_entitlement_id && updated.customer_id) {
-    try {
-      await admin.rpc("restore_customer_package_entitlement", {
-        p_entitlement_id: updated.customer_package_entitlement_id,
-        p_customer_id: updated.customer_id,
-      });
-    } catch (err) {
-      console.error("[expire-stale-pending-bookings] entitlement restore failed", bookingId, err);
-    }
-  }
-
-  try {
-    await matchWaitlistOnCancellation(admin, bookingId);
-  } catch (err) {
-    console.error("[expire-stale-pending-bookings] waitlist match failed", bookingId, err);
-  }
-
-  await sendCancellationNotification(bookingId, {
-    cancelledBy: "system",
-    cancellationReason: CANCELLATION_REASON,
-    refundInfo: "You have been fully refunded — no cancellation fee applies.",
-    feeRetained: 0,
-    walletRefund: walletRefundAmount,
-    currency: updated.currency ?? undefined,
-  });
-
-  if (updated.group_booking_id) {
-    try {
-      await syncGroupBookingStatusFromChildren(admin, updated.group_booking_id);
-    } catch (syncErr) {
-      console.error(
-        "[expire-stale-pending-bookings] group status sync failed",
-        updated.group_booking_id,
-        syncErr,
-      );
-    }
-  }
-
-  return { ok: true };
-}
+const PRE_SLOT_LOOKBACK_MS = 60 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
   const auth = verifyCronRequest(request);
@@ -168,70 +60,176 @@ async function runJob(request: NextRequest) {
   })();
 
   const admin = getSupabaseAdmin();
-  const cutoffIso = new Date(Date.now() - ttlHours * 60 * 60 * 1000).toISOString();
+  const now = new Date();
+  const preSlotCutoffIso = new Date(now.getTime() - PRE_SLOT_LOOKBACK_MS).toISOString();
+  const janitorCutoffIso = new Date(now.getTime() - ttlHours * 60 * 60 * 1000).toISOString();
 
-  let expiredBookings = 0;
-  let skippedBookings = 0;
+  let preSlotExpired = 0;
+  let preSlotSkipped = 0;
+  let janitorExpired = 0;
+  let janitorSkipped = 0;
 
-  // Standalone bookings (not part of a group) — the common case.
-  const { data: staleBookings, error: bookingsError } = await admin
+  const { data: preSlotCandidates, error: preSlotError } = await admin
     .from("bookings")
-    .select("id")
+    .select(
+      "id, created_at, scheduled_at, booking_source, recurring_series_id, status, provider_id, location_id, group_booking_id, payment_status",
+    )
     .eq("status", "pending")
-    .is("group_booking_id", null)
-    .lt("scheduled_at", cutoffIso)
+    .eq("booking_source", "online")
+    .is("recurring_series_id", null)
+    .gt("scheduled_at", preSlotCutoffIso)
     .order("scheduled_at", { ascending: true })
     .limit(BOOKING_BATCH_LIMIT);
 
-  if (bookingsError) {
-    console.error("[expire-stale-pending-bookings] bookings query failed", bookingsError);
-    return NextResponse.json({ ok: false, error: bookingsError.message }, { status: 500 });
+  if (preSlotError) {
+    console.error("[expire-stale-pending-bookings] pre-slot query failed", preSlotError);
+    return NextResponse.json({ ok: false, error: preSlotError.message }, { status: 500 });
   }
 
-  for (const row of staleBookings ?? []) {
-    const outcome = await cancelStalePendingBooking(admin, (row as { id: string }).id);
-    if (outcome.ok) expiredBookings += 1;
-    else skippedBookings += 1;
+  const duePreSlot = await filterDuePreSlotPendingBookings(
+    admin,
+    (preSlotCandidates ?? []) as PendingBookingRow[],
+    now,
+  );
+
+  const seenGroups = new Set<string>();
+  for (const row of duePreSlot) {
+    if (row.group_booking_id) {
+      if (seenGroups.has(row.group_booking_id)) {
+        preSlotSkipped += 1;
+        continue;
+      }
+      seenGroups.add(row.group_booking_id);
+
+      try {
+        const hasConfirmed = await groupHasConfirmedChild(admin, row.group_booking_id);
+
+        const { data: siblings } = await admin
+          .from("bookings")
+          .select("id, payment_status, recurring_series_id")
+          .eq("group_booking_id", row.group_booking_id)
+          .eq("status", "pending");
+
+        const groupOutcome = await cancelGroupPendingParticipants(
+          admin,
+          row.group_booking_id,
+          (siblings ?? []) as Array<{
+            id: string;
+            payment_status?: string | null;
+            recurring_series_id?: string | null;
+          }>,
+          row.expireReason,
+        );
+        preSlotExpired += groupOutcome.expired;
+        preSlotSkipped += groupOutcome.skipped;
+
+        if (!hasConfirmed && groupOutcome.expired > 0) {
+          await admin
+            .from("group_bookings")
+            .update({ status: "cancelled", updated_at: new Date().toISOString() })
+            .eq("id", row.group_booking_id)
+            .eq("status", "pending");
+        }
+      } catch (err) {
+        console.error(
+          "[expire-stale-pending-bookings] group pre-slot expiry failed",
+          row.group_booking_id,
+          err,
+        );
+        preSlotSkipped += 1;
+      }
+      continue;
+    }
+
+    const outcome = await cancelPendingBookingRequest(admin, row.id, {
+      reason: row.expireReason,
+      paymentStatus: row.payment_status,
+    });
+    if (outcome.ok) preSlotExpired += 1;
+    else preSlotSkipped += 1;
   }
 
-  // Group bookings: cancel every still-pending participant booking, then the group itself.
-  let expiredGroups = 0;
-  let expiredGroupParticipantBookings = 0;
+  const { data: janitorBookings, error: janitorBookingsError } = await admin
+    .from("bookings")
+    .select("id, payment_status, recurring_series_id")
+    .eq("status", "pending")
+    .is("group_booking_id", null)
+    .is("recurring_series_id", null)
+    .lt("scheduled_at", janitorCutoffIso)
+    .order("scheduled_at", { ascending: true })
+    .limit(BOOKING_BATCH_LIMIT);
 
-  const { data: staleGroups, error: groupsError } = await admin
+  if (janitorBookingsError) {
+    console.error("[expire-stale-pending-bookings] janitor query failed", janitorBookingsError);
+    return NextResponse.json({ ok: false, error: janitorBookingsError.message }, { status: 500 });
+  }
+
+  for (const row of janitorBookings ?? []) {
+    const booking = row as {
+      id: string;
+      payment_status?: string | null;
+      recurring_series_id?: string | null;
+    };
+    if (booking.recurring_series_id) {
+      janitorSkipped += 1;
+      continue;
+    }
+    const outcome = await cancelPendingBookingRequest(admin, booking.id, {
+      reason: "janitor",
+      paymentStatus: booking.payment_status,
+    });
+    if (outcome.ok) janitorExpired += 1;
+    else janitorSkipped += 1;
+  }
+
+  let janitorGroups = 0;
+  let janitorGroupParticipantBookings = 0;
+
+  const { data: janitorGroupsRows, error: janitorGroupsError } = await admin
     .from("group_bookings")
     .select("id")
     .eq("status", "pending")
-    .lt("scheduled_at", cutoffIso)
+    .lt("scheduled_at", janitorCutoffIso)
     .order("scheduled_at", { ascending: true })
     .limit(GROUP_BATCH_LIMIT);
 
-  if (groupsError) {
-    console.error("[expire-stale-pending-bookings] group_bookings query failed", groupsError);
+  if (janitorGroupsError) {
+    console.error("[expire-stale-pending-bookings] group query failed", janitorGroupsError);
   }
 
-  for (const group of staleGroups ?? []) {
+  for (const group of janitorGroupsRows ?? []) {
     const groupId = (group as { id: string }).id;
     try {
+      const hasConfirmed = await groupHasConfirmedChild(admin, groupId);
+
       const { data: participantBookings, error: participantsError } = await admin
         .from("bookings")
-        .select("id")
+        .select("id, payment_status, recurring_series_id")
         .eq("group_booking_id", groupId)
         .eq("status", "pending");
       if (participantsError) throw participantsError;
 
-      for (const pb of participantBookings ?? []) {
-        const outcome = await cancelStalePendingBooking(admin, (pb as { id: string }).id);
-        if (outcome.ok) expiredGroupParticipantBookings += 1;
-      }
+      const groupOutcome = await cancelGroupPendingParticipants(
+        admin,
+        groupId,
+        (participantBookings ?? []) as Array<{
+          id: string;
+          payment_status?: string | null;
+          recurring_series_id?: string | null;
+        }>,
+        "janitor",
+      );
+      janitorGroupParticipantBookings += groupOutcome.expired;
 
-      const { error: groupUpdateError } = await admin
-        .from("group_bookings")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
-        .eq("id", groupId)
-        .eq("status", "pending");
-      if (groupUpdateError) throw groupUpdateError;
-      expiredGroups += 1;
+      if (!hasConfirmed && groupOutcome.expired > 0) {
+        const { error: groupUpdateError } = await admin
+          .from("group_bookings")
+          .update({ status: "cancelled", updated_at: new Date().toISOString() })
+          .eq("id", groupId)
+          .eq("status", "pending");
+        if (groupUpdateError) throw groupUpdateError;
+        janitorGroups += 1;
+      }
     } catch (err) {
       console.error("[expire-stale-pending-bookings] group cancel failed", groupId, err);
     }
@@ -240,15 +238,19 @@ async function runJob(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     ttl_hours: ttlHours,
-    bookings: {
-      candidates: (staleBookings ?? []).length,
-      expired: expiredBookings,
-      skipped: skippedBookings,
+    pre_slot: {
+      candidates: (preSlotCandidates ?? []).length,
+      due: duePreSlot.length,
+      expired: preSlotExpired,
+      skipped: preSlotSkipped,
     },
-    group_bookings: {
-      candidates: (staleGroups ?? []).length,
-      expired: expiredGroups,
-      participant_bookings_expired: expiredGroupParticipantBookings,
+    janitor: {
+      booking_candidates: (janitorBookings ?? []).length,
+      bookings_expired: janitorExpired,
+      bookings_skipped: janitorSkipped,
+      group_candidates: (janitorGroupsRows ?? []).length,
+      groups_expired: janitorGroups,
+      participant_bookings_expired: janitorGroupParticipantBookings,
     },
   });
 }

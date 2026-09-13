@@ -26,6 +26,7 @@ import { useCart } from "@/features/shop/useCart";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { pushCustomerLogin } from "@/lib/guest-browse-policy";
+import { endTextAlign } from "@/lib/rtlText";
 
 interface ProviderShippingConfig {
   offers_delivery: boolean;
@@ -71,7 +72,11 @@ function linePrice(item: CartItem): number {
 export default function CartScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const tc = useCallback((key: string) => t(`customer.mobile.screens.cart.${key}`), [t]);
+  const tc = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.screens.cart.${key}`, opts) as string,
+    [t],
+  );
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -200,9 +205,9 @@ export default function CartScreen() {
     const url = `${APP_URL}/cart`;
     router.push({
       pathname: "/(app)/in-app-browser",
-      params: { url: encodeURIComponent(url), title: "Cart" },
+      params: { url: encodeURIComponent(url), title: tc("headerTitle") },
     });
-  }, []);
+  }, [tc]);
 
   if (!user) {
     return (
@@ -211,7 +216,7 @@ export default function CartScreen() {
           {tc("headerTitle")}
         </Text>
         <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
-          Log in to view your cart and checkout
+          {tc("loginPrompt")}
         </Text>
         <TouchableOpacity
           onPress={() => pushCustomerLogin("/(app)/(tabs)/cart")}
@@ -266,7 +271,7 @@ export default function CartScreen() {
               }}
             >
               <Text style={{ fontSize: 13, color: fromCache ? "#92400E" : "#991B1B" }}>
-                {fromCache ? `${cartError} Showing saved cart.` : cartError}
+                {fromCache ? tc("showingSavedCart", { error: cartError }) : cartError}
               </Text>
             </View>
           </View>
@@ -274,21 +279,21 @@ export default function CartScreen() {
         {items.length === 0 ? (
           <View style={{ padding: contentPadding * 2, alignItems: "center" }}>
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>Your cart is empty</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>{tc("emptyTitle")}</Text>
             <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
-              Browse the shop and add products to get started.
+              {tc("emptyBody")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/shop" as any)}
               style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 32, backgroundColor: Colors.primary, borderRadius: 12 }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Browse products</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{tc("browseProducts")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/product-orders" as any)}
               style={{ marginTop: 12, paddingVertical: 10 }}
             >
-              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>View my orders</Text>
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>{tc("viewMyOrders")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -303,22 +308,22 @@ export default function CartScreen() {
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151", flex: 1 }}>{g.provider.business_name}</Text>
                   {isPickupOnly && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FFF7ED", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: "#FED7AA" }}>
-                      <Ionicons name="storefront-outline" size={12} color="#C2410C" style={{ marginRight: 4 }} />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2410C" }}>Pickup only</Text>
+                      <Ionicons name="storefront-outline" size={12} color="#C2410C" style={{ marginEnd: 4 }} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2410C" }}>{tc("pickupOnly")}</Text>
                     </View>
                   )}
                   {sc && !isPickupOnly && sc.offers_delivery && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 }}>
-                      <Ionicons name="bicycle-outline" size={12} color="#1D4ED8" style={{ marginRight: 4 }} />
-                      <Text style={{ fontSize: 11, fontWeight: "600", color: "#1D4ED8" }}>Delivery available</Text>
+                      <Ionicons name="bicycle-outline" size={12} color="#1D4ED8" style={{ marginEnd: 4 }} />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: "#1D4ED8" }}>{tc("deliveryAvailable")}</Text>
                     </View>
                   )}
                 </View>
                 {isPickupOnly && (
                   <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FFF7ED", borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#FED7AA" }}>
-                    <Ionicons name="information-circle-outline" size={15} color="#C2410C" style={{ marginRight: 8 }} />
+                    <Ionicons name="information-circle-outline" size={15} color="#C2410C" style={{ marginEnd: 8 }} />
                     <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 17 }}>
-                      In-store collection required. No delivery for this provider.
+                      {tc("pickupOnlyHint")}
                     </Text>
                   </View>
                 )}
@@ -355,7 +360,7 @@ export default function CartScreen() {
                              wedging "R199.99 each · R599.97 total" onto a
                              single line that overflowed the trash icon on
                              small phones. */}
-                        <View style={{ flex: 1, marginLeft: 12 }}>
+                        <View style={{ flex: 1, marginStart: 12 }}>
                           <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={2}>
                             {item.product?.name}
                             {label ? ` · ${label}` : ""}
@@ -367,9 +372,9 @@ export default function CartScreen() {
                             {item.quantity} × {fmt(item.effective_price ?? item.product?.retail_price ?? 0)}
                           </Text>
                           {!item.in_stock ? (
-                            <Text style={{ fontSize: 11, color: "#EF4444", fontWeight: "600", marginTop: 2 }}>Out of stock — remove before checkout</Text>
+                            <Text style={{ fontSize: 11, color: "#EF4444", fontWeight: "600", marginTop: 2 }}>{tc("outOfStockHint")}</Text>
                           ) : item.stock_available != null && item.stock_available <= 5 ? (
-                            <Text style={{ fontSize: 11, color: "#D97706", fontWeight: "600", marginTop: 2 }}>Only {item.stock_available} left</Text>
+                            <Text style={{ fontSize: 11, color: "#D97706", fontWeight: "600", marginTop: 2 }}>{tc("onlyLeft", { count: item.stock_available })}</Text>
                           ) : null}
                           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8 }}>
@@ -393,13 +398,13 @@ export default function CartScreen() {
                             </View>
                           </View>
                         </View>
-                        <View style={{ alignItems: "flex-end", marginLeft: 8, justifyContent: "space-between", alignSelf: "stretch" }}>
+                        <View style={{ alignItems: "flex-end", marginStart: 8, justifyContent: "space-between", alignSelf: "stretch" }}>
                           <TouchableOpacity
                             onPress={() => removeItem(item.id)}
                             disabled={removing}
                             style={{ padding: 8 }}
                             hitSlop={12}
-                            accessibilityLabel="Remove item"
+                            accessibilityLabel={tc("removeItemTitle")}
                           >
                             {removing ? (
                               <ActivityIndicator size="small" color="#6B7280" />
@@ -420,12 +425,12 @@ export default function CartScreen() {
                     );
                   })}
                 </View>
-                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: "right" }}>
-                  Subtotal: {fmt(g.subtotal)}
+                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: endTextAlign() }}>
+                  {tc("subtotal", { amount: fmt(g.subtotal) })}
                 </Text>
                 {g.items.some((i) => !i.in_stock) ? (
                   <View style={{ marginTop: 12, backgroundColor: "#D1D5DB", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Remove out-of-stock items to checkout</Text>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>{tc("removeOutOfStockToCheckout")}</Text>
                   </View>
                 ) : (
                   <TouchableOpacity
@@ -440,11 +445,11 @@ export default function CartScreen() {
                   >
                     {isPickupOnly ? (
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
+                        <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginEnd: 6 }} />
+                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{tc("checkoutPickupCta", { amount: fmt(g.subtotal) })}</Text>
                       </View>
                     ) : (
-                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{tc("checkoutCta", { amount: fmt(g.subtotal) })}</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -454,7 +459,7 @@ export default function CartScreen() {
 
             <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: contentPadding, marginTop: 8, ...Shadows.cardSmall }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>Total</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{tc("total")}</Text>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.primary }}>{fmt(total)}</Text>
               </View>
             </View>
@@ -480,8 +485,8 @@ export default function CartScreen() {
             onPress={openCheckout}
             style={{ paddingVertical: 10, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
           >
-            <Ionicons name="open-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
-            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "600" }}>Also checkout on web</Text>
+            <Ionicons name="open-outline" size={16} color={Colors.primary} style={{ marginEnd: 6 }} />
+            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "600" }}>{tc("alsoCheckoutOnWeb")}</Text>
           </TouchableOpacity>
         </View>
       )}

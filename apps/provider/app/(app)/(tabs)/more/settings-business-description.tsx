@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -28,6 +29,12 @@ function providerProfileFromApi(
 }
 
 export default function SettingsBusinessDescriptionScreen() {
+  const { t } = useTranslation();
+  const bd = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.settingsBusinessDescription.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { data, loading, error, refresh } = useApi<ProviderProfile | { data?: ProviderProfile }>(
     "/api/provider/profile"
@@ -43,25 +50,25 @@ export default function SettingsBusinessDescriptionScreen() {
 
   const handleSave = useCallback(async () => {
     if (description.length > MAX_LENGTH) {
-      Alert.alert("Validation", `Description must be ${MAX_LENGTH} characters or less.`);
+      Alert.alert(bd("validationTitle"), bd("tooLong", { max: MAX_LENGTH }));
       return;
     }
     const res = await patchProfile("/api/provider/profile", {
       description: description.trim() || null,
     }) as { error?: string };
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(bd("errorTitle"), res.error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     }
-  }, [description, patchProfile, router]);
+  }, [description, patchProfile, router, bd]);
 
   if (loading && profile.description === undefined && providerProfileFromApi(data).description === undefined) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Business description" onBack={() => router.back()} />
-        <LoadingState message="Loading..." />
+        <ScreenHeader title={bd("title")} onBack={() => router.back()} />
+        <LoadingState message={bd("loading")} />
       </ScreenContainer>
     );
   }
@@ -69,8 +76,8 @@ export default function SettingsBusinessDescriptionScreen() {
   return (
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
-        title="Business description"
-        subtitle="Shown to customers"
+        title={bd("title")}
+        subtitle={bd("subtitle")}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
@@ -81,7 +88,7 @@ export default function SettingsBusinessDescriptionScreen() {
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "500", color: Colors.white }}>Save</Text>
+              <Text style={{ fontWeight: "500", color: Colors.white }}>{bd("save")}</Text>
             )}
           </TouchableOpacity>
         }
@@ -104,17 +111,17 @@ export default function SettingsBusinessDescriptionScreen() {
               <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", padding: 12 }}>
                 <Text style={{ fontSize: 14, color: "#b91c1c" }}>{error}</Text>
                 <TouchableOpacity onPress={() => refresh()} style={{ marginTop: 8 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>Retry</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>{bd("retry")}</Text>
                 </TouchableOpacity>
               </View>
             )}
 
             <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-              Description
+              {bd("descriptionLabel")}
             </Text>
             <TextInput
               style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 140 }}
-              placeholder="Describe your business for customers. What you offer, your style, experience, etc."
+              placeholder={bd("placeholder")}
               placeholderTextColor="#9ca3af"
               value={description}
               onChangeText={setDescription}
@@ -122,15 +129,15 @@ export default function SettingsBusinessDescriptionScreen() {
               numberOfLines={6}
               textAlignVertical="top"
               maxLength={MAX_LENGTH + 1}
-              accessibilityLabel="Business description"
+              accessibilityLabel={bd("descriptionA11y")}
             />
             <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-              {description.length} / {MAX_LENGTH} characters
+              {bd("charCount", { count: description.length, max: MAX_LENGTH })}
             </Text>
 
             <View style={{ marginTop: 16 }}>
               <ActionButton
-                label={saving ? "Saving..." : "Save description"}
+                label={saving ? bd("saving") : bd("saveDescription")}
                 onPress={handleSave}
                 fullWidth
                 disabled={saving}

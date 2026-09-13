@@ -7,6 +7,7 @@ import { BookingState, BookingStep } from "./booking-flow";
 import { formatCurrency } from "@/lib/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BookingActionBarProps {
   bookingState: BookingState;
@@ -23,6 +24,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
   onNext,
   onBack: _onBack,
 }, ref) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const totals = useMemo(() => {
@@ -97,77 +99,77 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
         {/* Totals Summary */}
         <div className="mb-3 space-y-1 text-sm">
           <div className="flex justify-between text-gray-600">
-            <span>Services</span>
+            <span>{t("web.booking.actionBar.services")}</span>
             <span>{formatCurrency(totals.servicesTotal, totals.currency)}</span>
           </div>
           {totals.addonsTotal > 0 && (
             <div className="flex justify-between text-gray-600">
-              <span>Add-ons</span>
+              <span>{t("web.booking.actionBar.addons")}</span>
               <span>{formatCurrency(totals.addonsTotal, totals.currency)}</span>
             </div>
           )}
           {totals.productsTotal > 0 && (
             <div className="flex justify-between text-gray-600">
-              <span>Products</span>
+              <span>{t("web.booking.actionBar.products")}</span>
               <span>{formatCurrency(totals.productsTotal, totals.currency)}</span>
             </div>
           )}
           {totals.travelFee > 0 && (
             <div className="flex justify-between text-gray-600">
-              <span>Travel Fee</span>
+              <span>{t("web.booking.actionBar.travelFee")}</span>
               <span>{formatCurrency(totals.travelFee, totals.currency)}</span>
             </div>
           )}
           {bookingState.promotions.couponDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Coupon</span>
+              <span>{t("web.booking.actionBar.coupon")}</span>
               <span>-{formatCurrency(bookingState.promotions.couponDiscount, totals.currency)}</span>
             </div>
           )}
           {bookingState.promotions.giftCardAmount > 0 && (
             <div className="flex justify-between text-sm text-blue-700">
-              <span>Gift card tender</span>
-              <span>Applies at payment</span>
+              <span>{t("web.booking.actionBar.giftCardTender")}</span>
+              <span>{t("web.booking.actionBar.appliesAtPayment")}</span>
             </div>
           )}
           {bookingState.promotions.loyaltyDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Loyalty Points</span>
+              <span>{t("web.booking.actionBar.loyaltyPoints")}</span>
               <span>-{formatCurrency(bookingState.promotions.loyaltyDiscount, totals.currency)}</span>
             </div>
           )}
           {bookingState.promotions.membershipDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
+              <span>{bookingState.promotions.membershipPlanName || t("web.booking.actionBar.membershipFallback")}</span>
               <span>-{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}</span>
             </div>
           )}
           {totals.subtotalAfterDiscounts !== totals.subtotal && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Subtotal</span>
+              <span>{t("web.booking.actionBar.subtotal")}</span>
               <span>{formatCurrency(totals.subtotalAfterDiscounts, totals.currency)}</span>
             </div>
           )}
           {totals.taxAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Tax {totals.taxRate > 0 ? `(${totals.taxRate}%)` : ""}</span>
+              <span>{totals.taxRate > 0 ? t("web.booking.actionBar.taxWithRate", { rate: totals.taxRate }) : t("web.booking.actionBar.tax")}</span>
               <span>{formatCurrency(totals.taxAmount, totals.currency)}</span>
             </div>
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Platform Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
+              <span>{totals.serviceFeePercentage > 0 ? t("web.booking.actionBar.platformFeeWithPct", { pct: totals.serviceFeePercentage }) : t("web.booking.actionBar.platformFee")}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}
           {totals.tipAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Tip</span>
+              <span>{t("web.booking.actionBar.tip")}</span>
               <span>{formatCurrency(totals.tipAmount, totals.currency)}</span>
             </div>
           )}
           <div className="flex justify-between text-lg font-semibold text-gray-900 pt-2 border-t">
-            <span>Total</span>
+            <span>{t("web.booking.actionBar.total")}</span>
             <span>{formatCurrency(totals.total, totals.currency)}</span>
           </div>
         </div>
@@ -177,9 +179,9 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
           onClick={onNext}
           disabled={!canProceed}
           className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed touch-target"
-          aria-label="Continue to next step"
+          aria-label={t("web.booking.actionBar.continueAriaLabel")}
         >
-          Continue
+          {t("web.booking.actionBar.continue")}
         </Button>
       </div>
     </motion.div>

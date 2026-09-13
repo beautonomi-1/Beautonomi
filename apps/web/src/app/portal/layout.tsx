@@ -3,12 +3,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { PortalErrorBoundary } from "./components/portal-error-boundary";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Booking Portal",
-  description: "View and manage your beauty service bookings. Reschedule or cancel appointments using your secure booking link.",
-  robots: "noindex, nofollow",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/portal",
+    titleKey: "web.seo.portalTitle",
+    descriptionKey: "web.seo.portalDescription",
+    robots: "noindex, nofollow",
+  });
+}
 
 export default function PortalLayout({
   children,
@@ -28,13 +32,13 @@ export default function PortalLayout({
           </Link>
           <Link
             href="/"
-            className="text-sm font-medium text-[#FF0077] hover:text-[#D60565] transition-colors"
+            className="text-sm text-gray-500 hover:text-[#FF0077] transition-colors"
           >
-            Back to site
+            Back to Beautonomi
           </Link>
         </div>
       </header>
-      <div className="flex-1">{children}</div>
+      <main className="flex-1">{children}</main>
     </div>
     </PortalErrorBoundary>
   );

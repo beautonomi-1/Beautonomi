@@ -11,6 +11,7 @@ import type { BookingState } from "../booking-flow";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
 
 interface ProductVariant {
   id: string;
@@ -322,17 +323,13 @@ export default function BookingProducts({
   };
 
   const formatCurrency = (amount: number, currency: string = tenantCurrency) => {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
+    return formatMoneyUtil(amount, currency);
   };
 
   if (isLoading) {
     return (
       <div className="p-6 text-center text-gray-500">
-        <p>Loading products...</p>
+        <p>{t("web.booking.products.loading")}</p>
       </div>
     );
   }
@@ -344,9 +341,9 @@ export default function BookingProducts({
   return (
     <div className="p-4 space-y-4">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">Add Products</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">{t("web.booking.products.title")}</h2>
         <p className="text-sm text-gray-600">
-          Purchase products to take home with your service
+          {t("web.booking.products.subtitle")}
         </p>
       </div>
 
@@ -360,7 +357,7 @@ export default function BookingProducts({
                 value={categorySearchQuery}
                 onChange={(e) => setCategorySearchQuery(e.target.value)}
                 placeholder={t("booking.filterCategoriesPlaceholder")}
-                className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+                className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
                 autoComplete="off"
                 aria-label={t("booking.filterCategoriesPlaceholder")}
               />
@@ -390,7 +387,7 @@ export default function BookingProducts({
                   activeCategory === cat ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                {cat}
+                {cat === "Other" ? t("web.booking.products.otherCategory") : cat}
               </button>
             ))}
           </div>
@@ -405,7 +402,7 @@ export default function BookingProducts({
             value={productSearchQuery}
             onChange={(e) => setProductSearchQuery(e.target.value)}
             placeholder={t("booking.searchProductsPlaceholder")}
-            className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+            className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
             autoComplete="off"
             aria-label={t("booking.searchProductsPlaceholder")}
           />
@@ -524,18 +521,18 @@ export default function BookingProducts({
                       <p className="font-semibold text-gray-900 whitespace-nowrap">{formatCurrency(currentPrice, product.currency)}</p>
                       {product.track_stock_quantity && (
                         <p className="text-xs text-gray-500 mt-1">
-                          {stock > 0 ? `${stock} in stock` : "Out of stock"}
+                          {stock > 0 ? t("booking.productInStock", { count: stock }) : t("booking.productOutOfStock")}
                         </p>
                       )}
                     </div>
 
                     {isOutOfStock ? (
                       <Button variant="outline" size="sm" disabled className="text-gray-400">
-                        Out of Stock
+                        {t("booking.productOutOfStock")}
                       </Button>
                     ) : product.hasVariants && !chosenVariantId && (product.variants?.length ?? 0) > 0 ? (
                       <Button variant="outline" size="sm" disabled className="text-gray-400 text-xs">
-                        Select option
+                        {t("web.booking.products.selectOption")}
                       </Button>
                     ) : isSelected ? (
                       <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-2">
@@ -565,8 +562,8 @@ export default function BookingProducts({
                         onClick={() => updateProductQuantity(product, 1)}
                         className="text-primary border-primary hover:bg-primary hover:text-white"
                       >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add
+                        <Plus className="w-4 h-4 me-1" />
+                        {t("common.add")}
                       </Button>
                     )}
                   </div>
@@ -596,19 +593,19 @@ export default function BookingProducts({
 
       {bookingState.selectedProducts.length > 0 && (
         <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="font-medium text-gray-900 mb-2">Selected Products</h3>
+          <h3 className="font-medium text-gray-900 mb-2">{t("web.booking.products.selectedProducts")}</h3>
           <div className="space-y-1">
             {bookingState.selectedProducts.map((product) => (
               <div key={product.id} className="flex justify-between text-sm text-gray-600">
                 <span>
-                  {product.name} × {product.quantity}
+                  {t("web.booking.products.qtyLine", { name: product.name, quantity: product.quantity })}
                 </span>
                 <span className="font-medium">{formatCurrency(product.price * product.quantity, product.currency)}</span>
               </div>
             ))}
           </div>
           <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between font-semibold text-gray-900">
-            <span>Total</span>
+            <span>{t("booking.total")}</span>
             <span>
               {formatCurrency(
                 bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0),

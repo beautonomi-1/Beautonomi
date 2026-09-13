@@ -18,6 +18,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { adminToast } from "@/lib/adminToast";
 import {
   AdminDataTable,
@@ -170,7 +171,7 @@ function bool(v: unknown): boolean {
 }
 
 function fmt(n: number, currency = "ZAR"): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(n);
+  return formatAdminCurrency(n, currency);
 }
 
 function ProviderFinanceSummaryCard({ summary }: { summary: ProviderFinanceSummary }) {

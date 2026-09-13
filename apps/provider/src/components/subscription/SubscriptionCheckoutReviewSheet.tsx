@@ -6,6 +6,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 import { webPrivacyPolicyUrl, webPartnerEulaUrl } from "@/lib/legal-web";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type SubscriptionCheckoutReview = {
   /** Accent badge label, e.g. "Upgrade" / "Renewal". */
@@ -44,6 +45,8 @@ export function SubscriptionCheckoutReviewSheet({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+  const cr = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.subscriptionCheckoutReview.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
   const useAppleIap = shouldUseAppleIap();
 
@@ -53,11 +56,11 @@ export function SubscriptionCheckoutReviewSheet({
       onClose={() => {
         if (!submitting) onClose();
       }}
-      title="Review your plan"
+      title={cr("title")}
       subtitle={
         useAppleIap
-          ? "Confirm the details below before completing your App Store purchase."
-          : "Confirm the details below before paying securely."
+          ? cr("subtitleApple")
+          : cr("subtitlePaystack")
       }
       snapHeight="full"
     >
@@ -123,9 +126,7 @@ export function SubscriptionCheckoutReviewSheet({
               <View style={twStyle("flex-row items-start gap-2 rounded-2xl bg-gray-50 p-3")}>
                 <Ionicons name="repeat-outline" size={16} color="#6b7280" />
                 <Text style={twStyle("flex-1 text-xs leading-5 text-gray-500")}>
-                  This plan renews automatically each billing period. You can{" "}
-                  <Text style={twStyle("font-semibold text-gray-700")}>cancel anytime</Text> — you keep access until
-                  the end of the period you already paid for.
+{cr("renewsPrefix")}<Text style={twStyle("font-semibold text-gray-700")}>{cr("cancelAnytime")}</Text>{cr("renewsSuffix")}
                 </Text>
               </View>
             ) : null}
@@ -134,8 +135,8 @@ export function SubscriptionCheckoutReviewSheet({
               <Ionicons name="shield-checkmark-outline" size={16} color="#047857" />
               <Text style={twStyle("flex-1 text-xs leading-5 text-emerald-800")}>
                 {useAppleIap
-                  ? "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before."
-                  : "You are only charged after you confirm on the secure Paystack page. Your plan activates once payment is verified — never before."}
+                  ? cr("chargeNoteApple")
+                  : cr("chargeNotePaystack")}
               </Text>
             </View>
 
@@ -146,14 +147,14 @@ export function SubscriptionCheckoutReviewSheet({
                   style={twStyle("text-xs font-semibold text-gray-600 underline")}
                   accessibilityRole="link"
                 >
-                  Terms of Use (EULA)
+                  {cr("termsEula")}
                 </Text>
                 <Text
                   onPress={() => void Linking.openURL(webPrivacyPolicyUrl())}
                   style={twStyle("text-xs font-semibold text-gray-600 underline")}
                   accessibilityRole="link"
                 >
-                  Privacy Policy
+                  {cr("privacyPolicy")}
                 </Text>
               </View>
             ) : null}
@@ -162,9 +163,9 @@ export function SubscriptionCheckoutReviewSheet({
               label={
                 submitting
                   ? useAppleIap
-                    ? "Opening App Store purchase…"
-                    : "Opening secure checkout…"
-                  : (review.confirmLabel ?? (useAppleIap ? `Purchase ${review.total}` : `Pay ${review.total}`))
+                    ? cr("openingApple")
+                    : cr("openingPaystack")
+                  : (review.confirmLabel ?? (useAppleIap ? cr("purchase", { total: review.total }) : cr("pay", { total: review.total })))
               }
               onPress={onConfirm}
               loading={submitting}

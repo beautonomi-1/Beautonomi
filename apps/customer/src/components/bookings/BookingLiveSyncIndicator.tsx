@@ -41,8 +41,8 @@ export function BookingLiveSyncIndicator({ lastUpdatedAt }: Props) {
         paddingVertical: 4,
       }}
     >
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10b981", marginRight: 6 }} />
-      <Ionicons name="radio-outline" size={12} color="#059669" style={{ marginRight: 4 }} />
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10b981", marginEnd: 6 }} />
+      <Ionicons name="radio-outline" size={12} color="#059669" style={{ marginEnd: 4 }} />
       <Text style={{ fontSize: 12, fontWeight: "500", color: "#065f46" }}>
         Live · updated {formatRelativeUpdate(lastUpdatedAt)}
       </Text>

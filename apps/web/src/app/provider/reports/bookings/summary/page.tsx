@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
@@ -43,6 +44,7 @@ interface BookingSummaryData {
 
 export default function BookingSummaryReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -101,7 +103,7 @@ export default function BookingSummaryReport() {
       const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-summary", exportCurrency);
       exportToCSV(exportData, "booking-summary-report");
     } else {
-      exportToPDF("booking-summary-report", "booking-summary-report", "Booking Summary Report");
+      exportToPDF("booking-summary-report", "booking-summary-report", t("web.provider.reports.pages.bookings/summary.pdfTitle"));
     }
   };
 
@@ -124,10 +126,10 @@ export default function BookingSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/summary.title") },
         ]}
       >
         <ReportSkeleton />
@@ -139,18 +141,18 @@ export default function BookingSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/summary.title") },
         ]}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Booking Summary"
-            subtitle="Analyze booking patterns and client behavior"
+            title={t("web.provider.reports.pages.bookings/summary.title")}
+            subtitle={t("web.provider.reports.pages.bookings/summary.subtitleGate")}
           />
-          <ReportSubscriptionRequired feature="Booking summary" message={subscriptionGateMessage} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.bookings/summary.feature")} message={subscriptionGateMessage} />
         </div>
       </SettingsDetailLayout>
     );
@@ -160,15 +162,15 @@ export default function BookingSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/summary.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load booking summary data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.bookings/summary.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -177,26 +179,26 @@ export default function BookingSummaryReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Booking Summary" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.bookings/summary.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="booking-summary-report">
         <PageHeader
-          title="Booking Summary"
-          subtitle="Overview of all bookings and performance"
+          title={t("web.provider.reports.pages.bookings/summary.title")}
+          subtitle={t("web.provider.reports.pages.bookings/summary.subtitle")}
           actions={
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => handleExport("csv")}>
-                <Download className="w-4 h-4 mr-2" />
-                Export CSV
+                <Download className="w-4 h-4 me-2" />
+                {t("web.provider.common.exportCsv")}
               </Button>
               <Button variant="outline" onClick={() => handleExport("pdf")}>
-                <Download className="w-4 h-4 mr-2" />
-                Export PDF
+                <Download className="w-4 h-4 me-2" />
+                {t("web.provider.common.exportPdf")}
               </Button>
             </div>
           }
@@ -212,7 +214,7 @@ export default function BookingSummaryReport() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Bookings</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/summary.totalBookings")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -224,7 +226,7 @@ export default function BookingSummaryReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/summary.totalRevenue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -238,7 +240,7 @@ export default function BookingSummaryReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Average Booking Value</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/summary.averageBookingValue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -254,11 +256,11 @@ export default function BookingSummaryReport() {
         {/* Daily Bookings Chart */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Daily Bookings</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.bookings/summary.dailyBookings")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.dailyBookings.length === 0 ? (
-              <EmptyReportState title="No bookings found" description="No bookings in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.bookings/summary.noBookingsFound")} description={t("web.provider.reports.pages.bookings/summary.noBookingsPeriod")} />
             ) : (
               <RevenueChart
                 data={data.dailyBookings.map((d) => ({
@@ -275,11 +277,11 @@ export default function BookingSummaryReport() {
         {/* Status Breakdown */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Status Breakdown</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.bookings/summary.statusBreakdown")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.statusBreakdown.length === 0 ? (
-              <EmptyReportState title="No status data" description="No status breakdown available." />
+              <EmptyReportState title={t("web.provider.reports.pages.bookings/summary.noStatusData")} description={t("web.provider.reports.pages.bookings/summary.noStatusDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.statusBreakdown.map((status) => (
@@ -295,8 +297,8 @@ export default function BookingSummaryReport() {
                         {status.percentage.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">{status.count} bookings</p>
+                    <div className="text-end">
+                      <p className="font-semibold text-gray-900">{t("web.provider.reports.pages.bookings/summary.bookingsCount", { count: status.count })}</p>
                       <p className="text-sm text-gray-600">
                         {fmt(status.revenue)}
                       </p>
@@ -311,11 +313,11 @@ export default function BookingSummaryReport() {
         {/* Top Services */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Top Services</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.bookings/summary.topServices")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.topServices.length === 0 ? (
-              <EmptyReportState title="No services found" description="No service data available." />
+              <EmptyReportState title={t("web.provider.reports.pages.bookings/summary.noServicesFound")} description={t("web.provider.reports.pages.bookings/summary.noServiceData")} />
             ) : (
               <div className="space-y-3">
                 {data.topServices.map((service, index) => (
@@ -329,8 +331,8 @@ export default function BookingSummaryReport() {
                       </div>
                       <p className="font-medium text-gray-900">{service.serviceName}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">{service.bookings} bookings</p>
+                    <div className="text-end">
+                      <p className="font-semibold text-gray-900">{t("web.provider.reports.pages.bookings/summary.bookingsCount", { count: service.bookings })}</p>
                       <p className="text-sm text-gray-600">
                         {fmt(service.revenue)}
                       </p>

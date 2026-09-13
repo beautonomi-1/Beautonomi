@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { BookingActionButton } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface NewClientDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface NewClientDialogProps {
 }
 
 export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDialogProps) {
+  const { t } = useTranslation();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -41,12 +43,12 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
 
   const handleCreate = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      toast.error("First and last name are required");
+      toast.error(t("web.provider.bookings.newClient.nameRequired"));
       return;
     }
     const phoneTrim = phone.trim();
     if (phoneTrim && !phoneValid) {
-      toast.error("Enter a valid phone number or leave blank");
+      toast.error(t("web.provider.bookings.newClient.invalidPhone"));
       return;
     }
     setSaving(true);
@@ -68,13 +70,13 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
         message?: string;
       } | null;
       if (!res.ok) {
-        toast.error(formatApiErrorMessage(body, "Could not create client"));
+        toast.error(formatApiErrorMessage(body, t("web.provider.bookings.newClient.createFailed")));
         return;
       }
       const customer = body?.data?.customer;
       const id = customer?.id;
       if (!id) {
-        toast.error("Client created but ID missing");
+        toast.error(t("web.provider.bookings.newClient.idMissing"));
         return;
       }
       onCreated({
@@ -83,11 +85,11 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
         email: customer.email,
         phone: customer.phone,
       });
-      toast.success("Client created");
+      toast.success(t("web.provider.bookings.newClient.created"));
       reset();
       onOpenChange(false);
     } catch (err) {
-      toast.error(formatApiErrorMessage(err, "Could not create client"));
+      toast.error(formatApiErrorMessage(err, t("web.provider.bookings.newClient.createFailed")));
     } finally {
       setSaving(false);
     }
@@ -97,12 +99,12 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="rounded-2xl max-w-md" data-testid="new-client-dialog">
         <DialogHeader>
-          <DialogTitle>Create new client</DialogTitle>
+          <DialogTitle>{t("web.provider.bookings.newClient.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label htmlFor="nc-first">First name</Label>
+              <Label htmlFor="nc-first">{t("web.provider.bookings.newClient.firstName")}</Label>
               <Input
                 id="nc-first"
                 value={firstName}
@@ -112,7 +114,7 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
               />
             </div>
             <div>
-              <Label htmlFor="nc-last">Last name</Label>
+              <Label htmlFor="nc-last">{t("web.provider.bookings.newClient.lastName")}</Label>
               <Input
                 id="nc-last"
                 value={lastName}
@@ -123,7 +125,7 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
             </div>
           </div>
           <div>
-            <Label htmlFor="nc-email">Email</Label>
+            <Label htmlFor="nc-email">{t("web.provider.bookings.newClient.email")}</Label>
             <Input
               id="nc-email"
               type="email"
@@ -135,19 +137,19 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
           </div>
           <div>
             <PhoneInput
-              label="Phone"
+              label={t("web.provider.bookings.newClient.phone")}
               value={phone}
               onChange={setPhone}
               onValidationChange={(valid) => setPhoneValid(valid)}
               inputId="nc-phone"
-              placeholder="Mobile number"
+              placeholder={t("web.provider.bookings.newClient.phonePlaceholder")}
               className="w-full"
             />
           </div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <BookingActionButton
             fullWidth={false}
@@ -155,7 +157,7 @@ export function NewClientDialog({ open, onOpenChange, onCreated }: NewClientDial
             onClick={() => void handleCreate()}
             data-testid="new-client-create"
           >
-            {saving ? "Creating…" : "Create client"}
+            {saving ? t("web.provider.bookings.newClient.creating") : t("web.provider.bookings.newClient.createClient")}
           </BookingActionButton>
         </DialogFooter>
       </DialogContent>

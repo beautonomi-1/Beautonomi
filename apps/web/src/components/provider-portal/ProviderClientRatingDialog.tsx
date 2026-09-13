@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { providerPortalFetch } from "@/lib/http/fetcher";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderClientRatingDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function ProviderClientRatingDialog({
   onRatingSubmitted,
   requireRating = false,
 }: ProviderClientRatingDialogProps) {
+  const { t } = useTranslation();
   const [rating, setRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [comment, setComment] = useState("");
@@ -45,7 +47,7 @@ export function ProviderClientRatingDialog({
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      toast.error("Please select a rating");
+      toast.error(t("web.provider.portal.editRating.selectRating"));
       return;
     }
 
@@ -66,10 +68,10 @@ export function ProviderClientRatingDialog({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to submit rating");
+        throw new Error(errorData.message || t("web.provider.clientRatingDialog.submitFailed"));
       }
 
-      toast.success("Rating submitted successfully");
+      toast.success(t("web.provider.clientRatingDialog.submitted"));
       onRatingSubmitted?.();
       onOpenChange(false);
       // Reset form
@@ -77,7 +79,7 @@ export function ProviderClientRatingDialog({
       setComment("");
     } catch (error) {
       console.error("Error submitting rating:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to submit rating");
+      toast.error(error instanceof Error ? error.message : t("web.provider.clientRatingDialog.submitFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -94,14 +96,14 @@ export function ProviderClientRatingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Rate {customerName}</DialogTitle>
+          <DialogTitle>{t("web.provider.clientRatingDialog.title", { name: customerName })}</DialogTitle>
           <DialogDescription>
             {requireRating
-              ? "Please rate this client to complete the booking. Your rating helps maintain service quality."
-              : "How was your experience with this client? Your rating helps maintain service quality."}
+              ? t("web.provider.clientRatingDialog.requiredBody")
+              : t("web.provider.clientRatingDialog.optionalBody")}
             {locationName && (
               <span className="block mt-1 text-xs text-gray-500">
-                Location: {locationName}
+                {t("web.provider.clientRatingDialog.location", { name: locationName })}
               </span>
             )}
           </DialogDescription>
@@ -110,7 +112,7 @@ export function ProviderClientRatingDialog({
         <div className="space-y-4 py-4">
           {/* Star Rating */}
           <div>
-            <Label className="text-sm font-medium mb-2 block">Rating</Label>
+            <Label className="text-sm font-medium mb-2 block">{t("web.provider.portal.editRating.rating")}</Label>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -133,11 +135,11 @@ export function ProviderClientRatingDialog({
             </div>
             {rating > 0 && (
               <p className="text-sm text-gray-500 mt-1">
-                {rating === 1 && "Poor"}
-                {rating === 2 && "Fair"}
-                {rating === 3 && "Good"}
-                {rating === 4 && "Very Good"}
-                {rating === 5 && "Excellent"}
+                {rating === 1 && t("web.provider.portal.editRating.poor")}
+                {rating === 2 && t("web.provider.portal.editRating.fair")}
+                {rating === 3 && t("web.provider.portal.editRating.good")}
+                {rating === 4 && t("web.provider.portal.editRating.veryGood")}
+                {rating === 5 && t("web.provider.portal.editRating.excellent")}
               </p>
             )}
           </div>
@@ -145,11 +147,11 @@ export function ProviderClientRatingDialog({
           {/* Comment */}
           <div>
             <Label htmlFor="comment" className="text-sm font-medium mb-2 block">
-              Comment (Optional)
+              {t("web.provider.portal.editRating.commentOptional")}
             </Label>
             <Textarea
               id="comment"
-              placeholder="Add any additional notes about this client..."
+              placeholder={t("web.provider.portal.editRating.commentPlaceholder")}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={4}
@@ -161,11 +163,11 @@ export function ProviderClientRatingDialog({
         <DialogFooter>
           {!requireRating && (
             <Button variant="outline" onClick={handleSkip} disabled={isSubmitting}>
-              Skip
+              {t("web.provider.clientRatingDialog.skip")}
             </Button>
           )}
           <Button onClick={handleSubmit} disabled={isSubmitting || rating === 0}>
-            {isSubmitting ? "Submitting..." : "Submit Rating"}
+            {isSubmitting ? t("web.provider.clientRatingDialog.submitting") : t("web.provider.clientRatingDialog.submitRating")}
           </Button>
         </DialogFooter>
       </DialogContent>

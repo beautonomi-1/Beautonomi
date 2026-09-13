@@ -3,12 +3,14 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Form = {
   id: string;
@@ -21,6 +23,12 @@ type Form = {
 };
 
 export default function ResourcesFormsHubScreen() {
+  const { t } = useTranslation();
+  const rf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.resourcesFormsHub.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<Form[]>("/api/provider/forms");
@@ -54,7 +62,7 @@ export default function ResourcesFormsHubScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Resources & forms" showBack />
+        <ScreenHeader title={rf("title")} showBack />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -65,7 +73,7 @@ export default function ResourcesFormsHubScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Resources & forms" showBack />
+        <ScreenHeader title={rf("title")} showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -76,8 +84,8 @@ export default function ResourcesFormsHubScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Resources & forms"
-        subtitle="Rooms, equipment & booking forms"
+        title={rf("title")}
+        subtitle={rf("subtitle")}
         showBack
         rightAction={
           <TouchableOpacity
@@ -90,11 +98,11 @@ export default function ResourcesFormsHubScreen() {
               paddingHorizontal: 12,
               paddingVertical: 8,
             }}
-            accessibilityLabel="Open forms editor"
+            accessibilityLabel={rf("openEditorA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="create-outline" size={16} color="#0f766e" style={{ marginRight: 6 }} />
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#115e59" }}>Forms</Text>
+            <Ionicons name="create-outline" size={16} color="#0f766e" style={{ marginEnd: 6 }} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#115e59" }}>{rf("forms")}</Text>
           </TouchableOpacity>
         }
       />
@@ -121,7 +129,7 @@ export default function ResourcesFormsHubScreen() {
             marginBottom: 16,
           }}
           activeOpacity={0.8}
-          accessibilityLabel="Rooms and equipment"
+          accessibilityLabel={rf("roomsA11y")}
           accessibilityRole="button"
         >
           <View
@@ -136,13 +144,13 @@ export default function ResourcesFormsHubScreen() {
           >
             <Ionicons name="construct-outline" size={22} color="#0d9488" />
           </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Rooms & equipment</Text>
+          <View style={{ marginStart: 12, flex: 1 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{rf("roomsTitle")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-              Manage resources, calendar colours & groups
+              {rf("roomsHint")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
         </TouchableOpacity>
 
         <View
@@ -155,15 +163,15 @@ export default function ResourcesFormsHubScreen() {
           }}
         >
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>
-            Intake & consent forms
+            {rf("intakeTitle")}
           </Text>
           <TouchableOpacity
             onPress={() => openFormsEditor()}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Edit all forms"
+            accessibilityLabel={rf("editAllA11y")}
           >
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0d9488" }}>Manage</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0d9488" }}>{rf("manage")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -171,7 +179,7 @@ export default function ResourcesFormsHubScreen() {
           <View style={{ paddingVertical: 32, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="document-text-outline" size={48} color="#9ca3af" />
             <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>
-              No forms yet
+              {rf("emptyTitle")}
             </Text>
             <Text
               style={{
@@ -182,7 +190,7 @@ export default function ResourcesFormsHubScreen() {
                 marginBottom: 16,
               }}
             >
-              Create intake, consent, and waiver forms. Edits sync with the web portal.
+              {rf("emptyDescription")}
             </Text>
             <TouchableOpacity
               onPress={() => openFormsEditor()}
@@ -194,7 +202,7 @@ export default function ResourcesFormsHubScreen() {
               }}
               activeOpacity={0.8}
             >
-              <Text style={{ fontWeight: "600", color: Colors.white }}>Create forms</Text>
+              <Text style={{ fontWeight: "600", color: Colors.white }}>{rf("createForms")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -213,10 +221,10 @@ export default function ResourcesFormsHubScreen() {
                   padding: 16,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Edit form ${f.title}`}
+                accessibilityLabel={rf("editFormA11y", { title: f.title })}
               >
                 <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-                  <View style={{ flex: 1, paddingRight: 8 }}>
+                  <View style={{ flex: 1, paddingEnd: 8 }}>
                     <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{f.title}</Text>
                     {f.form_type ? (
                       <Text
@@ -231,11 +239,11 @@ export default function ResourcesFormsHubScreen() {
                       </Text>
                     ) : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" />
                 </View>
                 {f.fields?.length != null ? (
                   <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>
-                    {f.fields.length} field{f.fields.length !== 1 ? "s" : ""}
+                    {rf("fieldsCount", { count: f.fields.length })}
                   </Text>
                 ) : null}
                 {f.is_required ? (
@@ -249,11 +257,11 @@ export default function ResourcesFormsHubScreen() {
                       paddingVertical: 2,
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: "#92400e" }}>Attached to bookings</Text>
+                    <Text style={{ fontSize: 12, color: "#92400e" }}>{rf("attachedToBookings")}</Text>
                   </View>
                 ) : null}
                 {!f.is_active ? (
-                  <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[400] }}>Inactive</Text>
+                  <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[400] }}>{rf("inactive")}</Text>
                 ) : null}
               </TouchableOpacity>
             ))}

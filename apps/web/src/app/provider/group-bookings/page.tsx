@@ -1,5 +1,7 @@
 ﻿"use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -35,6 +37,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 function GroupBookingsPageInner() {
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const canCreateGroups = isOwner || hasPermission("create_appointments");
   const canEditGroups = isOwner || hasPermission("edit_appointments");
@@ -84,7 +87,7 @@ function GroupBookingsPageInner() {
       setTotalPages(response.total_pages);
     } catch (error) {
       console.error("Failed to load group bookings:", error);
-      toast.error("Failed to load group bookings");
+      toast.error(t("web.provider.groupBookingsPage.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +113,7 @@ function GroupBookingsPageInner() {
 
   const handleDelete = async (id: string, currentStatus: string) => {
     if (currentStatus === "cancelled") {
-      toast.info("This group booking is already cancelled.");
+      toast.info(t("web.provider.groupBookingsPage.alreadyCancelled"));
       return;
     }
     setGroupCancelConfirm({ id, status: currentStatus });
@@ -121,11 +124,11 @@ function GroupBookingsPageInner() {
     const { id } = groupCancelConfirm;
     try {
       await providerApi.deleteGroupBooking(id);
-      toast.success("Group booking cancelled");
+      toast.success(t("web.provider.groupBookingsPage.cancelled"));
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to cancel group booking:", error);
-      toast.error("Failed to cancel group booking");
+      toast.error(t("web.provider.groupBookingsPage.cancelFailed"));
     } finally {
       setGroupCancelConfirm(null);
     }
@@ -135,11 +138,11 @@ function GroupBookingsPageInner() {
     const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
       await providerApi.checkInGroupParticipant(normalizedBookingId, participantId);
-      toast.success("Participant checked in");
+      toast.success(t("web.provider.groupBookingsPage.checkedIn"));
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to check in participant:", error);
-      toast.error("Failed to check in participant");
+      toast.error(t("web.provider.groupBookingsPage.checkInFailed"));
     }
   };
 
@@ -147,11 +150,11 @@ function GroupBookingsPageInner() {
     const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
       await providerApi.checkOutGroupParticipant(normalizedBookingId, participantId);
-      toast.success("Participant checked out");
+      toast.success(t("web.provider.groupBookingsPage.checkedOut"));
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to check out participant:", error);
-      toast.error("Failed to check out participant");
+      toast.error(t("web.provider.groupBookingsPage.checkOutFailed"));
     }
   };
 
@@ -196,7 +199,7 @@ function GroupBookingsPageInner() {
         timeStr: new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit" }).format(d),
       };
     }
-    return { dateStr: booking.scheduled_date || "â€”", timeStr: booking.scheduled_time || "" };
+    return { dateStr: booking.scheduled_date || t("web.provider.common.emDash"), timeStr: booking.scheduled_time || "" };
   };
 
   const isFinal = (status: string) => status === "cancelled" || status === "completed";
@@ -204,26 +207,26 @@ function GroupBookingsPageInner() {
   if (!hasMounted) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <p className="text-sm text-gray-600">Loading group bookings...</p>
+        <p className="text-sm text-gray-600">{t("web.provider.groupBookingsPage.loading")}</p>
       </div>
     );
   }
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading group bookings..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.groupBookingsPage.loading")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Group Bookings"
-        subtitle="Create and manage bridal parties, group events, and shared appointment sessions"
+        title={t("web.provider.groupBookingsPage.title")}
+        subtitle={t("web.provider.groupBookingsPage.subtitle")}
         primaryAction={
           canCreateGroups
             ? {
-                label: "New group booking",
+label: t("web.provider.groupBookingsPage.newGroupBooking"),
                 onClick: handleCreate,
-                icon: <Plus className="w-4 h-4 mr-2 flex-shrink-0" />,
+                icon: <Plus className="w-4 h-4 me-2 flex-shrink-0" />,
               }
             : undefined
         }
@@ -237,15 +240,15 @@ function GroupBookingsPageInner() {
               <Sparkles className="h-5 w-5 text-rose-200" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-rose-100">Build a group session</p>
+<p className="text-sm font-semibold text-rose-100">{t("web.provider.groupBookingsPage.buildGroupSession")}</p>
               <p className="mt-1 max-w-2xl text-sm text-slate-300">
-                Pick a service, staff member, time slot, and participants in one guided flow. Each participant is tracked for check-in, checkout, accounting, and calendar availability.
+{t("web.provider.groupBookingsPage.buildGroupSessionBody")}
               </p>
             </div>
           </div>
           <Button onClick={handleCreate} className="w-full flex-shrink-0 bg-white text-slate-950 hover:bg-rose-50 sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Create group
+            <Plus className="me-2 h-4 w-4" />
+            {t("web.provider.groupBookingsPage.createGroup")}
           </Button>
         </div>
       </SectionCard>
@@ -256,11 +259,11 @@ function GroupBookingsPageInner() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search by ref number, client, or service..."
+placeholder={t("web.provider.groupBookingsPage.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            className="pl-10 min-h-[44px] touch-manipulation"
+            className="ps-10 min-h-[44px] touch-manipulation"
           />
         </div>
         <div className="flex gap-2 sm:gap-3 flex-1 sm:flex-initial">
@@ -269,26 +272,26 @@ function GroupBookingsPageInner() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">Month to Date</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="today">{t("web.provider.common.dateRange.today")}</SelectItem>
+              <SelectItem value="week">{t("web.provider.common.dateRange.thisWeek")}</SelectItem>
+              <SelectItem value="month">{t("web.provider.common.dateRange.monthToDate")}</SelectItem>
+              <SelectItem value="all">{t("web.provider.common.dateRange.allTime")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="flex-1 sm:w-40 min-h-[44px] touch-manipulation">
-              <SelectValue placeholder="Status" />
+<SelectValue placeholder={t("web.provider.common.statusLabel")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="booked">Booked</SelectItem>
-              <SelectItem value="started">Started</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="all">{t("web.provider.common.allStatuses")}</SelectItem>
+              <SelectItem value="booked">{t("web.provider.common.status.booked")}</SelectItem>
+              <SelectItem value="started">{t("web.provider.common.status.started")}</SelectItem>
+              <SelectItem value="completed">{t("web.provider.common.status.completed")}</SelectItem>
+              <SelectItem value="cancelled">{t("web.provider.common.status.cancelled")}</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={handleSearch} className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation px-4 sm:px-6">
-            <span className="hidden sm:inline">Search</span>
+<span className="hidden sm:inline">{t("web.provider.common.search")}</span>
             <Search className="w-4 h-4 sm:hidden" />
           </Button>
         </div>
@@ -299,9 +302,9 @@ function GroupBookingsPageInner() {
         <SectionCard className="p-8 sm:p-12">
           <EmptyState
             icon={Users}
-            title="No group bookings yet"
-            description="Create your first group session for bridal parties, events, families, or shared service appointments."
-            action={{ label: "Create group booking", onClick: handleCreate }}
+            title={t("web.provider.groupBookingsPage.emptyTitle")}
+            description={t("web.provider.groupBookingsPage.emptyDescription")}
+            action={{ label: t("web.provider.groupBookingsPage.createGroupBooking"), onClick: handleCreate }}
           />
         </SectionCard>
       ) : (
@@ -312,14 +315,14 @@ function GroupBookingsPageInner() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ref #</TableHead>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Team Member</TableHead>
-                    <TableHead>Participants</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("web.provider.groupBookingsPage.ref")}</TableHead>
+                    <TableHead>{t("web.provider.groupBookingsPage.dateTime")}</TableHead>
+                    <TableHead>{t("web.provider.common.service")}</TableHead>
+                    <TableHead>{t("web.provider.portal.newSaleDialog.teamMember")}</TableHead>
+                    <TableHead>{t("web.provider.groupBookingsPage.participants")}</TableHead>
+                    <TableHead>{t("web.provider.groupBookingsPage.total")}</TableHead>
+                    <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                    <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -342,30 +345,30 @@ function GroupBookingsPageInner() {
                             <span>{dateStr} {timeStr}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{booking.service_name ?? "â€”"}</TableCell>
-                        <TableCell>{booking.team_member_name ?? "â€”"}</TableCell>
+                        <TableCell>{booking.service_name ?? t("web.provider.common.emDash")}</TableCell>
+                        <TableCell>{booking.team_member_name ?? t("web.provider.common.emDash")}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Users className="w-3 h-3" />
-                            <span>{participantCount} participant{participantCount !== 1 ? "s" : ""}</span>
+<span>{t("web.provider.groupBookingsPage.participantCount", { count: participantCount })}</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "â€”"}
+                          {booking.total_price != null ? <Money amount={booking.total_price} /> : t("web.provider.common.emDash")}
                         </TableCell>
                         <TableCell>
-                          <Badge className={getStatusColor(booking.status)}>{booking.status}</Badge>
+                          <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${booking.status === "completed" ? "completed" : booking.status === "cancelled" ? "cancelled" : booking.status === "started" ? "started" : booking.status === "booked" ? "booked" : "pending"}`)}</Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => openDetail(booking)}>
-                              <Info className="w-3 h-3 mr-1" />
-                              Details
+                              <Info className="w-3 h-3 me-1" />
+                              {t("web.provider.common.details")}
                             </Button>
                             {!isFinal(booking.status) && (
                               <Button variant="outline" size="sm" onClick={() => handleEdit(booking)}>
-                                <Edit className="w-3 h-3 mr-1" />
-                                Edit
+                                <Edit className="w-3 h-3 me-1" />
+                                {t("web.provider.common.edit")}
                               </Button>
                             )}
                             {!cancelled && (
@@ -375,10 +378,10 @@ function GroupBookingsPageInner() {
                                 onClick={() => handleDelete(booking.id, booking.status)}
                                 className="text-red-600 hover:text-red-700"
                                 disabled={completed}
-                                title={completed ? "Completed bookings cannot be cancelled" : undefined}
+title={completed ? t("web.provider.groupBookingsPage.completedCannotCancel") : undefined}
                               >
-                                <Trash2 className="w-3 h-3 mr-1" />
-                                Cancel
+                                <Trash2 className="w-3 h-3 me-1" />
+                                {t("web.provider.common.cancel")}
                               </Button>
                             )}
                           </div>
@@ -410,30 +413,30 @@ function GroupBookingsPageInner() {
                           <span>{dateStr} {timeStr}</span>
                         </div>
                       </div>
-                      <Badge className={getStatusColor(booking.status)}>{booking.status}</Badge>
+                      <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${booking.status === "completed" ? "completed" : booking.status === "cancelled" ? "cancelled" : booking.status === "started" ? "started" : booking.status === "booked" ? "booked" : "pending"}`)}</Badge>
                     </div>
 
                     {/* Details */}
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Service:</span>
-                        <span className="font-medium">{booking.service_name ?? "â€”"}</span>
+<span className="text-gray-600">{t("web.provider.groupBookingsPage.serviceLabel")}</span>
+                        <span className="font-medium">{booking.service_name ?? t("web.provider.common.emDash")}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Team Member:</span>
-                        <span className="font-medium">{booking.team_member_name ?? "â€”"}</span>
+<span className="text-gray-600">{t("web.provider.groupBookingsPage.teamMemberLabel")}</span>
+                        <span className="font-medium">{booking.team_member_name ?? t("web.provider.common.emDash")}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Participants:</span>
+<span className="text-gray-600">{t("web.provider.groupBookingsPage.participantsLabel")}</span>
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
-                          <span className="font-medium">{participants.length} participant{participants.length !== 1 ? "s" : ""}</span>
+<span className="font-medium">{t("web.provider.groupBookingsPage.participantCount", { count: participants.length })}</span>
                         </div>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Total:</span>
+<span className="text-gray-600">{t("web.provider.groupBookingsPage.totalLabel")}</span>
                         <span className="font-semibold text-base">
-                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "â€”"}
+                          {booking.total_price != null ? <Money amount={booking.total_price} /> : t("web.provider.common.emDash")}
                         </span>
                       </div>
                     </div>
@@ -441,7 +444,7 @@ function GroupBookingsPageInner() {
                     {/* Participants */}
                     {participants.length > 0 && (
                       <div className="border-t pt-4 space-y-2">
-                        <div className="font-medium text-sm mb-2">Participants</div>
+<div className="font-medium text-sm mb-2">{t("web.provider.groupBookingsPage.participants")}</div>
                         {participants.map((participant) => (
                           <div key={participant.id} className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg">
                             <div className="flex-1">
@@ -449,7 +452,7 @@ function GroupBookingsPageInner() {
                               <div className="text-xs text-gray-500">{participant.service_name}</div>
                               {participant.notes && (
                                 <div className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">
-                                  Note: {participant.notes}
+{t("web.provider.groupBookingsPage.notePrefix", { notes: participant.notes })}
                                 </div>
                               )}
                               {participant.price != null && participant.price > 0 && (
@@ -460,16 +463,16 @@ function GroupBookingsPageInner() {
                               <div className="flex items-center gap-2">
                                 {!participant.checked_in ? (
                                   <Button variant="outline" size="sm" onClick={() => handleCheckIn(booking.id, participant.id)} className="min-h-[36px] text-xs touch-manipulation">
-                                    <CheckCircle className="w-3 h-3 mr-1" />
-                                    Check In
+                                    <CheckCircle className="w-3 h-3 me-1" />
+                                    {t("web.provider.groupBookingsPage.checkIn")}
                                   </Button>
                                 ) : !participant.checked_out ? (
                                   <Button variant="outline" size="sm" onClick={() => handleCheckOut(booking.id, participant.id)} className="min-h-[36px] text-xs touch-manipulation bg-green-50 border-green-200">
-                                    <CheckCircle className="w-3 h-3 mr-1" />
-                                    Check Out
+                                    <CheckCircle className="w-3 h-3 me-1" />
+                                    {t("web.provider.groupBookingsPage.checkOut")}
                                   </Button>
                                 ) : (
-                                  <div className="text-xs text-green-600 font-medium">Completed</div>
+<div className="text-xs text-green-600 font-medium">{t("web.provider.groupBookingsPage.completed")}</div>
                                 )}
                               </div>
                             )}
@@ -481,13 +484,13 @@ function GroupBookingsPageInner() {
                     {/* Actions */}
                     <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
                       <Button variant="outline" onClick={() => openDetail(booking)} className="flex-1 min-h-[44px] touch-manipulation">
-                        <Info className="w-4 h-4 mr-2" />
-                        Details
+                        <Info className="w-4 h-4 me-2" />
+                        {t("web.provider.common.details")}
                       </Button>
                       {!isFinal(booking.status) && (
                         <Button variant="outline" onClick={() => handleEdit(booking)} className="flex-1 min-h-[44px] touch-manipulation">
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
+                          <Edit className="w-4 h-4 me-2" />
+                          {t("web.provider.common.edit")}
                         </Button>
                       )}
                       {!cancelled && (
@@ -497,8 +500,8 @@ function GroupBookingsPageInner() {
                           className="flex-1 min-h-[44px] touch-manipulation text-red-600 hover:text-red-700"
                           disabled={completed}
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Cancel
+                          <Trash2 className="w-4 h-4 me-2" />
+                          {t("web.provider.common.cancel")}
                         </Button>
                       )}
                     </div>
@@ -524,19 +527,18 @@ function GroupBookingsPageInner() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel group booking?</AlertDialogTitle>
+<AlertDialogTitle>{t("web.provider.groupBookingsPage.cancelTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This cancels the group booking and any linked participant bookings. This action cannot
-              be undone.
+{t("web.provider.groupBookingsPage.cancelDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep booking</AlertDialogCancel>
+<AlertDialogCancel>{t("web.provider.groupBookingsPage.keepBooking")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={() => void confirmGroupCancel()}
             >
-              Cancel group booking
+              {t("web.provider.groupBookingsPage.cancelGroupBooking")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

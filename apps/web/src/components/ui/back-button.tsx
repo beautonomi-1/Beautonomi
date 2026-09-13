@@ -27,7 +27,7 @@ export default function BackButton({ href, label = "Back", className }: BackButt
       onClick={handleClick}
       className={className}
     >
-      <ChevronLeft className="w-4 h-4 mr-1" />
+      <ChevronLeft className="w-4 h-4 me-1" />
       {label}
     </Button>
   );

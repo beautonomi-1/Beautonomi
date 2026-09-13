@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -12,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Booking } from "@/types/beautonomi";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 type BookingListItem = Booking & { provider_name?: string; services?: Array<{ offering_name?: string }> };
 import { Button } from "@/components/ui/button";
@@ -75,6 +77,7 @@ export default function BookingsList({
   refreshTrigger,
   initialSeed,
 }: BookingsListProps) {
+  const { t } = useTranslation();
   const [bookings, setBookings] = useState<Booking[]>(() => initialSeed ?? []);
   const [isLoading, setIsLoading] = useState(() => initialSeed === undefined);
   const [error, setError] = useState<string | null>(null);
@@ -100,10 +103,10 @@ export default function BookingsList({
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.accountSettings.bookings.list.requestTimeout")
             : err instanceof FetchError
               ? err.message
-              : "Failed to load bookings";
+              : t("web.accountSettings.failedLoadBookings");
         setError(errorMessage);
         console.error("Error loading bookings:", err);
       } finally {
@@ -125,7 +128,7 @@ export default function BookingsList({
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(getDefaultMoneyLocale(), {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -135,7 +138,7 @@ export default function BookingsList({
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
+    return date.toLocaleTimeString(getDefaultMoneyLocale(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -145,7 +148,7 @@ export default function BookingsList({
   if (isLoading) {
     return (
       <div className="py-8">
-        <LoadingTimeout loadingMessage="Loading bookings..." />
+        <LoadingTimeout loadingMessage={t("web.accountSettings.bookings.list.loading")} />
       </div>
     );
   }
@@ -153,10 +156,10 @@ export default function BookingsList({
   if (error) {
     return (
       <EmptyState
-        title="Failed to load bookings"
+        title={t("web.accountSettings.failedLoadBookings")}
         description={error}
         action={{
-          label: "Retry",
+          label: t("web.accountSettings.bookings.list.retry"),
           onClick: () => window.location.reload(),
         }}
       />
@@ -167,22 +170,20 @@ export default function BookingsList({
     const empty =
       status === "past"
         ? {
-            title: "No past appointments yet",
-            description:
-              "Completed visits will appear here once you've attended them.",
-            cta: "Find providers",
+            title: t("web.accountSettings.bookings.list.emptyPastTitle"),
+            description: t("web.accountSettings.bookings.list.emptyPastDescription"),
+            cta: t("web.accountSettings.bookings.list.findProviders"),
           }
         : status === "cancelled"
           ? {
-              title: "No cancelled bookings",
-              description: "When you cancel an appointment, it will show in this list.",
-              cta: "Find providers",
+              title: t("web.accountSettings.bookings.list.emptyCancelledTitle"),
+              description: t("web.accountSettings.bookings.list.emptyCancelledDescription"),
+              cta: t("web.accountSettings.bookings.list.findProviders"),
             }
           : {
-              title: "No appointments scheduled...yet!",
-              description:
-                "Unveil your radiance and step into a world of luxury. It's time to pamper yourself and embrace your true beauty with our expert care.",
-              cta: "Start Searching",
+              title: t("web.accountSettings.bookings.list.emptyUpcomingTitle"),
+              description: t("web.accountSettings.bookings.list.emptyUpcomingDescription"),
+              cta: t("web.accountSettings.bookings.list.startSearching"),
             };
 
     return (
@@ -210,16 +211,16 @@ export default function BookingsList({
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-gray-600 font-light">Sort list by</p>
+        <p className="text-sm text-gray-600 font-light">{t("web.accountSettings.bookings.list.sortListBy")}</p>
         <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
           <SelectTrigger className="w-full sm:w-[280px] h-11 border-gray-200 bg-white/90">
-            <SelectValue placeholder="Sort by" />
+            <SelectValue placeholder={t("web.accountSettings.sortByPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="scheduled_desc">Appointment time · newest first</SelectItem>
-            <SelectItem value="scheduled_asc">Appointment time · soonest first</SelectItem>
-            <SelectItem value="created_desc">Date booked · newest first</SelectItem>
-            <SelectItem value="created_asc">Date booked · oldest first</SelectItem>
+            <SelectItem value="scheduled_desc">{t("web.accountSettings.bookings.list.sortApptNewest")}</SelectItem>
+            <SelectItem value="scheduled_asc">{t("web.accountSettings.bookings.list.sortApptSoonest")}</SelectItem>
+            <SelectItem value="created_desc">{t("web.accountSettings.bookings.list.sortBookedNewest")}</SelectItem>
+            <SelectItem value="created_asc">{t("web.accountSettings.bookings.list.sortBookedOldest")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -235,6 +236,8 @@ export default function BookingsList({
           // than "Payment pending".
           paymentStatus: _ps,
           outstandingBalance: _outstanding,
+          lifecycleHint: (booking as { lifecycle_hint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null })
+            .lifecycle_hint,
         });
         const paymentDisplay = getBookingPaymentDisplay({
           paymentStatus: _ps,
@@ -263,7 +266,7 @@ export default function BookingsList({
             <div className="flex-1">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
                 <h3 className="text-lg md:text-xl font-semibold text-gray-900">
-                  {(booking as BookingListItem).provider_name || (booking as BookingListItem).services?.[0]?.offering_name || "Beauty Service"}
+                  {(booking as BookingListItem).provider_name || (booking as BookingListItem).services?.[0]?.offering_name || t("web.accountSettings.bookings.list.beautyService")}
                 </h3>
                 <span
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight ${
@@ -293,14 +296,14 @@ export default function BookingsList({
                 )}
                 {isGroupBooking && (
                   <span className="px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight bg-violet-50 text-violet-800 border border-violet-200">
-                    Group
+                    {t("web.accountSettings.bookings.list.group")}
                   </span>
                 )}
               </div>
 
               {isGroupBooking && groupBookingRef ? (
                 <p className="text-xs text-violet-700 font-medium mb-2">
-                  Group session · {groupBookingRef}
+                  {t("web.accountSettings.bookings.list.groupSession", { ref: groupBookingRef })}
                 </p>
               ) : null}
 
@@ -322,7 +325,7 @@ export default function BookingsList({
                     <div className="p-2 rounded-lg bg-pink-50 border border-pink-100">
                       <MapPin className="w-4 h-4 text-[#FF0077]" />
                     </div>
-                    <span className="font-medium">At Salon</span>
+                    <span className="font-medium">{t("web.accountSettings.bookings.atSalon")}</span>
                   </div>
                 )}
                 {booking.location_type === "at_home" && (
@@ -330,7 +333,7 @@ export default function BookingsList({
                     <div className="p-2 rounded-lg bg-pink-50 border border-pink-100">
                       <MapPin className="w-4 h-4 text-[#FF0077]" />
                     </div>
-                    <span className="font-medium">At your location</span>
+                    <span className="font-medium">{t("web.accountSettings.bookings.atYourLocation")}</span>
                   </div>
                 )}
                 {booking.services?.[0]?.staff_name && (
@@ -348,7 +351,7 @@ export default function BookingsList({
                   {booking.currency} {booking.total_amount?.toFixed(2)}
                 </p>
                 <p className="text-xs md:text-sm text-gray-500 font-light">
-                  Booking #{booking.booking_number}
+                  {t("web.accountSettings.bookings.bookingNumber", { number: booking.booking_number })}
                 </p>
               </div>
             </div>
@@ -359,7 +362,7 @@ export default function BookingsList({
                   variant="outline"
                   className="w-full border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077] transition-colors"
                 >
-                  View Details
+                  {t("web.accountSettings.bookings.list.viewDetails")}
                 </Button>
               </Link>
               {booking.status === "confirmed" && (
@@ -372,14 +375,14 @@ export default function BookingsList({
                       );
                     }}
                   >
-                    Reschedule
+                    {t("web.accountSettings.bookings.list.reschedule")}
                   </Button>
                   <Link href={`/account-settings/bookings/${booking.id}`} className="w-full block">
                     <Button
                       variant="outline"
                       className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                     >
-                      Cancel
+                      {t("web.accountSettings.bookings.list.cancel")}
                     </Button>
                   </Link>
                 </>

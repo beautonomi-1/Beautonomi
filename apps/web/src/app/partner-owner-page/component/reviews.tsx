@@ -122,13 +122,13 @@ const Reviews = () => {
           <div className="flex gap-4  ">
             <button
               onClick={handlePrev}
-              className="ml-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
+              className="ms-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
             >
               <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
             </button>
             <button
               onClick={handleNext}
-              className="mr-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
+              className="me-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
             >
               <ChevronRightIcon className="h-5 w-5 text-gray-500" />
             </button>
@@ -177,7 +177,7 @@ const Reviews = () => {
             <div className="cursor-pointer mb-10" onClick={handleClosePopup}>
               <Image src={CloseIcon} alt="Close" className="h-6 w-6" />
             </div>
-            <div className="max-h-[75vh] overflow-y-auto pr-4">
+            <div className="max-h-[75vh] overflow-y-auto pe-4">
               {" "}
               <p className="text-xl font-light text-secondary mb-8">
                 {reviewsData.length} reviews

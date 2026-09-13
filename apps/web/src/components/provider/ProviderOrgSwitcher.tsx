@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Membership = {
   provider_id: string;
@@ -23,6 +24,7 @@ export function ProviderOrgSwitcher({
   variant?: "dark" | "light";
   className?: string;
 }) {
+  const { t } = useTranslation();
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +81,7 @@ export function ProviderOrgSwitcher({
     }
     return (
       <select
-        aria-label="Switch business"
+        aria-label={t("provider.mobile.components.providerOrgSwitcher.switchTitle")}
         className={cn(
           "w-full text-xs rounded-md px-2 py-1 mb-2",
           isLight
@@ -91,7 +93,7 @@ export function ProviderOrgSwitcher({
       >
         {memberships.map((m) => (
           <option key={m.provider_id} value={m.provider_id} className="text-gray-900">
-            {m.business_name}{m.relationship === "owner" ? " (owner)" : " (staff)"}
+            {m.business_name}{m.relationship === "owner" ? ` (${t("provider.mobile.components.providerOrgSwitcher.owner")})` : ` (${t("provider.mobile.components.providerOrgSwitcher.staff")})`}
           </option>
         ))}
       </select>
@@ -111,7 +113,7 @@ export function ProviderOrgSwitcher({
           isLight ? "text-gray-500" : "text-white/70",
         )}
       >
-        Active business
+        {t("provider.mobile.components.providerOrgSwitcher.activeBusiness")}
       </label>
       {canSwitch ? (
         <select
@@ -126,7 +128,7 @@ export function ProviderOrgSwitcher({
         >
           {memberships.map((m) => (
             <option key={m.provider_id} value={m.provider_id} className="text-gray-900">
-              {m.business_name}{m.relationship === "owner" ? " (owner)" : " (staff)"}
+              {m.business_name}{m.relationship === "owner" ? ` (${t("provider.mobile.components.providerOrgSwitcher.owner")})` : ` (${t("provider.mobile.components.providerOrgSwitcher.staff")})`}
             </option>
           ))}
         </select>

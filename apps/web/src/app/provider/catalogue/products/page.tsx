@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { ProductItem, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
@@ -55,6 +57,7 @@ function productListRetail(p: ProductItem): { from: boolean; amount: number } {
 }
 
 export default function ProviderProducts() {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -144,7 +147,7 @@ export default function ProviderProducts() {
       setTotalPages(response.total_pages || 1);
     } catch (error) {
       console.error("Failed to load products:", error);
-      toast.error("Failed to load products");
+      toast.error(t("web.provider.catalogueProducts.loadFailed"));
       setProducts([]);
     } finally {
       setIsLoading(false);
@@ -162,13 +165,13 @@ export default function ProviderProducts() {
   };
 
   const handleDelete = async (product: ProductItem) => {
-    if (confirm(`Are you sure you want to delete "${product.name}"?`)) {
+    if (confirm(t("web.provider.catalogueProducts.deleteConfirm", { name: product.name }))) {
       try {
         await providerApi.deleteProduct(product.id);
-        toast.success("Product deleted");
+toast.success(t("web.provider.catalogueProducts.deleted"));
         loadProducts();
       } catch {
-        toast.error("Failed to delete product");
+toast.error(t("web.provider.catalogueProducts.deleteFailed"));
       }
     }
   };
@@ -184,7 +187,7 @@ export default function ProviderProducts() {
       loadMetrics();
     }, 500);
 
-    toast.success(wasEdit ? "Product updated" : "Product created");
+toast.success(wasEdit ? t("web.provider.catalogueProducts.updated") : t("web.provider.catalogueProducts.created"));
   };
 
   const handleBarcodeSelect = async (result: { product: { id: string; name?: string } }) => {
@@ -195,16 +198,16 @@ export default function ProviderProducts() {
       );
       if (res.data) {
         handleEdit(res.data);
-        toast.success(`Found: ${res.data.name}`);
+        toast.success(t("web.provider.catalogueProducts.found", { name: res.data.name }));
       }
     } catch {
-      toast.error("Failed to load product");
+      toast.error(t("web.provider.catalogueProducts.failedToLoadProduct"));
     }
   };
 
   const handleAdjustStock = (product: ProductItem, action: "add" | "remove") => {
     if (product.has_variants) {
-      toast.info("Edit this product to change stock and supply price per variant.");
+      toast.info(t("web.provider.catalogueProducts.variantStockHint"));
       return;
     }
     setSelectedProduct(product);
@@ -221,13 +224,13 @@ export default function ProviderProducts() {
         : Math.max(0, selectedProduct.quantity - quantity);
       
       await providerApi.updateProduct(selectedProduct.id, { quantity: newQuantity });
-      toast.success(`Stock ${stockAction === "add" ? "added" : "removed"} successfully`);
+      toast.success(stockAction === "add" ? t("web.provider.catalogueProducts.stockAdded") : t("web.provider.catalogueProducts.stockRemoved"));
       setIsStockDialogOpen(false);
       
       // Reload both products and metrics immediately
       await Promise.all([loadProducts(), loadMetrics()]);
     } catch {
-      toast.error("Failed to update stock");
+      toast.error(t("web.provider.catalogueProducts.stockUpdateFailed"));
     }
   };
 
@@ -235,35 +238,35 @@ export default function ProviderProducts() {
     <div>
       <Breadcrumb
         items={[
-          { label: "Dashboard", href: "/provider/dashboard" },
-          { label: "Catalogue", href: "/provider/catalogue" },
-          { label: "Products" },
+          { label: t("web.provider.catalogueProducts.dashboard"), href: "/provider/dashboard" },
+          { label: t("web.provider.catalogueProducts.catalogue"), href: "/provider/catalogue" },
+          { label: t("web.provider.catalogueProducts.products") },
         ]}
       />
         <PageHeader
-          title="Product list"
-          subtitle="Manage your inventory with Beautonomi product list"
+          title={t("web.provider.catalogueProducts.title")}
+          subtitle={t("web.provider.catalogueProducts.subtitle")}
           primaryAction={{
-            label: "Add Product",
+            label: t("web.provider.portal.appointmentDialog.addProduct"),
             onClick: handleCreate,
-            icon: <Plus className="w-4 h-4 mr-2" />,
+            icon: <Plus className="w-4 h-4 me-2" />,
           }}
           actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
-                <Plus className="w-4 h-4 mr-2" />
-                Add
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.common.add")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={handleCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Product
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.common.add")} Product
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
+                <Upload className="w-4 h-4 me-2" />
+                {t("web.provider.catalogueProducts.importCsv")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -279,7 +282,7 @@ export default function ProviderProducts() {
             </div>
             <div className="min-w-0">
               <p className="text-base sm:text-lg font-semibold truncate">{totalProducts}</p>
-              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Total Products</p>
+<p className="text-[11px] sm:text-xs text-gray-600 truncate">{t("web.provider.catalogueProducts.totalProducts")}</p>
             </div>
           </div>
         </SectionCard>
@@ -290,7 +293,7 @@ export default function ProviderProducts() {
             </div>
             <div className="min-w-0">
               <p className="text-base sm:text-lg font-semibold truncate">{lowStockProducts}</p>
-              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Low Stock</p>
+<p className="text-[11px] sm:text-xs text-gray-600 truncate">{t("web.provider.catalogueProducts.lowStock")}</p>
             </div>
           </div>
         </SectionCard>
@@ -301,7 +304,7 @@ export default function ProviderProducts() {
             </div>
             <div className="min-w-0">
               <p className="text-base sm:text-lg font-semibold truncate">{outOfStockProducts}</p>
-              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Out of Stock</p>
+<p className="text-[11px] sm:text-xs text-gray-600 truncate">{t("web.provider.catalogueProducts.outOfStock")}</p>
             </div>
           </div>
         </SectionCard>
@@ -314,7 +317,7 @@ export default function ProviderProducts() {
               <p className="text-base sm:text-lg font-semibold truncate">
                 <Money amount={totalInventoryValue} />
               </p>
-              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Inventory Value</p>
+<p className="text-[11px] sm:text-xs text-gray-600 truncate">{t("web.provider.catalogueProducts.inventoryValue")}</p>
             </div>
           </div>
         </SectionCard>
@@ -324,26 +327,26 @@ export default function ProviderProducts() {
         {productsArray.length > 0 && (
           <div className="mb-4">
             <BarcodeLookup
-              label="Scan or enter barcode to edit product"
-              placeholder="Barcode / SKU"
+              label={t("web.provider.catalogueProducts.barcodeLabel")}
+              placeholder={t("web.provider.catalogueProducts.barcodePlaceholder")}
               autoFocus={false}
               onSelect={handleBarcodeSelect}
             />
           </div>
         )}
         <DataTableShell
-          searchPlaceholder="Search products..."
+searchPlaceholder={t("web.provider.catalogueProducts.searchPlaceholder")}
           searchValue={searchQuery}
           onSearchChange={(value) => {
             setSearchQuery(value);
             setShowSuggestions(value.trim().length > 0);
           }}
           filterButton={{
-            label: "Filter",
+label: t("web.provider.common.filter"),
             onClick: () => setIsFiltersOpen(true),
           }}
           addButton={{
-            label: "Add",
+label: t("web.provider.common.add"),
             onClick: handleCreate,
           }}
         >
@@ -364,23 +367,23 @@ export default function ProviderProducts() {
                 </div>
               </div>
               <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 sm:mb-3 px-2">
-                Manage your inventory with Beautonomi product list
+{t("web.provider.catalogueProducts.emptyTitle")}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
-                Organize and manage your products and services efficiently
+{t("web.provider.catalogueProducts.emptyBody")}
               </p>
-              <ul className="text-left space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
+              <ul className="text-start space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-1 flex-shrink-0">•</span>
-                  <span>Start with a single product or import many at once</span>
+<span>{t("web.provider.catalogueProducts.emptyTip1")}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-1 flex-shrink-0">•</span>
-                  <span>Organise your list by adding brands and categories</span>
+<span>{t("web.provider.catalogueProducts.emptyTip2")}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-1 flex-shrink-0">•</span>
-                  <span>Set pricing and manage inventory levels</span>
+<span>{t("web.provider.catalogueProducts.emptyTip3")}</span>
                 </li>
               </ul>
               <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
@@ -388,10 +391,10 @@ export default function ProviderProducts() {
                   onClick={handleCreate}
                   className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
                 >
-                  Start now
+                  {t("web.provider.catalogueProducts.startNow")}
                 </button>
                 <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-primary font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
-                  Learn more
+                  {t("web.provider.catalogueProducts.learnMore")}
                 </button>
               </div>
             </div>
@@ -413,9 +416,9 @@ export default function ProviderProducts() {
                       )}
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-gray-900 truncate">{product.name}</h3>
-                        <p className="text-xs text-gray-500 mt-1">SKU: {product.sku || "N/A"}</p>
+<p className="text-xs text-gray-500 mt-1">{product.sku ? t("web.provider.catalogueProducts.sku", { sku: product.sku }) : t("web.provider.catalogueProducts.skuNa")}</p>
                         {product.barcode && (
-                          <p className="text-xs text-gray-500">Barcode: {product.barcode}</p>
+<p className="text-xs text-gray-500">{t("web.provider.catalogueProducts.barcode", { barcode: product.barcode })}</p>
                         )}
                       </div>
                     </div>
@@ -427,49 +430,49 @@ export default function ProviderProducts() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleEdit(product)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
+                          <Edit className="w-4 h-4 me-2" />
+                          {t("web.provider.common.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleAdjustStock(product, "add")}>
-                          <TrendingUp className="w-4 h-4 mr-2" />
-                          Add Stock
+                          <TrendingUp className="w-4 h-4 me-2" />
+                          {t("web.provider.common.add")} Stock
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleAdjustStock(product, "remove")}>
-                          <TrendingDown className="w-4 h-4 mr-2" />
-                          Remove Stock
+                          <TrendingDown className="w-4 h-4 me-2" />
+                          {t("web.provider.catalogueProducts.removeStock")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => handleDelete(product)}
                           className="text-red-600"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
+                          <Trash2 className="w-4 h-4 me-2" />
+                          {t("web.provider.common.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <p className="text-gray-500">Category</p>
-                      <p className="font-medium">{product.category || "-"}</p>
+<p className="text-gray-500">{t("web.provider.catalogueProducts.category")}</p>
+<p className="font-medium">{product.category || t("web.provider.common.hyphen")}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Quantity</p>
+<p className="text-gray-500">{t("web.provider.catalogueProducts.quantity")}</p>
                       <p className={cn(
                         "font-medium",
                         productStockQty(product) === 0 && "text-red-600",
                         productStockQty(product) > 0 && productStockQty(product) <= (product.low_stock_level || 5) && "text-yellow-600"
                       )}>
-                        {product.has_variants ? `${productStockQty(product)} (variants)` : productStockQty(product)}
+                        {product.has_variants ? t("web.provider.catalogueProducts.variantsQty", { count: productStockQty(product) }) : productStockQty(product)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Supplier</p>
-                      <p className="font-medium">{product.supplier || "-"}</p>
+<p className="text-gray-500">{t("web.provider.catalogueProducts.supplier")}</p>
+<p className="font-medium">{product.supplier || t("web.provider.common.hyphen")}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Price</p>
+<p className="text-gray-500">{t("web.provider.catalogueProducts.price")}</p>
                       <p className="font-medium"><Money amount={product.retail_price} /></p>
                     </div>
                   </div>
@@ -481,11 +484,11 @@ export default function ProviderProducts() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Product name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead className="text-right">Retail Price</TableHead>
+                    <TableHead>{t("web.provider.catalogueProducts.productName")}</TableHead>
+                    <TableHead>{t("web.provider.catalogueProducts.category")}</TableHead>
+                    <TableHead>{t("web.provider.catalogueProducts.supplier")}</TableHead>
+                    <TableHead>{t("web.provider.catalogueProducts.quantity")}</TableHead>
+                    <TableHead className="text-end">{t("web.provider.catalogueProducts.retailPrice")}</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -510,15 +513,15 @@ export default function ProviderProducts() {
                           <div>
                             <p className="font-medium">{product.name}</p>
                             <p className="text-xs text-gray-500">
-                              {product.barcode && `Barcode: ${product.barcode}`}
+                              {product.barcode && t("web.provider.catalogueProducts.barcode", { barcode: product.barcode })}
                               {product.barcode && product.sku && ` `}
-                              {product.sku && `SKU: ${product.sku}`}
+                              {product.sku && t("web.provider.catalogueProducts.sku", { sku: product.sku })}
                             </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>{product.category}</TableCell>
-                      <TableCell>{product.supplier || "-"}</TableCell>
+<TableCell>{product.supplier || t("web.provider.common.hyphen")}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span className={
@@ -528,26 +531,26 @@ export default function ProviderProducts() {
                                 ? "text-yellow-600 font-medium" 
                                 : ""
                           }>
-                            {product.has_variants ? `${productStockQty(product)} (all variants)` : productStockQty(product)}
+                            {product.has_variants ? t("web.provider.catalogueProducts.allVariantsQty", { count: productStockQty(product) }) : productStockQty(product)}
                           </span>
                           {productStockQty(product) === 0 && (
                             <span className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded">
-                              Out
+                              {t("web.provider.catalogueProducts.out")}
                             </span>
                           )}
                           {productStockQty(product) > 0 && productStockQty(product) <= (product.low_stock_level || 5) && (
                             <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded">
-                              Low
+                              {t("web.provider.catalogueProducts.low")}
                             </span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className="text-end font-medium">
                         {(() => {
                           const r = productListRetail(product);
                           return r.from ? (
                             <span className="inline-flex flex-wrap items-center justify-end gap-1">
-                              <span className="text-xs font-normal text-muted-foreground">From</span>
+<span className="text-xs font-normal text-muted-foreground">{t("web.provider.catalogueProducts.from")}</span>
                               <Money amount={r.amount} />
                             </span>
                           ) : (
@@ -564,32 +567,32 @@ export default function ProviderProducts() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleEdit(product)}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
+                              <Edit className="w-4 h-4 me-2" />
+                              {t("web.provider.common.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleAdjustStock(product, "add")}>
-                              <TrendingUp className="w-4 h-4 mr-2" />
-                              Add Stock
+                              <TrendingUp className="w-4 h-4 me-2" />
+                              {t("web.provider.common.add")} Stock
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleAdjustStock(product, "remove")}>
-                              <TrendingDown className="w-4 h-4 mr-2" />
-                              Remove Stock
+                              <TrendingDown className="w-4 h-4 me-2" />
+                              {t("web.provider.catalogueProducts.removeStock")}
                             </DropdownMenuItem>
                             <DropdownMenuItem>
-                              <Copy className="w-4 h-4 mr-2" />
-                              Duplicate
+                              <Copy className="w-4 h-4 me-2" />
+                              {t("web.provider.catalogueProducts.duplicate")}
                             </DropdownMenuItem>
                             <DropdownMenuItem>
-                              <Archive className="w-4 h-4 mr-2" />
-                              Archive
+                              <Archive className="w-4 h-4 me-2" />
+                              {t("web.provider.catalogueProducts.archive")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleDelete(product)}
                               className="text-red-600"
                             >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
+                              <Trash2 className="w-4 h-4 me-2" />
+                              {t("web.provider.common.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -622,7 +625,7 @@ export default function ProviderProducts() {
                   setSearchQuery(suggestion);
                   setShowSuggestions(false);
                 }}
-                className="w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0"
+                className="w-full text-start px-4 py-2 hover:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0"
               >
                 <div className="flex items-center gap-2">
                   <Search className="w-4 h-4 text-gray-400" />
@@ -691,6 +694,7 @@ function StockAdjustmentDialog({
 }) {
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState("");
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -703,7 +707,7 @@ function StockAdjustmentDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (quantity <= 0) {
-      toast.error("Please enter a valid quantity");
+toast.error(t("web.provider.catalogueProducts.invalidQuantity"));
       return;
     }
     setIsLoading(true);
@@ -717,15 +721,26 @@ function StockAdjustmentDialog({
   if (!product) return null;
 
   const stockReasons = action === "add"
-    ? ["Purchase Order", "Return", "Correction", "Other"]
-    : ["Sale", "Damaged", "Expired", "Lost", "Other"];
+    ? [
+      { value: "Purchase Order", key: "reasonPurchaseOrder" },
+      { value: "Return", key: "reasonReturn" },
+      { value: "Correction", key: "reasonCorrection" },
+      { value: "Other", key: "reasonOther" },
+    ]
+    : [
+      { value: "Sale", key: "reasonSale" },
+      { value: "Damaged", key: "reasonDamaged" },
+      { value: "Expired", key: "reasonExpired" },
+      { value: "Lost", key: "reasonLost" },
+      { value: "Other", key: "reasonOther" },
+    ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {action === "add" ? "Add Stock" : "Remove Stock"}
+{action === "add" ? t("web.provider.catalogueProducts.addStock") : t("web.provider.catalogueProducts.removeStock")}
           </DialogTitle>
         </DialogHeader>
 
@@ -746,14 +761,14 @@ function StockAdjustmentDialog({
               <div>
                 <p className="font-medium">{product.name}</p>
                 <p className="text-sm text-gray-600">
-                  Current stock: <span className="font-medium">{product.quantity}</span>
+{t("web.provider.catalogueProducts.currentStock")} <span className="font-medium">{product.quantity}</span>
                 </p>
               </div>
             </div>
           </div>
 
           <div>
-            <Label htmlFor="quantity">Quantity *</Label>
+<Label htmlFor="quantity">{t("web.provider.catalogueProducts.quantityRequired")}</Label>
             <Input
               id="quantity"
               type="number"
@@ -764,22 +779,20 @@ function StockAdjustmentDialog({
               required
             />
             <p className="text-xs text-gray-500 mt-1">
-              New stock will be: {action === "add" 
-                ? product.quantity + quantity 
-                : Math.max(0, product.quantity - quantity)}
+{t("web.provider.catalogueProducts.newStock", { count: action === "add" ? product.quantity + quantity : Math.max(0, product.quantity - quantity) })}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="reason">Reason</Label>
+<Label htmlFor="reason">{t("web.provider.catalogueProducts.reason")}</Label>
             <Select value={reason} onValueChange={setReason}>
               <SelectTrigger>
-                <SelectValue placeholder="Select reason" />
+<SelectValue placeholder={t("web.provider.catalogueProducts.selectReason")} />
               </SelectTrigger>
               <SelectContent>
-                {stockReasons.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r}
+{stockReasons.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {t(`web.provider.catalogueProducts.${r.key}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -793,7 +806,7 @@ function StockAdjustmentDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
@@ -802,7 +815,7 @@ function StockAdjustmentDialog({
                 ? "bg-green-600 hover:bg-green-700" 
                 : "bg-red-600 hover:bg-red-700"}
             >
-              {isLoading ? "Updating..." : action === "add" ? "Add Stock" : "Remove Stock"}
+{isLoading ? t("web.provider.catalogueProducts.updating") : action === "add" ? t("web.provider.catalogueProducts.addStock") : t("web.provider.catalogueProducts.removeStock")}
             </Button>
           </DialogFooter>
         </form>

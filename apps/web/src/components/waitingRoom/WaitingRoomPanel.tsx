@@ -17,6 +17,7 @@
 import React, { useState, useEffect } from "react";
 import { differenceInMinutes } from "date-fns";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,10 +55,40 @@ import {
 
 import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
+import { fetcher } from "@/lib/http/fetcher";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 
 /** Threshold for "waiting too long" warning in minutes */
 const WAITING_TOO_LONG_THRESHOLD = 15;
+
+function RunningLateChip({ apt }: { apt: Appointment }) {
+  const { t } = useTranslation();
+  if (!apt.customer_running_late_at) return null;
+  return (
+    <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full bg-amber-100 text-amber-900 px-2 py-0.5">
+      {t("web.provider.waitingRoomPanel.runningLate")}
+      {apt.customer_running_late_minutes
+        ? t("web.provider.waitingRoomPanel.runningLateMinutes", { minutes: apt.customer_running_late_minutes })
+        : ""}
+    </span>
+  );
+}
+
+type CloseOutBooking = {
+  id: string;
+  booking_number?: string | null;
+  scheduled_at: string;
+  status: string;
+  suggested_close_out_action?: string;
+  customer?: { full_name?: string | null } | null;
+  booking_services?: Array<{ offering?: { title?: string | null } | null }> | null;
+};
+
+type CloseOutResponse = {
+  summary: { total: number; today: number; older: number };
+  bookings: CloseOutBooking[];
+};
 
 interface WaitingRoomPanelProps {
   /** Appointments with WAITING status */
@@ -76,6 +107,7 @@ export function WaitingRoomPanel({
   onRefresh,
   onAppointmentClick,
 }: WaitingRoomPanelProps) {
+  const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
@@ -86,6 +118,26 @@ export function WaitingRoomPanel({
     appointment: Appointment;
   } | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [closeOutQueue, setCloseOutQueue] = useState<CloseOutResponse | null>(null);
+  const [closeOutLoading, setCloseOutLoading] = useState(false);
+
+  const loadCloseOutQueue = React.useCallback(async () => {
+    try {
+      setCloseOutLoading(true);
+      const res = await fetcher.get<{ data: CloseOutResponse }>(
+        "/api/provider/bookings/close-out",
+      );
+      setCloseOutQueue(res.data ?? null);
+    } catch {
+      setCloseOutQueue(null);
+    } finally {
+      setCloseOutLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCloseOutQueue();
+  }, [loadCloseOutQueue, waitingAppointments.length]);
 
   // Update current time every minute for accurate wait duration
   useEffect(() => {
@@ -103,7 +155,7 @@ export function WaitingRoomPanel({
   });
 
   // Calculate wait duration
-  const getWaitDuration = (appointment: Appointment): { text: string; minutes: number } => {
+  const getWaitDuration = (appointment: Appointment): { text: string; minutes: number; notYet: boolean } => {
     // Try to use arrivedAt from metadata first
     const metadata = (appointment as any).metadata;
     let checkInTime: Date;
@@ -119,11 +171,11 @@ export function WaitingRoomPanel({
     
     const minutesWaiting = differenceInMinutes(currentTime, checkInTime);
     
-    if (minutesWaiting < 0) return { text: "Not yet", minutes: 0 };
-    if (minutesWaiting < 60) return { text: `${minutesWaiting}m`, minutes: minutesWaiting };
+    if (minutesWaiting < 0) return { text: t("web.provider.waitingRoomPanel.notYet"), minutes: 0, notYet: true };
+    if (minutesWaiting < 60) return { text: t("web.provider.waitingRoomPanel.waitMinutes", { count: minutesWaiting }), minutes: minutesWaiting, notYet: false };
     const hours = Math.floor(minutesWaiting / 60);
     const mins = minutesWaiting % 60;
-    return { text: `${hours}h ${mins}m`, minutes: minutesWaiting };
+    return { text: t("web.provider.waitingRoomPanel.waitHours", { hours, minutes: mins }), minutes: minutesWaiting, notYet: false };
   };
 
   // Check if waiting too long
@@ -138,13 +190,13 @@ export function WaitingRoomPanel({
       const { resendAppointmentNotification } = await import("@/app/actions/notifications");
       const result = await resendAppointmentNotification(appointment.id, "reminder", undefined, ["push", "email", "sms"]);
       if (result.success) {
-        toast.success(`Notified ${appointment.client_name}`);
+        toast.success(t("web.provider.waitingRoomPanel.notified", { name: appointment.client_name }));
       } else {
-        toast.error(result.error || "Failed to send notification");
+        toast.error(result.error || t("web.provider.waitingRoomPanel.notifyFailed"));
       }
     } catch (error) {
       console.error("Failed to notify:", error);
-      toast.error("Failed to send notification");
+      toast.error(t("web.provider.waitingRoomPanel.notifyFailed"));
     } finally {
       setLoadingIds(prev => {
         const next = new Set(prev);
@@ -157,7 +209,7 @@ export function WaitingRoomPanel({
   // Handle mark in service
   const handleMarkInService = async (appointment: Appointment) => {
     if (!canEditAppointments) {
-      toast.error("You do not have permission to start service");
+      toast.error(t("web.provider.waitingRoomPanel.noPermissionStart"));
       return;
     }
     setLoadingIds(prev => new Set(prev).add(`service-${appointment.id}`));
@@ -165,11 +217,11 @@ export function WaitingRoomPanel({
       await providerApi.updateAppointment(appointment.id, {
         status: "started",
       });
-      toast.success(`${appointment.client_name} is now in service`);
+      toast.success(t("web.provider.waitingRoomPanel.nowInService", { name: appointment.client_name }));
       onRefresh();
     } catch (error) {
       console.error("Failed to update status:", error);
-      toast.error("Failed to update status");
+      toast.error(t("web.provider.waitingRoomPanel.updateFailed"));
     } finally {
       setLoadingIds(prev => {
         const next = new Set(prev);
@@ -182,7 +234,7 @@ export function WaitingRoomPanel({
   // Handle no-show
   const handleNoShow = async (appointment: Appointment) => {
     if (!canCancelAppointments) {
-      toast.error("You do not have permission to mark no-show");
+      toast.error(t("web.provider.waitingRoomPanel.noPermissionNoShow"));
       return;
     }
     setLoadingIds(prev => new Set(prev).add(`noshow-${appointment.id}`));
@@ -197,11 +249,11 @@ export function WaitingRoomPanel({
       } catch (e) {
         console.warn("Failed to send no-show notification:", e);
       }
-      toast.success(`${appointment.client_name} marked as no-show`);
+      toast.success(t("web.provider.waitingRoomPanel.markedNoShow", { name: appointment.client_name }));
       onRefresh();
     } catch (error) {
       console.error("Failed to mark no-show:", error);
-      toast.error("Failed to mark as no-show");
+      toast.error(t("web.provider.waitingRoomPanel.noShowFailed"));
     } finally {
       setLoadingIds(prev => {
         const next = new Set(prev);
@@ -212,10 +264,36 @@ export function WaitingRoomPanel({
     }
   };
 
+  const handleBulkCompleteCloseOut = async () => {
+    const eligible = (closeOutQueue?.bookings ?? []).filter((b) =>
+      ["in_progress", "checked_in"].includes(String(b.status)),
+    );
+    if (eligible.length === 0) {
+      toast.error(t("web.provider.waitingRoomPanel.noInServiceToComplete"));
+      return;
+    }
+    setCloseOutLoading(true);
+    try {
+      await fetcher.post("/api/provider/bookings/close-out/bulk-complete", {
+        booking_ids: eligible.map((b) => b.id),
+      });
+      toast.success(t("web.provider.waitingRoomPanel.completedAppointments", { count: eligible.length }));
+      onRefresh();
+      await loadCloseOutQueue();
+    } catch {
+      toast.error(t("web.provider.waitingRoomPanel.completeFailed"));
+    } finally {
+      setCloseOutLoading(false);
+    }
+  };
+
+  const closeOutBookings = closeOutQueue?.bookings ?? [];
+  const closeOutTotal = closeOutQueue?.summary.total ?? 0;
+
   // Handle late cancel
   const handleLateCancel = async (appointment: Appointment) => {
     if (!canCancelAppointments) {
-      toast.error("You do not have permission to cancel appointments");
+      toast.error(t("web.provider.waitingRoomPanel.noPermissionCancel"));
       return;
     }
     setLoadingIds(prev => new Set(prev).add(`cancel-${appointment.id}`));
@@ -231,11 +309,11 @@ export function WaitingRoomPanel({
       } catch (e) {
         console.warn("Failed to send cancellation notification:", e);
       }
-      toast.success(`${appointment.client_name} appointment cancelled (late)`);
+      toast.success(t("web.provider.waitingRoomPanel.cancelledLate", { name: appointment.client_name }));
       onRefresh();
     } catch (error) {
       console.error("Failed to cancel:", error);
-      toast.error("Failed to cancel appointment");
+      toast.error(t("web.provider.waitingRoomPanel.cancelFailed"));
     } finally {
       setLoadingIds(prev => {
         const next = new Set(prev);
@@ -262,9 +340,9 @@ export function WaitingRoomPanel({
             <User className="w-4 h-4 text-violet-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">Waiting Room</h3>
+            <h3 className="font-semibold text-gray-900">{t("web.provider.waitingRoomPanel.title")}</h3>
             <p className="text-xs text-gray-500">
-              {waitingAppointments.length} client{waitingAppointments.length !== 1 ? "s" : ""} waiting
+              {t("web.provider.waitingRoomPanel.clientsWaiting", { count: waitingAppointments.length })}
             </p>
           </div>
         </div>
@@ -273,7 +351,10 @@ export function WaitingRoomPanel({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={onRefresh}
+            onClick={() => {
+              onRefresh();
+              void loadCloseOutQueue();
+            }}
           >
             <RefreshCw className="w-4 h-4 text-gray-500" />
           </Button>
@@ -288,11 +369,67 @@ export function WaitingRoomPanel({
         </div>
       </div>
 
+      {closeOutTotal > 0 ? (
+        <div className="border-b bg-amber-50/80 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-xs font-semibold text-amber-950">
+              {t("web.provider.waitingRoomPanel.unclosed", { count: closeOutTotal })}
+            </p>
+            {canEditAppointments &&
+            closeOutBookings.some((b) => ["in_progress", "checked_in"].includes(String(b.status))) ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-amber-900 hover:bg-amber-100"
+                disabled={closeOutLoading}
+                onClick={() => void handleBulkCompleteCloseOut()}
+              >
+                {t("web.provider.waitingRoomPanel.completeInService")}
+              </Button>
+            ) : null}
+          </div>
+          <div className="space-y-1 max-h-[120px] overflow-y-auto">
+            {closeOutBookings.slice(0, 5).map((row) => {
+              const name = row.customer?.full_name?.trim() || t("web.provider.waitingRoomPanel.customerFallback");
+              const service =
+                row.booking_services?.[0]?.offering?.title?.trim() || t("web.provider.waitingRoomPanel.appointmentFallback");
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  className="w-full rounded-lg bg-white/80 px-2 py-1.5 text-start text-xs hover:bg-white"
+                  onClick={() => {
+                    onAppointmentClick?.({
+                      id: row.id,
+                      client_name: name,
+                      service_name: service,
+                      scheduled_time: formatBookingTimeInTimeZone(row.scheduled_at),
+                      status: row.status,
+                    } as Appointment);
+                  }}
+                >
+                  <span className="font-medium text-gray-900">{name}</span>
+                  <span className="text-gray-500">
+                    {" "}
+                    · {formatBookingTimeInTimeZone(row.scheduled_at)} · {row.status.replace(/_/g, " ")}
+                  </span>
+                </button>
+              );
+            })}
+            {closeOutBookings.length > 5 ? (
+              <p className="text-[10px] text-amber-800 px-1">
+                {t("web.provider.waitingRoomPanel.moreInQueue", { count: closeOutBookings.length - 5 })}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {/* Content */}
       {sortedAppointments.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-gray-400">
           <User className="w-12 h-12 mb-2 opacity-50" />
-          <p className="text-sm">No clients waiting</p>
+          <p className="text-sm">{t("web.provider.waitingRoomPanel.noClients")}</p>
         </div>
       ) : sortedAppointments.length > 10 ? (
         // Use virtual scrolling for large lists
@@ -350,7 +487,7 @@ export function WaitingRoomPanel({
                         <div className="flex items-center gap-1">
                           <span className={cn(
                             "text-xs font-medium px-2 py-0.5 rounded-full",
-                            waitInfo.text === "Not yet" 
+                            waitInfo.notYet 
                               ? "bg-gray-100 text-gray-600"
                               : tooLong
                                 ? "bg-red-100 text-red-700"
@@ -358,6 +495,7 @@ export function WaitingRoomPanel({
                           )}>
                             {waitInfo.text}
                           </span>
+                          <RunningLateChip apt={apt} />
                           {/* More actions dropdown */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -377,8 +515,8 @@ export function WaitingRoomPanel({
                                   handleNotify(apt);
                                 }}
                               >
-                                <Send className="w-4 h-4 mr-2" />
-                                Send Reminder
+                                <Send className="w-4 h-4 me-2" />
+                                {t("web.provider.waitingRoomPanel.sendReminder")}
                               </DropdownMenuItem>
                               {canCancelAppointments && (
                                 <>
@@ -390,8 +528,8 @@ export function WaitingRoomPanel({
                                     }}
                                     className="text-red-600 focus:text-red-600"
                                   >
-                                    <UserX className="w-4 h-4 mr-2" />
-                                    Mark as No-Show
+                                    <UserX className="w-4 h-4 me-2" />
+                                    {t("web.provider.waitingRoomPanel.markNoShow")}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={(e) => {
@@ -400,8 +538,8 @@ export function WaitingRoomPanel({
                                     }}
                                     className="text-red-600 focus:text-red-600"
                                   >
-                                    <XCircle className="w-4 h-4 mr-2" />
-                                    Late Cancel
+                                    <XCircle className="w-4 h-4 me-2" />
+                                    {t("web.provider.waitingRoomPanel.lateCancel")}
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -410,13 +548,13 @@ export function WaitingRoomPanel({
                         </div>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-0.5">
-                        {apt.service_name} with {apt.team_member_name}
+                        {t("web.provider.waitingRoomPanel.withStaff", { service: apt.service_name, staff: apt.team_member_name })}
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Scheduled: {apt.scheduled_time}
+                        {t("web.provider.waitingRoomPanel.scheduled", { time: apt.scheduled_time })}
                         {tooLong && (
-                          <span className="ml-2 text-red-500 font-medium">
-                            • Waiting too long!
+                          <span className="ms-2 text-red-500 font-medium">
+                            {t("web.provider.waitingRoomPanel.waitingTooLong")}
                           </span>
                         )}
                       </p>
@@ -436,11 +574,11 @@ export function WaitingRoomPanel({
                       disabled={isNotifying}
                     >
                       {isNotifying ? (
-                        <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        <RefreshCw className="w-3.5 h-3.5 me-1 animate-spin" />
                       ) : (
-                        <Bell className="w-3.5 h-3.5 mr-1" />
+                        <Bell className="w-3.5 h-3.5 me-1" />
                       )}
-                      Notify
+                      {t("web.provider.waitingRoomPanel.notify")}
                     </Button>
                     {canEditAppointments && (
                       <Button
@@ -459,11 +597,11 @@ export function WaitingRoomPanel({
                         disabled={isMarking}
                       >
                         {isMarking ? (
-                          <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                          <RefreshCw className="w-3.5 h-3.5 me-1 animate-spin" />
                         ) : (
-                          <Play className="w-3.5 h-3.5 mr-1" />
+                          <Play className="w-3.5 h-3.5 me-1" />
                         )}
-                        Start Service
+                        {t("web.provider.waitingRoomPanel.startService")}
                       </Button>
                     )}
                   </div>
@@ -524,7 +662,7 @@ export function WaitingRoomPanel({
                         <div className="flex items-center gap-1">
                           <span className={cn(
                             "text-xs font-medium px-2 py-0.5 rounded-full",
-                            waitInfo.text === "Not yet" 
+                            waitInfo.notYet 
                               ? "bg-gray-100 text-gray-600"
                               : tooLong
                                 ? "bg-red-100 text-red-700"
@@ -532,6 +670,7 @@ export function WaitingRoomPanel({
                           )}>
                             {waitInfo.text}
                           </span>
+                          <RunningLateChip apt={apt} />
                           {/* More actions dropdown */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -551,8 +690,8 @@ export function WaitingRoomPanel({
                                   handleNotify(apt);
                                 }}
                               >
-                                <Send className="w-4 h-4 mr-2" />
-                                Send Reminder
+                                <Send className="w-4 h-4 me-2" />
+                                {t("web.provider.waitingRoomPanel.sendReminder")}
                               </DropdownMenuItem>
                               {canCancelAppointments && (
                                 <>
@@ -564,8 +703,8 @@ export function WaitingRoomPanel({
                                     }}
                                     className="text-red-600 focus:text-red-600"
                                   >
-                                    <UserX className="w-4 h-4 mr-2" />
-                                    Mark as No-Show
+                                    <UserX className="w-4 h-4 me-2" />
+                                    {t("web.provider.waitingRoomPanel.markNoShow")}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={(e) => {
@@ -574,8 +713,8 @@ export function WaitingRoomPanel({
                                     }}
                                     className="text-red-600 focus:text-red-600"
                                   >
-                                    <XCircle className="w-4 h-4 mr-2" />
-                                    Late Cancel
+                                    <XCircle className="w-4 h-4 me-2" />
+                                    {t("web.provider.waitingRoomPanel.lateCancel")}
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -584,13 +723,13 @@ export function WaitingRoomPanel({
                         </div>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-0.5">
-                        {apt.service_name} with {apt.team_member_name}
+                        {t("web.provider.waitingRoomPanel.withStaff", { service: apt.service_name, staff: apt.team_member_name })}
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Scheduled: {apt.scheduled_time}
+                        {t("web.provider.waitingRoomPanel.scheduled", { time: apt.scheduled_time })}
                         {tooLong && (
-                          <span className="ml-2 text-red-500 font-medium">
-                            • Waiting too long!
+                          <span className="ms-2 text-red-500 font-medium">
+                            {t("web.provider.waitingRoomPanel.waitingTooLong")}
                           </span>
                         )}
                       </p>
@@ -610,11 +749,11 @@ export function WaitingRoomPanel({
                       disabled={isNotifying}
                     >
                       {isNotifying ? (
-                        <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        <RefreshCw className="w-3.5 h-3.5 me-1 animate-spin" />
                       ) : (
-                        <Bell className="w-3.5 h-3.5 mr-1" />
+                        <Bell className="w-3.5 h-3.5 me-1" />
                       )}
-                      Notify
+                      {t("web.provider.waitingRoomPanel.notify")}
                     </Button>
                     {canEditAppointments && (
                       <Button
@@ -633,11 +772,11 @@ export function WaitingRoomPanel({
                         disabled={isMarking}
                       >
                         {isMarking ? (
-                          <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                          <RefreshCw className="w-3.5 h-3.5 me-1 animate-spin" />
                         ) : (
-                          <Play className="w-3.5 h-3.5 mr-1" />
+                          <Play className="w-3.5 h-3.5 me-1" />
                         )}
-                        Start Service
+                        {t("web.provider.waitingRoomPanel.startService")}
                       </Button>
                     )}
                   </div>
@@ -656,26 +795,22 @@ export function WaitingRoomPanel({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction?.type === "no_show" ? "Mark as No-Show?" : "Late Cancel?"}
+              {confirmAction?.type === "no_show" ? t("web.provider.waitingRoomPanel.confirmNoShowTitle") : t("web.provider.waitingRoomPanel.confirmLateCancelTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction?.type === "no_show" ? (
                 <>
-                  This will mark <strong>{confirmAction?.appointment.client_name}</strong>'s 
-                  appointment as a no-show. They will be notified and this may affect 
-                  their booking privileges.
+                  {t("web.provider.waitingRoomPanel.confirmNoShowBody", { name: confirmAction?.appointment.client_name })}
                 </>
               ) : (
                 <>
-                  This will cancel <strong>{confirmAction?.appointment.client_name}</strong>'s 
-                  appointment as a late cancellation. A cancellation fee may apply 
-                  according to your policy.
+                  {t("web.provider.waitingRoomPanel.confirmLateCancelBody", { name: confirmAction?.appointment.client_name })}
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("web.provider.waitingRoomPanel.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (confirmAction?.type === "no_show") {
@@ -686,7 +821,7 @@ export function WaitingRoomPanel({
               }}
               className="bg-red-600 hover:bg-red-700"
             >
-              {confirmAction?.type === "no_show" ? "Mark No-Show" : "Late Cancel"}
+              {confirmAction?.type === "no_show" ? t("web.provider.waitingRoomPanel.confirmNoShow") : t("web.provider.waitingRoomPanel.confirmLateCancel")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

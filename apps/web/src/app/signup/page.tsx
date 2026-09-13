@@ -174,7 +174,7 @@ export default function SignupPage() {
                       onClick={() => handlePersonaSelect("customer")}
                       whileHover={{ y: -4 }}
                       whileTap={{ scale: 0.98 }}
-                      className={`w-full rounded-[28px] p-6 text-left shadow-sm hover:shadow-md transition-all duration-300 group ${
+                      className={`w-full rounded-[28px] p-6 text-start shadow-sm hover:shadow-md transition-all duration-300 group ${
                         highlightedCard === "customer"
                           ? "border-2 border-[#FF0077]/20 bg-white"
                           : "border border-gray-200 bg-white hover:border-gray-300"
@@ -213,7 +213,7 @@ export default function SignupPage() {
                       onClick={() => handlePersonaSelect("provider")}
                       whileHover={{ y: -4 }}
                       whileTap={{ scale: 0.98 }}
-                      className="w-full relative rounded-[28px] p-6 text-left shadow-sm hover:shadow-md transition-all duration-300 group border border-gray-200 bg-white hover:border-gray-300"
+                      className="w-full relative rounded-[28px] p-6 text-start shadow-sm hover:shadow-md transition-all duration-300 group border border-gray-200 bg-white hover:border-gray-300"
                       aria-label="Sign up as a beauty provider"
                     >
                       {/* Most Popular Badge */}
@@ -258,7 +258,7 @@ export default function SignupPage() {
                       onClick={() => handlePersonaSelect("provider")}
                       whileHover={{ y: -4 }}
                       whileTap={{ scale: 0.98 }}
-                      className="w-full relative rounded-[28px] p-6 text-left shadow-sm hover:shadow-md transition-all duration-300 group border-2 border-[#FF0077]/20 bg-white"
+                      className="w-full relative rounded-[28px] p-6 text-start shadow-sm hover:shadow-md transition-all duration-300 group border-2 border-[#FF0077]/20 bg-white"
                       aria-label="Sign up as a beauty provider"
                     >
                       {/* Most Popular Badge */}
@@ -301,7 +301,7 @@ export default function SignupPage() {
                       onClick={() => handlePersonaSelect("customer")}
                       whileHover={{ y: -4 }}
                       whileTap={{ scale: 0.98 }}
-                      className="w-full rounded-[28px] p-6 text-left shadow-sm hover:shadow-md transition-all duration-300 group border border-gray-200 bg-white hover:border-gray-300"
+                      className="w-full rounded-[28px] p-6 text-start shadow-sm hover:shadow-md transition-all duration-300 group border border-gray-200 bg-white hover:border-gray-300"
                       aria-label="Sign up as a customer"
                     >
                       <div className="flex items-start justify-between gap-4">

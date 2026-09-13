@@ -1,6 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import type {
   CustomRequestListItem,
   CustomRequestsPageInitial,
@@ -93,6 +95,7 @@ export default function CustomRequestsPageClient({
 }: {
   initial: CustomRequestsPageInitial | null;
 }) {
+  const { t } = useTranslation();
   const { role } = useAuth();
   const { bundle } = useConfigBundle();
   const searchParams = useSearchParams();
@@ -180,10 +183,10 @@ export default function CustomRequestsPageClient({
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.accountSettings.customRequests.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load custom requests";
+          : t("web.accountSettings.customRequests.loadFailed");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -198,7 +201,7 @@ export default function CustomRequestsPageClient({
       setClients(res.data || []);
     } catch (err) {
       console.error("Failed to load clients:", err);
-      toast.error("Failed to load clients");
+      toast.error(t("web.accountSettings.customRequests.loadClientsFailed"));
     } finally {
       setIsLoadingClients(false);
     }
@@ -363,7 +366,7 @@ export default function CustomRequestsPageClient({
   function formatMoney(amount: number, currency?: string): string {
     if (!currency) return amount.toFixed(2);
     try {
-      return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+      return new Intl.NumberFormat(getDefaultMoneyLocale(), { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
     } catch {
       return `${currency} ${amount.toFixed(2)}`;
     }
@@ -386,7 +389,7 @@ export default function CustomRequestsPageClient({
       const res = await fetcher.get<{ data: Record<string, any> }>(endpoint);
       setOfferDetailData(res.data);
     } catch {
-      toast.error("Failed to load offer details");
+      toast.error(t("web.accountSettings.customRequests.loadOfferFailed"));
       setOfferDetailOpen(false);
     } finally {
       setOfferDetailLoading(false);
@@ -401,21 +404,21 @@ export default function CustomRequestsPageClient({
         window.location.href = url;
         return;
       }
-      toast.error("No payment URL returned");
+      toast.error(t("web.accountSettings.customRequests.noPaymentUrl"));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to start payment");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.startPaymentFailed"));
     }
   };
 
   const declineOffer = async (offerId: string) => {
-    if (!window.confirm("Decline this custom offer? The provider will be notified.")) return;
+    if (!window.confirm(t("web.accountSettings.customRequests.declineConfirm"))) return;
     setDecliningOfferId(offerId);
     try {
       await fetcher.post(`/api/me/custom-offers/${offerId}/decline`, {});
-      toast.success("Offer declined");
+      toast.success(t("web.accountSettings.customRequests.offerDeclined"));
       await load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to decline offer");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.declineOfferFailed"));
     } finally {
       setDecliningOfferId(null);
     }
@@ -423,7 +426,7 @@ export default function CustomRequestsPageClient({
 
   const requestChanges = async () => {
     if (!requestChangesOfferId || !requestChangesNote.trim()) {
-      toast.error("Please describe what you'd like changed");
+      toast.error(t("web.accountSettings.customRequests.describeChanges"));
       return;
     }
     setRequestingChanges(true);
@@ -431,42 +434,42 @@ export default function CustomRequestsPageClient({
       await fetcher.post(`/api/me/custom-offers/${requestChangesOfferId}/request-changes`, {
         note: requestChangesNote.trim(),
       });
-      toast.success("Change request sent to the provider");
+      toast.success(t("web.accountSettings.customRequests.changeRequestSent"));
       setRequestChangesOfferId(null);
       setRequestChangesNote("");
       await load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to request changes");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.requestChangesFailed"));
     } finally {
       setRequestingChanges(false);
     }
   };
 
   const cancelRequest = async (requestId: string) => {
-    if (!window.confirm("Cancel this custom request? Any pending offers will be withdrawn.")) return;
+    if (!window.confirm(t("web.accountSettings.customRequests.cancelConfirm"))) return;
     setCancellingRequestId(requestId);
     try {
       await fetcher.post(`/api/me/custom-requests/${requestId}/cancel`, {});
-      toast.success("Request cancelled");
+      toast.success(t("web.accountSettings.customRequests.requestCancelled"));
       await load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel request");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.cancelRequestFailed"));
     } finally {
       setCancellingRequestId(null);
     }
   };
 
   const declineRequest = async (requestId: string) => {
-    const reason = window.prompt("Optional reason for declining this request:");
+    const reason = window.prompt(t("web.accountSettings.customRequests.declineRequestPrompt"));
     if (reason === null) return;
     try {
       await fetcher.post(`/api/provider/custom-requests/${requestId}/decline`, {
         reason: reason.trim() || null,
       });
-      toast.success("Request declined");
+      toast.success(t("web.accountSettings.customRequests.requestDeclined"));
       await load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to decline request");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.declineRequestFailed"));
     }
   };
 
@@ -495,7 +498,7 @@ export default function CustomRequestsPageClient({
 
   const handleCreateOffer = async () => {
     if (!formData.customer_id || !formData.description || !formData.price) {
-      toast.error("Please fill in all required fields");
+      toast.error(t("web.accountSettings.customRequests.requiredFields"));
       return;
     }
 
@@ -520,7 +523,7 @@ export default function CustomRequestsPageClient({
       };
 
       await fetcher.post("/api/provider/custom-offers/create", payload);
-      toast.success("Custom offer sent successfully!");
+      toast.success(t("web.accountSettings.customRequests.offerSent"));
       setShowCreateModal(false);
       setFormData({
         customer_id: "",
@@ -538,7 +541,7 @@ export default function CustomRequestsPageClient({
       });
       load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create custom offer");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.createOfferFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -582,7 +585,7 @@ export default function CustomRequestsPageClient({
 
   const handleCreateOfferForRequest = async () => {
     if (!selectedRequestId || !offerFormData.price) {
-      toast.error("Please fill in all required fields");
+      toast.error(t("web.accountSettings.customRequests.requiredFields"));
       return;
     }
 
@@ -609,17 +612,17 @@ export default function CustomRequestsPageClient({
 
       if (editingOfferId) {
         await fetcher.patch(`/api/provider/custom-offers/${editingOfferId}`, payload);
-        toast.success("Offer updated successfully!");
+        toast.success(t("web.accountSettings.customRequests.offerUpdated"));
       } else {
         await fetcher.post(`/api/provider/custom-requests/${selectedRequestId}/offers`, payload);
-        toast.success("Offer created successfully!");
+        toast.success(t("web.accountSettings.customRequests.offerCreated"));
       }
       setShowOfferModal(false);
       setSelectedRequestId(null);
       setEditingOfferId(null);
       load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create offer");
+      toast.error(e instanceof Error ? e.message : t("web.accountSettings.customRequests.createOfferFailedShort"));
     } finally {
       setIsSubmitting(false);
     }
@@ -628,39 +631,39 @@ export default function CustomRequestsPageClient({
   return (
     <div className="w-full max-w-[950px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
         <BackButton href="/account-settings" />
-        <Breadcrumb items={[{ label: "Account", href: "/account-settings" }, { label: "Custom Requests" }]} />
+        <Breadcrumb items={[{ label: t("web.accountSettings.customRequests.breadcrumbAccount"), href: "/account-settings" }, { label: t("web.accountSettings.customRequests.breadcrumbTitle") }]} />
 
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Custom Requests</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{t("web.accountSettings.customRequests.title")}</h1>
           {isProvider && (
             <Button onClick={() => setShowCreateModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Custom Offer
+              <Plus className="h-4 w-4 me-2" />
+              {t("web.accountSettings.customRequests.createCustomOffer")}
             </Button>
           )}
         </div>
 
         {isProvider && (
           <p className="text-sm text-gray-600 mb-6">
-            Set venue, staff, and appointment time when creating offers so the booking appears on the calendar and is assigned correctly once the customer pays.
+            {t("web.accountSettings.customRequests.providerHint")}
           </p>
         )}
 
         {isLoading ? (
-          <LoadingTimeout loadingMessage="Loading custom requests..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.customRequests.loading")} />
         ) : error ? (
           <EmptyState
-            title="Failed to load"
+            title={t("web.accountSettings.customRequests.loadFailedTitle")}
             description={error}
-            action={{ label: "Retry", onClick: load }}
+            action={{ label: t("web.accountSettings.customRequests.retry"), onClick: load }}
           />
         ) : items.length === 0 ? (
           <EmptyState
-            title={isProvider ? "No custom requests yet" : "No custom requests yet"}
+            title={t("web.accountSettings.customRequests.emptyTitle")}
             description={
               isProvider
-                ? "Customer custom requests will appear here."
-                : "Request a custom service from a provider to receive a tailored offer."
+                ? t("web.accountSettings.customRequests.emptyProviderDesc")
+                : t("web.accountSettings.customRequests.emptyCustomerDesc")
             }
           />
         ) : (
@@ -672,12 +675,12 @@ export default function CustomRequestsPageClient({
                     <div className="text-sm text-gray-600">
                       {isProvider ? (
                         <>
-                          {r.customer?.full_name || r.customer?.email || "Customer"} •{" "}
+                          {r.customer?.full_name || r.customer?.email || t("web.accountSettings.customRequests.customerFallback")} •{" "}
                           <span className="capitalize">{r.status}</span>
                         </>
                       ) : (
                         <>
-                          {r.provider?.business_name ? r.provider.business_name : "Provider"} •{" "}
+                          {r.provider?.business_name ? r.provider.business_name : t("web.accountSettings.customRequests.providerFallback")} •{" "}
                           <span className="capitalize">{r.status}</span>
                         </>
                       )}
@@ -685,20 +688,24 @@ export default function CustomRequestsPageClient({
                     <div className="font-medium mt-1">{r.description}</div>
                     {r.status === "declined" && r.declined_reason ? (
                       <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-2 mt-2">
-                        Declined: {r.declined_reason}
+                        {t("web.accountSettings.customRequests.declinedPrefix", { reason: r.declined_reason })}
                       </div>
                     ) : null}
                     <div className="text-sm text-gray-600 mt-2 space-y-0.5">
                       <span>
-                        {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
-                        {r.location_type === "at_salon" ? "At salon" : "At home"}
+                        {r.preferred_start_at
+                          ? t("web.accountSettings.customRequests.preferredAt", { datetime: new Date(r.preferred_start_at).toLocaleString() })
+                          : t("web.accountSettings.customRequests.preferredNotSet")} •{" "}
+                        {r.location_type === "at_salon"
+                          ? t("web.accountSettings.customRequests.atSalon")
+                          : t("web.accountSettings.customRequests.atHome")}
                         {r.budget_min != null || r.budget_max != null
-                          ? ` • Budget: ${r.budget_min ?? ""} - ${r.budget_max ?? ""}`
+                          ? ` • ${t("web.accountSettings.customRequests.budget", { min: r.budget_min ?? "", max: r.budget_max ?? "" })}`
                           : ""}
                       </span>
                       {r.location_type === "at_home" && (r.address_line1 || r.address_city || r.address_country) && (
                         <div className="text-gray-500">
-                          Address: {[r.address_line1, r.address_line2, r.address_city, r.address_state, r.address_country].filter(Boolean).join(", ") || "—"}
+                          {t("web.accountSettings.customRequests.addressLabel", { address: [r.address_line1, r.address_line2, r.address_city, r.address_state, r.address_country].filter(Boolean).join(", ") || "—" })}
                         </div>
                       )}
                     </div>
@@ -707,7 +714,7 @@ export default function CustomRequestsPageClient({
                     <div className="flex gap-2 shrink-0">
                       {(!r.offers || r.offers.length === 0) && (
                         <Button variant="outline" size="sm" onClick={() => openOfferModal(r.id)}>
-                          Create Offer
+                          {t("web.accountSettings.customRequests.createOffer")}
                         </Button>
                       )}
                       <Button
@@ -716,7 +723,7 @@ export default function CustomRequestsPageClient({
                         className="text-red-600 border-red-200 hover:bg-red-50"
                         onClick={() => void declineRequest(r.id)}
                       >
-                        Decline request
+                        {t("web.accountSettings.customRequests.declineRequest")}
                       </Button>
                     </div>
                   )}
@@ -727,7 +734,7 @@ export default function CustomRequestsPageClient({
                       disabled={cancellingRequestId === r.id}
                       onClick={() => void cancelRequest(r.id)}
                     >
-                      {cancellingRequestId === r.id ? "Cancelling…" : "Cancel request"}
+                      {cancellingRequestId === r.id ? t("web.accountSettings.customRequests.cancelling") : t("web.accountSettings.customRequests.cancelRequest")}
                     </Button>
                   )}
                 </div>
@@ -761,20 +768,20 @@ export default function CustomRequestsPageClient({
                                   ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
                                 : "bg-blue-50 text-blue-700 border border-blue-200";
                         const badgeLabel = isPaid
-                          ? "Booked ✓"
+                          ? t("web.accountSettings.customRequests.badgePaid")
                           : isFinalizeFailed
-                            ? "Needs support"
+                            ? t("web.accountSettings.customRequests.badgeNeedsSupport")
                             : isDeclined
-                              ? "Declined"
+                              ? t("web.accountSettings.customRequests.badgeDeclined")
                               : isWithdrawn
-                                ? "Withdrawn"
+                                ? t("web.accountSettings.customRequests.badgeWithdrawn")
                                 : isExpired
-                                  ? "Expired"
+                                  ? t("web.accountSettings.customRequests.badgeExpired")
                                   : isPaymentPending
-                                    ? "Processing…"
+                                    ? t("web.accountSettings.customRequests.badgeProcessing")
                                     : isChangesRequested
-                                      ? "Changes requested"
-                                    : "Pending";
+                                      ? t("web.accountSettings.customRequests.badgeChangesRequested")
+                                    : t("web.accountSettings.customRequests.badgePending");
                         return (
                           <div
                             key={o.id}
@@ -789,34 +796,34 @@ export default function CustomRequestsPageClient({
                                 {isPaymentPending && <span className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin inline-block" />}
                               </div>
                               <div className="font-medium">
-                                {o.currency} {o.price} • {o.duration_minutes} mins
+                                {t("web.accountSettings.customRequests.priceDuration", { currency: o.currency, price: o.price, minutes: o.duration_minutes })}
                               </div>
                               <div className="text-sm text-gray-500 mt-0.5">
-                                Expires: {new Date(o.expiration_at).toLocaleDateString()}
+                                {t("web.accountSettings.customRequests.expires", { date: new Date(o.expiration_at).toLocaleDateString() })}
                               </div>
                               {(o.location?.name || o.staff?.name) && (
                                 <div className="text-xs text-gray-500 mt-1">
-                                  {o.location?.name && <span>Venue: {o.location.name}</span>}
+                                  {o.location?.name && <span>{t("web.accountSettings.customRequests.venueName", { name: o.location.name })}</span>}
                                   {o.location?.name && o.staff?.name && " · "}
-                                  {o.staff?.name && <span>Staff: {o.staff.name}</span>}
+                                  {o.staff?.name && <span>{t("web.accountSettings.customRequests.staffName", { name: o.staff.name })}</span>}
                                 </div>
                               )}
                               {o.notes ? <div className="text-xs text-gray-600 mt-1 line-clamp-2">{o.notes}</div> : null}
                               {isChangesRequested && o.change_request_note ? (
                                 <div className="text-xs text-indigo-700 mt-1 bg-indigo-50 rounded px-2 py-1">
-                                  Requested changes: {o.change_request_note}
+                                  {t("web.accountSettings.customRequests.requestedChanges", { note: o.change_request_note })}
                                 </div>
                               ) : null}
-                              <div className="text-[11px] text-gray-400 mt-1">Tap for details</div>
+                              <div className="text-[11px] text-gray-400 mt-1">{t("web.accountSettings.customRequests.tapForDetails")}</div>
                             </div>
                             {!isProvider && (
                               <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                                 {isPaid ? (
-                                  <Button variant="secondary" size="sm" disabled>Paid</Button>
+                                  <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.paid")}</Button>
                                 ) : isInactive ? (
                                   <Button variant="secondary" size="sm" disabled className="capitalize">{badgeLabel}</Button>
                                 ) : isPaymentPending ? (
-                                  <Button variant="secondary" size="sm" disabled>Processing…</Button>
+                                  <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.badgeProcessing")}</Button>
                                 ) : (
                                   <>
                                     <Button
@@ -827,7 +834,7 @@ export default function CustomRequestsPageClient({
                                         setRequestChangesNote("");
                                       }}
                                     >
-                                      Request changes
+                                      {t("web.accountSettings.customRequests.requestChanges")}
                                     </Button>
                                     <Button
                                       variant="outline"
@@ -835,9 +842,9 @@ export default function CustomRequestsPageClient({
                                       disabled={decliningOfferId === o.id}
                                       onClick={() => void declineOffer(o.id)}
                                     >
-                                      {decliningOfferId === o.id ? "Declining…" : "Decline"}
+                                      {decliningOfferId === o.id ? t("web.accountSettings.customRequests.declining") : t("web.accountSettings.customRequests.decline")}
                                     </Button>
-                                    <Button size="sm" onClick={() => openDepositDialog(o.id, o.currency)}>Accept & Pay</Button>
+                                    <Button size="sm" onClick={() => openDepositDialog(o.id, o.currency)}>{t("web.accountSettings.customRequests.acceptAndPay")}</Button>
                                   </>
                                 )}
                               </div>
@@ -853,15 +860,15 @@ export default function CustomRequestsPageClient({
                             <span className="mt-0.5 text-blue-500 shrink-0">ℹ</span>
                             <span>
                               {isProvider
-                                ? "All your offers have been withdrawn or expired. You can send a new offer below."
-                                : "All offers have been withdrawn or expired. Your request is still open — a new offer may arrive."}
+                                ? t("web.accountSettings.customRequests.allOffersInactiveProvider")
+                                : t("web.accountSettings.customRequests.allOffersInactiveCustomer")}
                             </span>
                           </div>
                         )}
                     </>
                   ) : (
                     <div className="text-sm text-gray-600">
-                      {isProvider ? "No offers sent yet." : "No offers yet."}
+                      {isProvider ? t("web.accountSettings.customRequests.noOffersSent") : t("web.accountSettings.customRequests.noOffersYet")}
                     </div>
                   )}
                 </div>
@@ -874,30 +881,30 @@ export default function CustomRequestsPageClient({
         <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
           <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle>Create Custom Offer</DialogTitle>
+              <DialogTitle>{t("web.accountSettings.customRequests.createOfferTitle")}</DialogTitle>
               <DialogDescription>
-                Send a tailored service offer to a client. They can review and accept it to create a booking.
+                {t("web.accountSettings.customRequests.createOfferDesc")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div>
-                <Label htmlFor="customer">Client *</Label>
+                <Label htmlFor="customer">{t("web.accountSettings.customRequests.clientRequired")}</Label>
                 <Select
                   value={formData.customer_id}
                   onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a client" />
+                    <SelectValue placeholder={t("web.accountSettings.customRequests.selectClient")} />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingClients ? (
-                      <SelectItem value="loading" disabled>Loading clients...</SelectItem>
+                      <SelectItem value="loading" disabled>{t("web.accountSettings.customRequests.loadingClients")}</SelectItem>
                     ) : clients.length === 0 ? (
-                      <SelectItem value="none" disabled>No clients found</SelectItem>
+                      <SelectItem value="none" disabled>{t("web.accountSettings.customRequests.noClientsFound")}</SelectItem>
                     ) : (
                       clients.map((client) => (
                         <SelectItem key={client.customer_id} value={client.customer_id}>
-                          {client.customer?.full_name || client.customer?.email || "Unknown"}
+                          {client.customer?.full_name || client.customer?.email || t("web.accountSettings.customRequests.unknownClient")}
                         </SelectItem>
                       ))
                     )}
@@ -906,28 +913,28 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div>
-                <Label htmlFor="description">Service Description *</Label>
+                <Label htmlFor="description">{t("web.accountSettings.customRequests.serviceDescriptionRequired")}</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe the custom service you're offering..."
+                  placeholder={t("web.accountSettings.customRequests.serviceDescriptionPlaceholder")}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={4}
                   maxLength={4000}
                 />
-                <p className="text-xs text-gray-500 mt-1">{formData.description.length}/4000 characters</p>
+                <p className="text-xs text-gray-500 mt-1">{t("web.accountSettings.customRequests.charactersCount", { count: formData.description.length })}</p>
               </div>
 
               {categories.length > 0 && (
                 <div>
-                  <Label>Service category</Label>
+                  <Label>{t("web.accountSettings.customRequests.serviceCategory")}</Label>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, service_category_id: "" })}
                       className={`rounded-full border px-3 py-1.5 text-sm font-medium ${!formData.service_category_id ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-700"}`}
                     >
-                      Any category
+                      {t("web.accountSettings.customRequests.anyCategory")}
                     </button>
                     {categories.map((category) => {
                       const active = formData.service_category_id === category.id;
@@ -948,7 +955,7 @@ export default function CustomRequestsPageClient({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="location_type">Location Type</Label>
+                  <Label htmlFor="location_type">{t("web.accountSettings.customRequests.locationType")}</Label>
                   <Select
                     value={formData.location_type}
                     onValueChange={(value: "at_home" | "at_salon") =>
@@ -959,14 +966,14 @@ export default function CustomRequestsPageClient({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="at_salon">At Salon</SelectItem>
-                      <SelectItem value="at_home">At Home</SelectItem>
+                      <SelectItem value="at_salon">{t("web.accountSettings.customRequests.atSalonOption")}</SelectItem>
+                      <SelectItem value="at_home">{t("web.accountSettings.customRequests.atHomeOption")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label htmlFor="duration_minutes">Duration (minutes) *</Label>
+                  <Label htmlFor="duration_minutes">{t("web.accountSettings.customRequests.durationMinutesRequired")}</Label>
                   <Input
                     id="duration_minutes"
                     type="number"
@@ -981,16 +988,16 @@ export default function CustomRequestsPageClient({
               <div className={`grid gap-4 ${formData.location_type === "at_salon" ? "grid-cols-2" : "grid-cols-1"}`}>
                 {formData.location_type === "at_salon" && (
                   <div>
-                    <Label htmlFor="venue">Venue</Label>
+                    <Label htmlFor="venue">{t("web.accountSettings.customRequests.venueLabel")}</Label>
                     <Select
                       value={formData.location_id || "none"}
                       onValueChange={(v) => setFormData({ ...formData, location_id: v === "none" ? "" : v })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select venue" />
+                        <SelectValue placeholder={t("web.accountSettings.customRequests.selectVenue")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">No specific venue</SelectItem>
+                        <SelectItem value="none">{t("web.accountSettings.customRequests.noSpecificVenue")}</SelectItem>
                         {locationsList.map((loc) => (
                           <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                         ))}
@@ -999,16 +1006,16 @@ export default function CustomRequestsPageClient({
                   </div>
                 )}
                 <div>
-                  <Label htmlFor="staff">Assigned Staff</Label>
+                  <Label htmlFor="staff">{t("web.accountSettings.customRequests.assignedStaff")}</Label>
                   <Select
                     value={formData.staff_id || "none"}
                     onValueChange={(v) => setFormData({ ...formData, staff_id: v === "none" ? "" : v })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select staff" />
+                      <SelectValue placeholder={t("web.accountSettings.customRequests.selectStaff")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No specific staff</SelectItem>
+                      <SelectItem value="none">{t("web.accountSettings.customRequests.noSpecificStaff")}</SelectItem>
                       {staffList.map((s) => (
                         <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
@@ -1019,7 +1026,7 @@ export default function CustomRequestsPageClient({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="price">Price *</Label>
+                  <Label htmlFor="price">{t("web.accountSettings.customRequests.priceRequired")}</Label>
                   <Input
                     id="price"
                     type="number"
@@ -1027,12 +1034,12 @@ export default function CustomRequestsPageClient({
                     step="0.01"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="0.00"
+                    placeholder={t("web.accountSettings.customRequests.pricePlaceholder")}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="currency">Currency</Label>
+                  <Label htmlFor="currency">{t("web.accountSettings.customRequests.currency")}</Label>
                   <Select
                     value={formData.currency}
                     onValueChange={(value) => setFormData({ ...formData, currency: value })}
@@ -1053,7 +1060,7 @@ export default function CustomRequestsPageClient({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="expiration_days">Offer Expires In (days)</Label>
+                  <Label htmlFor="expiration_days">{t("web.accountSettings.customRequests.offerExpiresInDays")}</Label>
                   <Input
                     id="expiration_days"
                     type="number"
@@ -1065,7 +1072,7 @@ export default function CustomRequestsPageClient({
                 </div>
 
                 <div>
-                  <Label>Appointment slot</Label>
+                  <Label>{t("web.accountSettings.customRequests.appointmentSlot")}</Label>
                   <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                     {dateOptions.map((d) => {
                       const key = toDateKey(d);
@@ -1084,9 +1091,9 @@ export default function CustomRequestsPageClient({
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {loadingCreateSlots ? (
-                      <span className="text-xs text-gray-500">Loading slots...</span>
+                      <span className="text-xs text-gray-500">{t("web.accountSettings.customRequests.loadingSlots")}</span>
                     ) : createSlots.length === 0 ? (
-                      <span className="text-xs text-amber-700">No available slots for this date.</span>
+                      <span className="text-xs text-amber-700">{t("web.accountSettings.customRequests.noSlotsForDate")}</span>
                     ) : (
                       createSlots.filter((slot) => slot.available !== false).slice(0, 24).map((slot) => {
                         const time = slot.time.slice(0, 5);
@@ -1108,10 +1115,10 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div>
-                <Label htmlFor="notes">Additional Notes (optional)</Label>
+                <Label htmlFor="notes">{t("web.accountSettings.customRequests.additionalNotesOptional")}</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Add any additional information about this offer..."
+                  placeholder={t("web.accountSettings.customRequests.additionalNotesPlaceholder")}
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
@@ -1121,10 +1128,10 @@ export default function CustomRequestsPageClient({
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setShowCreateModal(false)}>
-                  Cancel
+                  {t("web.accountSettings.customRequests.cancel")}
                 </Button>
                 <Button onClick={handleCreateOffer} disabled={isSubmitting}>
-                  {isSubmitting ? "Sending..." : "Send Offer"}
+                  {isSubmitting ? t("web.accountSettings.customRequests.sending") : t("web.accountSettings.customRequests.sendOffer")}
                 </Button>
               </div>
             </div>
@@ -1135,24 +1142,24 @@ export default function CustomRequestsPageClient({
         <Dialog open={showOfferModal} onOpenChange={setShowOfferModal}>
           <DialogContent className="max-w-[95vw] sm:max-w-xl p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle>Create Offer</DialogTitle>
+              <DialogTitle>{t("web.accountSettings.customRequests.createOfferForRequestTitle")}</DialogTitle>
               <DialogDescription>
-                Create a custom offer for this request. The customer will be notified and can accept it.
+                {t("web.accountSettings.customRequests.createOfferForRequestDesc")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="offer_venue">Venue (for at salon)</Label>
+                  <Label htmlFor="offer_venue">{t("web.accountSettings.customRequests.venueForSalon")}</Label>
                   <Select
                     value={offerFormData.location_id || "none"}
                     onValueChange={(v) => setOfferFormData({ ...offerFormData, location_id: v === "none" ? "" : v })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select venue" />
+                      <SelectValue placeholder={t("web.accountSettings.customRequests.selectVenue")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No specific venue</SelectItem>
+                      <SelectItem value="none">{t("web.accountSettings.customRequests.noSpecificVenue")}</SelectItem>
                       {locationsList.map((loc) => (
                         <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                       ))}
@@ -1160,16 +1167,16 @@ export default function CustomRequestsPageClient({
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="offer_staff">Assigned Staff</Label>
+                  <Label htmlFor="offer_staff">{t("web.accountSettings.customRequests.assignedStaff")}</Label>
                   <Select
                     value={offerFormData.staff_id || "none"}
                     onValueChange={(v) => setOfferFormData({ ...offerFormData, staff_id: v === "none" ? "" : v })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select staff" />
+                      <SelectValue placeholder={t("web.accountSettings.customRequests.selectStaff")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No specific staff</SelectItem>
+                      <SelectItem value="none">{t("web.accountSettings.customRequests.noSpecificStaff")}</SelectItem>
                       {staffList.map((s) => (
                         <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
@@ -1179,8 +1186,8 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div>
-                <Label>Appointment slot</Label>
-                <p className="text-xs text-gray-500 mt-1">When the customer pays, the booking will show on the calendar at this time.</p>
+                <Label>{t("web.accountSettings.customRequests.appointmentSlot")}</Label>
+                <p className="text-xs text-gray-500 mt-1">{t("web.accountSettings.customRequests.appointmentSlotHint")}</p>
                 <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                   {dateOptions.map((d) => {
                     const key = toDateKey(d);
@@ -1199,9 +1206,9 @@ export default function CustomRequestsPageClient({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {loadingOfferSlots ? (
-                    <span className="text-xs text-gray-500">Loading slots...</span>
+                    <span className="text-xs text-gray-500">{t("web.accountSettings.customRequests.loadingSlots")}</span>
                   ) : offerSlots.length === 0 ? (
-                    <span className="text-xs text-amber-700">No available slots for this date.</span>
+                    <span className="text-xs text-amber-700">{t("web.accountSettings.customRequests.noSlotsForDate")}</span>
                   ) : (
                     offerSlots.filter((slot) => slot.available !== false).slice(0, 24).map((slot) => {
                       const time = slot.time.slice(0, 5);
@@ -1223,7 +1230,7 @@ export default function CustomRequestsPageClient({
 
               {selectedRequestId && items.find((r) => r.id === selectedRequestId)?.location_type === "at_home" && (
                 <div>
-                  <Label htmlFor="offer_travel_fee">Travel fee (optional)</Label>
+                  <Label htmlFor="offer_travel_fee">{t("web.accountSettings.customRequests.travelFeeOptional")}</Label>
                   <Input
                     id="offer_travel_fee"
                     type="number"
@@ -1231,14 +1238,14 @@ export default function CustomRequestsPageClient({
                     step="0.01"
                     value={offerFormData.travel_fee}
                     onChange={(e) => setOfferFormData({ ...offerFormData, travel_fee: e.target.value })}
-                    placeholder="0"
+                    placeholder={t("web.accountSettings.customRequests.travelFeePlaceholder")}
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="offer_price">Price *</Label>
+                  <Label htmlFor="offer_price">{t("web.accountSettings.customRequests.priceRequired")}</Label>
                   <Input
                     id="offer_price"
                     type="number"
@@ -1246,12 +1253,12 @@ export default function CustomRequestsPageClient({
                     step="0.01"
                     value={offerFormData.price}
                     onChange={(e) => setOfferFormData({ ...offerFormData, price: e.target.value })}
-                    placeholder="0.00"
+                    placeholder={t("web.accountSettings.customRequests.pricePlaceholder")}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="offer_currency">Currency</Label>
+                  <Label htmlFor="offer_currency">{t("web.accountSettings.customRequests.currency")}</Label>
                   <Select
                     value={offerFormData.currency}
                     onValueChange={(value) => setOfferFormData({ ...offerFormData, currency: value })}
@@ -1272,7 +1279,7 @@ export default function CustomRequestsPageClient({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="offer_duration_minutes">Duration (minutes) *</Label>
+                  <Label htmlFor="offer_duration_minutes">{t("web.accountSettings.customRequests.durationMinutesRequired")}</Label>
                   <Input
                     id="offer_duration_minutes"
                     type="number"
@@ -1284,7 +1291,7 @@ export default function CustomRequestsPageClient({
                 </div>
 
                 <div>
-                  <Label htmlFor="offer_expiration_days">Offer Expires In (days)</Label>
+                  <Label htmlFor="offer_expiration_days">{t("web.accountSettings.customRequests.offerExpiresInDays")}</Label>
                   <Input
                     id="offer_expiration_days"
                     type="number"
@@ -1297,10 +1304,10 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div>
-                <Label htmlFor="offer_notes">Additional Notes (optional)</Label>
+                <Label htmlFor="offer_notes">{t("web.accountSettings.customRequests.additionalNotesOptional")}</Label>
                 <Textarea
                   id="offer_notes"
-                  placeholder="Add any additional information about this offer..."
+                  placeholder={t("web.accountSettings.customRequests.additionalNotesPlaceholder")}
                   value={offerFormData.notes}
                   onChange={(e) => setOfferFormData({ ...offerFormData, notes: e.target.value })}
                   rows={3}
@@ -1310,10 +1317,10 @@ export default function CustomRequestsPageClient({
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setShowOfferModal(false)}>
-                  Cancel
+                  {t("web.accountSettings.customRequests.cancel")}
                 </Button>
                 <Button onClick={handleCreateOfferForRequest} disabled={isSubmitting}>
-                  {isSubmitting ? "Creating..." : "Create Offer"}
+                  {isSubmitting ? t("web.accountSettings.customRequests.creating") : t("web.accountSettings.customRequests.createOffer")}
                 </Button>
               </div>
             </div>
@@ -1323,9 +1330,9 @@ export default function CustomRequestsPageClient({
       <Dialog open={!!depositChoiceOfferId} onOpenChange={(open) => !open && setDepositChoiceOfferId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Complete Your Payment</DialogTitle>
+            <DialogTitle>{t("web.accountSettings.customRequests.completePaymentTitle")}</DialogTitle>
             <DialogDescription>
-              Confirm your booking by completing payment below.
+              {t("web.accountSettings.customRequests.completePaymentDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 mt-2">
@@ -1339,48 +1346,48 @@ export default function CustomRequestsPageClient({
                 {depositQuote?.pricing ? (
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-sm space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Service subtotal</span>
+                      <span className="text-gray-600">{t("web.accountSettings.customRequests.serviceSubtotal")}</span>
                       <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.subtotal ?? 0), depositOfferCurrency)}</span>
                     </div>
                     {Number(depositQuote.pricing.travelFee ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Travel fee</span>
+                        <span className="text-gray-600">{t("web.accountSettings.customRequests.travelFee")}</span>
                         <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.travelFee ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.promotionDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Promotion discount</span>
+                        <span className="text-emerald-700">{t("web.accountSettings.customRequests.promotionDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.promotionDiscountAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.membershipDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Membership discount</span>
+                        <span className="text-emerald-700">{t("web.accountSettings.customRequests.membershipDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.membershipDiscountAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.loyaltyDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Loyalty discount</span>
+                        <span className="text-emerald-700">{t("web.accountSettings.customRequests.loyaltyDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.loyaltyDiscountAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.taxAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Tax</span>
+                        <span className="text-gray-600">{t("web.accountSettings.customRequests.tax")}</span>
                         <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.taxAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.serviceFeeAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Platform fee</span>
+                        <span className="text-gray-600">{t("web.accountSettings.customRequests.platformFee")}</span>
                         <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.serviceFeeAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(depositQuote.pricing.tipAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Tip</span>
+                        <span className="text-gray-600">{t("web.accountSettings.customRequests.tip")}</span>
                         <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.tipAmount ?? 0), depositOfferCurrency)}</span>
                       </div>
                     )}
@@ -1388,15 +1395,15 @@ export default function CustomRequestsPageClient({
                 ) : null}
                 <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-primary text-sm">Pay in Full</span>
-                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                    <span className="font-semibold text-primary text-sm">{t("web.accountSettings.customRequests.payInFull")}</span>
+                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">{t("web.accountSettings.customRequests.recommended")}</span>
                   </div>
                   {depositQuote?.pricing?.totalAmount != null && (
                     <div className="text-2xl font-bold text-gray-900 mb-1">
                       {formatMoney(depositQuote.pricing.totalAmount, depositOfferCurrency)}
                     </div>
                   )}
-                  <p className="text-xs text-gray-500 mb-3">Secure instant confirmation · No balance due later</p>
+                  <p className="text-xs text-gray-500 mb-3">{t("web.accountSettings.customRequests.payInFullHint")}</p>
                   <Button
                     className="w-full"
                     onClick={() => {
@@ -1404,7 +1411,7 @@ export default function CustomRequestsPageClient({
                       setDepositChoiceOfferId(null);
                     }}
                   >
-                    Pay in Full
+                    {t("web.accountSettings.customRequests.payInFull")}
                   </Button>
                 </div>
 
@@ -1413,13 +1420,13 @@ export default function CustomRequestsPageClient({
                   <>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-px bg-gray-200" />
-                      <span className="text-xs text-gray-400 whitespace-nowrap">or pay a deposit</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{t("web.accountSettings.customRequests.orPayDeposit")}</span>
                       <div className="flex-1 h-px bg-gray-200" />
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-sm text-gray-700">
-                          Pay {depositQuote.deposit.percentage}% Deposit
+                          {t("web.accountSettings.customRequests.payPercentDeposit", { percent: depositQuote.deposit.percentage })}
                         </span>
                         {depositQuote.deposit.deposit_amount != null && (
                           <span className="text-sm font-semibold text-gray-900">
@@ -1429,7 +1436,7 @@ export default function CustomRequestsPageClient({
                       </div>
                       {depositQuote.deposit.full_total != null && depositQuote.deposit.deposit_amount != null && (
                         <p className="text-xs text-gray-500 mb-2">
-                          Remaining {formatMoney(depositQuote.deposit.full_total - depositQuote.deposit.deposit_amount, depositOfferCurrency)} due before appointment
+                          {t("web.accountSettings.customRequests.remainingDue", { amount: formatMoney(depositQuote.deposit.full_total - depositQuote.deposit.deposit_amount, depositOfferCurrency) })}
                         </p>
                       )}
                       <Button
@@ -1441,7 +1448,7 @@ export default function CustomRequestsPageClient({
                           setDepositChoiceOfferId(null);
                         }}
                       >
-                        Pay Deposit Only
+                        {t("web.accountSettings.customRequests.payDepositOnly")}
                       </Button>
                     </div>
                   </>
@@ -1456,7 +1463,7 @@ export default function CustomRequestsPageClient({
       <Dialog open={offerDetailOpen} onOpenChange={setOfferDetailOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Custom Offer Details</DialogTitle>
+            <DialogTitle>{t("web.accountSettings.customRequests.offerDetailsTitle")}</DialogTitle>
           </DialogHeader>
           {offerDetailLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -1474,20 +1481,20 @@ export default function CustomRequestsPageClient({
             const isPaymentPending = rawStatus === "payment_pending";
             const isChangesRequested = rawStatus === "changes_requested";
             const statusLabel = isPaid
-              ? "Booked ✓"
+              ? t("web.accountSettings.customRequests.badgePaid")
               : isFinalizeFailed
-                ? "Needs support"
+                ? t("web.accountSettings.customRequests.badgeNeedsSupport")
                 : isDeclined
-                  ? "Declined"
+                  ? t("web.accountSettings.customRequests.badgeDeclined")
                   : isWithdrawn
-                    ? "Withdrawn"
+                    ? t("web.accountSettings.customRequests.badgeWithdrawn")
                     : isExpired
-                      ? "Expired"
+                      ? t("web.accountSettings.customRequests.badgeExpired")
                       : isPaymentPending
-                        ? "Processing…"
+                        ? t("web.accountSettings.customRequests.badgeProcessing")
                         : isChangesRequested
-                          ? "Changes requested"
-                        : "Pending";
+                          ? t("web.accountSettings.customRequests.badgeChangesRequested")
+                        : t("web.accountSettings.customRequests.badgePending");
             const statusClass = isPaid
               ? "bg-emerald-100 text-emerald-700"
               : isFinalizeFailed
@@ -1508,34 +1515,34 @@ export default function CustomRequestsPageClient({
                 </div>
                 {(req.service_name || req.description) && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Service</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.service")}</div>
                     <div className="font-semibold text-gray-900">{req.service_name || req.description}</div>
                   </div>
                 )}
                 <div className="flex gap-6">
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Price</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.price")}</div>
                     <div className="font-bold text-lg text-gray-900">{d.currency} {d.price}</div>
-                    {d.travel_fee ? <div className="text-xs text-gray-500">+ {d.currency} {d.travel_fee} travel fee</div> : null}
+                    {d.travel_fee ? <div className="text-xs text-gray-500">{t("web.accountSettings.customRequests.travelFeeExtra", { currency: d.currency, amount: d.travel_fee })}</div> : null}
                   </div>
                   {d.duration_minutes && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Duration</div>
-                      <div className="font-semibold text-gray-900">{d.duration_minutes} mins</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.duration")}</div>
+                      <div className="font-semibold text-gray-900">{t("web.accountSettings.customRequests.durationMins", { minutes: d.duration_minutes })}</div>
                     </div>
                   )}
                 </div>
                 {(d.scheduled_at ?? req.preferred_start_at) && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Preferred Time</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.preferredTime")}</div>
                     <div className="text-sm text-gray-800">{new Date(d.scheduled_at ?? req.preferred_start_at).toLocaleString()}</div>
                   </div>
                 )}
                 {(req.location_type || d.location?.name) && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Location</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.location")}</div>
                     <div className="text-sm text-gray-800 capitalize">
-                      {d.location?.name || (req.location_type === "at_home" ? "At your home" : req.location_type === "at_salon" ? "At the salon" : req.location_type || "–")}
+                      {d.location?.name || (req.location_type === "at_home" ? t("web.accountSettings.customRequests.atYourHome") : req.location_type === "at_salon" ? t("web.accountSettings.customRequests.atTheSalon") : req.location_type || "–")}
                     </div>
                     {req.location_type === "at_home" && req.address_line1 && (
                       <div className="text-xs text-gray-500 mt-0.5">
@@ -1546,43 +1553,46 @@ export default function CustomRequestsPageClient({
                 )}
                 {d.expiration_at && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Offer Expires</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.offerExpires")}</div>
                     <div className={`text-sm ${isExpired ? "text-amber-600 font-medium" : "text-gray-800"}`}>
-                      {new Date(d.expiration_at).toLocaleString()}{isExpired ? " (expired)" : ""}
+                      {new Date(d.expiration_at).toLocaleString()}{isExpired ? t("web.accountSettings.customRequests.expiredSuffix") : ""}
                     </div>
                   </div>
                 )}
                 {d.notes && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Notes</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.accountSettings.customRequests.notes")}</div>
                     <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
                   </div>
                 )}
                 {isChangesRequested && d.change_request_note && (
                   <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-                    <span className="font-semibold">Customer requested changes: </span>
+                    <span className="font-semibold">{t("web.accountSettings.customRequests.customerRequestedChanges")} </span>
                     {d.change_request_note}
                   </div>
                 )}
                 {isExpired && (
                   <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    This offer has expired. The provider may send a new one.
+                    {t("web.accountSettings.customRequests.offerExpiredHint")}
                   </div>
                 )}
                 {isWithdrawn && (
                   <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    This offer has been withdrawn. The provider may send a new one.
+                    {t("web.accountSettings.customRequests.offerWithdrawnHint")}
                   </div>
                 )}
                 {isDeclined && (
                   <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    You declined this offer. The provider may send a new one if your request is still open.
+                    {t("web.accountSettings.customRequests.offerDeclinedHint")}
                   </div>
                 )}
                 {isFinalizeFailed && (
                   <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-                    Payment was received but booking setup failed. Please contact support
-                    {d.payment_reference ? ` and quote reference ${d.payment_reference}` : ""}.
+                    {t("web.accountSettings.customRequests.finalizeFailed", {
+                      reference: d.payment_reference
+                        ? t("web.accountSettings.customRequests.finalizeFailedRef", { reference: d.payment_reference })
+                        : "",
+                    })}
                   </div>
                 )}
                 <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
@@ -1596,7 +1606,7 @@ export default function CustomRequestsPageClient({
                           void openDepositDialog(d.id, d.currency);
                         }}
                       >
-                        Accept & Pay
+                        {t("web.accountSettings.customRequests.acceptAndPay")}
                       </Button>
                       {rawStatus === "pending" && (
                         <Button
@@ -1608,7 +1618,7 @@ export default function CustomRequestsPageClient({
                             setRequestChangesNote("");
                           }}
                         >
-                          Request changes
+                          {t("web.accountSettings.customRequests.requestChanges")}
                         </Button>
                       )}
                       <Button
@@ -1617,7 +1627,7 @@ export default function CustomRequestsPageClient({
                         disabled={decliningOfferId === d.id}
                         onClick={() => void declineOffer(d.id)}
                       >
-                        {decliningOfferId === d.id ? "Declining…" : "Decline offer"}
+                        {decliningOfferId === d.id ? t("web.accountSettings.customRequests.declining") : t("web.accountSettings.customRequests.declineOffer")}
                       </Button>
                     </>
                   )}
@@ -1627,7 +1637,7 @@ export default function CustomRequestsPageClient({
                       className="w-full"
                       onClick={() => { window.location.href = `/account-settings/bookings/${d.booking_id}`; }}
                     >
-                      View Booking →
+                      {t("web.accountSettings.customRequests.viewBooking")}
                     </Button>
                   )}
                   {isProvider && !isPaid && !isWithdrawn && !isExpired && d.id && (
@@ -1641,27 +1651,27 @@ export default function CustomRequestsPageClient({
                             if (reqId) openOfferModal(reqId, d.id);
                           }}
                         >
-                          Edit offer
+                          {t("web.accountSettings.customRequests.editOffer")}
                         </Button>
                       )}
                       <Button
                         variant="outline"
                         className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
                       onClick={async () => {
-                        if (!confirm("Are you sure you want to withdraw this offer?")) return;
+                        if (!confirm(t("web.accountSettings.customRequests.withdrawConfirm"))) return;
                         try {
                           await fetcher.post(`/api/provider/custom-offers/${d.id}/retract`, {});
-                          toast.success("Offer withdrawn");
+                          toast.success(t("web.accountSettings.customRequests.offerWithdrawn"));
                           setOfferDetailOpen(false);
                           const locQ = "";
                           const res = await fetcher.get<{ data: CustomRequest[] }>(isProvider ? `/api/provider/custom-requests${locQ}` : "/api/me/custom-requests");
                           setItems(res.data || []);
                         } catch {
-                          toast.error("Failed to withdraw offer");
+                          toast.error(t("web.accountSettings.customRequests.withdrawFailed"));
                         }
                       }}
                     >
-                      Withdraw Offer
+                      {t("web.accountSettings.customRequests.withdrawOffer")}
                     </Button>
                     </>
                   )}
@@ -1669,7 +1679,7 @@ export default function CustomRequestsPageClient({
               </div>
             );
           })() : (
-            <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
+            <div className="text-sm text-gray-500 py-4 text-center">{t("web.accountSettings.customRequests.loadOfferDetailsFailed")}</div>
           )}
         </DialogContent>
       </Dialog>
@@ -1677,22 +1687,22 @@ export default function CustomRequestsPageClient({
       <Dialog open={!!requestChangesOfferId} onOpenChange={(open) => !open && setRequestChangesOfferId(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Request changes</DialogTitle>
+            <DialogTitle>{t("web.accountSettings.customRequests.requestChangesTitle")}</DialogTitle>
             <DialogDescription>
-              Tell the provider what you would like adjusted on this offer.
+              {t("web.accountSettings.customRequests.requestChangesDesc")}
             </DialogDescription>
           </DialogHeader>
           <Textarea
             value={requestChangesNote}
             onChange={(e) => setRequestChangesNote(e.target.value)}
-            placeholder="e.g. Can you adjust the price or move the appointment to Saturday afternoon?"
+            placeholder={t("web.accountSettings.customRequests.requestChangesPlaceholder")}
             rows={4}
             maxLength={4000}
           />
           <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={() => setRequestChangesOfferId(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setRequestChangesOfferId(null)}>{t("web.accountSettings.customRequests.cancel")}</Button>
             <Button disabled={requestingChanges || !requestChangesNote.trim()} onClick={() => void requestChanges()}>
-              {requestingChanges ? "Sending…" : "Send request"}
+              {requestingChanges ? t("web.accountSettings.customRequests.sendingEllipsis") : t("web.accountSettings.customRequests.sendRequest")}
             </Button>
           </div>
         </DialogContent>

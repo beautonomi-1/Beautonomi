@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, Switch, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -17,6 +18,12 @@ interface GiftCardSettings {
 }
 
 export default function GiftCardsScreen() {
+  const { t } = useTranslation();
+  const gc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.giftCards." + key, opts) as string,
+    [t],
+  );
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<GiftCardSettings>(
@@ -41,19 +48,19 @@ export default function GiftCardsScreen() {
         { gift_cards_enabled: value }
       );
       if (err) {
-        Alert.alert("Error", err);
+        Alert.alert(gc("errorTitle"), err);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
     },
-    [updateSettings, refresh]
+    [updateSettings, refresh, gc]
   );
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Gift Cards" showBack />
+        <ScreenHeader title={gc("title")} showBack />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -64,7 +71,7 @@ export default function GiftCardsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Gift Cards" showBack />
+        <ScreenHeader title={gc("title")} showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -76,7 +83,7 @@ export default function GiftCardsScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Gift Cards" showBack />
+      <ScreenHeader title={gc("title")} showBack />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
@@ -88,16 +95,15 @@ export default function GiftCardsScreen() {
         <View style={twStyle("mb-6 h-16 w-16 items-center justify-center rounded-full bg-purple-50")}>
           <Ionicons name="gift-outline" size={32} color="#a855f7" />
         </View>
-        <Text style={twStyle("text-lg font-semibold text-gray-900")}>Accept platform gift cards</Text>
+        <Text style={twStyle("text-lg font-semibold text-gray-900")}>{gc("acceptTitle")}</Text>
         <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-          Gift cards are sold by the platform. Customers buy them on the website and can use them
-          with any provider who has this turned on.
+          {gc("acceptBody")}
         </Text>
 
         <View style={twStyle("mt-6 rounded-2xl border border-gray-200 bg-white p-4")}>
           <View style={twStyle("flex-row items-center justify-between")}>
             <Text style={twStyle("flex-1 font-medium text-gray-900")}>
-              Accept gift cards as payment
+              {gc("acceptToggle")}
             </Text>
             <Switch
               value={settings.enabled}
@@ -108,13 +114,13 @@ export default function GiftCardsScreen() {
             />
           </View>
           {saving && (
-            <Text style={twStyle("mt-2 text-xs text-gray-500")}>Saving…</Text>
+            <Text style={twStyle("mt-2 text-xs text-gray-500")}>{gc("saving")}</Text>
           )}
         </View>
 
         {settings.terms ? (
           <View style={twStyle("mt-4 rounded-xl bg-gray-50 p-3")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>Terms</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>{gc("terms")}</Text>
             <Text style={twStyle("mt-1 text-sm text-gray-700")}>{settings.terms}</Text>
           </View>
         ) : null}

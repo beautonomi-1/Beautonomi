@@ -16,12 +16,15 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
 import { clearBookingFlowStorage } from "@/app/booking/components/booking-flow-persistence";
+import { pendingConfirmationSlaDisplay, slaSettingsFromHours } from "@/lib/bookings/pending-confirmation-sla-copy";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BookingDetails {
   id: string;
   booking_number: string;
   status: string;
   selected_datetime: string;
+  created_at?: string;
   location_type: "at_home" | "at_salon";
   total_amount: number;
   currency: string;
@@ -86,6 +89,7 @@ interface BookingDetails {
   location?: {
     name: string;
     address: string;
+    working_hours?: Record<string, unknown> | null;
   };
   client_info?: {
     first_name: string;
@@ -97,16 +101,22 @@ interface BookingDetails {
   payment_status?: string;
   payment_provider?: string;
   display_time_zone?: string | null;
+  pending_confirmation_sla?: { body?: string; overnight?: boolean; lastMinute?: boolean };
+  recurring_series_id?: string | null;
   provider_id?: string;
   provider?: {
     id?: string;
     business_name: string;
     phone?: string;
     email?: string;
+    timezone?: string | null;
+    confirmation_sla_hours?: number | null;
+    unconfirmed_expire_hours_before_slot?: number | null;
   };
 }
 
 export default function BookingConfirmationPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const bookingId = searchParams.get("bookingId");
@@ -128,7 +138,7 @@ export default function BookingConfirmationPage() {
 
   useEffect(() => {
     if (!bookingId) {
-      setError("Booking ID not found");
+      setError(t("web.booking.confirmation.bookingIdNotFound"));
       setIsLoading(false);
       return;
     }
@@ -167,7 +177,7 @@ export default function BookingConfirmationPage() {
       const errorMessage =
         lastErr instanceof FetchError
           ? lastErr.message
-          : "Failed to load booking details";
+          : t("web.booking.confirmation.loadFailed");
       setError(errorMessage);
       setErrorStatus(lastErr instanceof FetchError ? lastErr.status : null);
       console.error("Error loading booking:", lastErr);
@@ -212,10 +222,10 @@ export default function BookingConfirmationPage() {
       const { shareCustomerBookingReceiptWeb } = await import("@/lib/receipts/share-receipt-client");
       const result = await shareCustomerBookingReceiptWeb(booking.id);
       if (result === "copied") {
-        toast.success("Receipt copied to clipboard.");
+        toast.success(t("web.booking.confirmation.receiptCopied"));
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not share booking.");
+      toast.error(e instanceof Error ? e.message : t("web.booking.confirmation.couldNotShare"));
     }
   };
 
@@ -228,13 +238,19 @@ export default function BookingConfirmationPage() {
     !booking || booking.location_type === "at_home"
       ? booking?.address
         ? `${booking.address.line1}${booking.address.line2 ? `, ${booking.address.line2}` : ""}, ${booking.address.city}`
-        : "Address TBD"
-      : booking?.location?.address ?? booking?.location?.name ?? booking?.provider?.business_name ?? "Salon";
+        : t("web.booking.confirmation.addressTbd")
+      : booking?.location?.address ?? booking?.location?.name ?? booking?.provider?.business_name ?? t("web.booking.confirmation.salonFallback");
   const calendarEvent =
     bookingStart && bookingEnd
       ? {
-          title: `Appointment with ${booking.provider?.business_name || "provider"}`,
-          description: `Booking #${booking.booking_number}\n${booking.services?.map((s) => `${s.title || s.offering_name || "Service"} (${s.duration || s.duration_minutes || 0} min)`).join("\n") ?? ""}`,
+          title: t("web.booking.confirmation.appointmentWith", { name: booking.provider?.business_name || t("web.booking.confirmation.providerFallback") }),
+          description: t("web.booking.confirmation.calendarDescription", {
+            number: booking.booking_number,
+            services: booking.services?.map((svc) => t("web.booking.confirmation.serviceDurationLine", {
+              name: svc.title || svc.offering_name || t("web.booking.confirmation.serviceFallback"),
+              minutes: svc.duration || svc.duration_minutes || 0,
+            })).join("\n") ?? "",
+          }),
           location: locationStr,
           start: bookingStart,
           end: bookingEnd,
@@ -246,7 +262,7 @@ export default function BookingConfirmationPage() {
       <div className="min-h-screen bg-white">
         <BeautonomiHeader />
         <div className="flex items-center justify-center min-h-[60vh]">
-          <LoadingTimeout loadingMessage="Loading booking confirmation..." />
+          <LoadingTimeout loadingMessage={t("web.booking.confirmation.loadingMessage")} />
         </div>
       </div>
     );
@@ -267,21 +283,21 @@ export default function BookingConfirmationPage() {
           <div className="flex items-center justify-center min-h-[60vh] px-4">
             <div className="text-center max-w-md">
               <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-                {errorStatus === 401 ? "Please sign in" : "You can't view this booking"}
+                {errorStatus === 401 ? t("web.booking.confirmation.pleaseSignIn") : t("web.booking.confirmation.cantViewBooking")}
               </h1>
               <p className="text-gray-600 mb-6">
                 {errorStatus === 401
-                  ? "Your session has expired. Sign in to view your booking."
-                  : "This booking belongs to a different account. Sign in with the email you used to book, or head back home."}
+                  ? t("web.booking.confirmation.sessionExpired")
+                  : t("web.booking.confirmation.wrongAccount")}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   onClick={() => router.push(`/auth?redirect=${encodeURIComponent(`/booking/confirmation?bookingId=${bookingId}`)}`)}
                   className="bg-primary hover:bg-primary-hover"
                 >
-                  Sign in
+                  {t("web.booking.confirmation.signIn")}
                 </Button>
-                <Button variant="outline" onClick={() => router.push("/")}>Go Home</Button>
+                <Button variant="outline" onClick={() => router.push("/")}>{t("web.booking.confirmation.goHome")}</Button>
               </div>
             </div>
           </div>
@@ -300,30 +316,30 @@ export default function BookingConfirmationPage() {
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
                 </div>
-                <h1 className="text-2xl font-semibold text-gray-900 mb-2">Booking submitted</h1>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">{t("web.booking.confirmation.bookingSubmitted")}</h1>
                 <p className="text-gray-500 text-sm mb-6">
-                  Your booking was created successfully. We could not load the full details right now — check your email, or view your bookings below.
+                  {t("web.booking.confirmation.bookingCreatedDetailsFailed")}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
                     onClick={() => router.push(bookingId ? `/account-settings/bookings/${bookingId}` : "/account-settings/bookings")}
                     className="bg-primary hover:bg-primary-hover"
                   >
-                    View Booking
+                    {t("web.booking.confirmation.viewBooking")}
                   </Button>
                   <Button variant="outline" onClick={() => router.push("/")}>
-                    Go Home
+                    {t("web.booking.confirmation.goHome")}
                   </Button>
                 </div>
               </>
             ) : (
               <>
                 <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-                  Booking Not Found
+                  {t("web.booking.confirmation.bookingNotFound")}
                 </h1>
-                <p className="text-gray-600 mb-6">{error || "Unable to load booking details"}</p>
+                <p className="text-gray-600 mb-6">{error || t("web.booking.confirmation.unableToLoad")}</p>
                 <Button onClick={() => router.push("/")} className="bg-primary hover:bg-primary-hover">
-                  Go Home
+                  {t("web.booking.confirmation.goHome")}
                 </Button>
               </>
             )}
@@ -384,21 +400,31 @@ export default function BookingConfirmationPage() {
             {paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid
               ? `${paymentDisplay.description} ${lifecycleDisplay.description}`
               : lifecycleDisplay.isPaymentInProgress
-                ? "We are still confirming your payment. You will be notified once it is complete."
+                ? t("web.booking.confirmation.paymentStillConfirming")
                 : lifecycleDisplay.description}
           </p>
-          {lifecycleDisplay.isAwaitingProviderConfirmation && (
+          {lifecycleDisplay.isAwaitingProviderConfirmation && !booking.recurring_series_id && (
             <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-1.5 text-sm text-yellow-800">
               <Clock className="w-4 h-4" />
-              Providers typically confirm within 8 hours
+              {booking.pending_confirmation_sla?.body ??
+                pendingConfirmationSlaDisplay({
+                  scheduledAt: booking.selected_datetime,
+                  createdAt: booking.created_at,
+                  paymentStatus: booking.payment_status,
+                  timezone: booking.provider?.timezone ?? booking.display_time_zone,
+                  workingHours: (booking.location?.working_hours ?? null) as
+                    | import("@/lib/bookings/lifecycle-deadlines").WorkingHoursJson
+                    | null,
+                  settings: slaSettingsFromHours(booking.provider),
+                }).body}
             </div>
           )}
           <p className="text-sm text-gray-500 mt-2">
-            Booking #{booking.booking_number}
+            {t("web.booking.confirmation.bookingNumber", { number: booking.booking_number })}
           </p>
           {booking.is_group_booking && booking.group_booking_ref && (
             <p className="text-sm text-gray-600 mt-2">
-              Group reference: <span className="font-medium text-gray-800">{booking.group_booking_ref}</span>
+              {t("web.booking.confirmation.groupReference")} <span className="font-medium text-gray-800">{booking.group_booking_ref}</span>
             </p>
           )}
         </motion.div>
@@ -417,7 +443,7 @@ export default function BookingConfirmationPage() {
                 <Calendar className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-1">Date & Time</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">{t("web.booking.confirmation.dateAndTime")}</h3>
                 <p className="text-gray-600">{formatBookingDateInTimeZone(bookingDateRaw, bookingTz)}</p>
                 <p className="text-gray-600">{formatBookingTimeInTimeZone(bookingDateRaw, bookingTz)}</p>
               </div>
@@ -430,7 +456,7 @@ export default function BookingConfirmationPage() {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">
-                  {booking.location_type === "at_home" ? "House Call" : "At the Salon"}
+                  {booking.location_type === "at_home" ? t("web.booking.confirmation.houseCall") : t("web.booking.confirmation.atTheSalon")}
                 </h3>
                 {booking.location_type === "at_home" && booking.address ? (
                   <p className="text-gray-600">
@@ -449,25 +475,25 @@ export default function BookingConfirmationPage() {
 
             {/* Services */}
             <div className="border-t pt-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Services</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">{t("web.booking.confirmation.services")}</h3>
               <div className="space-y-3">
                 {booking.services.map((service, index) => {
-                  const serviceTitle = service.title || service.offering_name || "Service";
+                  const serviceTitle = service.title || service.offering_name || t("web.booking.confirmation.serviceFallback");
                   const serviceDuration = service.duration || service.duration_minutes || 0;
                   return (
                     <div key={index} className="flex justify-between items-start">
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{serviceTitle}</p>
                         {service.guest_name && (
-                          <p className="text-sm text-gray-600">Guest: {service.guest_name}</p>
+                          <p className="text-sm text-gray-600">{t("web.booking.confirmation.guest", { name: service.guest_name })}</p>
                         )}
                         {service.staff_name && (
-                          <p className="text-sm text-gray-600">with {service.staff_name}</p>
+                          <p className="text-sm text-gray-600">{t("web.booking.confirmation.withStaff", { name: service.staff_name })}</p>
                         )}
                         {serviceDuration > 0 && (
                           <p className="text-sm text-gray-500">
-                            <Clock className="w-3 h-3 inline mr-1" />
-                            {serviceDuration} min
+                            <Clock className="w-3 h-3 inline me-1" />
+                            {t("web.booking.confirmation.durationMin", { count: serviceDuration })}
                           </p>
                         )}
                       </div>
@@ -480,9 +506,9 @@ export default function BookingConfirmationPage() {
                 {booking.addons && booking.addons.length > 0 && (
                   <>
                     {booking.addons.map((addon, index) => (
-                      <div key={`addon-${index}`} className="flex justify-between items-start pl-4">
+                      <div key={`addon-${index}`} className="flex justify-between items-start ps-4">
                         <div className="flex-1">
-                          <p className="text-gray-600">+ {addon.title || addon.offering_name || "Add-on"}{(addon.quantity ?? 1) > 1 ? ` ×${addon.quantity}` : ""}</p>
+                          <p className="text-gray-600">+ {addon.title || addon.offering_name || t("web.booking.confirmation.addonFallback")}{(addon.quantity ?? 1) > 1 ? ` ×${addon.quantity}` : ""}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
                           {formatCurrency(addon.price * (addon.quantity ?? 1), booking.currency)}
@@ -494,9 +520,9 @@ export default function BookingConfirmationPage() {
                 {booking.products && booking.products.length > 0 && (
                   <>
                     {booking.products.map((product, index) => (
-                      <div key={`product-${index}`} className="flex justify-between items-start pl-4">
+                      <div key={`product-${index}`} className="flex justify-between items-start ps-4">
                         <div className="flex-1">
-                          <p className="text-gray-600">{product.product_name || "Product"}{product.quantity > 1 ? ` ×${product.quantity}` : ""}</p>
+                          <p className="text-gray-600">{product.product_name || t("web.booking.confirmation.productFallback")}{product.quantity > 1 ? ` ×${product.quantity}` : ""}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
                           {formatCurrency(product.total_price, booking.currency)}
@@ -511,7 +537,7 @@ export default function BookingConfirmationPage() {
             {/* Additional charges (post-booking add-ons) */}
             {booking.additional_charges && booking.additional_charges.length > 0 && (
               <div className="border-t pt-6">
-                <h3 className="font-semibold text-gray-900 mb-3">Additional charges</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">{t("web.booking.confirmation.additionalCharges")}</h3>
                 <div className="space-y-3">
                   {booking.additional_charges.map((charge) => {
                     const cur = charge.currency ?? booking.currency;
@@ -532,11 +558,11 @@ export default function BookingConfirmationPage() {
                       >
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900">{charge.description || "Additional charge"}</p>
+                            <p className="font-medium text-gray-900">{charge.description || t("web.booking.confirmation.additionalChargeFallback")}</p>
                             <p className="text-gray-600 mt-0.5">{formatCurrency(charge.amount, cur)}</p>
                             {charge.paid_at && (
                               <p className="text-xs text-gray-500 mt-1">
-                                Paid on {new Date(charge.paid_at).toLocaleDateString()}
+                                {t("web.booking.confirmation.paidOn", { date: new Date(charge.paid_at).toLocaleDateString() })}
                               </p>
                             )}
                           </div>
@@ -552,7 +578,12 @@ export default function BookingConfirmationPage() {
                                       : "bg-gray-100 text-gray-800"
                               }`}
                             >
-                              {charge.status.replace(/_/g, " ")}
+                              {({
+                                paid: t("web.booking.confirmation.chargeStatusPaid"),
+                                pending: t("web.booking.confirmation.chargeStatusPending"),
+                                approved: t("web.booking.confirmation.chargeStatusApproved"),
+                                rejected: t("web.booking.confirmation.chargeStatusRejected"),
+                              } as Record<string, string>)[charge.status] ?? charge.status.replace(/_/g, " ")}
                             </span>
                           )}
                         </div>
@@ -565,7 +596,7 @@ export default function BookingConfirmationPage() {
                               router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)
                             }
                           >
-                            Pay now
+                            {t("web.booking.confirmation.payNow")}
                           </Button>
                         )}
                       </div>
@@ -608,68 +639,72 @@ export default function BookingConfirmationPage() {
               const showSubtotal = sub > 0 || hasBreakdown;
               return (
                 <div className="border-t pt-4 space-y-1.5 text-sm">
-                  <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>
+                  <h3 className="font-semibold text-gray-900 mb-2">{t("web.booking.confirmation.summary")}</h3>
                   {showSubtotal && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Subtotal</span>
+                      <span>{t("web.booking.confirmation.subtotal")}</span>
                       <span>{formatCurrency(sub, booking.currency)}</span>
                     </div>
                   )}
                   {loyalty > 0 && (
                     <div className="flex justify-between text-green-700">
                       <span>
-                        Loyalty{loyaltyPtsUsed > 0 ? ` (${loyaltyPtsUsed.toLocaleString()} pts)` : ""}
+                        {loyaltyPtsUsed > 0
+                          ? t("web.booking.confirmation.loyaltyWithPts", { pts: loyaltyPtsUsed.toLocaleString() })
+                          : t("web.booking.confirmation.loyalty")}
                       </span>
                       <span>−{formatCurrency(loyalty, booking.currency)}</span>
                     </div>
                   )}
                   {membership > 0 && (
                     <div className="flex justify-between text-green-700">
-                      <span>Membership</span>
+                      <span>{t("web.booking.confirmation.membership")}</span>
                       <span>−{formatCurrency(membership, booking.currency)}</span>
                     </div>
                   )}
                   {promo > 0 && (
                     <div className="flex justify-between text-green-700">
-                      <span>Promotion</span>
+                      <span>{t("web.booking.confirmation.promotion")}</span>
                       <span>−{formatCurrency(promo, booking.currency)}</span>
                     </div>
                   )}
                   {coupon > 0 && (
                     <div className="flex justify-between text-green-700">
-                      <span>Discount</span>
+                      <span>{t("web.booking.confirmation.discount")}</span>
                       <span>−{formatCurrency(coupon, booking.currency)}</span>
                     </div>
                   )}
                   {giftCard > 0 && (
                     <div className="flex justify-between text-green-700">
-                      <span>Gift card</span>
+                      <span>{t("web.booking.confirmation.giftCard")}</span>
                       <span>−{formatCurrency(giftCard, booking.currency)}</span>
                     </div>
                   )}
                   {travel > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Travel</span>
+                      <span>{t("web.booking.confirmation.travel")}</span>
                       <span>{formatCurrency(travel, booking.currency)}</span>
                     </div>
                   )}
                   {tax > 0 && (
                     <div className="flex justify-between text-gray-600">
                       <span>
-                        Tax{taxRate > 0 ? ` (${taxRate}%)` : ""}
+                        {taxRate > 0
+                          ? t("web.booking.confirmation.taxWithRate", { rate: taxRate })
+                          : t("web.booking.confirmation.tax")}
                       </span>
                       <span>{formatCurrency(tax, booking.currency)}</span>
                     </div>
                   )}
                   {svcFee > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Platform fee</span>
+                      <span>{t("web.booking.confirmation.platformFee")}</span>
                       <span>{formatCurrency(svcFee, booking.currency)}</span>
                     </div>
                   )}
                   {tip > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Tip</span>
+                      <span>{t("web.booking.confirmation.tip")}</span>
                       <span>{formatCurrency(tip, booking.currency)}</span>
                     </div>
                   )}
@@ -680,7 +715,7 @@ export default function BookingConfirmationPage() {
             {/* Total */}
             <div className="border-t pt-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-gray-900">Total</span>
+                <span className="text-lg font-semibold text-gray-900">{t("web.booking.confirmation.total")}</span>
                 <span className="text-2xl font-bold text-primary">
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
@@ -690,27 +725,27 @@ export default function BookingConfirmationPage() {
                 <div className="flex justify-between items-center text-sm text-green-700">
                   <span className="flex items-center gap-1.5">
                     <Wallet className="w-3.5 h-3.5" />
-                    Paid with wallet
+                    {t("web.booking.confirmation.paidWithWallet")}
                   </span>
                   <span className="font-medium">{formatCurrency(walletPaid, booking.currency)}</span>
                 </div>
               )}
               {giftCardPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-blue-700">
-                  <span>Paid with gift card</span>
+                  <span>{t("web.booking.confirmation.paidWithGiftCard")}</span>
                   <span className="font-medium">{formatCurrency(giftCardPaid, booking.currency)}</span>
                 </div>
               )}
               {otherPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-gray-600">
-                  <span>{booking.payment_provider === "cash" ? "Cash recorded" : "Paid online / card"}</span>
+                  <span>{booking.payment_provider === "cash" ? t("web.booking.confirmation.cashRecorded") : t("web.booking.confirmation.paidOnline")}</span>
                   <span className="font-medium">{formatCurrency(otherPaid, booking.currency)}</span>
                 </div>
               )}
               {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
                 <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
                   <p className="text-sm text-amber-900 font-medium">
-                    Amount due: {formatCurrency(booking.outstanding_balance, booking.currency)}
+                    {t("web.booking.confirmation.amountDue", { amount: formatCurrency(booking.outstanding_balance, booking.currency) })}
                   </p>
                 </div>
               )}
@@ -718,13 +753,13 @@ export default function BookingConfirmationPage() {
                 <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
                   <p className="text-sm text-amber-800 font-medium">
                     {booking.location_type === "at_home"
-                      ? "Payment: Cash on arrival — you'll pay when your provider arrives."
-                      : "Payment: Cash at the salon — you'll pay when you arrive."}
+                      ? t("web.booking.confirmation.cashOnArrival")
+                      : t("web.booking.confirmation.cashAtSalon")}
                   </p>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 mt-1">
-                  Payment status:{" "}
+                  {t("web.booking.confirmation.paymentStatus")}{" "}
                   <span className={paymentDisplay.tone === "success" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
                     {paymentDisplay.label}
                   </span>
@@ -735,7 +770,7 @@ export default function BookingConfirmationPage() {
             {/* Special Requests */}
             {booking.special_requests && (
               <div className="border-t pt-4">
-                <h3 className="font-semibold text-gray-900 mb-2">Special Requests</h3>
+                <h3 className="font-semibold text-gray-900 mb-2">{t("web.booking.confirmation.specialRequests")}</h3>
                 <p className="text-gray-600">{booking.special_requests}</p>
               </div>
             )}
@@ -743,7 +778,7 @@ export default function BookingConfirmationPage() {
             {/* Provider Contact */}
             {booking.provider && (
               <div className="border-t pt-4">
-                <h3 className="font-semibold text-gray-900 mb-3">Provider Contact</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">{t("web.booking.confirmation.providerContact")}</h3>
                 <div className="space-y-2">
                   <p className="text-gray-900 font-medium">{booking.provider.business_name}</p>
                   {booking.provider.phone && (
@@ -774,8 +809,8 @@ export default function BookingConfirmationPage() {
                           router.push(`/account-settings/messages?provider=${encodeURIComponent(pid!)}&bookingId=${encodeURIComponent(booking.id)}`);
                         }}
                       >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Message Provider
+                        <MessageSquare className="w-4 h-4 me-2" />
+                        {t("web.booking.confirmation.messageProvider")}
                       </Button>
                     </div>
                   )}
@@ -788,22 +823,22 @@ export default function BookingConfirmationPage() {
         {/* Add to calendar */}
         {calendarEvent && (
           <div className="mb-6">
-            <p className="text-sm font-medium text-gray-700 mb-2">Add to your calendar</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">{t("web.booking.confirmation.addToCalendar")}</p>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(getGoogleCalendarUrl(calendarEvent), "_blank")}
               >
-                <Plus className="w-4 h-4 mr-1" />
-                Google Calendar
+                <Plus className="w-4 h-4 me-1" />
+                {t("web.booking.confirmation.googleCalendar")}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(getOutlookCalendarUrl(calendarEvent), "_blank")}
               >
-                Outlook
+                {t("web.booking.confirmation.outlook")}
               </Button>
               <Button
                 variant="outline"
@@ -812,7 +847,7 @@ export default function BookingConfirmationPage() {
                   downloadICS(calendarEvent, `booking-${booking.booking_number}.ics`);
                 }}
               >
-                .ICS file
+                {t("web.booking.confirmation.icsFile")}
               </Button>
             </div>
           </div>
@@ -825,22 +860,22 @@ export default function BookingConfirmationPage() {
             variant="outline"
             className="flex-1 touch-target"
           >
-            <Download className="w-4 h-4 mr-2" />
-            Download Receipt
+            <Download className="w-4 h-4 me-2" />
+            {t("web.booking.confirmation.downloadReceipt")}
           </Button>
           <Button
             onClick={handleShare}
             variant="outline"
             className="flex-1 touch-target"
           >
-            <Share2 className="w-4 h-4 mr-2" />
-            Share
+            <Share2 className="w-4 h-4 me-2" />
+            {t("web.booking.confirmation.share")}
           </Button>
           <Button
             onClick={() => router.push(bookingId ? `/account-settings/bookings/${bookingId}` : "/account-settings/bookings")}
             className="flex-1 bg-primary hover:bg-primary-hover touch-target"
           >
-            View Booking
+            {t("web.booking.confirmation.viewBooking")}
           </Button>
         </div>
 
@@ -849,26 +884,26 @@ export default function BookingConfirmationPage() {
             "awaiting provider confirmation" copy, not generic "next steps". */}
         <div className={`mt-8 p-4 rounded-lg ${lifecycleDisplay.isAwaitingProviderConfirmation ? "bg-yellow-50 border border-yellow-200" : "bg-blue-50"}`}>
           <p className={`text-sm ${lifecycleDisplay.isAwaitingProviderConfirmation ? "text-yellow-900" : "text-blue-900"}`}>
-            <strong>What&apos;s next?</strong>{" "}
+            <strong>{t("web.booking.confirmation.whatsNext")}</strong>{" "}
             {booking.payment_provider === "cash"
               ? booking.location_type === "at_home"
-                ? "Your provider will be on their way at the scheduled time. Have your cash ready for when they arrive."
-                : "Simply arrive at the salon at your scheduled time and pay cash at the counter."
+                ? t("web.booking.confirmation.cashHomeInstructions")
+                : t("web.booking.confirmation.cashSalonInstructions")
               : lifecycleDisplay.isAwaitingProviderConfirmation
-                ? "Your booking is waiting for the provider to confirm. You'll receive a notification once it's confirmed — this usually happens within 8 hours. If you need to make changes, visit your bookings page."
-                : "You'll receive a confirmation email with all the details."}{" "}
+                ? t("web.booking.confirmation.pendingConfirmInstructions")
+                : t("web.booking.confirmation.confirmationEmail")}{" "}
             {!lifecycleDisplay.isAwaitingProviderConfirmation && (
               <>
                 {" "}
-                Manage changes or cancellations from{" "}
+                {t("web.booking.confirmation.manageChangesBefore")}{" "}
                 <a href="/account-settings/bookings" className="text-primary underline">
-                  your bookings page
+                  {t("web.booking.confirmation.yourBookingsPage")}
                 </a>
-                . See our{" "}
+                . {t("web.booking.confirmation.seeOur")}{" "}
                 <a href="/learn/article/canceling-your-booking" className="text-primary underline">
-                  cancellation guide
+                  {t("web.booking.confirmation.cancellationGuide")}
                 </a>{" "}
-                for refund and fee details.
+                {t("web.booking.confirmation.forRefundDetails")}
               </>
             )}
           </p>

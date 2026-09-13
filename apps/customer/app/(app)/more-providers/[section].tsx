@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -11,12 +12,12 @@ import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { api } from "@/lib/api-client";
 import type { PublicProviderCard } from "@/types/api";
 
-const SECTION_TITLES: Record<string, string> = {
-  "top-rated": "Top Rated",
-  sponsored: "Sponsored",
-  nearest: "Nearest Providers",
-  hottest: "Hottest Picks",
-  upcoming: "Upcoming Talent",
+const SECTION_TITLE_KEYS: Record<string, string> = {
+  "top-rated": "sectionTopRated",
+  sponsored: "sectionSponsored",
+  nearest: "sectionNearest",
+  hottest: "sectionHottest",
+  upcoming: "sectionUpcoming",
 };
 
 const VALID_SECTIONS = new Set(["top-rated", "sponsored", "nearest", "hottest", "upcoming"]);
@@ -54,6 +55,14 @@ function getBadge(section: string): "topRated" | "sponsored" | "nearest" | "hott
 }
 
 export default function MoreProvidersScreen() {
+  const { t } = useTranslation();
+  const mp = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.moreProviders.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const { section: sectionParam } = useLocalSearchParams<{ section: string }>();
   const section = (sectionParam ?? "top-rated").toLowerCase().replace(/\s+/g, "-");
   const { selectedAddress } = useSelectedAddress();
@@ -73,10 +82,10 @@ export default function MoreProvidersScreen() {
   const [pageError, setPageError] = useState<string | null>(null);
   const providers = hasLoadedPage || !data ? pagedProviders : getProviders(data, section);
   const adsDisclosureLabel = useMemo(
-    () => (String(data?.ads_disclosure_label ?? "Sponsored").trim() || "Sponsored"),
-    [data?.ads_disclosure_label],
+    () => (String(data?.ads_disclosure_label ?? mp("sectionSponsored")).trim() || mp("sectionSponsored")),
+    [data?.ads_disclosure_label, mp],
   );
-  const title = section === "sponsored" ? adsDisclosureLabel : (SECTION_TITLES[section] ?? "Providers");
+  const title = section === "sponsored" ? adsDisclosureLabel : (SECTION_TITLE_KEYS[section] ? mp(SECTION_TITLE_KEYS[section]) : mp("titleProviders"));
   const badge = getBadge(section);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
@@ -136,10 +145,10 @@ export default function MoreProvidersScreen() {
     setHasLoadedPage(false);
     if (!VALID_SECTIONS.has(section)) return;
     loadSectionPage(1, false).catch((e) => {
-      setPageError(e instanceof Error ? e.message : "Could not load providers.");
+      setPageError(e instanceof Error ? e.message : mp("loadFailed"));
       setHasLoadedPage(true);
     });
-  }, [loadSectionPage, section]);
+  }, [loadSectionPage, mp, section]);
 
   const handleLoadMore = useCallback(async () => {
     setLoadingMore(true);
@@ -153,18 +162,18 @@ export default function MoreProvidersScreen() {
         await loadSectionPage(page + 1, true);
       }
     } catch (e) {
-      setPageError(e instanceof Error ? e.message : "Could not load more providers.");
+      setPageError(e instanceof Error ? e.message : mp("loadMoreFailed"));
     } finally {
       setLoadingMore(false);
     }
-  }, [allSponsored, loadSectionPage, page, section]);
+  }, [allSponsored, loadSectionPage, mp, page, section]);
 
   if (!VALID_SECTIONS.has(section)) {
     return (
       <>
-        <Stack.Screen options={{ title: "Providers", headerBackTitle: "Back" }} />
+        <Stack.Screen options={{ title: mp("titleProviders"), headerBackTitle: t("common.back") }} />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
-          <Text style={{ fontSize: 16, color: Colors.gray[600] }}>Invalid section.</Text>
+          <Text style={{ fontSize: 16, color: Colors.gray[600] }}>{mp("invalidSection")}</Text>
         </View>
       </>
     );
@@ -172,7 +181,7 @@ export default function MoreProvidersScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title, headerBackTitle: "Back" }} />
+      <Stack.Screen options={{ title, headerBackTitle: t("common.back") }} />
       {loading && !data ? (
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -188,7 +197,7 @@ export default function MoreProvidersScreen() {
             }}
             style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, alignSelf: "flex-start" }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{mp("retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -203,7 +212,7 @@ export default function MoreProvidersScreen() {
         >
           {providers.length === 0 ? (
             <View style={{ paddingVertical: 48, alignItems: "center" }}>
-              <Text style={{ fontSize: 16, color: Colors.gray[500] }}>No providers in this section yet.</Text>
+              <Text style={{ fontSize: 16, color: Colors.gray[500] }}>{mp("emptySection")}</Text>
             </View>
           ) : (
             <View>
@@ -226,7 +235,7 @@ export default function MoreProvidersScreen() {
                   style={{ marginTop: 20, alignSelf: "center", backgroundColor: Colors.primary, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 999 }}
                 >
                   <Text style={{ color: Colors.white, fontWeight: "700" }}>
-                    {loadingMore ? "Loading..." : "Load more providers"}
+                    {loadingMore ? t("common.loading") : mp("loadMore")}
                   </Text>
                 </TouchableOpacity>
               ) : null}

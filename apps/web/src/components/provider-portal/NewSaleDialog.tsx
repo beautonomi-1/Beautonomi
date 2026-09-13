@@ -80,6 +80,7 @@ import { resolveBarcodeForPosSale } from "@/lib/provider-portal/resolveBarcodeFo
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Client {
   id: string;
@@ -127,7 +128,7 @@ interface ServiceAddon {
 }
 
 /** GET /api/provider/services/[id]/variants returns `{ data: { variants: [...] } }`. */
-function normalizeServiceVariantsFromResponse(json: unknown): ServiceVariant[] {
+function normalizeServiceVariantsFromResponse(json: unknown, variantFallback = "Variant"): ServiceVariant[] {
   const root = json as { data?: unknown } | null | undefined;
   const inner = root?.data ?? json;
   const raw = Array.isArray(inner)
@@ -138,34 +139,35 @@ function normalizeServiceVariantsFromResponse(json: unknown): ServiceVariant[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((v: Record<string, unknown>) => ({
     id: String(v.id),
-    name: String(v.title ?? v.name ?? v.variant_name ?? "Variant"),
+    name: String(v.title ?? v.name ?? v.variant_name ?? variantFallback),
     price: Number(v.price ?? 0),
     variant_name: (v.variant_name ?? v.title ?? v.name) as string | undefined,
   }));
 }
 
-function formatProductVariantLabel(v: ProductVariantItem): string {
+function formatProductVariantLabel(v: ProductVariantItem, fallback = "Variant"): string {
   const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
   if (vals.length) return vals.join(" / ");
   if (v.sku) return String(v.sku);
-  return "Variant";
+  return fallback;
 }
 
 // Payment methods for POS sale dialog - aligned with other dialogs
-const paymentMethods = [
-  { id: "cash", label: "Cash", description: "Pay with cash", icon: Banknote },
-  { id: "paycloud", label: "Card machine", description: "Customer pays on your Beautonomi card machine", icon: CreditCard },
-  { id: "yoco", label: "Yoco", description: "Charge your Yoco card machine", icon: CreditCard },
-  { id: "card", label: "Card (Manual)", description: "Record card payment manually", icon: CreditCard },
-  { id: "eft", label: "EFT / Bank Transfer", description: "Instant EFT or bank transfer", icon: Smartphone },
-  { id: "gift_card", label: "Gift Card", description: "Redeem gift card balance", icon: Gift },
-];
+const paymentMethodDefs = [
+  { id: "cash", labelKey: "paymentCash", descriptionKey: "paymentCashDesc", icon: Banknote },
+  { id: "paycloud", labelKey: "paymentCardMachine", descriptionKey: "paymentCardMachineDesc", icon: CreditCard },
+  { id: "yoco", labelKey: "paymentYoco", descriptionKey: "paymentYocoDesc", icon: CreditCard },
+  { id: "card", labelKey: "paymentCardManual", descriptionKey: "paymentCardManualDesc", icon: CreditCard },
+  { id: "eft", labelKey: "paymentEft", descriptionKey: "paymentEftDesc", icon: Smartphone },
+  { id: "gift_card", labelKey: "paymentGiftCard", descriptionKey: "paymentGiftCardDesc", icon: Gift },
+] as const;
 
 export function NewSaleDialog({
   open,
   onOpenChange,
   onSuccess,
 }: NewSaleDialogProps) {
+  const { t } = useTranslation();
   const { currencyCode } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -178,7 +180,7 @@ export function NewSaleDialog({
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
-  const visiblePaymentMethods = paymentMethods.filter((m) => {
+  const visiblePaymentMethods = paymentMethodDefs.filter((m) => {
     if (m.id === "gift_card") return giftCardsEnabled;
     if (m.id === "yoco") return yocoEnabled;
     if (m.id === "paycloud") return paycloudEnabled;
@@ -331,7 +333,7 @@ export function NewSaleDialog({
             // Map clients to the expected format
             const mapped = clients.map((client: any) => {
               const customer = client.customer || {};
-              const fullName = customer.full_name || "Unknown";
+              const fullName = customer.full_name || t("web.provider.portal.newSaleDialog.unknown");
               // Split full_name into first_name and last_name
               const nameParts = fullName.trim().split(/\s+/);
               const firstName = nameParts[0] || "";
@@ -393,7 +395,7 @@ export function NewSaleDialog({
     } else {
       console.error("Failed to load team members:", membersResult.reason);
       setTeamMembers([]);
-      toast.error("Unable to load team members. You can still create a sale.");
+      toast.error(t("web.provider.portal.newSaleDialog.unableToLoadTeamMembers"));
     }
 
     // Handle service categories
@@ -402,7 +404,7 @@ export function NewSaleDialog({
     } else {
       console.error("Failed to load service categories:", categoriesResult.reason);
       setServiceCategories([]);
-      toast.error("Unable to load service categories.");
+      toast.error(t("web.provider.portal.newSaleDialog.unableToLoadServiceCategories"));
     }
 
     // Handle products
@@ -425,7 +427,7 @@ export function NewSaleDialog({
 
       if (variantsResponse.ok && "json" in variantsResponse) {
         const variantsData = await (variantsResponse as Response).json();
-        const normalized = normalizeServiceVariantsFromResponse(variantsData);
+        const normalized = normalizeServiceVariantsFromResponse(variantsData, t("web.provider.portal.newSaleDialog.variantFallback"));
         const latest = selectedServiceRef.current;
         if (
           normalized.length === 0 &&
@@ -534,7 +536,7 @@ export function NewSaleDialog({
       newCart[existingIndex].quantity += 1;
       newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
       setCart(newCart);
-      toast.success(`Service quantity updated (${newCart[existingIndex].quantity} items)`);
+      toast.success(t("web.provider.portal.newSaleDialog.serviceQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
       // Add new service - use timestamp to allow multiple instances for group bookings
       const serviceItem: CartItem = {
@@ -549,7 +551,7 @@ export function NewSaleDialog({
         team_member_name: teamMember?.name,
       };
       setCart([...cart, serviceItem]);
-      toast.success("Service added to cart");
+      toast.success(t("web.provider.portal.newSaleDialog.serviceAddedToCart"));
     }
   };
 
@@ -585,7 +587,7 @@ export function NewSaleDialog({
       newCart[existingIndex].quantity += 1;
       newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
       setCart(newCart);
-      toast.success(`Service quantity updated (${newCart[existingIndex].quantity} items)`);
+      toast.success(t("web.provider.portal.newSaleDialog.serviceQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
       // Create unique ID with timestamp for group bookings
       const cartItemId = `${baseId}-${Date.now()}`;
@@ -619,7 +621,7 @@ export function NewSaleDialog({
       }));
 
       setCart([...cart, serviceItem, ...addonCartItems]);
-      toast.success("Service added to cart");
+      toast.success(t("web.provider.portal.newSaleDialog.serviceAddedToCart"));
     }
     
     setShowServiceDetails(false);
@@ -669,7 +671,7 @@ export function NewSaleDialog({
       newCart[existingIndex].quantity += 1;
       newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
       setCart(newCart);
-      toast.success(`Product quantity updated (${newCart[existingIndex].quantity} items)`);
+      toast.success(t("web.provider.portal.newSaleDialog.productQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
       setCart([
         ...cart,
@@ -684,13 +686,13 @@ export function NewSaleDialog({
           product_variant_id: null,
         },
       ]);
-      toast.success("Product added to cart");
+      toast.success(t("web.provider.portal.newSaleDialog.productAddedToCart"));
     }
   };
 
   const addProductVariantToCart = (product: ProductItem, variant: ProductVariantItem) => {
     const unit = Number(variant.retail_price ?? 0);
-    const label = formatProductVariantLabel(variant);
+    const label = formatProductVariantLabel(variant, t("web.provider.portal.newSaleDialog.variantFallback"));
     const existingIndex = cart.findIndex(
       (item) =>
         item.type === "product" &&
@@ -703,7 +705,7 @@ export function NewSaleDialog({
       newCart[existingIndex].quantity += 1;
       newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
       setCart(newCart);
-      toast.success(`Product quantity updated (${newCart[existingIndex].quantity} items)`);
+      toast.success(t("web.provider.portal.newSaleDialog.productQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
       setCart([
         ...cart,
@@ -718,7 +720,7 @@ export function NewSaleDialog({
           product_variant_id: variant.id,
         },
       ]);
-      toast.success("Product added to cart");
+      toast.success(t("web.provider.portal.newSaleDialog.productAddedToCart"));
     }
     setProductForVariantPick(null);
   };
@@ -742,7 +744,7 @@ export function NewSaleDialog({
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
-      toast.error("Please enter a coupon code");
+      toast.error(t("web.provider.portal.newSaleDialog.enterCouponCode"));
       return;
     }
 
@@ -756,15 +758,15 @@ export function NewSaleDialog({
         const discount = data.discount || 0;
         setAppliedCoupon({ code: couponCode, discount });
         setDiscountAmount(discount);
-        toast.success(data.message || "Coupon applied successfully");
+        toast.success(data.message || t("web.provider.portal.newSaleDialog.couponApplied"));
       } else {
-        toast.error("Invalid coupon code");
+        toast.error(t("web.provider.portal.newSaleDialog.invalidCoupon"));
         setAppliedCoupon(null);
         setDiscountAmount(0);
       }
     } catch (error) {
       console.error("Error validating coupon:", error);
-      toast.error("Failed to validate coupon");
+      toast.error(t("web.provider.portal.newSaleDialog.validateCouponFailed"));
     } finally {
       setIsValidatingCoupon(false);
     }
@@ -772,7 +774,7 @@ export function NewSaleDialog({
 
   const handleApplyGiftCard = async () => {
     if (!giftCardCode.trim()) {
-      toast.error("Please enter a gift card code");
+      toast.error(t("web.provider.portal.newSaleDialog.enterGiftCardCode"));
       return;
     }
 
@@ -784,14 +786,14 @@ export function NewSaleDialog({
         const data = result.data || result; // Handle both wrapped and unwrapped responses
         const balance = data.balance || 0;
         setGiftCardBalance(balance);
-        toast.success(data.message || `Gift card balance: ${balance}`);
+        toast.success(data.message || t("web.provider.portal.newSaleDialog.giftCardBalance", { balance }));
       } else {
-        toast.error("Invalid gift card code");
+        toast.error(t("web.provider.portal.newSaleDialog.invalidGiftCard"));
         setGiftCardBalance(0);
       }
     } catch (error) {
       console.error("Error validating gift card:", error);
-      toast.error("Failed to validate gift card");
+      toast.error(t("web.provider.portal.newSaleDialog.validateGiftCardFailed"));
     } finally {
       setIsValidatingGiftCard(false);
     }
@@ -808,24 +810,24 @@ export function NewSaleDialog({
     afterPaycloudTerminalSuccess?: boolean;
   }) => {
     if (cart.length === 0) {
-      toast.error("Please add items to the sale");
+      toast.error(t("web.provider.portal.newSaleDialog.addItemsToSale"));
       return;
     }
 
     if (serviceLocationType === "at-salon" && !selectedLocationId) {
-      toast.error("Please select a salon location");
+      toast.error(t("web.provider.portal.newSaleDialog.selectSalonLocation"));
       return;
     }
     if (serviceLocationType === "house-call" && !houseCallAddress.address_line1.trim()) {
-      toast.error("Please enter customer address for house call");
+      toast.error(t("web.provider.portal.newSaleDialog.enterHouseCallAddress"));
       return;
     }
 
     const clientName = selectedClient
       ? selectedClient.id?.startsWith("walk-in")
-        ? selectedClient.first_name || "Walk-in"
-        : `${selectedClient.first_name || ""} ${selectedClient.last_name || ""}`.trim() || "Walk-in"
-      : "Walk-in";
+        ? selectedClient.first_name || t("web.provider.portal.newSaleDialog.walkIn")
+        : `${selectedClient.first_name || ""} ${selectedClient.last_name || ""}`.trim() || t("web.provider.portal.newSaleDialog.walkIn")
+      : t("web.provider.portal.newSaleDialog.walkIn");
 
     const customerId =
       selectedClient &&
@@ -896,7 +898,7 @@ export function NewSaleDialog({
         setShowPaycloudDialog(true);
       } catch (error) {
         console.error("Failed to start PayCloud sale:", error);
-        toast.error("Failed to prepare card sale");
+        toast.error(t("web.provider.portal.newSaleDialog.prepareCardSaleFailed"));
       } finally {
         setIsLoading(false);
       }
@@ -906,12 +908,12 @@ export function NewSaleDialog({
     if (selectedPaymentMethod === "paycloud" && options?.afterPaycloudTerminalSuccess) {
       const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
       if (!saleId) {
-        toast.error("Could not finalize card sale");
+        toast.error(t("web.provider.portal.newSaleDialog.finalizeCardSaleFailed"));
         return;
       }
       paycloudPendingSaleIdRef.current = null;
       setPaycloudLinkedSaleId(null);
-      toast.success("Sale completed!");
+      toast.success(t("web.provider.portal.newSaleDialog.saleCompleted"));
       onSuccess?.({ id: saleId } as Sale);
       onOpenChange(false);
       return;
@@ -935,7 +937,7 @@ export function NewSaleDialog({
         setShowYocoDialog(true);
       } catch (error) {
         console.error("Failed to start Yoco sale:", error);
-        toast.error("Failed to prepare card sale");
+        toast.error(t("web.provider.portal.newSaleDialog.prepareCardSaleFailed"));
       } finally {
         setIsLoading(false);
       }
@@ -946,7 +948,7 @@ export function NewSaleDialog({
       const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
       const payment = options.yocoPayment;
       if (!saleId || !payment?.yoco_payment_id) {
-        toast.error("Could not finalize card sale");
+        toast.error(t("web.provider.portal.newSaleDialog.finalizeCardSaleFailed"));
         return;
       }
       setIsLoading(true);
@@ -958,12 +960,12 @@ export function NewSaleDialog({
         });
         yocoPendingSaleIdRef.current = null;
         setYocoLinkedSaleId(null);
-        toast.success("Sale completed!");
+        toast.success(t("web.provider.portal.newSaleDialog.saleCompleted"));
         onSuccess?.(sale);
         onOpenChange(false);
       } catch (error) {
         console.error("Failed to finalize Yoco sale:", error);
-        toast.error("Payment succeeded but updating the sale failed. Check Sales for a pending entry.");
+        toast.error(t("web.provider.portal.newSaleDialog.yocoFinalizeFailed"));
       } finally {
         setIsLoading(false);
       }
@@ -976,12 +978,12 @@ export function NewSaleDialog({
         ...saleBase,
         payment_status: "completed",
       } as Partial<Sale>);
-      toast.success("Sale completed!");
+      toast.success(t("web.provider.portal.newSaleDialog.saleCompleted"));
       onSuccess?.(sale);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to create sale:", error);
-      toast.error("Failed to complete sale");
+      toast.error(t("web.provider.portal.newSaleDialog.completeSaleFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -1014,12 +1016,12 @@ export function NewSaleDialog({
             <button
               onClick={() => onOpenChange(false)}
               className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
-              aria-label="Close"
+              aria-label={t("web.provider.portal.newSaleDialog.close")}
             >
               <X className="w-5 h-5 text-gray-600" />
             </button>
-            <SheetTitle className="text-xl font-bold text-gray-900 pr-10">
-              New Sale
+            <SheetTitle className="text-xl font-bold text-gray-900 pe-10">
+              {t("web.provider.portal.newSaleDialog.title")}
             </SheetTitle>
           </SheetHeader>
 
@@ -1031,7 +1033,7 @@ export function NewSaleDialog({
               {/* Client Selection */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold text-gray-900">Client</Label>
+                  <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.newSaleDialog.client")}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -1039,8 +1041,8 @@ export function NewSaleDialog({
                     onClick={() => setShowNewClientDialog(true)}
                     className="h-8 text-xs text-primary hover:text-primary-hover hover:bg-primary/10"
                   >
-                    <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                    Add New Client
+                    <UserPlus className="w-3.5 h-3.5 me-1.5" />
+                    {t("web.provider.portal.newSaleDialog.addNewClient")}
                   </Button>
                 </div>
                 {selectedClient ? (
@@ -1053,7 +1055,7 @@ export function NewSaleDialog({
                         <p className="font-semibold text-sm truncate">
                           {selectedClient.first_name && selectedClient.last_name 
                             ? `${selectedClient.first_name} ${selectedClient.last_name}`
-                            : selectedClient.first_name || "Walk-in Client"}
+                            : selectedClient.first_name || t("web.provider.portal.newSaleDialog.walkInClient")}
                         </p>
                         {(selectedClient.email || selectedClient.phone) && (
                           <p className="text-xs text-gray-600 truncate">
@@ -1061,7 +1063,7 @@ export function NewSaleDialog({
                           </p>
                         )}
                         {selectedClient.id?.startsWith("walk-in") && (
-                          <p className="text-xs text-primary font-medium">Walk-in</p>
+                          <p className="text-xs text-primary font-medium">{t("web.provider.portal.newSaleDialog.walkIn")}</p>
                         )}
                       </div>
                     </div>
@@ -1081,10 +1083,10 @@ export function NewSaleDialog({
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
-                      placeholder="Search client or enter name for walk-in..."
+                      placeholder={t("web.provider.portal.newSaleDialog.searchClientPlaceholder")}
                       value={clientSearchQuery}
                       onChange={(e) => setClientSearchQuery(e.target.value)}
-                      className="pl-10 h-12 text-base"
+                      className="ps-10 h-12 text-base"
                       autoComplete="off"
                     />
                     {(clientSearchResults.length > 0 || clientSearchQuery.trim().length > 0) && (
@@ -1093,7 +1095,7 @@ export function NewSaleDialog({
                         {clientSearchQuery.trim().length > 0 && (
                           <button
                             type="button"
-                            className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100"
+                            className="w-full px-4 py-3 text-start hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100"
                             onClick={() => {
                               // Create walk-in client
                               const walkInClient: Client = {
@@ -1111,9 +1113,9 @@ export function NewSaleDialog({
                             </div>
                             <div className="flex-1">
                               <span className="text-sm font-medium block">
-                                Walk-in: {clientSearchQuery.trim()}
+                                {t("web.provider.portal.newSaleDialog.walkInNamed", { name: clientSearchQuery.trim() })}
                               </span>
-                              <span className="text-xs text-gray-500">New client</span>
+                              <span className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.newClient")}</span>
                             </div>
                           </button>
                         )}
@@ -1121,13 +1123,13 @@ export function NewSaleDialog({
                         {/* Existing clients */}
                         {clientSearchResults.map((client) => {
                           const initials = (client.first_name?.charAt(0) || "") + (client.last_name?.charAt(0) || "") || "?";
-                          const displayName = `${client.first_name || ""} ${client.last_name || ""}`.trim() || "Unknown";
+                          const displayName = `${client.first_name || ""} ${client.last_name || ""}`.trim() || t("web.provider.portal.newSaleDialog.unknown");
                           
                           return (
                             <button
                               key={client.id}
                               type="button"
-                              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3"
+                              className="w-full px-4 py-3 text-start hover:bg-gray-50 flex items-center gap-3"
                               onClick={() => handleSelectClient(client)}
                             >
                               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -1157,11 +1159,11 @@ export function NewSaleDialog({
               {/* Team member selection */}
               {teamMembers.length > 0 && (
                 <div className="space-y-3">
-                  <Label className="text-sm font-semibold text-gray-900">Team Member</Label>
+                  <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.newSaleDialog.teamMember")}</Label>
                   <Select value={selectedTeamMember} onValueChange={setSelectedTeamMember}>
                     <SelectTrigger className="h-12 text-base">
-                      <User className="w-4 h-4 mr-2 text-gray-400" />
-                      <SelectValue placeholder="Select team member" />
+                      <User className="w-4 h-4 me-2 text-gray-400" />
+                      <SelectValue placeholder={t("web.provider.portal.newSaleDialog.selectTeamMember")} />
                     </SelectTrigger>
                     <SelectContent>
                       {teamMembers.map((member) => (
@@ -1177,14 +1179,14 @@ export function NewSaleDialog({
               {/* Service Location Selection */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-semibold text-gray-900">Service Location</Label>
+                  <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.newSaleDialog.serviceLocation")}</Label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setServiceLocationType("at-salon")}
                     className={cn(
-                      "p-3 rounded-lg border-2 text-left transition-all",
+                      "p-3 rounded-lg border-2 text-start transition-all",
                       serviceLocationType === "at-salon"
                         ? "border-primary bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
@@ -1195,16 +1197,16 @@ export function NewSaleDialog({
                         "w-4 h-4",
                         serviceLocationType === "at-salon" ? "text-primary" : "text-gray-500"
                       )} />
-                      <p className="font-medium text-sm">At-Salon</p>
+                      <p className="font-medium text-sm">{t("web.provider.portal.newSaleDialog.atSalon")}</p>
                     </div>
-                    <p className="text-xs text-gray-500">Service at your location</p>
+                    <p className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.atSalonHint")}</p>
                   </button>
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setServiceLocationType("house-call")}
                       className={cn(
-                        "p-3 rounded-lg border-2 text-left transition-all w-full",
+                        "p-3 rounded-lg border-2 text-start transition-all w-full",
                         serviceLocationType === "house-call"
                           ? "border-primary bg-primary/5"
                           : "border-gray-200 hover:border-gray-300"
@@ -1215,9 +1217,9 @@ export function NewSaleDialog({
                           "w-4 h-4",
                           serviceLocationType === "house-call" ? "text-primary" : "text-gray-500"
                         )} />
-                        <p className="font-medium text-sm">House Call</p>
+                        <p className="font-medium text-sm">{t("web.provider.portal.newSaleDialog.houseCall")}</p>
                       </div>
-                      <p className="text-xs text-gray-500">Service at customer address</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.houseCallHint")}</p>
                     </button>
                     <TooltipProvider>
                       <Tooltip>
@@ -1235,17 +1237,16 @@ export function NewSaleDialog({
                         </TooltipTrigger>
                         <TooltipContent side="left" className="max-w-xs">
                           <div className="space-y-2">
-                            <p className="font-semibold text-sm">Customer Onboarding Required</p>
+                            <p className="font-semibold text-sm">{t("web.provider.portal.newSaleDialog.onboardingRequired")}</p>
                             <p className="text-xs">
-                              For house calls, the customer must complete onboarding and OTP verification. 
-                              Share the app download link or onboarding deeplink with them.
+                              {t("web.provider.portal.newSaleDialog.onboardingTooltipBody")}
                             </p>
                             <div className="pt-2 border-t border-gray-200">
-                              <p className="text-xs font-medium mb-1">Options:</p>
+                              <p className="text-xs font-medium mb-1">{t("web.provider.portal.newSaleDialog.onboardingOptions")}</p>
                               <ul className="text-xs space-y-1 list-disc list-inside text-gray-600">
-                                <li>Download Beautonomi app</li>
-                                <li>Use onboarding deeplink</li>
-                                <li>Complete OTP verification</li>
+                                <li>{t("web.provider.portal.newSaleDialog.onboardingOptionApp")}</li>
+                                <li>{t("web.provider.portal.newSaleDialog.onboardingOptionDeeplink")}</li>
+                                <li>{t("web.provider.portal.newSaleDialog.onboardingOptionOtp")}</li>
                               </ul>
                             </div>
                           </div>
@@ -1263,8 +1264,8 @@ export function NewSaleDialog({
                       onValueChange={(value) => setSelectedLocationId(value || undefined)}
                     >
                       <SelectTrigger className="h-12 text-base">
-                        <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                        <SelectValue placeholder="Select salon location *" />
+                        <MapPin className="w-4 h-4 me-2 text-gray-400" />
+                        <SelectValue placeholder={t("web.provider.portal.newSaleDialog.selectSalonLocationPlaceholder")} />
                       </SelectTrigger>
                       <SelectContent>
                         {providerLocations.length > 0 ? (
@@ -1279,7 +1280,7 @@ export function NewSaleDialog({
                             </SelectItem>
                           ))
                         ) : (
-                          <div className="px-2 py-1.5 text-sm text-gray-500">No locations available</div>
+                          <div className="px-2 py-1.5 text-sm text-gray-500">{t("web.provider.portal.newSaleDialog.noLocations")}</div>
                         )}
                       </SelectContent>
                     </Select>
@@ -1295,14 +1296,14 @@ export function NewSaleDialog({
                         <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                         <div className="flex-1">
                           <p className="text-xs font-semibold text-blue-900 mb-1">
-                            Customer Onboarding Required
+                            {t("web.provider.portal.newSaleDialog.onboardingRequired")}
                           </p>
                           <p className="text-xs text-blue-700 mb-2">
-                            The customer needs to complete onboarding and OTP verification before the house call can be confirmed.
+                            {t("web.provider.portal.newSaleDialog.onboardingBannerBody")}
                           </p>
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-blue-900">Share with customer:</span>
+                              <span className="text-xs font-medium text-blue-900">{t("web.provider.portal.newSaleDialog.shareWithCustomer")}</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
                               <a
@@ -1311,7 +1312,7 @@ export function NewSaleDialog({
                                 rel="noopener noreferrer"
                                 className="text-xs text-blue-600 hover:text-blue-800 underline"
                               >
-                                📱 Download Beautonomi App
+                                {t("web.provider.portal.newSaleDialog.downloadBeautonomiApp")}
                               </a>
                               <button
                                 type="button"
@@ -1319,11 +1320,11 @@ export function NewSaleDialog({
                                   // Generate onboarding deeplink
                                   const deeplink = `${window.location.origin}/onboard?ref=sale&phone=${selectedClient?.phone || ''}`;
                                   navigator.clipboard.writeText(deeplink);
-                                  toast.success("Onboarding link copied to clipboard!");
+                                  toast.success(t("web.provider.portal.newSaleDialog.onboardingLinkCopied"));
                                 }}
-                                className="text-xs text-blue-600 hover:text-blue-800 underline text-left"
+                                className="text-xs text-blue-600 hover:text-blue-800 underline text-start"
                               >
-                                🔗 Copy Onboarding Link
+                                {t("web.provider.portal.newSaleDialog.copyOnboardingLink")}
                               </button>
                             </div>
                           </div>
@@ -1334,11 +1335,11 @@ export function NewSaleDialog({
                     <div className="space-y-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100">
                       {/* Autocomplete: fills all fields on selection */}
                       <div className="space-y-1">
-                        <Label className="text-xs font-medium text-gray-600">Street Address *</Label>
+                        <Label className="text-xs font-medium text-gray-600">{t("web.provider.portal.newSaleDialog.streetAddressRequired")}</Label>
                         <AddressAutocomplete
                           inputId="house_call_address"
                           value={houseCallAddress.place_name || houseCallAddress.address_line1}
-                          placeholder="Search customer address…"
+                          placeholder={t("web.provider.portal.newSaleDialog.searchCustomerAddress")}
                           onInputChange={(val) =>
                             setHouseCallAddress((prev) => ({ ...prev, place_name: val, address_line1: val }))
                           }
@@ -1367,40 +1368,40 @@ export function NewSaleDialog({
                       {/* Structured fields — auto-filled from autocomplete, editable for corrections */}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">City</Label>
+                          <Label className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.city")}</Label>
                           <Input
                             value={houseCallAddress.city}
                             onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, city: e.target.value }))}
-                            placeholder="Auto-filled"
+                            placeholder={t("web.provider.portal.newSaleDialog.autoFilled")}
                             className="h-9 text-sm"
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Postal Code</Label>
+                          <Label className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.postalCode")}</Label>
                           <Input
                             value={houseCallAddress.postal_code}
                             onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, postal_code: e.target.value }))}
-                            placeholder="Auto-filled"
+                            placeholder={t("web.provider.portal.newSaleDialog.autoFilled")}
                             className="h-9 text-sm"
                           />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Province / State</Label>
+                          <Label className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.provinceState")}</Label>
                           <Input
                             value={houseCallAddress.state}
                             onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, state: e.target.value }))}
-                            placeholder="Auto-filled"
+                            placeholder={t("web.provider.portal.newSaleDialog.autoFilled")}
                             className="h-9 text-sm"
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Country</Label>
+                          <Label className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.country")}</Label>
                           <Input
                             value={houseCallAddress.country}
                             onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, country: e.target.value }))}
-                            placeholder="Auto-filled"
+                            placeholder={t("web.provider.portal.newSaleDialog.autoFilled")}
                             className="h-9 text-sm"
                           />
                         </div>
@@ -1416,7 +1417,7 @@ export function NewSaleDialog({
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="font-bold text-base">{selectedService.name}</h3>
-                      <p className="text-sm text-gray-600">{selectedService.duration_minutes} min</p>
+                      <p className="text-sm text-gray-600">{t("web.provider.portal.newSaleDialog.minutes", { count: selectedService.duration_minutes })}</p>
                     </div>
                     <Button
                       variant="ghost"
@@ -1434,20 +1435,20 @@ export function NewSaleDialog({
                   {/* Variants */}
                   {serviceVariants.length > 0 && (
                     <div className="mb-3">
-                      <Label className="text-xs font-semibold mb-2 block">Select Variant</Label>
+                      <Label className="text-xs font-semibold mb-2 block">{t("web.provider.portal.newSaleDialog.selectVariant")}</Label>
                       <div className="space-y-2">
                         <button
                           type="button"
                           onClick={() => setSelectedVariant(null)}
                           className={cn(
-                            "w-full p-2 text-left border rounded-lg text-sm transition-colors",
+                            "w-full p-2 text-start border rounded-lg text-sm transition-colors",
                             !selectedVariant
                               ? "border-primary bg-primary/10"
                               : "border-gray-200 hover:border-gray-300"
                           )}
                         >
                           <div className="flex items-center justify-between">
-                            <span>Standard</span>
+                            <span>{t("web.provider.portal.newSaleDialog.standard")}</span>
                             <Money amount={selectedService.price} />
                             {!selectedVariant && <Check className="w-4 h-4 text-primary" />}
                           </div>
@@ -1458,7 +1459,7 @@ export function NewSaleDialog({
                             type="button"
                             onClick={() => setSelectedVariant(variant)}
                             className={cn(
-                              "w-full p-2 text-left border rounded-lg text-sm transition-colors",
+                              "w-full p-2 text-start border rounded-lg text-sm transition-colors",
                               selectedVariant?.id === variant.id
                                 ? "border-primary bg-primary/10"
                                 : "border-gray-200 hover:border-gray-300"
@@ -1480,7 +1481,7 @@ export function NewSaleDialog({
                   {/* Addons */}
                   {serviceAddons.length > 0 && (
                     <div className="mb-3">
-                      <Label className="text-xs font-semibold mb-2 block">Add-ons (Optional)</Label>
+                      <Label className="text-xs font-semibold mb-2 block">{t("web.provider.portal.newSaleDialog.addonsOptional")}</Label>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
                         {serviceAddons.map((addon) => (
                           <label
@@ -1516,7 +1517,7 @@ export function NewSaleDialog({
                     onClick={handleAddServiceWithOptions}
                     className="w-full bg-primary hover:bg-primary-hover"
                   >
-                    Add to Cart
+                    {t("web.provider.portal.newSaleDialog.addToCart")}
                   </Button>
                 </div>
               )}
@@ -1532,13 +1533,13 @@ export function NewSaleDialog({
                     value="services"
                     className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary rounded transition-all"
                   >
-                    Services
+                    {t("web.provider.portal.newSaleDialog.services")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="products"
                     className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary rounded transition-all"
                   >
-                    Products
+                    {t("web.provider.portal.newSaleDialog.products")}
                   </TabsTrigger>
                 </TabsList>
 
@@ -1584,8 +1585,8 @@ export function NewSaleDialog({
                                 onClick={() => setShowCustomServiceDialog(true)}
                                 className="py-2.5 px-4 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 border-2 border-dashed border-gray-300 text-gray-600 hover:border-primary hover:text-primary hover:bg-primary/5"
                               >
-                                <Plus className="w-4 h-4 inline mr-1.5" />
-                                Custom Service
+                                <Plus className="w-4 h-4 inline me-1.5" />
+                                {t("web.provider.portal.newSaleDialog.customService")}
                               </button>
                             </div>
                             {/* Scroll buttons for better tablet navigation */}
@@ -1599,7 +1600,7 @@ export function NewSaleDialog({
                                     }
                                   }}
                                   className="flex-shrink-0 w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center hover:bg-gray-50"
-                                  aria-label="Scroll left"
+                                  aria-label={t("web.provider.portal.newSaleDialog.scrollLeft")}
                                 >
                                   <ChevronLeft className="w-4 h-4 text-gray-600" />
                                 </button>
@@ -1611,7 +1612,7 @@ export function NewSaleDialog({
                                     }
                                   }}
                                   className="flex-shrink-0 w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center hover:bg-gray-50"
-                                  aria-label="Scroll right"
+                                  aria-label={t("web.provider.portal.newSaleDialog.scrollRight")}
                                 >
                                   <ChevronRight className="w-4 h-4 text-gray-600" />
                                 </button>
@@ -1636,24 +1637,24 @@ export function NewSaleDialog({
                                   <button
                                     type="button"
                                     onClick={() => handleServiceClick(service)}
-                                    className="w-full text-left"
+                                    className="w-full text-start"
                                   >
                                     <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                                       <p className="font-semibold text-sm">{service.name}</p>
                                       {service.service_type === "package" && (
                                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                                          Package
+                                          {t("web.provider.portal.newSaleDialog.packageBadge")}
                                         </Badge>
                                       )}
                                       {(service.variants?.length ?? 0) > 0 && (
                                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal">
-                                          Options
+                                          {t("web.provider.portal.newSaleDialog.optionsBadge")}
                                         </Badge>
                                       )}
                                     </div>
                                     <div className="flex items-center justify-between mt-1">
                                       <span className="text-xs text-gray-500">
-                                        {service.duration_minutes} min
+                                        {t("web.provider.portal.newSaleDialog.minutes", { count: service.duration_minutes })}
                                       </span>
                                       <span className="text-sm font-bold text-primary">
                                         <Money amount={service.price} />
@@ -1668,7 +1669,7 @@ export function NewSaleDialog({
                                       handleQuickAddService(service);
                                     }}
                                     className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                    title="Quick add to cart"
+                                    title={t("web.provider.portal.newSaleDialog.quickAddToCart")}
                                   >
                                     <Plus className="w-4 h-4" />
                                   </button>
@@ -1678,7 +1679,7 @@ export function NewSaleDialog({
                           ) : (
                             <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
                               <Tag className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                              <p className="text-sm">No services in this category</p>
+                              <p className="text-sm">{t("web.provider.portal.newSaleDialog.noServicesInCategory")}</p>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1686,7 +1687,7 @@ export function NewSaleDialog({
                                 onClick={() => setShowCustomServiceDialog(true)}
                                 className="mt-2 text-primary hover:text-primary-hover"
                               >
-                                Add Custom Service
+                                {t("web.provider.portal.newSaleDialog.addCustomService")}
                               </Button>
                             </div>
                           )}
@@ -1695,15 +1696,15 @@ export function NewSaleDialog({
                     ) : (
                       <div className="text-center py-12 text-gray-500">
                         <Tag className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm font-medium">No service categories available</p>
+                        <p className="text-sm font-medium">{t("web.provider.portal.newSaleDialog.noServiceCategories")}</p>
                         <Button
                           type="button"
                           variant="outline"
                           onClick={() => setShowCustomServiceDialog(true)}
                           className="mt-3"
                         >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Custom Service
+                          <Plus className="w-4 h-4 me-2" />
+                          {t("web.provider.portal.newSaleDialog.addCustomService")}
                         </Button>
                       </div>
                     )}
@@ -1713,8 +1714,8 @@ export function NewSaleDialog({
                 <TabsContent value="products" className="mt-4">
                   <div className="mb-4">
                     <BarcodeLookup
-                      label="Scan or enter barcode"
-                      placeholder="Barcode / SKU"
+                      label={t("web.provider.portal.newSaleDialog.scanBarcode")}
+                      placeholder={t("web.provider.portal.newSaleDialog.barcodePlaceholder")}
                       autoFocus={activeTab === "products"}
                       onSelect={handleBarcodeSelect}
                     />
@@ -1732,21 +1733,21 @@ export function NewSaleDialog({
                           <button
                             type="button"
                             onClick={() => openProductOrAdd(product)}
-                            className="w-full text-left"
+                            className="w-full text-start"
                           >
                             <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                               <p className="font-semibold text-sm">{product.name}</p>
                               {product.has_variants && (product.variants?.length ?? 0) > 0 && (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal">
-                                  Variants
+                                  {t("web.provider.portal.newSaleDialog.variants")}
                                 </Badge>
                               )}
                             </div>
                             <div className="flex items-center justify-between mt-1">
                               <span className="text-xs text-gray-500">
                                 {product.has_variants
-                                  ? `${product.effective_quantity ?? product.quantity} in stock`
-                                  : `${product.quantity} in stock`}
+                                  ? t("web.provider.portal.newSaleDialog.inStock", { count: product.effective_quantity ?? product.quantity })
+                                  : t("web.provider.portal.newSaleDialog.inStock", { count: product.quantity })}
                               </span>
                               <span className="text-sm font-bold text-primary">
                                 <Money
@@ -1759,7 +1760,7 @@ export function NewSaleDialog({
                                   }
                                 />
                                 {product.has_variants && product.variants && product.variants.length > 1 && (
-                                  <span className="text-[10px] font-normal text-gray-500 ml-0.5">from</span>
+                                  <span className="text-[10px] font-normal text-gray-500 ms-0.5">{t("web.provider.portal.newSaleDialog.from")}</span>
                                 )}
                               </span>
                             </div>
@@ -1772,7 +1773,7 @@ export function NewSaleDialog({
                               openProductOrAdd(product);
                             }}
                             className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                            title="Add to cart"
+                            title={t("web.provider.portal.newSaleDialog.addToCart")}
                           >
                             <Plus className="w-4 h-4" />
                           </button>
@@ -1781,7 +1782,7 @@ export function NewSaleDialog({
                     ) : (
                       <div className="col-span-2 text-center py-8 text-gray-500">
                         <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No products available</p>
+                        <p className="text-sm">{t("web.provider.portal.newSaleDialog.noProducts")}</p>
                       </div>
                     )}
                   </div>
@@ -1796,8 +1797,8 @@ export function NewSaleDialog({
                   <ShoppingCart className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg">Cart</h3>
-                  <span className="text-xs text-gray-600">{cart.length} {cart.length === 1 ? 'item' : 'items'}</span>
+                  <h3 className="font-bold text-lg">{t("web.provider.portal.newSaleDialog.cart")}</h3>
+                  <span className="text-xs text-gray-600">{t("web.provider.portal.newSaleDialog.cartItem", { count: cart.length })}</span>
                 </div>
               </div>
 
@@ -1805,8 +1806,8 @@ export function NewSaleDialog({
               {cart.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
                   <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">Cart is empty</p>
-                  <p className="text-xs mt-1 text-gray-400">Add services or products to get started</p>
+                  <p className="text-sm font-medium">{t("web.provider.portal.newSaleDialog.cartEmpty")}</p>
+                  <p className="text-xs mt-1 text-gray-400">{t("web.provider.portal.newSaleDialog.cartEmptyHint")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1819,13 +1820,13 @@ export function NewSaleDialog({
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm">{item.name}</p>
                           {item.team_member_name && (
-                            <p className="text-xs text-gray-500 mt-0.5">by {item.team_member_name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.portal.newSaleDialog.byStaff", { name: item.team_member_name })}</p>
                           )}
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(index)}
-                          className="text-gray-400 hover:text-red-500 ml-2 p-1 flex-shrink-0"
+                          className="text-gray-400 hover:text-red-500 ms-2 p-1 flex-shrink-0"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1864,7 +1865,7 @@ export function NewSaleDialog({
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <Input
-                      placeholder="Coupon code"
+                      placeholder={t("web.provider.portal.newSaleDialog.couponCode")}
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
                       className="flex-1 h-10 text-sm"
@@ -1883,7 +1884,7 @@ export function NewSaleDialog({
                   {giftCardsEnabled && (
                     <div className="flex gap-2">
                       <Input
-                        placeholder="Gift card code"
+                        placeholder={t("web.provider.portal.newSaleDialog.giftCardCode")}
                         value={giftCardCode}
                         onChange={(e) => setGiftCardCode(e.target.value)}
                         className="flex-1 h-10 text-sm"
@@ -1907,27 +1908,27 @@ export function NewSaleDialog({
               {cart.length > 0 && (
                 <div className="border-t border-gray-200 pt-4 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal</span>
+                    <span className="text-gray-600">{t("web.provider.portal.newSaleDialog.subtotal")}</span>
                     <Money amount={subtotal} />
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">VAT (15%)</span>
+                    <span className="text-gray-600">{t("web.provider.portal.newSaleDialog.vat")}</span>
                     <Money amount={tax} />
                   </div>
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
-                      <span>Discount</span>
+                      <span>{t("web.provider.portal.newSaleDialog.discount")}</span>
                       <span>-<Money amount={discountAmount} /></span>
                     </div>
                   )}
                   {giftCardApplied > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
-                      <span>Gift Card</span>
+                      <span>{t("web.provider.portal.newSaleDialog.giftCard")}</span>
                       <span>-<Money amount={giftCardApplied} /></span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-200">
-                    <span>Total</span>
+                    <span>{t("web.provider.portal.newSaleDialog.total")}</span>
                     <Money amount={total} />
                   </div>
                 </div>
@@ -1936,7 +1937,7 @@ export function NewSaleDialog({
               {/* Payment Method Selection */}
               {cart.length > 0 && (
                 <div>
-                  <Label className="text-sm font-semibold mb-3 block">Payment Method</Label>
+                  <Label className="text-sm font-semibold mb-3 block">{t("web.provider.portal.newSaleDialog.paymentMethod")}</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {visiblePaymentMethods.map((method) => {
                       const Icon = method.icon;
@@ -1950,7 +1951,7 @@ export function NewSaleDialog({
                             key={method.id}
                             href={setupHref}
                             className={cn(
-                              "relative p-3 rounded-xl border-2 text-left transition-all",
+                              "relative p-3 rounded-xl border-2 text-start transition-all",
                               "border-amber-200 hover:border-amber-300 bg-amber-50/50",
                             )}
                           >
@@ -1960,7 +1961,7 @@ export function NewSaleDialog({
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium text-sm text-amber-900">{PAYCLOUD_SETUP_LABEL}</p>
-                                <p className="text-xs text-amber-700/80 mt-0.5">{method.description}</p>
+                                <p className="text-xs text-amber-700/80 mt-0.5">{t(`web.provider.portal.newSaleDialog.${method.descriptionKey}`)}</p>
                               </div>
                             </div>
                           </Link>
@@ -1972,7 +1973,7 @@ export function NewSaleDialog({
                           type="button"
                           onClick={() => setSelectedPaymentMethod(method.id)}
                           className={cn(
-                            "relative p-3 rounded-xl border-2 text-left transition-all",
+                            "relative p-3 rounded-xl border-2 text-start transition-all",
                             isSelected 
                               ? "border-primary bg-primary/5 shadow-sm" 
                               : "border-gray-200 hover:border-gray-300 bg-white"
@@ -1997,9 +1998,9 @@ export function NewSaleDialog({
                                 "font-medium text-sm",
                                 isSelected ? "text-primary" : "text-gray-900"
                               )}>
-                                {method.label}
+                                {t(`web.provider.portal.newSaleDialog.${method.labelKey}`)}
                               </p>
-                              <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{t(`web.provider.portal.newSaleDialog.${method.descriptionKey}`)}</p>
                             </div>
                           </div>
                         </button>
@@ -2018,7 +2019,7 @@ export function NewSaleDialog({
           <div className="sticky bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 sm:px-6 md:px-8 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
             <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">Total</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.portal.newSaleDialog.total")}</p>
                 <p className="text-xl font-bold text-primary">
                   <Money amount={total} />
                 </p>
@@ -2031,10 +2032,10 @@ export function NewSaleDialog({
                 {isLoading ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Processing...
+                    {t("web.provider.portal.newSaleDialog.processing")}
                   </span>
                 ) : (
-                  "Complete Sale"
+                  t("web.provider.portal.newSaleDialog.completeSale")
                 )}
               </Button>
             </div>
@@ -2076,7 +2077,7 @@ export function NewSaleDialog({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Select product option</DialogTitle>
+            <DialogTitle>{t("web.provider.portal.newSaleDialog.selectProductOption")}</DialogTitle>
             <DialogDescription className="truncate">
               {productForVariantPick?.name}
             </DialogDescription>
@@ -2094,13 +2095,13 @@ export function NewSaleDialog({
                     if (productForVariantPick) addProductVariantToCart(productForVariantPick, v);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-colors",
+                    "w-full flex items-center justify-between rounded-lg border p-3 text-start text-sm transition-colors",
                     disabled ? "opacity-50 cursor-not-allowed" : "hover:border-primary hover:bg-primary/5",
                   )}
                 >
-                  <span className="font-medium pr-2">{formatProductVariantLabel(v)}</span>
+                  <span className="font-medium pe-2">{formatProductVariantLabel(v, t("web.provider.portal.newSaleDialog.variantFallback"))}</span>
                   <span className="flex flex-shrink-0 items-center gap-2">
-                    <span className="text-xs text-gray-500">{q} in stock</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.portal.newSaleDialog.inStock", { count: q })}</span>
                     <span className="font-semibold text-primary">
                       <Money amount={Number(v.retail_price ?? 0)} />
                     </span>
@@ -2116,50 +2117,50 @@ export function NewSaleDialog({
       <Dialog open={showNewClientDialog} onOpenChange={setShowNewClientDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
+            <DialogTitle>{t("web.provider.portal.newSaleDialog.addNewClientTitle")}</DialogTitle>
             <DialogDescription>
-              Create a new client profile for this sale
+              {t("web.provider.portal.newSaleDialog.addNewClientDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="first_name">First Name *</Label>
+              <Label htmlFor="first_name">{t("web.provider.portal.newSaleDialog.firstNameRequired")}</Label>
               <Input
                 id="first_name"
                 value={newClientForm.first_name}
                 onChange={(e) => setNewClientForm({ ...newClientForm, first_name: e.target.value })}
-                placeholder="Enter first name"
+                placeholder={t("web.provider.portal.newSaleDialog.enterFirstName")}
                 className="h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="last_name">Last Name *</Label>
+              <Label htmlFor="last_name">{t("web.provider.portal.newSaleDialog.lastNameRequired")}</Label>
               <Input
                 id="last_name"
                 value={newClientForm.last_name}
                 onChange={(e) => setNewClientForm({ ...newClientForm, last_name: e.target.value })}
-                placeholder="Enter last name"
+                placeholder={t("web.provider.portal.newSaleDialog.enterLastName")}
                 className="h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("web.provider.portal.newSaleDialog.email")}</Label>
               <Input
                 id="email"
                 type="email"
                 value={newClientForm.email}
                 onChange={(e) => setNewClientForm({ ...newClientForm, email: e.target.value })}
-                placeholder="Enter email (optional)"
+                placeholder={t("web.provider.portal.newSaleDialog.enterEmailOptional")}
                 className="h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">{t("web.provider.portal.newSaleDialog.phone")}</Label>
               <Input
                 id="phone"
                 value={newClientForm.phone}
                 onChange={(e) => setNewClientForm({ ...newClientForm, phone: e.target.value })}
-                placeholder="Enter phone (optional)"
+                placeholder={t("web.provider.portal.newSaleDialog.enterPhoneOptional")}
                 className="h-11"
               />
             </div>
@@ -2172,12 +2173,12 @@ export function NewSaleDialog({
                 }}
                 className="flex-1"
               >
-                Cancel
+                {t("web.provider.portal.newSaleDialog.cancel")}
               </Button>
               <Button
                 onClick={async () => {
                   if (!newClientForm.first_name.trim() || !newClientForm.last_name.trim()) {
-                    toast.error("First name and last name are required");
+                    toast.error(t("web.provider.portal.newSaleDialog.firstAndLastRequired"));
                     return;
                   }
                   
@@ -2195,14 +2196,14 @@ export function NewSaleDialog({
                     });
                     if (!response.ok) {
                       const errJson = await response.json().catch(() => ({}));
-                      throw new Error(errJson?.error?.message ?? "Failed to create client");
+                      throw new Error(errJson?.error?.message ?? t("web.provider.portal.newSaleDialog.createClientFailed"));
                     }
                     const data = await response.json();
                     const created = data?.data;
                     const customer = created?.customer ?? created;
                     const customerId = customer?.id ?? created?.customer_id;
                     if (!customerId) {
-                      throw new Error("Client created but no customer id returned");
+                      throw new Error(t("web.provider.portal.newSaleDialog.clientNoId"));
                     }
                     const fullName = customer?.full_name ?? `${newClientForm.first_name.trim()} ${newClientForm.last_name.trim()}`.trim();
                     const nameParts = fullName.trim().split(/\s+/);
@@ -2217,15 +2218,15 @@ export function NewSaleDialog({
                     handleSelectClient(newClient);
                     setShowNewClientDialog(false);
                     setNewClientForm({ first_name: "", last_name: "", email: "", phone: "" });
-                    toast.success("Client added successfully");
+                    toast.success(t("web.provider.portal.newSaleDialog.clientAdded"));
                   } catch (error) {
                     console.error("Error creating client:", error);
-                    toast.error(error instanceof Error ? error.message : "Failed to create client");
+                    toast.error(error instanceof Error ? error.message : t("web.provider.portal.newSaleDialog.createClientFailed"));
                   }
                 }}
                 className="flex-1 bg-primary hover:bg-primary-hover"
               >
-                Add Client
+                {t("web.provider.dashboard.widgets.addClient")}
               </Button>
             </div>
           </div>
@@ -2236,25 +2237,25 @@ export function NewSaleDialog({
       <Dialog open={showCustomServiceDialog} onOpenChange={setShowCustomServiceDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Custom Service</DialogTitle>
+            <DialogTitle>{t("web.provider.portal.newSaleDialog.addCustomServiceTitle")}</DialogTitle>
             <DialogDescription>
-              Create a one-time custom service for this sale
+              {t("web.provider.portal.newSaleDialog.addCustomServiceDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="service_name">Service Name *</Label>
+              <Label htmlFor="service_name">{t("web.provider.portal.newSaleDialog.serviceNameRequired")}</Label>
               <Input
                 id="service_name"
                 value={customServiceForm.name}
                 onChange={(e) => setCustomServiceForm({ ...customServiceForm, name: e.target.value })}
-                placeholder="e.g., Custom Treatment"
+                placeholder={t("web.provider.portal.newSaleDialog.customTreatmentPlaceholder")}
                 className="h-11"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="service_price">Price ({currencyCode}) *</Label>
+                <Label htmlFor="service_price">{t("web.provider.portal.newSaleDialog.priceWithCurrency", { currency: currencyCode })}</Label>
                 <Input
                   id="service_price"
                   type="number"
@@ -2262,31 +2263,31 @@ export function NewSaleDialog({
                   min="0"
                   value={customServiceForm.price}
                   onChange={(e) => setCustomServiceForm({ ...customServiceForm, price: e.target.value })}
-                  placeholder="0.00"
+                  placeholder={t("web.provider.portal.newSaleDialog.pricePlaceholder")}
                   className="h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="service_duration">Duration (min) *</Label>
+                <Label htmlFor="service_duration">{t("web.provider.portal.newSaleDialog.durationMinRequired")}</Label>
                 <Input
                   id="service_duration"
                   type="number"
                   min="1"
                   value={customServiceForm.duration_minutes}
                   onChange={(e) => setCustomServiceForm({ ...customServiceForm, duration_minutes: e.target.value })}
-                  placeholder="30"
+                  placeholder={t("web.provider.portal.newSaleDialog.durationPlaceholder")}
                   className="h-11"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="service_category">Category (Optional)</Label>
+              <Label htmlFor="service_category">{t("web.provider.portal.newSaleDialog.categoryOptional")}</Label>
               <Select
                 value={customServiceForm.category_id}
                 onValueChange={(value) => setCustomServiceForm({ ...customServiceForm, category_id: value })}
               >
                 <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder={t("web.provider.portal.newSaleDialog.selectCategory")} />
                 </SelectTrigger>
                 <SelectContent>
                   {serviceCategories.map((category) => (
@@ -2306,24 +2307,24 @@ export function NewSaleDialog({
                 }}
                 className="flex-1"
               >
-                Cancel
+                {t("web.provider.portal.newSaleDialog.cancel")}
               </Button>
               <Button
                 onClick={() => {
                   if (!customServiceForm.name.trim() || !customServiceForm.price) {
-                    toast.error("Service name and price are required");
+                    toast.error(t("web.provider.portal.newSaleDialog.serviceNameAndPriceRequired"));
                     return;
                   }
                   
                   const price = parseFloat(customServiceForm.price);
                   if (isNaN(price) || price <= 0) {
-                    toast.error("Please enter a valid price");
+                    toast.error(t("web.provider.portal.newSaleDialog.validPriceRequired"));
                     return;
                   }
                   
                   const duration = parseInt(customServiceForm.duration_minutes);
                   if (isNaN(duration) || duration <= 0) {
-                    toast.error("Please enter a valid duration");
+                    toast.error(t("web.provider.portal.newSaleDialog.validDurationRequired"));
                     return;
                   }
                   
@@ -2342,11 +2343,11 @@ export function NewSaleDialog({
                   setCart([...cart, customService]);
                   setShowCustomServiceDialog(false);
                   setCustomServiceForm({ name: "", price: "", duration_minutes: "30", category_id: "" });
-                  toast.success("Custom service added to cart");
+                  toast.success(t("web.provider.portal.newSaleDialog.customServiceAdded"));
                 }}
                 className="flex-1 bg-primary hover:bg-primary-hover"
               >
-                Add to Cart
+                {t("web.provider.portal.newSaleDialog.addToCart")}
               </Button>
             </div>
           </div>

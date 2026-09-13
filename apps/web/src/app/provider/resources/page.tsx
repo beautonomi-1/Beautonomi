@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Resource, ResourceGroup } from "@/lib/provider-portal/types";
@@ -29,6 +31,7 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 
 export default function ResourcesPage() {
   const { selectedLocationId } = useProviderPortal();
+  const { t } = useTranslation();
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceGroups, setResourceGroups] = useState<ResourceGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,7 +54,7 @@ export default function ResourcesPage() {
       setResourceGroups(groupsData);
     } catch (error) {
       console.error("Failed to load resources:", error);
-      toast.error("Failed to load resources");
+      toast.error(t("web.provider.resourcesPage.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -72,15 +75,15 @@ export default function ResourcesPage() {
   };
 
   const handleDeleteResource = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this resource?")) return;
+    if (!confirm(t("web.provider.resourcesPage.deleteConfirm"))) return;
 
     try {
       await providerApi.deleteResource(id);
-      toast.success("Resource deleted");
+      toast.success(t("web.provider.resourcesPage.deleted"));
       loadData();
     } catch (error) {
       console.error("Failed to delete resource:", error);
-      toast.error("Failed to delete resource");
+      toast.error(t("web.provider.resourcesPage.deleteFailed"));
     }
   };
 
@@ -95,15 +98,15 @@ export default function ResourcesPage() {
   };
 
   const handleDeleteGroup = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this resource group?")) return;
+    if (!confirm(t("web.provider.resourcesPage.deleteGroupConfirm"))) return;
 
     try {
       await providerApi.deleteResourceGroup(id);
-      toast.success("Resource group deleted");
+      toast.success(t("web.provider.resourcesPage.groupDeleted"));
       loadData();
     } catch (error) {
       console.error("Failed to delete resource group:", error);
-      toast.error("Failed to delete resource group");
+      toast.error(t("web.provider.resourcesPage.deleteGroupFailed"));
     }
   };
 
@@ -121,43 +124,43 @@ export default function ResourcesPage() {
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading resources..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.resourcesPage.loading")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Resources"
-        subtitle="Manage rooms, chairs, equipment, and resource groups"
+        title={t("web.provider.resourcesPage.title")}
+        subtitle={t("web.provider.resourcesPage.subtitle")}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="resources">
-            <Package className="w-4 h-4 mr-2" />
-            Resources
+            <Package className="w-4 h-4 me-2" />
+            {t("web.provider.resourcesPage.title")}
           </TabsTrigger>
           <TabsTrigger value="groups">
-            <Users className="w-4 h-4 mr-2" />
-            Resource Groups
+            <Users className="w-4 h-4 me-2" />
+            {t("web.provider.resourcesPage.resourceGroups")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="resources" className="mt-6">
           <div className="mb-4 flex justify-end">
             <Button onClick={handleCreateResource} className="bg-primary hover:bg-primary-hover">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Resource
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.resourcesPage.addResource")}
             </Button>
           </div>
 
           {resources.length === 0 ? (
             <SectionCard className="p-12">
               <EmptyState
-                title="No resources"
-                description="Add resources like rooms, chairs, or equipment"
+                title={t("web.provider.resourcesPage.emptyTitle")}
+                description={t("web.provider.resourcesPage.emptyDescription")}
                 action={{
-                  label: "Add Resource",
+                  label: t("web.provider.resourcesPage.addResource"),
                   onClick: handleCreateResource,
                 }}
               />
@@ -176,18 +179,18 @@ export default function ResourcesPage() {
                         )}
                       </div>
                       {resource.is_active ? (
-                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+    <Badge className="bg-green-100 text-green-800 shrink-0">{t("web.provider.common.active")}</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+    <Badge className="bg-gray-100 text-gray-800 shrink-0">{t("web.provider.common.inactive")}</Badge>
                       )}
                     </div>
 
                     <div className="flex flex-wrap gap-2 text-sm">
                       <Badge className={getTypeColor(resource.type)}>
-                        {resource.type}
+{t(`web.provider.resourcesPage.type${resource.type.charAt(0).toUpperCase()}${resource.type.slice(1)}`)}
                       </Badge>
                       {resource.capacity && (
-                        <span className="text-gray-600">Capacity: {resource.capacity}</span>
+<span className="text-gray-600">{t("web.provider.resourcesPage.capacity", { count: resource.capacity })}</span>
                       )}
                     </div>
 
@@ -198,8 +201,8 @@ export default function ResourcesPage() {
                         className="min-h-[44px] flex-1"
                         onClick={() => handleEditResource(resource)}
                       >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
+                        <Edit className="w-4 h-4 me-1" />
+                        {t("web.provider.common.edit")}
                       </Button>
                       <Button
                         variant="outline"
@@ -207,8 +210,8 @@ export default function ResourcesPage() {
                         className="min-h-[44px] text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteResource(resource.id)}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete
+                        <Trash2 className="w-4 h-4 me-1" />
+                        {t("web.provider.common.delete")}
                       </Button>
                     </div>
                   </div>
@@ -220,12 +223,12 @@ export default function ResourcesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Capacity</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t("web.provider.common.name")}</TableHead>
+                      <TableHead>{t("web.provider.common.type")}</TableHead>
+                      <TableHead>{t("web.provider.common.description")}</TableHead>
+                      <TableHead>{t("web.provider.resourcesPage.capacityCol")}</TableHead>
+                      <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -234,31 +237,31 @@ export default function ResourcesPage() {
                         <TableCell className="font-medium">{resource.name}</TableCell>
                         <TableCell>
                           <Badge className={getTypeColor(resource.type)}>
-                            {resource.type}
+    {t(`web.provider.resourcesPage.type${resource.type.charAt(0).toUpperCase()}${resource.type.slice(1)}`)}
                           </Badge>
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
-                          {resource.description || "-"}
+{resource.description || t("web.provider.common.hyphen")}
                         </TableCell>
                         <TableCell>
-                          {resource.capacity || "-"}
+{resource.capacity || t("web.provider.common.hyphen")}
                         </TableCell>
                         <TableCell>
                           {resource.is_active ? (
-                            <Badge className="bg-green-100 text-green-800">Active</Badge>
+<Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+<Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleEditResource(resource)}
                             >
-                              <Edit className="w-3 h-3 mr-1" />
-                              Edit
+                              <Edit className="w-3 h-3 me-1" />
+                              {t("web.provider.common.edit")}
                             </Button>
                             <Button
                               variant="outline"
@@ -266,8 +269,8 @@ export default function ResourcesPage() {
                               onClick={() => handleDeleteResource(resource.id)}
                               className="text-red-600 hover:text-red-700"
                             >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Delete
+                              <Trash2 className="w-3 h-3 me-1" />
+                              {t("web.provider.common.delete")}
                             </Button>
                           </div>
                         </TableCell>
@@ -283,18 +286,18 @@ export default function ResourcesPage() {
         <TabsContent value="groups" className="mt-6">
           <div className="mb-4 flex justify-end">
             <Button onClick={handleCreateGroup} className="bg-primary hover:bg-primary-hover">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Group
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.resourcesPage.addGroup")}
             </Button>
           </div>
 
           {resourceGroups.length === 0 ? (
             <SectionCard className="p-12">
               <EmptyState
-                title="No resource groups"
-                description="Create groups to organize related resources"
+                title={t("web.provider.resourcesPage.emptyGroupsTitle")}
+                description={t("web.provider.resourcesPage.emptyGroupsDescription")}
                 action={{
-                  label: "Add Group",
+                  label: t("web.provider.resourcesPage.addGroup"),
                   onClick: handleCreateGroup,
                 }}
               />
@@ -313,14 +316,14 @@ export default function ResourcesPage() {
                         )}
                       </div>
                       {group.is_active ? (
-                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+    <Badge className="bg-green-100 text-green-800 shrink-0">{t("web.provider.common.active")}</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+    <Badge className="bg-gray-100 text-gray-800 shrink-0">{t("web.provider.common.inactive")}</Badge>
                       )}
                     </div>
 
                     <p className="text-sm text-gray-600">
-                      {group.resource_ids.length} resources
+{t("web.provider.resourcesPage.resourcesCount", { count: group.resource_ids.length })}
                     </p>
 
                     <div className="flex items-center gap-2 pt-1">
@@ -330,8 +333,8 @@ export default function ResourcesPage() {
                         className="min-h-[44px] flex-1"
                         onClick={() => handleEditGroup(group)}
                       >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
+                        <Edit className="w-4 h-4 me-1" />
+                        {t("web.provider.common.edit")}
                       </Button>
                       <Button
                         variant="outline"
@@ -339,8 +342,8 @@ export default function ResourcesPage() {
                         className="min-h-[44px] text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteGroup(group.id)}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete
+                        <Trash2 className="w-4 h-4 me-1" />
+                        {t("web.provider.common.delete")}
                       </Button>
                     </div>
                   </div>
@@ -352,11 +355,11 @@ export default function ResourcesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Resources</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t("web.provider.common.name")}</TableHead>
+                      <TableHead>{t("web.provider.common.description")}</TableHead>
+                      <TableHead>{t("web.provider.resourcesPage.title")}</TableHead>
+                      <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -364,27 +367,27 @@ export default function ResourcesPage() {
                       <TableRow key={group.id}>
                         <TableCell className="font-medium">{group.name}</TableCell>
                         <TableCell className="max-w-xs truncate">
-                          {group.description || "-"}
+{group.description || t("web.provider.common.hyphen")}
                         </TableCell>
                         <TableCell>
-                          {group.resource_ids.length} resources
+    {t("web.provider.resourcesPage.resourcesCount", { count: group.resource_ids.length })}
                         </TableCell>
                         <TableCell>
                           {group.is_active ? (
-                            <Badge className="bg-green-100 text-green-800">Active</Badge>
+<Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+<Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleEditGroup(group)}
                             >
-                              <Edit className="w-3 h-3 mr-1" />
-                              Edit
+                              <Edit className="w-3 h-3 me-1" />
+                              {t("web.provider.common.edit")}
                             </Button>
                             <Button
                               variant="outline"
@@ -392,8 +395,8 @@ export default function ResourcesPage() {
                               onClick={() => handleDeleteGroup(group.id)}
                               className="text-red-600 hover:text-red-700"
                             >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Delete
+                              <Trash2 className="w-3 h-3 me-1" />
+                              {t("web.provider.common.delete")}
                             </Button>
                           </div>
                         </TableCell>
@@ -440,6 +443,7 @@ function ResourceDialog({
   locationId: string | null;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: "",
     type: "other" as Resource["type"],
@@ -481,19 +485,19 @@ function ResourceDialog({
     try {
       if (resource) {
         await providerApi.updateResource(resource.id, formData);
-        toast.success("Resource updated");
+toast.success(t("web.provider.resourcesPage.updated"));
       } else {
         await providerApi.createResource({
           ...formData,
           location_id: locationId || undefined,
         });
-        toast.success("Resource created");
+toast.success(t("web.provider.resourcesPage.created"));
       }
       onSuccess();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save resource:", error);
-      toast.error("Failed to save resource");
+toast.error(t("web.provider.resourcesPage.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -503,12 +507,12 @@ function ResourceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{resource ? "Edit Resource" : "New Resource"}</DialogTitle>
+<DialogTitle>{resource ? t("web.provider.resourcesPage.editTitle") : t("web.provider.resourcesPage.newTitle")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Resource Name *</Label>
+<Label htmlFor="name">{t("web.provider.resourcesPage.resourceName")}</Label>
             <Input
               id="name"
               value={formData.name}
@@ -518,7 +522,7 @@ function ResourceDialog({
           </div>
 
           <div>
-            <Label htmlFor="type">Type *</Label>
+<Label htmlFor="type">{t("web.provider.resourcesPage.typeRequired")}</Label>
             <Select
               value={formData.type}
               onValueChange={(value) =>
@@ -529,16 +533,16 @@ function ResourceDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="room">Room</SelectItem>
-                <SelectItem value="chair">Chair</SelectItem>
-                <SelectItem value="equipment">Equipment</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="room">{t("web.provider.resourcesPage.typeRoom")}</SelectItem>
+                <SelectItem value="chair">{t("web.provider.resourcesPage.typeChair")}</SelectItem>
+                <SelectItem value="equipment">{t("web.provider.resourcesPage.typeEquipment")}</SelectItem>
+                <SelectItem value="other">{t("web.provider.resourcesPage.typeOther")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+<Label htmlFor="description">{t("web.provider.common.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -549,7 +553,7 @@ function ResourceDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="capacity">Capacity</Label>
+<Label htmlFor="capacity">{t("web.provider.resourcesPage.capacityCol")}</Label>
               <Input
                 id="capacity"
                 type="number"
@@ -561,11 +565,11 @@ function ResourceDialog({
                     capacity: parseInt(e.target.value) || undefined,
                   })
                 }
-                placeholder="Optional"
+placeholder={t("web.provider.settings.pages.appointment-activity/online-booking.optional")}
               />
             </div>
             <div>
-              <Label htmlFor="color">Color (for calendar)</Label>
+<Label htmlFor="color">{t("web.provider.resourcesPage.colorForCalendar")}</Label>
               <Input
                 id="color"
                 type="color"
@@ -584,7 +588,7 @@ function ResourceDialog({
               }
             />
             <Label htmlFor="is_active" className="cursor-pointer">
-              Active
+              {t("web.provider.common.active")}
             </Label>
           </div>
 
@@ -595,14 +599,14 @@ function ResourceDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : resource ? "Update" : "Create"}
+{isLoading ? t("web.provider.common.saving") : resource ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </form>
@@ -625,6 +629,7 @@ function ResourceGroupDialog({
   resources: Resource[];
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -669,16 +674,16 @@ function ResourceGroupDialog({
     try {
       if (group) {
         await providerApi.updateResourceGroup(group.id, formData);
-        toast.success("Resource group updated");
+toast.success(t("web.provider.resourcesPage.groupUpdated"));
       } else {
         await providerApi.createResourceGroup(formData);
-        toast.success("Resource group created");
+toast.success(t("web.provider.resourcesPage.groupCreated"));
       }
       onSuccess();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save resource group:", error);
-      toast.error("Failed to save resource group");
+toast.error(t("web.provider.resourcesPage.saveGroupFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -688,12 +693,12 @@ function ResourceGroupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{group ? "Edit Resource Group" : "New Resource Group"}</DialogTitle>
+<DialogTitle>{group ? t("web.provider.resourcesPage.editGroupTitle") : t("web.provider.resourcesPage.newGroupTitle")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Group Name *</Label>
+<Label htmlFor="name">{t("web.provider.resourcesPage.groupName")}</Label>
             <Input
               id="name"
               value={formData.name}
@@ -703,7 +708,7 @@ function ResourceGroupDialog({
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+<Label htmlFor="description">{t("web.provider.common.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -713,10 +718,10 @@ function ResourceGroupDialog({
           </div>
 
           <div>
-            <Label>Resources</Label>
+<Label>{t("web.provider.resourcesPage.title")}</Label>
             <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
               {resources.length === 0 ? (
-                <p className="text-sm text-gray-500">No resources available</p>
+<p className="text-sm text-gray-500">{t("web.provider.resourcesPage.noResourcesAvailable")}</p>
               ) : (
                 <div className="space-y-2">
                   {resources.map((resource) => (
@@ -730,7 +735,7 @@ function ResourceGroupDialog({
                         htmlFor={`resource-${resource.id}`}
                         className="cursor-pointer flex-1"
                       >
-                        {resource.name} ({resource.type})
+{t("web.provider.resourcesPage.resourceWithType", { name: resource.name, type: t(`web.provider.resourcesPage.type${resource.type.charAt(0).toUpperCase()}${resource.type.slice(1)}`) })}
                       </Label>
                     </div>
                   ))}
@@ -748,7 +753,7 @@ function ResourceGroupDialog({
               }
             />
             <Label htmlFor="is_active" className="cursor-pointer">
-              Active
+              {t("web.provider.common.active")}
             </Label>
           </div>
 
@@ -759,14 +764,14 @@ function ResourceGroupDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : group ? "Update" : "Create"}
+{isLoading ? t("web.provider.common.saving") : group ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </form>

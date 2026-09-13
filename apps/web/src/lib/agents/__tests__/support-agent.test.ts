@@ -5,10 +5,6 @@ vi.mock("@/lib/supabase/admin", () => ({
     throw new Error("not needed in unit tests");
   }),
 }));
-vi.mock("@/lib/ai/gemini", () => ({
-  callGemini: vi.fn(async () => ({ text: "", tokensIn: 0, tokensOut: 0, success: false })),
-}));
-
 import {
   buildFallbackReplyDraft,
   classifySupportTicketHeuristically,

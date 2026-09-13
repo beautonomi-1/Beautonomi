@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -16,6 +18,7 @@ interface ResourceRequirementsPreviewProps {
 }
 
 export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirementsPreviewProps) {
+  const { t } = useTranslation();
   const [services, setServices] = useState<ServiceWithResources[]>([]);
 
   const key = useMemo(() => serviceIds.filter(Boolean).sort().join(","), [serviceIds]);
@@ -46,7 +49,7 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
   const requirements = services.flatMap((s) =>
     (s.resource_requirements ?? []).map((r) => ({
       serviceName: s.name,
-      resourceName: r.resource_name ?? "Resource",
+      resourceName: r.resource_name ?? t("web.provider.bookings.detail.leftoverCopy.resourceFallback"),
       quantity: r.quantity ?? 1,
     })),
   );
@@ -57,7 +60,7 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
     <BookingSectionCard className="border-amber-200 bg-amber-50/50">
       <BookingSectionLabel className="mb-2 flex items-center gap-2 text-amber-900">
         <AlertTriangle className="h-4 w-4" />
-        Resource requirements
+        {t("web.provider.bookings.detail.leftoverCopy.resourceRequirements")}
       </BookingSectionLabel>
       <ul className="space-y-1 text-sm text-amber-900">
         {requirements.map((r, i) => (
@@ -67,7 +70,7 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
           </li>
         ))}
       </ul>
-      <p className="text-xs text-amber-800 mt-2">Assign resources after booking if needed.</p>
+      <p className="text-xs text-amber-800 mt-2">{t("web.provider.bookings.detail.leftoverCopy.assignResourcesHint")}</p>
     </BookingSectionCard>
   );
 }

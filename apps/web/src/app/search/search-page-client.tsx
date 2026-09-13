@@ -8,6 +8,7 @@ import Footer from "@/components/layout/footer";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_SEARCH_VIEW } from "@/lib/analytics/amplitude/types";
 import type { Category } from "@/types/beautonomi";
+import { useTranslation } from "@beautonomi/i18n";
 
 function SearchPageInner({ initialCategories }: { initialCategories: Category[] }) {
   const { track, isReady } = useAmplitude();
@@ -32,11 +33,12 @@ export default function SearchPageClient({
 }: {
   initialCategories: Category[];
 }) {
+  const { t } = useTranslation();
   return (
     <Suspense
       fallback={
         <div className="min-h-screen bg-white pb-20 md:pb-0 flex items-center justify-center text-sm text-zinc-500">
-          Loading search…
+          {t("web.search.loading")}
         </div>
       }
     >

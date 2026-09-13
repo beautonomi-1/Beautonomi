@@ -6,6 +6,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 import { webPrivacyPolicyUrl, webPartnerEulaUrl } from "@/lib/legal-web";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type AdsCheckoutReview = {
   /** Accent badge label, e.g. "Time boost". */
@@ -43,6 +44,9 @@ export function AdsCheckoutReviewSheet({
 }) {
   const insets = useSafeAreaInsets();
   const useAppleIap = shouldUseAppleIap();
+  const { t } = useTranslation();
+  const ads = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.ads.${key}`, opts) as string;
 
   return (
     <BottomSheet
@@ -50,12 +54,8 @@ export function AdsCheckoutReviewSheet({
       onClose={() => {
         if (!submitting) onClose();
       }}
-      title="Review your boost"
-      subtitle={
-        useAppleIap
-          ? "Confirm the details below before completing your App Store purchase."
-          : "Confirm the details below before paying securely."
-      }
+      title={ads("reviewTitle")}
+      subtitle={useAppleIap ? ads("reviewSubtitleApple") : ads("reviewSubtitlePaystack")}
       snapHeight="full"
     >
       {review ? (
@@ -119,17 +119,16 @@ export function AdsCheckoutReviewSheet({
             <View style={twStyle("flex-row items-start gap-2 rounded-2xl bg-gray-50 p-3")}>
               <Ionicons name="megaphone-outline" size={16} color="#6b7280" />
               <Text style={twStyle("flex-1 text-xs leading-5 text-gray-500")}>
-                Your listing will appear as a <Text style={twStyle("font-semibold text-gray-700")}>Sponsored</Text> result in
-                eligible searches while the campaign is funded and active.
+                {ads("sponsoredBefore")}
+                <Text style={twStyle("font-semibold text-gray-700")}>{ads("sponsoredLabel")}</Text>
+                {ads("sponsoredAfter")}
               </Text>
             </View>
 
             <View style={twStyle("flex-row items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-3")}>
               <Ionicons name="shield-checkmark-outline" size={16} color="#047857" />
               <Text style={twStyle("flex-1 text-xs leading-5 text-emerald-800")}>
-                {useAppleIap
-                  ? "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before."
-                  : "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before."}
+                {useAppleIap ? ads("chargeNoteApple") : ads("chargeNotePaystack")}
               </Text>
             </View>
 
@@ -140,14 +139,14 @@ export function AdsCheckoutReviewSheet({
                   style={twStyle("text-xs font-semibold text-gray-600 underline")}
                   accessibilityRole="link"
                 >
-                  Terms of Use (EULA)
+                  {t("provider.mobile.screens.subscriptionSettings.termsOfUse") as string}
                 </Text>
                 <Text
                   onPress={() => void Linking.openURL(webPrivacyPolicyUrl())}
                   style={twStyle("text-xs font-semibold text-gray-600 underline")}
                   accessibilityRole="link"
                 >
-                  Privacy Policy
+                  {t("provider.mobile.screens.subscriptionSettings.privacyPolicy") as string}
                 </Text>
               </View>
             ) : null}
@@ -156,9 +155,9 @@ export function AdsCheckoutReviewSheet({
               label={
                 submitting
                   ? useAppleIap
-                    ? "Opening App Store purchase…"
-                    : "Opening secure checkout…"
-                  : (review.confirmLabel ?? (useAppleIap ? `Purchase ${review.total}` : `Pay ${review.total}`))
+                    ? ads("openingAppStore")
+                    : ads("openingCheckout")
+                  : (review.confirmLabel ?? (useAppleIap ? ads("purchaseAmount", { amount: review.total }) : ads("payAmount", { amount: review.total })))
               }
               onPress={onConfirm}
               loading={submitting}

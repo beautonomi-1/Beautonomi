@@ -21,6 +21,8 @@ import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/Address
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { shouldShowCancelledMembershipBadge } from "@beautonomi/utils";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ClientDefaultAddress {
   address_line1: string;
@@ -127,7 +129,24 @@ const STATUS_BG: Record<string, string> = {
   no_show: "bg-red-50",
 };
 
+const HISTORY_STATUS_KEYS: Record<string, string> = {
+  completed: "statusCompleted",
+  confirmed: "statusConfirmed",
+  booked: "statusBooked",
+  pending: "statusPending",
+  started: "statusStarted",
+  in_progress: "statusInProgress",
+  cancelled: "statusCancelled",
+  no_show: "statusNoShow",
+};
+
 export default function ClientDetailScreen() {
+  const { t } = useTranslation();
+  const cd = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.clientDetail.${key}`, opts) as string,
+    [t],
+  );
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const clientId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
@@ -137,7 +156,7 @@ export default function ClientDetailScreen() {
       ? bundle.meta.active_market_country.trim().toUpperCase()
       : "ZA";
   const defaultCountryName =
-    bundle?.meta?.tenant_region?.name?.trim() || "South Africa";
+    bundle?.meta?.tenant_region?.name?.trim() || cd("defaultCountryName");
 
   const [notesEditing, setNotesEditing] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
@@ -245,8 +264,8 @@ export default function ClientDetailScreen() {
     const p = homeParsed;
     if (!p?.address_line1?.trim() || !p?.city?.trim()) {
       Alert.alert(
-        "Address",
-        "Pick a search result so street and city are filled in — required for house-call distance.",
+        cd("addressTitle"),
+        cd("addressPickRequired"),
       );
       return;
     }
@@ -270,12 +289,12 @@ export default function ClientDetailScreen() {
     });
     setAddressSaving(false);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(cd("errorTitle"), err);
       return;
     }
     setAddressEditing(false);
     refresh();
-  }, [clientId, homeParsed, mapboxCountryIso, patchClient, refresh]);
+  }, [clientId, homeParsed, mapboxCountryIso, patchClient, refresh, cd]);
 
   const onRefresh = useCallback(() => {
     void refresh();
@@ -291,12 +310,12 @@ export default function ClientDetailScreen() {
       if (!clientId) return;
       const { error: err } = await patchClient(`/api/provider/clients/${clientId}`, { tags });
       if (err) {
-        Alert.alert("Error", err);
+        Alert.alert(cd("errorTitle"), err);
         return;
       }
       refresh();
     },
-    [clientId, patchClient, refresh]
+    [clientId, patchClient, refresh, cd]
   );
 
   const openNotesEdit = useCallback(() => {
@@ -313,12 +332,12 @@ export default function ClientDetailScreen() {
     });
     setNotesSaving(false);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(cd("errorTitle"), err);
       return;
     }
     setNotesEditing(false);
     refresh();
-  }, [clientId, notesDraft, patchClient, refresh]);
+  }, [clientId, notesDraft, patchClient, refresh, cd]);
 
   const openDetailsSheet = useCallback(() => {
     if (!client) return;
@@ -339,12 +358,12 @@ export default function ClientDetailScreen() {
     if (!clientId) return;
     const trimmedName = formFullName.trim();
     if (!trimmedName) {
-      Alert.alert("Name required", "Enter the client's name before saving.");
+      Alert.alert(cd("nameRequiredTitle"), cd("nameRequiredBody"));
       return;
     }
     const trimmedEmail = formEmail.trim();
     if (trimmedEmail && !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
-      Alert.alert("Invalid email", "Enter a valid email address or clear the field.");
+      Alert.alert(cd("invalidEmailTitle"), cd("invalidEmailBody"));
       return;
     }
     setDetailsSaving(true);
@@ -359,7 +378,7 @@ export default function ClientDetailScreen() {
     });
     setDetailsSaving(false);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(cd("errorTitle"), err);
       return;
     }
     setDetailsSheetOpen(false);
@@ -374,6 +393,7 @@ export default function ClientDetailScreen() {
     formSmsOptIn,
     patchClient,
     refresh,
+    cd,
   ]);
 
   const handleToggleFavorite = useCallback(async () => {
@@ -386,27 +406,27 @@ export default function ClientDetailScreen() {
     });
     setFavoriteSaving(false);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(cd("errorTitle"), err);
       return;
     }
     refresh();
-  }, [clientId, client, patchClient, refresh]);
+  }, [clientId, client, patchClient, refresh, cd]);
 
   const membershipSubscriptionId = client?.salon_membership?.subscription_id ?? null;
   const handleDeleteClient = useCallback(() => {
     if (!clientId) return;
     Alert.alert(
-      "Remove client?",
-      "This removes the client from your saved list. Past bookings and sales stay on record.",
+      cd("removeClientTitle"),
+      cd("removeClientBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cd("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: cd("remove"),
           style: "destructive",
           onPress: async () => {
             const { error: err } = await deleteClient(`/api/provider/clients/${clientId}`);
             if (err) {
-              Alert.alert("Could not remove client", err);
+              Alert.alert(cd("couldNotRemoveClient"), err);
               return;
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -415,29 +435,29 @@ export default function ClientDetailScreen() {
         },
       ],
     );
-  }, [clientId, deleteClient, goBackToClients]);
+  }, [clientId, deleteClient, goBackToClients, cd]);
 
   const sendMembershipWinBack = useCallback(async () => {
     if (!membershipSubscriptionId) return;
     Alert.alert(
-      "Send membership offer",
-      "We'll notify this client that they can rejoin your membership plan.",
+      cd("sendMembershipOfferTitle"),
+      cd("sendMembershipOfferBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cd("cancel"), style: "cancel" },
         {
-          text: "Send",
+          text: cd("send"),
           onPress: async () => {
             const { error: err } = await postWinBack(
               `/api/provider/membership-subscriptions/${membershipSubscriptionId}/win-back`,
               {},
             );
-            if (err) Alert.alert("Could not send", err);
-            else Alert.alert("Sent", "Membership reminder sent to the client.");
+            if (err) Alert.alert(cd("couldNotSend"), err);
+            else Alert.alert(cd("sentTitle"), cd("membershipReminderSent"));
           },
         },
       ],
     );
-  }, [membershipSubscriptionId, postWinBack]);
+  }, [membershipSubscriptionId, postWinBack, cd]);
 
   const dobLabel = useMemo(() => {
     if (!formDob) return "";
@@ -449,7 +469,7 @@ export default function ClientDetailScreen() {
   if (loading && !client) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Client" showBack onBack={goBackToClients} />
+        <ScreenHeader title={cd("title")} showBack onBack={goBackToClients} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -460,7 +480,7 @@ export default function ClientDetailScreen() {
   if (error && !client) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Client" showBack onBack={goBackToClients} />
+        <ScreenHeader title={cd("title")} showBack onBack={goBackToClients} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -471,16 +491,16 @@ export default function ClientDetailScreen() {
   if (!client) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Client" showBack onBack={goBackToClients} />
+        <ScreenHeader title={cd("title")} showBack onBack={goBackToClients} />
         <View style={twStyle("flex-1 items-center justify-center px-4")}>
-          <Text style={twStyle("text-base text-gray-500")}>Client not found</Text>
+          <Text style={twStyle("text-base text-gray-500")}>{cd("notFound")}</Text>
         </View>
       </ScreenContainer>
     );
   }
 
   const customer = client.customer ?? ({} as ClientCustomer);
-  const name = customer.full_name ?? "Client";
+  const name = customer.full_name ?? cd("title");
   const history = client.history ?? [];
   const clientTags = client.tags ?? [];
   const providerBookingAvg =
@@ -511,7 +531,7 @@ export default function ClientDetailScreen() {
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
-      <ScreenHeader title="Client" showBack onBack={goBackToClients} />
+      <ScreenHeader title={cd("title")} showBack onBack={goBackToClients} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -530,11 +550,11 @@ export default function ClientDetailScreen() {
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
             <View style={twStyle("flex-row items-center")}>
               <Avatar name={name} imageUrl={customer.avatar_url ?? undefined} size="lg" />
-              <View style={twStyle("ml-4 flex-1")}>
+              <View style={twStyle("ms-4 flex-1")}>
                 <View style={twStyle("flex-row items-center flex-wrap")}>
                   <Text style={twStyle("text-lg font-bold text-gray-900")}>{name}</Text>
                   {customer.identity_verified ? (
-                    <VerifiedBadge verified size="md" style={{ marginLeft: 8 }} />
+                    <VerifiedBadge verified size="md" style={{ marginStart: 8 }} />
                   ) : null}
                 </View>
                 {customer.phone ? (
@@ -553,7 +573,7 @@ export default function ClientDetailScreen() {
                       isFavorite ? "bg-amber-50" : "bg-gray-100"
                     }`,
                   )}
-                  accessibilityLabel={isFavorite ? "Remove from favorites" : "Mark as favorite"}
+                  accessibilityLabel={isFavorite ? cd("removeFromFavoritesA11y") : cd("markAsFavoriteA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons
@@ -566,20 +586,20 @@ export default function ClientDetailScreen() {
                   <TouchableOpacity
                     onPress={openDetailsSheet}
                     style={twStyle("flex-row items-center rounded-lg bg-gray-900 px-3 py-1.5")}
-                    accessibilityLabel="Edit client details"
+                    accessibilityLabel={cd("editDetailsA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name="pencil-outline" size={13} color="#ffffff" />
-                    <Text style={twStyle("ml-1 text-xs font-semibold text-white")}>Edit</Text>
+                    <Text style={twStyle("ms-1 text-xs font-semibold text-white")}>{cd("edit")}</Text>
                   </TouchableOpacity>
                 ) : (
                   <View
                     style={twStyle("flex-row items-center rounded-lg bg-gray-100 px-3 py-1.5")}
-                    accessibilityLabel="Customer-managed profile"
+                    accessibilityLabel={cd("customerManagedA11y")}
                   >
                     <Ionicons name="lock-closed-outline" size={13} color="#6b7280" />
-                    <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>
-                      Customer-managed
+                    <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")}>
+                      {cd("customerManaged")}
                     </Text>
                   </View>
                 )}
@@ -592,11 +612,11 @@ export default function ClientDetailScreen() {
                 disabled={deletingClient}
                 style={twStyle("flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3")}
                 accessibilityRole="button"
-                accessibilityLabel="Remove client from saved list"
+                accessibilityLabel={cd("removeFromListA11y")}
               >
                 <Ionicons name="trash-outline" size={16} color="#b91c1c" />
-                <Text style={twStyle("ml-2 text-sm font-semibold text-red-700")}>
-                  {deletingClient ? "Removing…" : "Remove from client list"}
+                <Text style={twStyle("ms-2 text-sm font-semibold text-red-700")}>
+                  {deletingClient ? cd("removing") : cd("removeFromClientList")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -605,9 +625,8 @@ export default function ClientDetailScreen() {
               <View style={twStyle("mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3")}>
                 <View style={twStyle("flex-row items-start")}>
                   <Ionicons name="shield-checkmark-outline" size={16} color="#1d4ed8" />
-                  <Text style={twStyle("ml-2 flex-1 text-xs leading-5 text-blue-800")}>
-                    Existing Beautonomi customer. Their platform profile stays customer-managed, but you can
-                    still message them, book appointments, sell products, and manage provider notes and tags.
+                  <Text style={twStyle("ms-2 flex-1 text-xs leading-5 text-blue-800")}>
+                    {cd("limitedPlatformLink")}
                   </Text>
                 </View>
               </View>
@@ -620,7 +639,7 @@ export default function ClientDetailScreen() {
                 {dob ? (
                   <View style={twStyle("flex-row items-center rounded-full bg-gray-100 px-2.5 py-1")}>
                     <Ionicons name="gift-outline" size={12} color="#6b7280" />
-                    <Text style={twStyle("ml-1 text-xs text-gray-600")}>
+                    <Text style={twStyle("ms-1 text-xs text-gray-600")}>
                       {(() => {
                         const d = new Date(dob);
                         return Number.isNaN(d.getTime())
@@ -633,13 +652,13 @@ export default function ClientDetailScreen() {
                 {!emailOptIn ? (
                   <View style={twStyle("flex-row items-center rounded-full bg-red-50 px-2.5 py-1")}>
                     <Ionicons name="mail-unread-outline" size={12} color="#dc2626" />
-                    <Text style={twStyle("ml-1 text-xs text-red-600")}>Email off</Text>
+                    <Text style={twStyle("ms-1 text-xs text-red-600")}>{cd("emailOff")}</Text>
                   </View>
                 ) : null}
                 {!smsOptIn ? (
                   <View style={twStyle("flex-row items-center rounded-full bg-red-50 px-2.5 py-1")}>
                     <Ionicons name="chatbubble-ellipses-outline" size={12} color="#dc2626" />
-                    <Text style={twStyle("ml-1 text-xs text-red-600")}>SMS off</Text>
+                    <Text style={twStyle("ms-1 text-xs text-red-600")}>{cd("smsOff")}</Text>
                   </View>
                 ) : null}
               </View>
@@ -648,21 +667,21 @@ export default function ClientDetailScreen() {
             {/* Stats row */}
             <View style={twStyle("mt-3 flex-row rounded-xl bg-gray-50 px-3 py-3")}>
               <View style={{ flex: 1 }}>
-                <Text style={twStyle("text-xs text-gray-400")}>Visits</Text>
+                <Text style={twStyle("text-xs text-gray-400")}>{cd("visits")}</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
                   {client.total_bookings}
                 </Text>
               </View>
               <View style={twStyle("h-10 w-px bg-gray-200")} />
-              <View style={{ flex: 1, paddingLeft: 12 }}>
-                <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
+              <View style={{ flex: 1, paddingStart: 12 }}>
+                <Text style={twStyle("text-xs text-gray-400")}>{cd("totalSpent")}</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")} numberOfLines={1} adjustsFontSizeToFit>
                   {formatCurrency(client.total_spent)}
                 </Text>
               </View>
               <View style={twStyle("h-10 w-px bg-gray-200")} />
-              <View style={{ flex: 1, paddingLeft: 12 }}>
-                <Text style={twStyle("text-xs text-gray-400")}>Rating</Text>
+              <View style={{ flex: 1, paddingStart: 12 }}>
+                <Text style={twStyle("text-xs text-gray-400")}>{cd("rating")}</Text>
                 {ratingStatsLoading ? (
                   <Text style={twStyle("text-base font-bold text-gray-400")}>…</Text>
                 ) : providerBookingAvg != null ? (
@@ -688,7 +707,7 @@ export default function ClientDetailScreen() {
                   <Text style={twStyle("text-base font-bold text-gray-400")}>—</Text>
                 )}
                 <Text style={twStyle("text-[10px] text-gray-400 mt-0.5")} numberOfLines={1}>
-                  {providerBookingAvg != null ? "Your ratings" : "Platform avg"}
+                  {providerBookingAvg != null ? cd("yourRatings") : cd("platformAvg")}
                 </Text>
               </View>
             </View>
@@ -696,18 +715,24 @@ export default function ClientDetailScreen() {
             {membership ? (
               <View style={twStyle("mt-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3")}>
                 <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-                  Membership
+                  {cd("membership")}
                 </Text>
                 <Text style={twStyle("mt-1 text-sm font-semibold text-gray-900")}>
-                  {membership.plan_name ?? "Plan"}
+                  {membership.plan_name ?? cd("planFallback")}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-600")}>
-                  Status: {membership.status}
-                  {membership.expires_at ? ` · ends ${formatDate(membership.expires_at)}` : ""}
+                  {cd("membershipStatus", {
+                    status: HISTORY_STATUS_KEYS[membership.status]
+                      ? cd(HISTORY_STATUS_KEYS[membership.status])
+                      : membership.status.replace(/_/g, " "),
+                  })}
+                  {membership.expires_at
+                    ? cd("membershipEnds", { date: formatDate(membership.expires_at) })
+                    : ""}
                 </Text>
                 {showCancelledMembershipBadge ? (
                   <ActionButton
-                    label={sendingWinBack ? "Sending…" : "Send membership offer"}
+                    label={sendingWinBack ? cd("sending") : cd("sendMembershipOffer")}
                     onPress={() => void sendMembershipWinBack()}
                     loading={sendingWinBack}
                     fullWidth
@@ -732,32 +757,32 @@ export default function ClientDetailScreen() {
               style={twStyle(
                 "mt-3 flex-row items-center justify-center rounded-xl bg-indigo-600 py-3",
               )}
-              accessibilityLabel="Book appointment for this client"
+              accessibilityLabel={cd("bookAppointmentA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="calendar-outline" size={18} color="#fff" />
-              <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>
-                Book appointment
+              <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>
+                {cd("bookAppointment")}
               </Text>
             </TouchableOpacity>
 
             {/* Tags */}
             <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
               <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                Tags
+                {cd("tags")}
               </Text>
               <ChipCombobox
                 value={clientTags}
                 onChange={handleTagsChange}
                 staticSuggestions={[
-                  { value: "VIP", label: "VIP" },
-                  { value: "Regular", label: "Regular" },
-                  { value: "New", label: "New" },
-                  { value: "At risk", label: "At risk" },
-                  { value: "Loyal", label: "Loyal" },
+                  { value: "VIP", label: cd("tagVip") },
+                  { value: "Regular", label: cd("tagRegular") },
+                  { value: "New", label: cd("tagNew") },
+                  { value: "At risk", label: cd("tagAtRisk") },
+                  { value: "Loyal", label: cd("tagLoyal") },
                 ]}
-                placeholder="Add tags (e.g. VIP, Regular)"
-                accessibilityLabel="Client tags"
+                placeholder={cd("tagsPlaceholder")}
+                accessibilityLabel={cd("tagsA11y")}
               />
             </View>
 
@@ -765,17 +790,17 @@ export default function ClientDetailScreen() {
             <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
               <View style={twStyle("flex-row items-center justify-between mb-1.5")}>
                 <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                  Private notes
+                  {cd("privateNotes")}
                 </Text>
                 {!notesEditing ? (
                   <TouchableOpacity
                     onPress={openNotesEdit}
                     style={twStyle("flex-row items-center rounded-lg bg-gray-100 px-2.5 py-1")}
-                    accessibilityLabel="Edit notes"
+                    accessibilityLabel={cd("editNotesA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name="pencil-outline" size={13} color="#6b7280" />
-                    <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>Edit</Text>
+                    <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")}>{cd("edit")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -785,7 +810,7 @@ export default function ClientDetailScreen() {
                   <TextInput
                     value={notesDraft}
                     onChangeText={setNotesDraft}
-                    placeholder="Add private notes about this client..."
+                    placeholder={cd("notesPlaceholder")}
                     placeholderTextColor="#9ca3af"
                     multiline
                     numberOfLines={4}
@@ -800,7 +825,7 @@ export default function ClientDetailScreen() {
                       minHeight: 96,
                       textAlignVertical: "top",
                     }}
-                    accessibilityLabel="Client notes"
+                    accessibilityLabel={cd("notesA11y")}
                   />
                   <View style={twStyle("mt-2 flex-row gap-2")}>
                     <TouchableOpacity
@@ -808,9 +833,9 @@ export default function ClientDetailScreen() {
                       style={[
                         twStyle("flex-1 items-center justify-center rounded-xl border border-gray-200 py-3"),
                       ]}
-                      accessibilityLabel="Cancel editing notes"
+                      accessibilityLabel={cd("cancelNotesA11y")}
                     >
-                      <Text style={twStyle("text-sm font-medium text-gray-600")}>Cancel</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-600")}>{cd("cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleSaveNotes}
@@ -819,10 +844,10 @@ export default function ClientDetailScreen() {
                         twStyle("flex-1 items-center justify-center rounded-xl bg-gray-900 py-3"),
                         notesSaving ? { opacity: 0.6 } : undefined,
                       ]}
-                      accessibilityLabel="Save notes"
+                      accessibilityLabel={cd("saveNotesA11y")}
                     >
                       <Text style={twStyle("text-sm font-semibold text-white")}>
-                        {notesSaving ? "Saving…" : "Save"}
+                        {notesSaving ? cd("saving") : cd("save")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -839,12 +864,12 @@ export default function ClientDetailScreen() {
                   style={twStyle(
                     "flex-row items-center rounded-xl border border-dashed border-gray-200 px-3 py-3"
                   )}
-                  accessibilityLabel="Add notes"
+                  accessibilityLabel={cd("addNotesA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="document-text-outline" size={16} color="#9ca3af" />
-                  <Text style={twStyle("ml-2 text-sm text-gray-400")}>
-                    Tap to add private notes…
+                  <Text style={twStyle("ms-2 text-sm text-gray-400")}>
+                    {cd("tapToAddNotes")}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -854,7 +879,7 @@ export default function ClientDetailScreen() {
             <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
               <View style={twStyle("flex-row items-center justify-between mb-1.5")}>
                 <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                  Home address
+                  {cd("homeAddress")}
                 </Text>
                 {!addressEditing && !homeAddressLocked ? (
                   <TouchableOpacity
@@ -863,11 +888,11 @@ export default function ClientDetailScreen() {
                       setAddressEditing(true);
                     }}
                     style={twStyle("flex-row items-center rounded-lg bg-gray-100 px-2.5 py-1")}
-                    accessibilityLabel="Edit home address"
+                    accessibilityLabel={cd("editHomeAddressA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name="pencil-outline" size={13} color="#6b7280" />
-                    <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>Edit</Text>
+                    <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")}>{cd("edit")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -878,8 +903,8 @@ export default function ClientDetailScreen() {
                     value={addressSearchValue}
                     countryCode={mapboxCountryIso}
                     defaultCountryName={defaultCountryName}
-                    label="Search address"
-                    placeholder="Start typing for suggestions…"
+                    label={cd("searchAddress")}
+                    placeholder={cd("searchAddressPlaceholder")}
                     onSelect={(p) => {
                       setHomeParsed(p);
                       setAddressSearchValue(p.full_address);
@@ -895,7 +920,7 @@ export default function ClientDetailScreen() {
                         "flex-1 items-center justify-center rounded-xl border border-gray-200 py-3",
                       )}
                     >
-                      <Text style={twStyle("text-sm font-medium text-gray-600")}>Cancel</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-600")}>{cd("cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleSaveAddress}
@@ -906,7 +931,7 @@ export default function ClientDetailScreen() {
                       ]}
                     >
                       <Text style={twStyle("text-sm font-semibold text-white")}>
-                        {addressSaving ? "Saving…" : "Save address"}
+                        {addressSaving ? cd("saving") : cd("saveAddress")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -920,7 +945,7 @@ export default function ClientDetailScreen() {
                   </Text>
                   {homeAddressLocked ? (
                     <Text style={twStyle("mt-2 text-xs text-gray-500 leading-relaxed")}>
-                      Saved by the customer in their account. Only they can change it.
+                      {cd("homeAddressCustomerLocked")}
                     </Text>
                   ) : null}
                 </View>
@@ -933,12 +958,12 @@ export default function ClientDetailScreen() {
                   style={twStyle(
                     "flex-row items-center rounded-xl border border-dashed border-gray-200 px-3 py-3",
                   )}
-                  accessibilityLabel="Set home address"
+                  accessibilityLabel={cd("setHomeAddressA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="location-outline" size={16} color="#9ca3af" />
-                  <Text style={twStyle("ml-2 text-sm text-gray-400")}>
-                    Tap to set home address (Mapbox) for house calls…
+                  <Text style={twStyle("ms-2 text-sm text-gray-400")}>
+                    {cd("tapToSetHomeAddress")}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -948,15 +973,15 @@ export default function ClientDetailScreen() {
           {/* ── Client history — bookings, group sessions, custom offers, product orders, sales ── */}
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
             <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-900")}>History</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>{cd("history")}</Text>
               <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
-                {history.length} {history.length === 1 ? "item" : "items"}
+                {cd("historyCount", { count: history.length })}
               </Text>
             </View>
             {history.length === 0 ? (
               <View style={twStyle("items-center justify-center py-12 px-4")}>
                 <Ionicons name="calendar-outline" size={40} color="#d1d5db" />
-                <Text style={twStyle("mt-3 text-sm font-medium text-gray-400")}>No history yet</Text>
+                <Text style={twStyle("mt-3 text-sm font-medium text-gray-400")}>{cd("noHistory")}</Text>
               </View>
             ) : (
               history.map((item) => {
@@ -1003,13 +1028,13 @@ export default function ClientDetailScreen() {
                         : "#6366f1";
 
                 const typeLabel = isGroup
-                  ? "Group"
+                  ? cd("typeGroup")
                   : isCustomOffer
-                    ? "Custom"
+                    ? cd("typeCustom")
                     : isProductOrder
-                      ? "Products"
+                      ? cd("typeProducts")
                       : isSale
-                        ? "Walk-in"
+                        ? cd("typeWalkIn")
                         : null;
 
                 return (
@@ -1028,7 +1053,7 @@ export default function ClientDetailScreen() {
                   >
                     <View
                       style={twStyle(
-                        `mr-3 h-10 w-10 items-center justify-center rounded-xl ${iconBg}`
+                        `me-3 h-10 w-10 items-center justify-center rounded-xl ${iconBg}`
                       )}
                     >
                       <Ionicons name={iconName as any} size={19} color={iconColor} />
@@ -1057,26 +1082,28 @@ export default function ClientDetailScreen() {
                         {item.status ? (
                           <View style={twStyle(`rounded-full px-2 py-0.5 ${statusBg}`)}>
                             <Text style={twStyle(`text-xs font-medium capitalize ${statusColor}`)}>
-                              {item.status.replace(/_/g, " ")}
+                              {HISTORY_STATUS_KEYS[item.status]
+                                ? cd(HISTORY_STATUS_KEYS[item.status])
+                                : item.status.replace(/_/g, " ")}
                             </Text>
                           </View>
                         ) : null}
                         {item.team_member_name ? (
                           <Text style={twStyle("text-xs text-gray-400")}>
-                            with {item.team_member_name}
+                            {cd("withStaff", { name: item.team_member_name })}
                           </Text>
                         ) : null}
                       </View>
                     </View>
-                    <View style={twStyle("items-end ml-2")}>
+                    <View style={twStyle("items-end ms-2")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {formatCurrency(item.amount)}
                       </Text>
                       {isNavigable ? (
-                        <Ionicons name="chevron-forward" size={14} color="#d1d5db" style={{ marginTop: 4 }} />
+                        <DirectionalIcon name="chevron-forward" size={14} color="#d1d5db" style={{ marginTop: 4 }} />
                       ) : (
                         <Text style={twStyle("text-xs text-gray-400 mt-1")}>
-                          {isSale ? "Walk-in" : "Order"}
+                          {isSale ? cd("typeWalkIn") : cd("orderLabel")}
                         </Text>
                       )}
                     </View>
@@ -1097,19 +1124,19 @@ export default function ClientDetailScreen() {
           setDetailsSheetOpen(false);
           setShowDobPicker(false);
         }}
-        title="Edit client details"
-        subtitle="These fields are saved on the customer's profile."
+        title={cd("editDetailsTitle")}
+        subtitle={cd("editDetailsSubtitle")}
         snapHeight="full"
       >
         <View style={twStyle("gap-4")}>
           <View>
             <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Full name
+              {cd("fullName")}
             </Text>
             <TextInput
               value={formFullName}
               onChangeText={setFormFullName}
-              placeholder="First Last"
+              placeholder={cd("fullNamePlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="words"
               style={{
@@ -1122,18 +1149,18 @@ export default function ClientDetailScreen() {
                 color: "#111827",
                 backgroundColor: "#fafafa",
               }}
-              accessibilityLabel="Client full name"
+              accessibilityLabel={cd("fullNameA11y")}
             />
           </View>
 
           <View>
             <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Email
+              {cd("email")}
             </Text>
             <TextInput
               value={formEmail}
               onChangeText={setFormEmail}
-              placeholder="client@example.com"
+              placeholder={cd("emailPlaceholder")}
               placeholderTextColor="#9ca3af"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -1148,18 +1175,18 @@ export default function ClientDetailScreen() {
                 color: "#111827",
                 backgroundColor: "#fafafa",
               }}
-              accessibilityLabel="Client email"
+              accessibilityLabel={cd("emailA11y")}
             />
           </View>
 
           <View>
             <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Phone
+              {cd("phone")}
             </Text>
             <TextInput
               value={formPhone}
               onChangeText={setFormPhone}
-              placeholder="+27 82 123 4567"
+              placeholder={cd("phonePlaceholder")}
               placeholderTextColor="#9ca3af"
               keyboardType="phone-pad"
               style={{
@@ -1172,13 +1199,13 @@ export default function ClientDetailScreen() {
                 color: "#111827",
                 backgroundColor: "#fafafa",
               }}
-              accessibilityLabel="Client phone"
+              accessibilityLabel={cd("phoneA11y")}
             />
           </View>
 
           <View>
             <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Date of birth
+              {cd("dateOfBirth")}
             </Text>
             <View style={twStyle("flex-row items-center gap-2")}>
               <TouchableOpacity
@@ -1187,16 +1214,16 @@ export default function ClientDetailScreen() {
                   twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 px-3.5 py-3"),
                   { backgroundColor: "#fafafa" },
                 ]}
-                accessibilityLabel="Pick date of birth"
+                accessibilityLabel={cd("pickDobA11y")}
                 accessibilityRole="button"
               >
                 <Ionicons name="calendar-outline" size={16} color="#6b7280" />
                 <Text
                   style={twStyle(
-                    `ml-2 text-sm ${formDob ? "text-gray-900" : "text-gray-400"}`,
+                    `ms-2 text-sm ${formDob ? "text-gray-900" : "text-gray-400"}`,
                   )}
                 >
-                  {dobLabel || "Select birthday"}
+                  {dobLabel || cd("selectBirthday")}
                 </Text>
               </TouchableOpacity>
               {formDob ? (
@@ -1206,7 +1233,7 @@ export default function ClientDetailScreen() {
                     setShowDobPicker(false);
                   }}
                   style={twStyle("rounded-xl border border-gray-200 px-3 py-3")}
-                  accessibilityLabel="Clear date of birth"
+                  accessibilityLabel={cd("clearDobA11y")}
                 >
                   <Ionicons name="close" size={16} color="#6b7280" />
                 </TouchableOpacity>
@@ -1230,13 +1257,13 @@ export default function ClientDetailScreen() {
 
           <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-3")}>
             <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Communication preferences
+              {cd("communicationPreferences")}
             </Text>
             <View style={twStyle("flex-row items-center justify-between py-1.5")}>
-              <View style={twStyle("flex-1 pr-3")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>Email marketing</Text>
+              <View style={twStyle("flex-1 pe-3")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>{cd("emailMarketing")}</Text>
                 <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
-                  Promotions, reminders and receipts.
+                  {cd("emailMarketingHint")}
                 </Text>
               </View>
               <Switch
@@ -1247,14 +1274,14 @@ export default function ClientDetailScreen() {
                 }}
                 trackColor={{ false: "#e5e7eb", true: "#1f2937" }}
                 thumbColor="#ffffff"
-                accessibilityLabel="Email marketing toggle"
+                accessibilityLabel={cd("emailMarketingA11y")}
               />
             </View>
             <View style={twStyle("flex-row items-center justify-between py-1.5")}>
-              <View style={twStyle("flex-1 pr-3")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>SMS messages</Text>
+              <View style={twStyle("flex-1 pe-3")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>{cd("smsMessages")}</Text>
                 <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
-                  Booking confirmations and reminders.
+                  {cd("smsMessagesHint")}
                 </Text>
               </View>
               <Switch
@@ -1265,7 +1292,7 @@ export default function ClientDetailScreen() {
                 }}
                 trackColor={{ false: "#e5e7eb", true: "#1f2937" }}
                 thumbColor="#ffffff"
-                accessibilityLabel="SMS messages toggle"
+                accessibilityLabel={cd("smsMessagesA11y")}
               />
             </View>
           </View>
@@ -1279,9 +1306,9 @@ export default function ClientDetailScreen() {
               style={twStyle(
                 "flex-1 items-center justify-center rounded-xl border border-gray-200 py-3",
               )}
-              accessibilityLabel="Cancel client edit"
+              accessibilityLabel={cd("cancelEditA11y")}
             >
-              <Text style={twStyle("text-sm font-medium text-gray-600")}>Cancel</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-600")}>{cd("cancel")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSaveDetails}
@@ -1290,10 +1317,10 @@ export default function ClientDetailScreen() {
                 twStyle("flex-1 items-center justify-center rounded-xl bg-gray-900 py-3"),
                 detailsSaving ? { opacity: 0.6 } : undefined,
               ]}
-              accessibilityLabel="Save client details"
+              accessibilityLabel={cd("saveDetailsA11y")}
             >
               <Text style={twStyle("text-sm font-semibold text-white")}>
-                {detailsSaving ? "Saving…" : "Save changes"}
+                {detailsSaving ? cd("saving") : cd("saveChanges")}
               </Text>
             </TouchableOpacity>
           </View>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -24,6 +26,7 @@ import ClientSelector from "./components/ClientSelector";
 import SegmentBuilder from "./components/SegmentBuilder";
 import CampaignPreview from "./components/CampaignPreview";
 import { CAMPAIGN_MERGE_TAGS } from "@/lib/marketing/merge-tags";
+import { formatCurrency } from "@/lib/utils";
 
 interface Campaign {
   id: string;
@@ -54,6 +57,7 @@ interface Campaign {
 }
 
 export default function MarketingCampaignsPage() {
+  const { t } = useTranslation();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -136,15 +140,15 @@ export default function MarketingCampaignsPage() {
 
   const handleSendTest = async () => {
     if (!formData.content.trim()) {
-      toast.error("Add message content before sending a test");
+      toast.error(t("web.provider.marketingCampaigns.addContentBeforeTest"));
       return;
     }
     if (formData.type === "email" && !formData.subject.trim()) {
-      toast.error("Email tests require a subject");
+      toast.error(t("web.provider.marketingCampaigns.emailTestRequiresSubject"));
       return;
     }
     if (!testRecipient.trim()) {
-      toast.error(formData.type === "email" ? "Enter a test email address" : "Enter a test phone number");
+      toast.error(formData.type === "email" ? t("web.provider.marketingCampaigns.enterTestEmail") : t("web.provider.marketingCampaigns.enterTestPhone"));
       return;
     }
     try {
@@ -155,10 +159,10 @@ export default function MarketingCampaignsPage() {
         content: formData.content,
         to: testRecipient.trim(),
       });
-      toast.success(`Test ${formData.type} sent to ${testRecipient.trim()}`);
+      toast.success(t("web.provider.marketingCampaigns.testSent", { type: t(`web.provider.marketingCampaigns.${formData.type}`), to: testRecipient.trim() }));
       void loadCreditBalance();
     } catch (error) {
-      toastPlanGateError(error, "Failed to send test message");
+      toastPlanGateError(error, t("web.provider.marketingCampaigns.testFailed"));
     } finally {
       setIsSendingTest(false);
     }
@@ -213,7 +217,7 @@ export default function MarketingCampaignsPage() {
       const data = await providerApi.listCampaigns();
       setCampaigns((data || []) as any as Campaign[]);
     } catch (error) {
-      const message = error instanceof FetchError ? error.message : "Failed to load campaigns";
+      const message = error instanceof FetchError ? error.message : t("web.provider.marketingCampaigns.loadFailed");
       toastPlanGateError(error, message);
     } finally {
       setIsLoading(false);
@@ -253,24 +257,24 @@ export default function MarketingCampaignsPage() {
   const handleSave = async () => {
     try {
       if (!formData.name || !formData.content) {
-        toast.error("Please fill in all required fields");
+        toast.error(t("web.provider.marketingCampaigns.requiredFields"));
         return;
       }
 
       if (formData.type === "email" && !formData.subject) {
-        toast.error("Email campaigns require a subject");
+        toast.error(t("web.provider.marketingCampaigns.emailRequiresSubject"));
         return;
       }
 
       if (formData.recipient_type === "custom" && formData.recipient_ids.length === 0) {
-        toast.error("Please select at least one client for custom recipient list");
+        toast.error(t("web.provider.marketingCampaigns.selectAtLeastOneClient"));
         return;
       }
 
       if (formData.recipient_type === "segment") {
         const hasCriteria = Object.keys(formData.segment_criteria || {}).length > 0;
         if (!hasCriteria) {
-          toast.error("Please set at least one segmentation criteria");
+          toast.error(t("web.provider.marketingCampaigns.setSegmentation"));
           return;
         }
       }
@@ -300,16 +304,16 @@ export default function MarketingCampaignsPage() {
 
       if (selectedCampaign) {
         await providerApi.updateCampaign(selectedCampaign.id, payload);
-        toast.success("Campaign updated successfully");
+        toast.success(t("web.provider.marketingCampaigns.updated"));
       } else {
         await providerApi.createCampaign(payload);
-        toast.success("Campaign created successfully");
+        toast.success(t("web.provider.marketingCampaigns.created"));
       }
 
       setIsDialogOpen(false);
       loadCampaigns();
     } catch (error) {
-      toastPlanGateError(error, "Failed to save campaign");
+      toastPlanGateError(error, t("web.provider.marketingCampaigns.saveFailed"));
     }
   };
 
@@ -329,8 +333,8 @@ export default function MarketingCampaignsPage() {
         const est = res.data;
         if (est?.debited_on_platform_path && est.estimated_cost_zar > 0) {
           const ok = window.confirm(
-            `Estimated cost: R${est.estimated_cost_zar.toFixed(2)} for ${campaign.total_recipients} recipients.` +
-              (est.sufficient ? " Proceed?" : " Insufficient credits — top up first."),
+            t("web.provider.marketingCampaigns.estimatedCost", { amount: est.estimated_cost_zar.toFixed(2), count: campaign.total_recipients }) +
+              (est.sufficient ? t("web.provider.marketingCampaigns.proceed") : t("web.provider.marketingCampaigns.insufficientCredits")),
           );
           if (!ok || !est.sufficient) return;
         }
@@ -341,23 +345,23 @@ export default function MarketingCampaignsPage() {
 
     try {
       await providerApi.sendCampaign(campaignId);
-      toast.success("Campaign sent successfully");
+      toast.success(t("web.provider.marketingCampaigns.sent"));
       loadCampaigns();
       void loadCreditBalance();
     } catch (error) {
-      toastPlanGateError(error, "Failed to send campaign");
+      toastPlanGateError(error, t("web.provider.marketingCampaigns.sendFailed"));
     }
   };
 
   const handleDelete = async (campaignId: string) => {
-    if (!confirm("Are you sure you want to delete this campaign?")) return;
+    if (!confirm(t("web.provider.marketingCampaigns.deleteConfirm"))) return;
 
     try {
       await providerApi.deleteCampaign(campaignId);
-      toast.success("Campaign deleted successfully");
+      toast.success(t("web.provider.marketingCampaigns.deleted"));
       loadCampaigns();
     } catch (error) {
-      const errorMessage = error instanceof FetchError ? error.message : "Failed to delete campaign";
+      const errorMessage = error instanceof FetchError ? error.message : t("web.provider.marketingCampaigns.deleteFailed");
       toast.error(errorMessage);
     }
   };
@@ -373,7 +377,7 @@ export default function MarketingCampaignsPage() {
 
     return (
       <Badge variant={variants[status] || "outline"}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+{t(`web.provider.marketingCampaigns.status${status.charAt(0).toUpperCase()}${status.slice(1)}`)}
       </Badge>
     );
   };
@@ -388,8 +392,8 @@ export default function MarketingCampaignsPage() {
   if (isLoading) {
     return (
       <div>
-        <PageHeader title="Marketing Campaigns" subtitle="Create and manage email and SMS campaigns" />
-        <LoadingTimeout loadingMessage="Loading campaigns..." />
+        <PageHeader title={t("web.provider.marketingCampaigns.title")} subtitle={t("web.provider.marketingCampaigns.subtitleShort")} />
+        <LoadingTimeout loadingMessage={t("web.provider.marketingCampaigns.loading")} />
       </div>
     );
   }
@@ -397,71 +401,71 @@ export default function MarketingCampaignsPage() {
   return (
     <div>
       <PageHeader
-        title="Marketing Campaigns"
-        subtitle="Create and manage email, SMS, and WhatsApp campaigns to engage with your clients"
+        title={t("web.provider.marketingCampaigns.title")}
+        subtitle={t("web.provider.marketingCampaigns.subtitle")}
       />
 
       {creditBalance != null && (
         <SectionCard className="mb-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-700">
             <span>
-              <strong>Marketing credit:</strong> R{creditBalance.toFixed(2)} remaining
+<strong>{t("web.provider.marketingCampaigns.marketingCredit")}</strong> {t("web.provider.marketingCampaigns.remaining", { amount: creditBalance.toFixed(2) })}
             </span>
             {creditSummary && (
               <>
                 <span className="text-gray-500">
-                  Spent this period: <strong className="text-gray-700">R{creditSummary.spent.toFixed(2)}</strong>
+{t("web.provider.marketingCampaigns.spentThisPeriod")} <strong className="text-gray-700">{formatCurrency(creditSummary.spent, "ZAR")}</strong>
                 </span>
                 <span className="text-gray-500">
-                  Topped up: <strong className="text-gray-700">R{creditSummary.topped_up.toFixed(2)}</strong>
+{t("web.provider.marketingCampaigns.toppedUp")} <strong className="text-gray-700">{formatCurrency(creditSummary.topped_up, "ZAR")}</strong>
                 </span>
                 {creditSummary.refunded > 0 && (
                   <span className="text-gray-500">
-                    Refunded: <strong className="text-gray-700">R{creditSummary.refunded.toFixed(2)}</strong>
+{t("web.provider.marketingCampaigns.refunded")} <strong className="text-gray-700">{formatCurrency(creditSummary.refunded, "ZAR")}</strong>
                   </span>
                 )}
               </>
             )}
             <a href="/provider/settings/marketing-integrations" className="text-primary underline">
-              Top up
+              {t("web.provider.marketingCampaigns.topUp")}
             </a>
           </div>
           <p className="mt-1 text-xs text-gray-500">
-            Credits apply only when sending on Beautonomi platform credentials (not when using your own Twilio/SendGrid).
+{t("web.provider.marketingCampaigns.creditsHint")}
           </p>
         </SectionCard>
       )}
 
       <div className="mb-6 flex justify-end">
         <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Campaign
+          <Plus className="w-4 h-4 me-2" />
+          {t("web.provider.marketingCampaigns.createCampaign")}
         </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "email" | "sms" | "whatsapp")}>
         <TabsList>
           <TabsTrigger value="email">
-            <Mail className="w-4 h-4 mr-2" />
-            Email Campaigns
+            <Mail className="w-4 h-4 me-2" />
+            {t("web.provider.marketingCampaigns.emailCampaigns")}
           </TabsTrigger>
           <TabsTrigger value="sms">
-            <MessageSquare className="w-4 h-4 mr-2" />
-            SMS Campaigns
+            <MessageSquare className="w-4 h-4 me-2" />
+            {t("web.provider.marketingCampaigns.smsCampaigns")}
           </TabsTrigger>
           <TabsTrigger value="whatsapp">
-            <MessageCircle className="w-4 h-4 mr-2" />
-            WhatsApp Campaigns
+            <MessageCircle className="w-4 h-4 me-2" />
+            {t("web.provider.marketingCampaigns.whatsappCampaigns")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-6">
           {filteredCampaigns.length === 0 ? (
             <EmptyState
-              title={`No ${activeTab.toUpperCase()} campaigns yet`}
-              description="Create your first campaign to start engaging with your clients"
+              title={t("web.provider.marketingCampaigns.emptyTitle", { channel: t(`web.provider.marketingCampaigns.${activeTab}`) })}
+              description={t("web.provider.marketingCampaigns.emptyDescription")}
               action={{
-                label: "Create Campaign",
+                label: t("web.provider.marketingCampaigns.createCampaign"),
                 onClick: handleCreate,
               }}
             />
@@ -470,13 +474,13 @@ export default function MarketingCampaignsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Recipients</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Sent</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("web.provider.common.name")}</TableHead>
+                    <TableHead>{t("web.provider.common.type")}</TableHead>
+                    <TableHead>{t("web.provider.marketingCampaigns.recipients")}</TableHead>
+                    <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                    <TableHead>{t("web.provider.marketingCampaigns.sentCol")}</TableHead>
+                    <TableHead>{t("web.provider.marketingCampaigns.createdCol")}</TableHead>
+                    <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -497,11 +501,11 @@ export default function MarketingCampaignsPage() {
                           <Users className="w-4 h-4 text-gray-400" />
                           {campaign.sent_count > 0 || (campaign.failed_count ?? 0) > 0 ? (
                             <span className="flex items-center gap-2">
-                              <span className="text-emerald-700">{campaign.sent_count} sent</span>
+<span className="text-emerald-700">{t("web.provider.marketingCampaigns.sentCount", { count: campaign.sent_count })}</span>
                               {(campaign.failed_count ?? 0) > 0 && (
-                                <span className="text-red-600">{campaign.failed_count} failed</span>
+<span className="text-red-600">{t("web.provider.marketingCampaigns.failedCount", { count: campaign.failed_count })}</span>
                               )}
-                              <span className="text-gray-400">of {campaign.total_recipients}</span>
+<span className="text-gray-400">{t("web.provider.marketingCampaigns.ofTotal", { count: campaign.total_recipients })}</span>
                             </span>
                           ) : (
                             campaign.total_recipients
@@ -514,10 +518,10 @@ export default function MarketingCampaignsPage() {
                           ? format(new Date(campaign.sent_at), "MMM d, yyyy")
                           : campaign.scheduled_at
                           ? format(new Date(campaign.scheduled_at), "MMM d, yyyy")
-                          : "-"}
+: t("web.provider.common.hyphen")}
                       </TableCell>
                       <TableCell>{format(new Date(campaign.created_at), "MMM d, yyyy")}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <div className="flex items-center justify-end gap-2">
                           {(campaign.status === "draft" || campaign.status === "scheduled") && (
                             <Button
@@ -533,7 +537,7 @@ export default function MarketingCampaignsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleSend(campaign.id)}
-                              title={campaign.status === "scheduled" ? "Send now" : "Send"}
+title={campaign.status === "scheduled" ? t("web.provider.marketingCampaigns.sendNow") : t("web.provider.marketingCampaigns.send")}
                             >
                               <Send className="w-4 h-4" />
                             </Button>
@@ -563,7 +567,7 @@ export default function MarketingCampaignsPage() {
         <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedCampaign ? "Edit Campaign" : "Create Campaign"}
+{selectedCampaign ? t("web.provider.marketingCampaigns.editCampaign") : t("web.provider.marketingCampaigns.createCampaign")}
             </DialogTitle>
           </DialogHeader>
 
@@ -571,17 +575,17 @@ export default function MarketingCampaignsPage() {
             {/* Editor column */}
             <div className="space-y-4">
             <div>
-              <Label htmlFor="name">Campaign Name *</Label>
+<Label htmlFor="name">{t("web.provider.marketingCampaigns.campaignName")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Summer Promotion 2025"
+placeholder={t("web.provider.marketingCampaigns.campaignNamePlaceholder")}
               />
             </div>
 
             <div>
-              <Label htmlFor="type">Campaign Type *</Label>
+<Label htmlFor="type">{t("web.provider.marketingCampaigns.campaignType")}</Label>
               <Select
                 value={formData.type}
                 onValueChange={(value) => setFormData({ ...formData, type: value as "email" | "sms" | "whatsapp" })}
@@ -590,9 +594,9 @@ export default function MarketingCampaignsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">{t("web.provider.marketingCampaigns.email")}</SelectItem>
+                  <SelectItem value="sms">{t("web.provider.marketingCampaigns.sms")}</SelectItem>
+                  <SelectItem value="whatsapp">{t("web.provider.marketingCampaigns.whatsapp")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -601,39 +605,41 @@ export default function MarketingCampaignsPage() {
               <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  WhatsApp policy: free-form messages reliably reach clients who messaged you in
-                  the last 24 hours. For cold outreach, WhatsApp requires a pre-approved template.
-                  Keep promotional content concise and compliant.
+{t("web.provider.marketingCampaigns.whatsappPolicy")}
                 </span>
               </div>
             )}
 
             {formData.type === "email" && (
               <div>
-                <Label htmlFor="subject">Subject *</Label>
+<Label htmlFor="subject">{t("web.provider.marketingCampaigns.subject")}</Label>
                 <Input
                   id="subject"
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  placeholder="Special Offer: 20% Off All Services"
+placeholder={t("web.provider.marketingCampaigns.subjectPlaceholder")}
                 />
               </div>
             )}
 
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label htmlFor="content">Message Content *</Label>
+<Label htmlFor="content">{t("web.provider.marketingCampaigns.messageContent")}</Label>
                 <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-xs text-gray-400">Insert:</span>
-                  {CAMPAIGN_MERGE_TAGS.map((t) => (
+                  <span className="text-xs text-gray-400">{t("web.provider.marketingCampaigns.insert")}</span>
+                  {CAMPAIGN_MERGE_TAGS.map((tagDef) => (
                     <button
-                      key={t.tag}
+                      key={tagDef.tag}
                       type="button"
-                      onClick={() => insertMergeTag(t.tag)}
+                      onClick={() => insertMergeTag(tagDef.tag)}
                       className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100"
-                      title={`Inserts ${t.tag}`}
+                      title={t("web.provider.marketingCampaigns.insertTag", { tag: tagDef.tag })}
                     >
-                      {t.label}
+                      {tagDef.tag === "{{customer_name}}"
+                        ? t("web.provider.marketingCampaigns.mergeCustomerName")
+                        : tagDef.tag === "{{first_name}}"
+                          ? t("web.provider.marketingCampaigns.mergeFirstName")
+                          : t("web.provider.marketingCampaigns.mergeBusinessName")}
                     </button>
                   ))}
                 </div>
@@ -645,10 +651,10 @@ export default function MarketingCampaignsPage() {
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                 placeholder={
                   formData.type === "email" 
-                    ? "Enter your email content here..." 
+                    ? t("web.provider.marketingCampaigns.emailPlaceholder") 
                     : formData.type === "whatsapp"
-                    ? "Enter your WhatsApp message here..."
-                    : "Enter your SMS message here..."
+                    ? t("web.provider.marketingCampaigns.whatsappPlaceholder")
+                    : t("web.provider.marketingCampaigns.smsPlaceholder")
                 }
                 rows={formData.type === "email" ? 10 : 5}
                 maxLength={formData.type === "sms" || formData.type === "whatsapp" ? 160 : undefined}
@@ -656,16 +662,16 @@ export default function MarketingCampaignsPage() {
               />
               {(formData.type === "sms" || formData.type === "whatsapp") && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {formData.content.length}/160 characters
+{t("web.provider.marketingCampaigns.characterCount", { count: formData.content.length })}
                 </p>
               )}
               <p className="mt-1 text-xs text-gray-400">
-                Personalization tags resolve per-recipient when sent (sample data shown in preview).
+{t("web.provider.marketingCampaigns.personalizationHint")}
               </p>
             </div>
 
             <div>
-              <Label htmlFor="recipient_type">Recipients *</Label>
+<Label htmlFor="recipient_type">{t("web.provider.marketingCampaigns.recipientsRequired")}</Label>
               <Select
                 value={formData.recipient_type}
                 onValueChange={(value) => {
@@ -683,9 +689,9 @@ export default function MarketingCampaignsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all_clients">All Clients</SelectItem>
-                  <SelectItem value="segment">Segment</SelectItem>
-                  <SelectItem value="custom">Custom List</SelectItem>
+                  <SelectItem value="all_clients">{t("web.provider.marketingCampaigns.allClients")}</SelectItem>
+                  <SelectItem value="segment">{t("web.provider.marketingCampaigns.segment")}</SelectItem>
+                  <SelectItem value="custom">{t("web.provider.marketingCampaigns.customList")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -716,21 +722,20 @@ export default function MarketingCampaignsPage() {
                     : "border-red-200 bg-red-50 text-red-900"
                 }`}
               >
-                Estimated platform cost:{" "}
-                <strong>R{costEstimate.estimated_cost_zar.toFixed(2)}</strong> for{" "}
-                {costEstimate.recipients} recipient{costEstimate.recipients === 1 ? "" : "s"}.
-                {!costEstimate.sufficient && " Insufficient credits — top up before sending."}
+{t("web.provider.marketingCampaigns.estimatedPlatformCost")}{" "}
+                <strong>{formatCurrency(costEstimate.estimated_cost_zar, "ZAR")}</strong> {t("web.provider.marketingCampaigns.forRecipients", { count: costEstimate.recipients })}
+                {!costEstimate.sufficient && t("web.provider.marketingCampaigns.insufficientTopUp")}
               </div>
             )}
 
             {isDialogOpen && estimateRecipientCount() === 0 && formData.recipient_type !== "custom" && (
               <p className="text-xs text-gray-500">
-                Save the campaign to compute recipient count and platform cost estimate for all clients or segments.
+{t("web.provider.marketingCampaigns.saveToEstimate")}
               </p>
             )}
 
             <div>
-              <Label htmlFor="scheduled_at">Schedule (Optional)</Label>
+<Label htmlFor="scheduled_at">{t("web.provider.marketingCampaigns.scheduleOptional")}</Label>
               <Input
                 id="scheduled_at"
                 type="datetime-local"
@@ -738,14 +743,14 @@ export default function MarketingCampaignsPage() {
                 onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
               />
               <p className="text-sm text-gray-500 mt-1">
-                Leave empty to send now. Scheduled campaigns are dispatched automatically at the chosen time.
+{t("web.provider.marketingCampaigns.scheduleHint")}
               </p>
             </div>
             </div>
 
             {/* Preview column */}
             <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
-              <Label className="text-xs uppercase tracking-wide text-gray-400">Live preview</Label>
+<Label className="text-xs uppercase tracking-wide text-gray-400">{t("web.provider.marketingCampaigns.livePreview")}</Label>
               <CampaignPreview
                 type={formData.type}
                 subject={formData.subject}
@@ -755,14 +760,14 @@ export default function MarketingCampaignsPage() {
 
               <div className="rounded-lg border border-gray-200 p-3">
                 <Label htmlFor="test_recipient" className="text-sm">
-                  Send a test
+                  {t("web.provider.marketingCampaigns.sendATest")}
                 </Label>
                 <div className="mt-1 flex gap-2">
                   <Input
                     id="test_recipient"
                     value={testRecipient}
                     onChange={(e) => setTestRecipient(e.target.value)}
-                    placeholder={formData.type === "email" ? "you@example.com" : "+27..."}
+placeholder={formData.type === "email" ? t("web.provider.marketingCampaigns.testEmailPlaceholder") : t("web.provider.marketingCampaigns.testPhonePlaceholder")}
                     type={formData.type === "email" ? "email" : "tel"}
                   />
                   <Button
@@ -770,11 +775,11 @@ export default function MarketingCampaignsPage() {
                     onClick={handleSendTest}
                     disabled={isSendingTest}
                   >
-                    {isSendingTest ? "Sending..." : "Test"}
+{isSendingTest ? t("web.provider.marketingCampaigns.sending") : t("web.provider.marketingCampaigns.test")}
                   </Button>
                 </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  Sends one message to verify deliverability and formatting before the full blast.
+{t("web.provider.marketingCampaigns.testHint")}
                 </p>
               </div>
             </div>
@@ -782,10 +787,10 @@ export default function MarketingCampaignsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button onClick={handleSave} className="bg-primary hover:bg-primary-hover">
-              {selectedCampaign ? "Update" : "Create"} Campaign
+{selectedCampaign ? t("web.provider.marketingCampaigns.updateCampaign") : t("web.provider.marketingCampaigns.createCampaignCta")}
             </Button>
           </DialogFooter>
         </DialogContent>

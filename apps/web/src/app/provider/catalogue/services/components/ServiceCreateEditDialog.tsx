@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -61,6 +63,7 @@ export function ServiceCreateEditDialog({
   onSave,
   onCategoriesChange,
 }: ServiceCreateEditDialogProps) {
+  const { t } = useTranslation();
   const { currencyCode, format: fmt } = useReportCurrency();
   // Fetch reference data for all dropdowns
   const { 
@@ -149,7 +152,7 @@ export function ServiceCreateEditDialog({
     variantName: "",  // Short name for variant (e.g., "Short Hair")
     variantSortOrder: 0,
 
-    // Resource requirements (rooms, equipment) for this service
+    // {t("web.provider.bookings.detail.leftoverCopy.resourceRequirements")} (rooms, equipment) for this service
     offeringResources: [] as Array<{ resource_id: string; required: boolean }>,
   });
 
@@ -210,7 +213,7 @@ export function ServiceCreateEditDialog({
 
   const handleCreateCategory = async () => {
     if (!categoryFormData.name.trim()) {
-      toast.error("Category name is required");
+      toast.error(t("web.provider.catalogue.serviceDialog.categoryNameRequired"));
       return;
     }
 
@@ -220,7 +223,7 @@ export function ServiceCreateEditDialog({
         color: categoryFormData.color,
         description: categoryFormData.description,
       });
-      toast.success("Category created");
+      toast.success(t("web.provider.catalogue.serviceDialog.categoryCreated"));
       setShowCategoryDialog(false);
       setCategoryFormData({ name: "", color: "#FF0077", description: "" });
       
@@ -241,11 +244,11 @@ export function ServiceCreateEditDialog({
 
   const handleCreateTeamMember = async () => {
     if (!teamMemberFormData.name.trim() || !teamMemberFormData.email.trim() || !teamMemberFormData.mobile.trim()) {
-      toast.error("Name, email, and mobile are required");
+      toast.error(t("web.provider.catalogue.serviceDialog.nameEmailMobileRequired"));
       return;
     }
     if (!isCompleteE164(teamMemberFormData.mobile)) {
-      toast.error("Enter a valid mobile number in international format (e.g. +27…).");
+      toast.error(t("web.provider.catalogue.serviceDialog.invalidMobile"));
       return;
     }
 
@@ -256,7 +259,7 @@ export function ServiceCreateEditDialog({
         mobile: teamMemberFormData.mobile.trim(),
         role: teamMemberFormData.role === "staff" ? "employee" : teamMemberFormData.role,
       });
-      toast.success("Team member created");
+      toast.success(t("web.provider.catalogue.serviceDialog.teamMemberCreated"));
       setShowTeamMemberDialog(false);
       setTeamMemberFormData({ name: "", email: "", mobile: "", role: "staff" });
       
@@ -448,18 +451,18 @@ export function ServiceCreateEditDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      toast.error("Service name is required");
+      toast.error(t("web.provider.catalogue.serviceDialog.nameRequired"));
       return;
     }
     if (!formData.categoryId) {
-      toast.error("Service category is required");
+      toast.error(t("web.provider.catalogue.serviceDialog.categoryRequired"));
       return;
     }
     
     // Validate variant fields
     if (formData.serviceType === "variant") {
       if (!formData.parentServiceId) {
-        toast.error("Parent service is required for variants");
+        toast.error(t("web.provider.catalogue.serviceDialog.parentRequired"));
         return;
       }
     }
@@ -468,17 +471,17 @@ export function ServiceCreateEditDialog({
       for (let i = 1; i < pricingOptions.length; i += 1) {
         const row = pricingOptions[i];
         if (!row.duration || row.duration <= 0) {
-          toast.error(`Tier ${i + 1}: duration must be a positive number`);
+          toast.error(t("web.provider.catalogue.serviceDialog.tierDuration", { n: i + 1 }));
           return;
         }
         if (row.price == null || Number.isNaN(row.price) || row.price < 0) {
-          toast.error(`Tier ${i + 1}: price must be a valid number`);
+          toast.error(t("web.provider.catalogue.serviceDialog.tierPrice", { n: i + 1 }));
           return;
         }
       }
       const explicitNames = pricingOptions.map((row) => row.pricingName.trim()).filter(Boolean);
       if (new Set(explicitNames).size !== explicitNames.length) {
-        toast.error("Each booking tier name must be unique");
+        toast.error(t("web.provider.catalogue.serviceDialog.tierNameUnique"));
         return;
       }
     }
@@ -545,13 +548,13 @@ export function ServiceCreateEditDialog({
         variantSync = created.variant_sync;
       }
       if (pricingOptions.length > 1 && variantSync?.errors?.length) {
-        toast.warning(`Service saved, but tier sync issue: ${variantSync.errors[0]}`);
+        toast.warning(t("web.provider.catalogue.serviceDialog.tierSyncIssue", { error: variantSync.errors[0] }));
       } else if (pricingOptions.length > 1 && variantSync?.synced != null) {
         toast.success(
-          `Service saved — ${variantSync.synced} booking tier${variantSync.synced === 1 ? "" : "s"} synced for customers`,
+          t("web.provider.catalogue.serviceDialog.tiersSynced", { count: variantSync.synced }),
         );
       } else {
-        toast.success(service ? "Service updated successfully" : "Service created successfully");
+        toast.success(service ? t("web.provider.catalogue.serviceDialog.updated") : t("web.provider.catalogue.serviceDialog.created"));
       }
       if (formData.offeringResources?.length) {
         await providerApi.setServiceResources(savedServiceId, formData.offeringResources);
@@ -643,9 +646,9 @@ export function ServiceCreateEditDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="px-0 sm:px-0">
-            <DialogTitle className="text-lg sm:text-xl">{service ? "Edit Service" : "Create Service"}</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">{service ? t("provider.mobile.screens.serviceForm.editTitle") : t("web.provider.catalogue.serviceDialog.createTitle")}</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">
-              {service ? "Update the service details below" : "Add a new service to your catalogue. Clients will see the service name in their notifications and booking confirmations."}
+              {service ? t("web.provider.catalogue.serviceDialog.updateDetails") : t("web.provider.catalogue.serviceDialog.createDescription")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6 px-0 sm:px-0">
@@ -653,32 +656,32 @@ export function ServiceCreateEditDialog({
             {/* Basic Info */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Basic Information</h3>
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">{t("web.provider.catalogue.serviceDialog.basicInfo")}</h3>
               </div>
               
               <div>
-                <Label htmlFor="name" className="text-sm sm:text-base">Service name *</Label>
+                <Label htmlFor="name" className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.serviceName")}</Label>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g., Signature Haircut, Full Body Massage, Classic Manicure"
+                  placeholder={t("web.provider.catalogue.serviceDialog.namePlaceholder")}
                   required
                   className="mt-1.5"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
-                  Make sure the service name can be understood independently. Clients will only see the <strong>service name</strong> in their notifications, not the category name.
+                  {t("web.provider.catalogue.serviceDialog.nameHintPrefix")} <strong>{t("web.provider.catalogue.serviceDialog.nameHintStrong")}</strong> {t("web.provider.catalogue.serviceDialog.nameHintSuffix")}
                 </p>
               </div>
               
               <div>
-                <Label htmlFor="serviceType" className="text-sm sm:text-base">Service type</Label>
+                <Label htmlFor="serviceType" className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.serviceType")}</Label>
                 <Select 
                   value={formData.serviceType} 
                   onValueChange={(val) => setFormData({ ...formData, serviceType: val })}
                 >
                   <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select service type" />
+                    <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.selectType")} />
                   </SelectTrigger>
                   <SelectContent>
                     {getOptions("service_type").map((option) => (
@@ -688,24 +691,24 @@ export function ServiceCreateEditDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500 mt-1.5">Choose how this service appears to clients in your booking system</p>
+                <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.typeHint")}</p>
                 {formData.serviceType === "variant" ? (
                   <p className="text-xs text-amber-700 mt-1.5">
-                    Tip: For multiple prices on one service, use Basic and add booking options below instead.
+                    {t("web.provider.catalogue.serviceDialog.variantTip")}
                   </p>
                 ) : formData.serviceType === "basic" ? (
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Set price and duration below. Add more options if customers should choose (e.g. short vs long).
+                    {t("provider.mobile.screens.serviceForm.basicHint")}
                   </p>
                 ) : null}
               </div>
 
               {formData.serviceType === "package" && (
                 <div>
-                  <Label className="text-sm sm:text-base">Included services</Label>
+                  <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.includedServices")}</Label>
                   <div className="border rounded-md p-3 bg-pink-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 text-sm min-h-[48px] mt-1.5">
                     {formData.includedServices.length === 0 ? (
-                      <span className="text-gray-500 text-xs sm:text-sm">No services included</span>
+                      <span className="text-gray-500 text-xs sm:text-sm">{t("web.provider.catalogue.serviceDialog.noServicesIncluded")}</span>
                     ) : (
                       <div className="flex flex-wrap gap-2 flex-1">
                         {includedServicesList.map(service => (
@@ -722,10 +725,10 @@ export function ServiceCreateEditDialog({
                       onClick={() => setShowIncludedServicesDialog(true)}
                       disabled={allServices.length === 0}
                     >
-                      {formData.includedServices.length === 0 ? "Add" : "Edit"}
+                      {formData.includedServices.length === 0 ? t("common.add") : t("common.edit")}
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1.5">Select which services are included in this package</p>
+                  <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.includedHint")}</p>
                 </div>
               )}
 
@@ -734,17 +737,17 @@ export function ServiceCreateEditDialog({
                 <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                   <div className="flex items-center gap-2 text-blue-700 font-medium">
                     <Plus className="w-4 h-4" />
-                    <span>Add-on Configuration</span>
+                    <span>{t("web.provider.catalogue.serviceDialog.addonConfig")}</span>
                   </div>
                   
                   <div>
-                    <Label className="text-sm sm:text-base">Add-on category</Label>
+                    <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.addonCategory")}</Label>
                     <Select 
                       value={formData.addonCategory} 
                       onValueChange={(val) => setFormData({ ...formData, addonCategory: val })}
                     >
                       <SelectTrigger className="mt-1.5">
-                        <SelectValue placeholder="Select category" />
+                        <SelectValue placeholder={t("web.provider.portal.newSaleDialog.selectCategory")} />
                       </SelectTrigger>
                       <SelectContent>
                         {getOptions("addon_category").map((opt) => (
@@ -754,14 +757,14 @@ export function ServiceCreateEditDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500 mt-1.5">Group similar add-ons together during checkout</p>
+                    <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.addonCategoryHint")}</p>
                   </div>
 
                   <div>
-                    <Label className="text-sm sm:text-base">Applicable services</Label>
+                    <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.applicableServices")}</Label>
                     <div className="border rounded-md p-3 bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 text-sm min-h-[48px] mt-1.5">
                       {formData.applicableServiceIds.length === 0 ? (
-                        <span className="text-gray-500 text-xs sm:text-sm">Available for all services</span>
+                        <span className="text-gray-500 text-xs sm:text-sm">{t("web.provider.catalogue.serviceDialog.availableAllServices")}</span>
                       ) : (
                         <div className="flex flex-wrap gap-2 flex-1">
                           {formData.applicableServiceIds.map(serviceId => {
@@ -781,10 +784,10 @@ export function ServiceCreateEditDialog({
                         onClick={() => setShowIncludedServicesDialog(true)}
                         disabled={allServices.length === 0}
                       >
-                        {formData.applicableServiceIds.length === 0 ? "Restrict" : "Edit"}
+                        {formData.applicableServiceIds.length === 0 ? t("web.provider.catalogue.serviceDialog.restrict") : t("common.edit")}
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1.5">Leave empty to make this add-on available for all services, or select specific services</p>
+                    <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.applicableHint")}</p>
                   </div>
 
                   <div className="flex items-center gap-3 p-3 bg-white rounded-lg">
@@ -793,8 +796,8 @@ export function ServiceCreateEditDialog({
                       onCheckedChange={(checked) => setFormData({ ...formData, isRecommended: checked })}
                     />
                     <div className="flex-1">
-                      <Label className="font-medium text-sm sm:text-base cursor-pointer">Recommended add-on</Label>
-                      <p className="text-xs text-gray-500 mt-0.5">Highlight this add-on to clients during checkout</p>
+                      <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("provider.mobile.screens.serviceForm.recommendedAddon")}</Label>
+                      <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.recommendedHint")}</p>
                     </div>
                   </div>
                 </div>
@@ -807,14 +810,14 @@ export function ServiceCreateEditDialog({
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <span>Variant Configuration</span>
+                    <span>{t("web.provider.catalogue.serviceDialog.variantConfig")}</span>
                   </div>
                   
                   <div>
-                    <Label className="text-sm sm:text-base">Parent service *</Label>
+                    <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.parentServiceRequired")}</Label>
                     {isLoadingServices ? (
                       <div className="mt-1.5 p-3 border rounded-md bg-gray-50 text-sm text-gray-500">
-                        Loading services...
+                        {t("web.provider.catalogue.serviceDialog.loadingServices")}
                       </div>
                     ) : (
                       <Select 
@@ -822,7 +825,7 @@ export function ServiceCreateEditDialog({
                         onValueChange={(val) => setFormData({ ...formData, parentServiceId: val })}
                       >
                         <SelectTrigger className="mt-1.5">
-                          <SelectValue placeholder="Select parent service" />
+                          <SelectValue placeholder={t("provider.mobile.screens.serviceForm.selectParentService")} />
                         </SelectTrigger>
                         <SelectContent>
                           {allServices
@@ -847,13 +850,13 @@ export function ServiceCreateEditDialog({
                             return isBasic && isNotCurrent && isNotVariant;
                           }).length === 0 && (
                             <div className="p-2 text-sm text-gray-500 text-center">
-                              No basic services available. Create a basic service first.
+                              {t("web.provider.catalogue.serviceDialog.noBasicServices")}
                             </div>
                           )}
                         </SelectContent>
                       </Select>
                     )}
-                    <p className="text-xs text-gray-500 mt-1.5">This variant will be grouped under the selected parent service</p>
+                    <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.variantGroupedHint")}</p>
                     {!isLoadingServices && allServices.filter(s => {
                       const isBasic = !s.service_type || s.service_type === "basic";
                       const isNotCurrent = s.id !== service?.id;
@@ -861,24 +864,24 @@ export function ServiceCreateEditDialog({
                       return isBasic && isNotCurrent && isNotVariant;
                     }).length === 0 && (
                       <p className="text-xs text-amber-600 mt-1.5">
-                        ⚠️ You need to create at least one basic service before creating variants.
+                        {t("web.provider.catalogue.serviceDialog.createBasicFirst")}
                       </p>
                     )}
                   </div>
 
                   <div>
-                    <Label className="text-sm sm:text-base">Variant name</Label>
+                    <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.variantName")}</Label>
                     <Input
                       value={formData.variantName}
                       onChange={(e) => setFormData({ ...formData, variantName: e.target.value })}
-                      placeholder="e.g., Short Hair, Long Hair, Gel, Acrylic"
+                      placeholder={t("web.provider.catalogue.serviceDialog.variantNamePlaceholder")}
                       className="mt-1.5"
                     />
-                    <p className="text-xs text-gray-500 mt-1.5">Short name shown when selecting between variants</p>
+                    <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.variantNameHint")}</p>
                   </div>
 
                   <div>
-                    <Label className="text-sm sm:text-base">Sort order</Label>
+                    <Label className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.sortOrder")}</Label>
                     <Input
                       type="number"
                       min="0"
@@ -886,22 +889,22 @@ export function ServiceCreateEditDialog({
                       onChange={(e) => setFormData({ ...formData, variantSortOrder: parseInt(e.target.value) || 0 })}
                       className="mt-1.5"
                     />
-                    <p className="text-xs text-gray-500 mt-1.5">Lower numbers appear first when showing variant options</p>
+                    <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.sortOrderHint")}</p>
                   </div>
                 </div>
               )}
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <Label htmlFor="categoryId" className="text-sm sm:text-base">Service category *</Label>
+                  <Label htmlFor="categoryId" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.serviceCategoryRequired")}</Label>
                   <Button
                     type="button"
                     variant="link"
                     className="text-primary p-0 h-auto text-xs sm:text-sm"
                     onClick={() => setShowCategoryDialog(true)}
                   >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add Category
+                    <Plus className="w-3 h-3 me-1" />
+                    {t("web.provider.catalogue.serviceDialog.addCategory")}
                   </Button>
                 </div>
                 <div className="mt-1.5">
@@ -924,47 +927,47 @@ export function ServiceCreateEditDialog({
                         return null;
                       }
                     }}
-                    placeholder="Select or type to add category"
-                    aria-label="Service category"
+                    placeholder={t("web.provider.catalogue.serviceDialog.selectOrTypeCategory")}
+                    aria-label={t("provider.mobile.screens.catalogueDetail.serviceCategoryA11y")}
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1.5">Group this service with similar offerings</p>
+                <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.groupHint")}</p>
               </div>
 
               <div>
-                <Label htmlFor="description" className="text-sm sm:text-base">Service description (Optional)</Label>
+                <Label htmlFor="description" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.descriptionOptional")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe what clients can expect from this service. This helps clients understand what's included."
+                  placeholder={t("web.provider.catalogue.serviceDialog.descriptionPlaceholder")}
                   rows={3}
                   className="mt-1.5"
                 />
-                <p className="text-xs text-gray-500 mt-1.5">A clear description helps clients understand what's included and sets proper expectations</p>
+                <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.descriptionHint")}</p>
               </div>
 
               <div>
-                <Label htmlFor="aftercare" className="text-sm sm:text-base">Aftercare instructions (Optional)</Label>
+                <Label htmlFor="aftercare" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.aftercareOptional")}</Label>
                 <Textarea
                   id="aftercare"
                   value={formData.aftercareDescription}
                   onChange={(e) => setFormData({ ...formData, aftercareDescription: e.target.value })}
-                  placeholder="e.g., Avoid washing hair for 24 hours, Keep the area dry for 48 hours"
+                  placeholder={t("web.provider.catalogue.serviceDialog.aftercarePlaceholder")}
                   rows={3}
                   className="mt-1.5"
                 />
-                <p className="text-xs text-gray-500 mt-1.5">Post-service care instructions help clients get the best results and maintain the service quality</p>
+                <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.aftercareHint")}</p>
               </div>
 
               <div>
-                <Label htmlFor="availableFor" className="text-sm sm:text-base">Available for</Label>
+                <Label htmlFor="availableFor" className="text-sm sm:text-base">{t("provider.mobile.screens.serviceForm.availableFor")}</Label>
                 <Select 
                   value={formData.availableFor} 
                   onValueChange={(val) => setFormData({ ...formData, availableFor: val })}
                 >
                   <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Everyone" />
+                    <SelectValue placeholder={t("provider.mobile.screens.customerVisibility.modeEveryone")} />
                   </SelectTrigger>
                   <SelectContent>
                     {getOptions("availability").map((option) => (
@@ -974,17 +977,17 @@ export function ServiceCreateEditDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500 mt-1.5">Restrict who can book this service (applies to online booking)</p>
+                <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.availableForHint")}</p>
               </div>
             </div>
 
             <Separator />
 
-            {/* Location Support */}
+            {/* {t("web.provider.catalogue.serviceDialog.locationSupport")} */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-1">Location Support</h3>
-                <p className="text-xs sm:text-sm text-gray-500">Choose where this service can be provided - at your salon or at the client's home.</p>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.catalogue.serviceDialog.locationSupport")}</h3>
+                <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.locationSupportHint")}</p>
               </div>
               
               <div className="space-y-3">
@@ -994,8 +997,8 @@ export function ServiceCreateEditDialog({
                     onCheckedChange={(checked) => setFormData({ ...formData, supportsAtSalon: checked })}
                   />
                   <div className="flex-1">
-                    <Label className="font-medium text-sm sm:text-base cursor-pointer">Available at Salon</Label>
-                    <p className="text-xs text-gray-500 mt-0.5">Clients can book this service at your salon location</p>
+                    <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("web.provider.catalogue.serviceDialog.availableAtSalon")}</Label>
+                    <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.availableAtSalonHint")}</p>
                   </div>
                 </div>
                 
@@ -1011,7 +1014,7 @@ export function ServiceCreateEditDialog({
                           const selectedZones = (response.data || []).filter((z: any) => z.is_selected);
                           
                           if (selectedZones.length === 0) {
-                            toast.error("Please select service zones first before enabling at-home services. You'll be redirected to the service zones page.");
+                            toast.error(t("web.provider.catalogue.serviceDialog.zonesRequiredToast"));
                             setTimeout(() => {
                               window.location.href = "/provider/settings/service-zones";
                             }, 2000);
@@ -1019,7 +1022,7 @@ export function ServiceCreateEditDialog({
                           }
                         } catch (error) {
                           console.error("Failed to check zone selections:", error);
-                          toast.error("Unable to verify service zones. Please ensure you have selected zones in Settings > Service Zones.");
+                          toast.error(t("web.provider.catalogue.serviceDialog.zonesVerifyFailed"));
                           return;
                         }
                       }
@@ -1027,15 +1030,15 @@ export function ServiceCreateEditDialog({
                     }}
                   />
                   <div className="flex-1">
-                    <Label className="font-medium text-sm sm:text-base cursor-pointer">Available at Home (Housecall)</Label>
-                    <p className="text-xs text-gray-500 mt-0.5">Clients can book this service at their location</p>
+                    <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("web.provider.catalogue.serviceDialog.availableAtHome")}</Label>
+                    <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.availableAtHomeHint")}</p>
                   </div>
                 </div>
                 
                 {formData.supportsAtHome && (
-                  <div className="ml-0 sm:ml-12 space-y-3 sm:space-y-4 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="ms-0 sm:ms-12 space-y-3 sm:space-y-4 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <div>
-                      <Label htmlFor="atHomeRadius" className="text-sm sm:text-base">Maximum Service Radius (km)</Label>
+                      <Label htmlFor="atHomeRadius" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.maxRadius")}</Label>
                       <Input
                         id="atHomeRadius"
                         type="number"
@@ -1043,14 +1046,14 @@ export function ServiceCreateEditDialog({
                         step="0.1"
                         value={formData.atHomeRadiusKm}
                         onChange={(e) => setFormData({ ...formData, atHomeRadiusKm: parseFloat(e.target.value) || 0 })}
-                        placeholder="e.g., 10"
+                        placeholder={t("web.provider.catalogue.serviceDialog.radiusPlaceholder")}
                         className="mt-1.5"
                       />
-                      <p className="text-xs text-gray-500 mt-1.5">Maximum distance from your salon for at-home bookings</p>
+                      <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.serviceDialog.radiusHint")}</p>
                     </div>
                     
                     <div>
-                      <Label htmlFor="atHomePriceAdjustment" className="text-sm sm:text-base">Price Adjustment for At-Home (R)</Label>
+                      <Label htmlFor="atHomePriceAdjustment" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.homePriceAdj")}</Label>
                       <Input
                         id="atHomePriceAdjustment"
                         type="number"
@@ -1058,10 +1061,10 @@ export function ServiceCreateEditDialog({
                         step="0.01"
                         value={formData.atHomePriceAdjustment}
                         onChange={(e) => setFormData({ ...formData, atHomePriceAdjustment: parseFloat(e.target.value) || 0 })}
-                        placeholder="e.g., 50"
+                        placeholder={t("web.provider.catalogue.serviceDialog.homePricePlaceholder")}
                         className="mt-1.5"
                       />
-                      <p className="text-xs text-gray-500 mt-1.5">Additional charge (or discount if negative) for at-home service</p>
+                      <p className="text-xs text-gray-500 mt-1.5">{t("provider.mobile.screens.serviceForm.atHomePriceHint")}</p>
                     </div>
                   </div>
                 )}
@@ -1073,13 +1076,13 @@ export function ServiceCreateEditDialog({
                 <Separator />
                 <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <h3 className="text-base sm:text-lg font-semibold mb-1">Resource requirements</h3>
-                    <p className="text-xs sm:text-sm text-gray-500">Assign rooms or equipment required or optional for this service. Required resources are reserved when the service is booked.</p>
+                    <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.bookings.detail.leftoverCopy.resourceRequirements")}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.resourceHint")}</p>
                   </div>
                   {isLoadingResources ? (
-                    <p className="text-sm text-gray-500">Loading resources...</p>
+                    <p className="text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.loadingResources")}</p>
                   ) : providerResources.length === 0 ? (
-                    <p className="text-sm text-gray-500">No resources yet. Add rooms or equipment under Resources in the main menu first.</p>
+                    <p className="text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.noResources")}</p>
                   ) : (
                     <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
                       {providerResources.map((res) => {
@@ -1099,7 +1102,7 @@ export function ServiceCreateEditDialog({
                                     setFormData({ ...formData, offeringResources: next });
                                   }}
                                 />
-                                Required
+                                {t("common.required")}
                               </label>
                               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                                 <Checkbox
@@ -1110,7 +1113,7 @@ export function ServiceCreateEditDialog({
                                     setFormData({ ...formData, offeringResources: next });
                                   }}
                                 />
-                                Optional
+                                {t("common.optional")}
                               </label>
                             </div>
                           </div>
@@ -1124,11 +1127,11 @@ export function ServiceCreateEditDialog({
 
             <Separator />
 
-            {/* Online Booking */}
+            {/* {t("provider.mobile.screens.onlineBooking.title")} */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-1">Online Booking</h3>
-                <p className="text-xs sm:text-sm text-gray-500">Control whether clients can book this service online through your booking page.</p>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">{t("provider.mobile.screens.onlineBooking.title")}</h3>
+                <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.onlineBookingHint")}</p>
               </div>
               <div className="flex items-center gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
                 <Switch
@@ -1136,8 +1139,8 @@ export function ServiceCreateEditDialog({
                   onCheckedChange={(checked) => setFormData({ ...formData, onlineBookable: checked })}
                 />
                 <div className="flex-1">
-                  <Label className="font-medium text-sm sm:text-base cursor-pointer">Enable online bookings</Label>
-                  <p className="text-xs text-gray-500 mt-0.5">Allow clients to book this service through your online booking page</p>
+                  <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("web.provider.catalogue.serviceDialog.enableOnline")}</Label>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.enableOnlineHint")}</p>
                 </div>
               </div>
             </div>
@@ -1148,8 +1151,8 @@ export function ServiceCreateEditDialog({
             <div className="space-y-3 sm:space-y-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
-                  <h3 className="text-base sm:text-lg font-semibold mb-1">Assign to Team Members</h3>
-                  <p className="text-xs sm:text-sm text-gray-500">Select which team members can perform this service. You can customize pricing per team member later.</p>
+                  <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.catalogue.serviceDialog.assignTeam")}</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.assignTeamHint")}</p>
                 </div>
                 <Button
                   type="button"
@@ -1157,13 +1160,13 @@ export function ServiceCreateEditDialog({
                   className="text-primary p-0 h-auto text-xs sm:text-sm whitespace-nowrap flex-shrink-0 mt-1"
                   onClick={() => setShowTeamMemberDialog(true)}
                 >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Add Member
+                  <Plus className="w-3 h-3 me-1" />
+                  {t("web.provider.catalogue.serviceDialog.addMember")}
                 </Button>
               </div>
               
               {isLoadingTeam ? (
-                <div className="text-sm text-gray-500">Loading team members...</div>
+                <div className="text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.loadingTeam")}</div>
               ) : (
                 <>
                   {teamMembers.length > 0 ? (
@@ -1174,10 +1177,10 @@ export function ServiceCreateEditDialog({
                           checked={allTeamMembersSelected}
                           onCheckedChange={handleSelectAllTeamMembers}
                         />
-                        <Label htmlFor="selectAll" className="font-normal cursor-pointer text-sm">Select all</Label>
+                        <Label htmlFor="selectAll" className="font-normal cursor-pointer text-sm">{t("common.selectAll")}</Label>
                       </div>
                       
-                      <div className="space-y-2 pl-1">
+                      <div className="space-y-2 ps-1">
                         {teamMembers.map((member) => (
                           <div key={member.id} className="flex items-center gap-3">
                             <Checkbox 
@@ -1199,7 +1202,7 @@ export function ServiceCreateEditDialog({
                     </>
                   ) : (
                     <div className="border rounded-lg p-3 sm:p-4 bg-gray-50">
-                      <p className="text-sm text-gray-500 mb-2">No team members available</p>
+                      <p className="text-sm text-gray-500 mb-2">{t("web.provider.catalogue.serviceDialog.noTeam")}</p>
                       <Button
                         type="button"
                         variant="outline"
@@ -1207,8 +1210,8 @@ export function ServiceCreateEditDialog({
                         className="w-full sm:w-auto"
                         onClick={() => setShowTeamMemberDialog(true)}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add your first team member
+                        <Plus className="w-4 h-4 me-2" />
+                        {t("web.provider.catalogue.serviceDialog.addFirstMember")}
                       </Button>
                     </div>
                   )}
@@ -1221,8 +1224,8 @@ export function ServiceCreateEditDialog({
             {/* Commission */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-1">Team Member Commission</h3>
-                <p className="text-xs sm:text-sm text-gray-500">Enable commission calculation for team members when this service is sold.</p>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.catalogue.serviceDialog.commissionTitle")}</h3>
+                <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.commissionHint")}</p>
               </div>
               <div className="flex items-center gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
                 <Switch
@@ -1230,8 +1233,8 @@ export function ServiceCreateEditDialog({
                   onCheckedChange={(checked) => setFormData({ ...formData, teamMemberCommissionEnabled: checked })}
                 />
                 <div className="flex-1">
-                  <Label className="font-medium text-sm sm:text-base cursor-pointer">Enable team member commission</Label>
-                  <p className="text-xs text-gray-500 mt-0.5">Calculate and track commission for team members on this service</p>
+                  <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("web.provider.catalogue.productDialog.enableCommission")}</Label>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.enableCommissionHint")}</p>
                 </div>
               </div>
             </div>
@@ -1243,17 +1246,17 @@ export function ServiceCreateEditDialog({
               <div>
                 <h3 className="text-base sm:text-lg font-semibold mb-1">
                   {formData.serviceType === "variant"
-                    ? "Price & duration"
+                    ? t("provider.mobile.screens.pricingOptions.priceDuration")
                     : pricingOptions.length > 1
-                      ? "Booking options"
-                      : "Price & duration"}
+                      ? t("provider.mobile.screens.pricingOptions.bookingOptions")
+                      : t("provider.mobile.screens.pricingOptions.priceDuration")}
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-500">
                   {formData.serviceType === "variant"
-                    ? "Set the price and duration for this variant. It appears under the parent service at booking."
+                    ? t("provider.mobile.screens.pricingOptions.priceDurationVariantHint")
                     : pricingOptions.length > 1
-                      ? "Each option has its own price and duration. Customers pick one when they book."
-                      : "One fixed price for this service. Customers book it directly — no option picker."}
+                      ? t("provider.mobile.screens.pricingOptions.bookingOptionsHint")
+                      : t("web.provider.catalogue.serviceDialog.oneFixedPrice")}
                 </p>
               </div>
 
@@ -1304,24 +1307,24 @@ export function ServiceCreateEditDialog({
                         size="icon"
                         className="h-8 w-8 shrink-0 touch-manipulation text-red-500 hover:text-red-600 hover:bg-red-50"
                         onClick={() => handleRemovePricingOption(option.id)}
-                        aria-label={`Remove ${previewName}`}
+                        aria-label={t("web.provider.catalogue.serviceDialog.removeTierAria", { name: previewName })}
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
-                    <h4 className="text-sm sm:text-base font-medium text-gray-700 sr-only">Default pricing</h4>
+                    <h4 className="text-sm sm:text-base font-medium text-gray-700 sr-only">{t("web.provider.catalogue.serviceDialog.defaultPricing")}</h4>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <Label className="text-sm sm:text-base">Duration *</Label>
+                      <Label className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.durationRequired")}</Label>
                       <Select 
                         value={option.duration.toString()} 
                         onValueChange={(val) => handlePricingOptionChange(option.id, "duration", parseInt(val))}
                       >
                         <SelectTrigger className="mt-1.5">
-                          <SelectValue placeholder="Select duration" />
+                          <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.selectDuration")} />
                         </SelectTrigger>
                         <SelectContent>
                           {getOptions("duration").map((opt) => (
@@ -1334,13 +1337,13 @@ export function ServiceCreateEditDialog({
                     </div>
 
                     <div>
-                      <Label className="text-sm sm:text-base">Price type</Label>
+<Label className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.priceType")}</Label>
                       <Select 
                         value={option.priceType} 
                         onValueChange={(val) => handlePricingOptionChange(option.id, "priceType", val)}
                       >
                         <SelectTrigger className="mt-1.5">
-                          <SelectValue placeholder="Fixed" />
+                          <SelectValue placeholder={t("provider.mobile.screens.cancellationPolicies.feeTypeFixed")} />
                         </SelectTrigger>
                         <SelectContent>
                           {getOptions("price_type").map((opt) => (
@@ -1354,29 +1357,29 @@ export function ServiceCreateEditDialog({
                   </div>
 
                   <div>
-                    <Label className="text-sm sm:text-base">Price *</Label>
+<Label className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.priceRequired")}</Label>
                     <div className="relative mt-1.5">
                       <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                       <Input 
                         type="number" 
                         step="0.01"
                         min="0"
-                        className="pl-12"
+                        className="ps-12"
                         value={option.price || ""}
                         onChange={(e) => handlePricingOptionChange(option.id, "price", parseFloat(e.target.value) || 0)}
-                        placeholder="0.00"
+placeholder={t("web.provider.portal.newSaleDialog.pricePlaceholder")}
                       />
                     </div>
                     {pricingOptions.length === 1 ? (
                       <p className="text-xs text-gray-500 mt-1.5">
-                        Shown to customers at booking and in your catalogue.
+                        {t("web.provider.catalogue.serviceDialog.shownToCustomers")}
                       </p>
                     ) : null}
                   </div>
 
                   {pricingOptions.length > 1 && formData.serviceType !== "variant" ? (
                     <div>
-                      <Label className="text-sm sm:text-base">Customer-facing label</Label>
+                      <Label className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.customerFacingLabel")}</Label>
                       <Input
                         placeholder={previewName}
                         value={option.pricingName}
@@ -1385,7 +1388,7 @@ export function ServiceCreateEditDialog({
                       />
                       {!option.pricingName.trim() ? (
                         <p className="text-xs text-gray-500 mt-1.5">
-                          Leave blank to use &ldquo;{previewName}&rdquo;
+                          {t("web.provider.catalogue.serviceDialog.leaveBlankPreview", { name: previewName })}
                         </p>
                       ) : null}
                     </div>
@@ -1400,10 +1403,10 @@ export function ServiceCreateEditDialog({
                         setShowAdvancedPricingModal(true);
                       }}
                     >
-                      Advanced pricing options
+                      {t("web.provider.catalogue.serviceDialog.advancedPricing")}
                       {advancedPricingRules.length > 0 && (
-                        <span className="ml-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                          {advancedPricingRules.filter(r => r.enabled).length} active
+                        <span className="ms-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          {t("web.provider.catalogue.serviceDialog.activeCount", { count: advancedPricingRules.filter(r => r.enabled).length })}
                         </span>
                       )}
                     </Button>
@@ -1416,7 +1419,7 @@ export function ServiceCreateEditDialog({
                 <button
                   type="button"
                   onClick={handleAddPricingOption}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 touch-manipulation min-h-[44px]"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-start transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 touch-manipulation min-h-[44px]"
                 >
                   <div className="flex items-start gap-3">
                     <div className="rounded-full border border-gray-200 bg-white p-2 text-indigo-600">
@@ -1424,11 +1427,10 @@ export function ServiceCreateEditDialog({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900">
-                        Offer multiple prices or durations?
+                        {t("web.provider.catalogue.serviceDialog.offerMultiplePrices")}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-gray-500">
-                        e.g. Short vs long hair, express vs full service. Each becomes a customer-facing
-                        option at booking.
+                        {t("web.provider.catalogue.serviceDialog.offerMultiplePricesHint")}
                       </p>
                     </div>
                   </div>
@@ -1440,8 +1442,8 @@ export function ServiceCreateEditDialog({
                   className="w-full text-sm sm:text-base min-h-[44px] touch-manipulation border-dashed border-indigo-300 text-indigo-700 hover:bg-indigo-50/50"
                   onClick={handleAddPricingOption}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add another option
+                  <Plus className="w-4 h-4 me-2" />
+                  {t("web.provider.catalogue.serviceDialog.addAnotherOption")}
                 </Button>
               ) : null}
             </div>
@@ -1451,8 +1453,8 @@ export function ServiceCreateEditDialog({
             {/* Extra Time */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-1">Extra Time</h3>
-                <p className="text-xs sm:text-sm text-gray-500">Add buffer time after the service for cleanup, preparation, or transition between appointments.</p>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.catalogue.serviceDialog.extraTimeTitle")}</h3>
+                <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.extraTimeHint")}</p>
               </div>
               <div className="flex items-center gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
                 <Switch
@@ -1460,19 +1462,19 @@ export function ServiceCreateEditDialog({
                   onCheckedChange={(checked) => setFormData({ ...formData, extraTimeEnabled: checked })}
                 />
                 <div className="flex-1">
-                  <Label className="font-medium text-sm sm:text-base cursor-pointer">Enable extra time</Label>
-                  <p className="text-xs text-gray-500 mt-0.5">Add buffer time after this service completes</p>
+                  <Label className="font-medium text-sm sm:text-base cursor-pointer">{t("web.provider.catalogue.serviceDialog.enableExtraTime")}</Label>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.catalogue.serviceDialog.extraTimeSwitchHint")}</p>
                 </div>
               </div>
               {formData.extraTimeEnabled && (
                 <div className="mt-2 w-full sm:w-1/2">
-                  <Label>Duration</Label>
+                  <Label>{t("common.duration")}</Label>
                   <Select 
                     value={formData.extraTimeDuration.toString()} 
                     onValueChange={(val) => setFormData({ ...formData, extraTimeDuration: parseInt(val) })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="15 min" />
+                      <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.extraTimePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       {getOptions("extra_time").map((opt) => (
@@ -1490,8 +1492,8 @@ export function ServiceCreateEditDialog({
 
             {/* Notification settings */}
             <div className="space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-semibold">Notification settings</h3>
-              <p className="text-sm text-gray-500">Manage automated messages sent for this service.</p>
+              <h3 className="text-base sm:text-lg font-semibold">{t("web.provider.catalogue.serviceDialog.notificationSettings")}</h3>
+              <p className="text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.notificationSettingsHint")}</p>
               
               <div className="border rounded-lg p-3 sm:p-4 bg-gray-50">
                 <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -1502,8 +1504,8 @@ export function ServiceCreateEditDialog({
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <Label htmlFor="rebook" className="font-medium text-sm sm:text-base">Reminder to rebook notifications</Label>
-                    <p className="text-xs text-gray-500 mt-1">Choose when you would like to notify your clients to rebook this service.</p>
+                    <Label htmlFor="rebook" className="font-medium text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.reminderToRebookNotifications")}</Label>
+                    <p className="text-xs text-gray-500 mt-1">{t("web.provider.catalogue.serviceDialog.reminderToRebookHint")}</p>
                   </div>
                 </div>
                 
@@ -1539,10 +1541,10 @@ export function ServiceCreateEditDialog({
 
             {/* Service Cost */}
             <div className="space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-semibold">Service cost</h3>
-              <p className="text-xs sm:text-sm text-gray-500">Configure a cost associated with delivering this service.</p>
+              <h3 className="text-base sm:text-lg font-semibold">{t("web.provider.catalogue.serviceDialog.serviceCost")}</h3>
+              <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.serviceCostHint")}</p>
               <div className="border rounded-lg p-3 sm:p-4">
-                <Label className="text-sm sm:text-base mb-2 block">Service cost percentage</Label>
+                <Label className="text-sm sm:text-base mb-2 block">{t("web.provider.catalogue.serviceDialog.serviceCostPercentage")}</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-center">
                   <div className="relative">
                     <Input 
@@ -1556,7 +1558,7 @@ export function ServiceCreateEditDialog({
                           serviceCostPercentage: val,
                         });
                       }}
-                      className="pr-8"
+                      className="pe-8"
                       placeholder="0"
                     />
                     <span className="absolute right-3 top-2.5 text-gray-500">%</span>
@@ -1567,12 +1569,12 @@ export function ServiceCreateEditDialog({
                       type="number" 
                       readOnly
                       value={serviceCostAmount.toFixed(2)}
-                      className="pl-12 bg-gray-100"
+                      className="ps-12 bg-gray-100"
                       placeholder="0,00"
                     />
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Cost will be calculated as a % of sale price before discounts</p>
+                <p className="text-xs text-gray-500 mt-2">{t("web.provider.catalogue.serviceDialog.costCalculatedHint")}</p>
               </div>
             </div>
 
@@ -1580,17 +1582,17 @@ export function ServiceCreateEditDialog({
 
             {/* Sales settings */}
             <div className="space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-semibold">Sales settings</h3>
+              <h3 className="text-base sm:text-lg font-semibold">{t("web.provider.catalogue.serviceDialog.salesSettings")}</h3>
               
               <div className="border rounded-lg p-3 sm:p-4">
-                <Label className="mb-2 block text-sm sm:text-base">Set the tax rate</Label>
-                <p className="text-xs text-gray-500 mb-3 sm:mb-4">Tax (included in price)</p>
+                <Label className="mb-2 block text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.setTaxRate")}</Label>
+                <p className="text-xs text-gray-500 mb-3 sm:mb-4">{t("web.provider.catalogue.serviceDialog.taxIncludedInPrice")}</p>
                 <Select 
                   value={formData.taxRate.toString()} 
                   onValueChange={(val) => setFormData({ ...formData, taxRate: parseFloat(val) || 0 })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Default: No Tax" />
+                    <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.defaultNoTax")} />
                   </SelectTrigger>
                   <SelectContent>
                     {getOptions("tax_rate").map((opt) => (
@@ -1600,20 +1602,20 @@ export function ServiceCreateEditDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500 mt-2">Tax is included in the service price</p>
+                <p className="text-xs text-gray-500 mt-2">{t("web.provider.catalogue.serviceDialog.taxIncludedHint")}</p>
               </div>
             </div>
 
             <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 pt-4 border-t sticky bottom-0 bg-white pb-2 sm:pb-4 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
-                Cancel
+                {t("web.provider.common.cancel")}
               </Button>
               <Button 
                 type="submit" 
                 className="bg-primary hover:bg-primary-hover min-w-[100px] w-full sm:w-auto"
                 disabled={!formData.name.trim() || !formData.categoryId}
               >
-                {service ? "Update" : "Create"}
+                {service ? t("provider.mobile.screens.noteTemplates.update") : t("provider.mobile.screens.expressBooking.create")}
               </Button>
             </div>
           </form>
@@ -1624,16 +1626,16 @@ export function ServiceCreateEditDialog({
       <Dialog open={showIncludedServicesDialog} onOpenChange={setShowIncludedServicesDialog}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] sm:max-h-[80vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="px-0 sm:px-0">
-            <DialogTitle className="text-lg sm:text-xl">Select Included Services</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">Choose which services are included in this package</DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">{t("web.provider.catalogue.serviceDialog.selectIncludedServices")}</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">{t("web.provider.catalogue.serviceDialog.chooseIncludedServices")}</DialogDescription>
           </DialogHeader>
           
           {isLoadingServices ? (
-            <div className="text-center py-8 text-gray-500">Loading services...</div>
+            <div className="text-center py-8 text-gray-500">{t("web.provider.catalogue.serviceDialog.loadingServices")}</div>
           ) : availableServicesForInclusion.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <p>No other services available to include</p>
-              <p className="text-xs mt-2">Create more services first to build packages</p>
+              <p>{t("web.provider.catalogue.serviceDialog.noOtherServices")}</p>
+              <p className="text-xs mt-2">{t("web.provider.catalogue.serviceDialog.createMoreServices")}</p>
             </div>
           ) : (
             <div className="space-y-2 py-2 sm:py-4 px-0 sm:px-0">
@@ -1657,7 +1659,7 @@ export function ServiceCreateEditDialog({
           
           <div className="flex justify-end gap-2 pt-4 border-t -mx-4 sm:-mx-6 px-4 sm:px-6">
             <Button variant="outline" onClick={() => setShowIncludedServicesDialog(false)} className="w-full sm:w-auto">
-              Done
+              {t("common.done")}
             </Button>
           </div>
         </DialogContent>
@@ -1667,30 +1669,30 @@ export function ServiceCreateEditDialog({
       <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
         <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="px-0 sm:px-0">
-            <DialogTitle className="text-lg sm:text-xl">Add Category</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">{t("web.provider.catalogue.serviceDialog.addCategory")}</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">
-              Create a new category to organize your services
+              {t("web.provider.catalogue.serviceDialog.createCategoryHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 sm:space-y-4 py-2 sm:py-4 px-0 sm:px-0">
             <div>
-              <Label htmlFor="newCategoryName" className="text-sm sm:text-base">Category name *</Label>
+              <Label htmlFor="newCategoryName" className="text-sm sm:text-base">{t("web.provider.catalogue.services.categoryName")}</Label>
               <Input
                 id="newCategoryName"
                 value={categoryFormData.name}
                 onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
-                placeholder="e.g., Nails, Hair & Styling"
+                placeholder={t("web.provider.catalogue.serviceDialog.categoryNamePlaceholder")}
                 required
                 className="mt-1.5"
               />
               <p className="text-xs text-gray-500 mt-1.5">
-                The name that appears in your service menu and to clients when booking
+                {t("web.provider.catalogue.services.categoryNameHint")}
               </p>
             </div>
             
             <div>
-              <Label className="text-sm sm:text-base">Appointment color</Label>
-              <p className="text-xs text-gray-500 mb-2 mt-1.5">Choose a color to visually identify services in this category</p>
+              <Label className="text-sm sm:text-base">{t("web.provider.catalogue.services.appointmentColor")}</Label>
+              <p className="text-xs text-gray-500 mb-2 mt-1.5">{t("web.provider.catalogue.services.appointmentColorHint")}</p>
               <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
                 {[
                   "#FF0077", "#FF6B9D", "#FFB6C1", "#FFA07A",
@@ -1717,17 +1719,17 @@ export function ServiceCreateEditDialog({
             </div>
 
             <div>
-              <Label htmlFor="newCategoryDescription" className="text-sm sm:text-base">Description (Optional)</Label>
+              <Label htmlFor="newCategoryDescription" className="text-sm sm:text-base">{t("web.provider.catalogue.services.descriptionOptional")}</Label>
               <Textarea
                 id="newCategoryDescription"
                 value={categoryFormData.description}
                 onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
-                placeholder="Add a short summary that helps clients understand what types of services are included in this category"
+                placeholder={t("web.provider.catalogue.serviceDialog.categorySummaryPlaceholder")}
                 rows={3}
                 className="mt-1.5"
               />
               <p className="text-xs text-gray-500 mt-1.5">
-                Help clients understand what types of services are included in this category
+                {t("web.provider.catalogue.services.descriptionHint")}
               </p>
             </div>
           </div>
@@ -1740,14 +1742,14 @@ export function ServiceCreateEditDialog({
               }}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button 
               onClick={handleCreateCategory} 
               className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
               disabled={!categoryFormData.name.trim()}
             >
-              Add Category
+              {t("web.provider.catalogue.serviceDialog.addCategory")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1757,32 +1759,32 @@ export function ServiceCreateEditDialog({
       <Dialog open={showTeamMemberDialog} onOpenChange={setShowTeamMemberDialog}>
         <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="px-0 sm:px-0">
-            <DialogTitle className="text-lg sm:text-xl">Add Team Member</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">{t("web.provider.catalogue.serviceDialog.addTeamMemberTitle")}</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">
-              Add a new team member to assign to services
+              {t("web.provider.catalogue.serviceDialog.addTeamMemberHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 sm:space-y-4 py-2 sm:py-4 px-0 sm:px-0">
             <div>
-              <Label htmlFor="teamMemberName" className="text-sm sm:text-base">Full Name *</Label>
+              <Label htmlFor="teamMemberName" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.fullNameRequired")}</Label>
               <Input
                 id="teamMemberName"
                 value={teamMemberFormData.name}
                 onChange={(e) => setTeamMemberFormData({ ...teamMemberFormData, name: e.target.value })}
-                placeholder="Enter full name"
+                placeholder={t("web.provider.catalogue.serviceDialog.fullNamePlaceholder")}
                 required
                 className="mt-1.5"
               />
             </div>
 
             <div>
-              <Label htmlFor="teamMemberEmail" className="text-sm sm:text-base">Email *</Label>
+              <Label htmlFor="teamMemberEmail" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.emailRequired")}</Label>
               <Input
                 id="teamMemberEmail"
                 type="email"
                 value={teamMemberFormData.email}
                 onChange={(e) => setTeamMemberFormData({ ...teamMemberFormData, email: e.target.value })}
-                placeholder="Enter email address"
+                placeholder={t("web.provider.catalogue.serviceDialog.emailPlaceholder")}
                 required
                 className="mt-1.5"
               />
@@ -1791,17 +1793,17 @@ export function ServiceCreateEditDialog({
             <div>
               <PhoneInput
                 inputId="catalogue-team-member-mobile"
-                label="Mobile Number *"
+                label={t("web.provider.catalogue.serviceDialog.mobileRequired")}
                 value={teamMemberFormData.mobile}
                 onChange={(e164) => setTeamMemberFormData({ ...teamMemberFormData, mobile: e164 })}
-                placeholder="Phone number"
+                placeholder={t("provider.mobile.components.phoneInput.phonePlaceholder")}
                 required
                 className="mt-1.5"
               />
             </div>
 
             <div>
-              <Label htmlFor="teamMemberRole" className="text-sm sm:text-base">Role *</Label>
+              <Label htmlFor="teamMemberRole" className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.roleRequired")}</Label>
               <Select
                 value={teamMemberFormData.role}
                 onValueChange={(value: any) => setTeamMemberFormData({ ...teamMemberFormData, role: value })}
@@ -1828,7 +1830,7 @@ export function ServiceCreateEditDialog({
               }}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button 
               onClick={handleCreateTeamMember} 
@@ -1839,7 +1841,7 @@ export function ServiceCreateEditDialog({
                 !isCompleteE164(teamMemberFormData.mobile)
               }
             >
-              Add Member
+              {t("web.provider.catalogue.serviceDialog.addMember")}
             </Button>
           </DialogFooter>
         </DialogContent>

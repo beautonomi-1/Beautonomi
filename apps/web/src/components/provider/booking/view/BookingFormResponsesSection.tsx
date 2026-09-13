@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 type ProviderForm = {
   id: string;
@@ -24,6 +25,7 @@ export function BookingFormResponsesSection({
   responses,
   onUpdated,
 }: BookingFormResponsesSectionProps) {
+  const { t } = useTranslation();
   const [forms, setForms] = useState<ProviderForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingFormId, setUploadingFormId] = useState<string | null>(null);
@@ -53,14 +55,14 @@ export function BookingFormResponsesSection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">Form responses</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.forms.title")}</BookingSectionLabel>
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
       ) : (
         <div className="space-y-4">
           {Object.entries(responses).map(([formId, fields]) => {
             const formMeta = forms.find((f) => f.id === formId);
-            const formTitle = formMeta?.title ?? `Form ${formId.slice(0, 8)}`;
+            const formTitle = formMeta?.title ?? t("web.provider.bookings.detail.forms.formFallback", { id: formId.slice(0, 8) });
             const formType = formMeta?.form_type ?? "";
             const isConsentOrWaiver = formType === "consent" || formType === "waiver";
             const consentUrl =
@@ -80,14 +82,14 @@ export function BookingFormResponsesSection({
                     {visibleEntries.map(([fieldKey, value]) => (
                       <div key={fieldKey} className="flex justify-between gap-2 text-sm">
                         <dt className="text-gray-600">{getFieldName(formId, fieldKey)}</dt>
-                        <dd className="text-gray-900 font-medium text-right break-all">
+                        <dd className="text-gray-900 font-medium text-end break-all">
                           {value === null || value === undefined ? "—" : String(value)}
                         </dd>
                       </div>
                     ))}
                   </dl>
                 ) : (
-                  <p className="text-xs text-gray-500">No field responses recorded.</p>
+                  <p className="text-xs text-gray-500">{t("web.provider.bookings.detail.forms.noFieldResponses")}</p>
                 )}
                 {isConsentOrWaiver ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -98,7 +100,7 @@ export function BookingFormResponsesSection({
                         rel="noopener noreferrer"
                         className="text-sm font-semibold text-primary underline"
                       >
-                        View consent document
+                        {t("web.provider.bookings.detail.forms.viewConsent")}
                       </a>
                     ) : null}
                     <label className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900 touch-manipulation min-h-[44px]">
@@ -116,20 +118,20 @@ export function BookingFormResponsesSection({
                             body.set("form_id", formId);
                             body.set("file", f);
                             await fetcher.post(`/api/provider/bookings/${bookingId}/consent-document`, body);
-                            toast.success("Document uploaded");
+                            toast.success(t("web.provider.bookings.detail.toast.documentUploaded"));
                             onUpdated?.();
                           } catch (err) {
-                            toast.error(err instanceof Error ? err.message : "Upload failed");
+                            toast.error(err instanceof Error ? err.message : t("web.provider.bookings.detail.toast.uploadFailed"));
                           } finally {
                             setUploadingFormId(null);
                             e.target.value = "";
                           }
                         }}
                       />
-                      {consentUrl ? "Replace document" : "Upload consent document"}
+{consentUrl ? t("web.provider.bookings.detail.forms.replaceDocument") : t("web.provider.bookings.detail.forms.uploadConsent")}
                     </label>
                     {uploadingFormId === formId ? (
-                      <span className="text-xs text-gray-500">Uploading…</span>
+                      <span className="text-xs text-gray-500">{t("web.provider.bookings.detail.forms.uploading")}</span>
                     ) : null}
                   </div>
                 ) : null}

@@ -89,8 +89,8 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
           // Desktop: strict height for full-height pages
           isFullHeightPage && "md:h-full",
           isExpanded 
-            ? "pl-0 md:pl-64 lg:pl-64" 
-            : "pl-0 md:pl-[72px] lg:pl-[72px]"
+            ? "ps-0 md:ps-64 lg:ps-64" 
+            : "ps-0 md:ps-[72px] lg:ps-[72px]"
         )}
       >
         {/* Top Navigation */}

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { getCareerSeoMetadata } from "@/lib/cms/careers-page-server";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
 import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     alternates: {
       canonical: `${origin}${path}`,
-      languages: getHreflangAlternateUrls(path),
+      languages: await hreflangForPath(path),
     },
     openGraph: {
       title,

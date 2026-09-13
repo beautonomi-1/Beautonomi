@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -10,6 +12,7 @@ import type { ExpressPrefill } from "@/lib/express-booking/prefill";
 import { productCartToQueryParam } from "@/lib/express-booking/prefill";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 import { useAuth } from "@/providers/AuthProvider";
+import { isBookingEmbedEnabled } from "@beautonomi/utils";
 
 interface ExpressLinkResponse {
   provider_slug: string;
@@ -45,8 +48,9 @@ function AppDownloadBanner({
   platform: "ios" | "android";
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation();
   const storeUrl = platform === "ios" ? IOS_APP_URL : ANDROID_APP_URL;
-  const storeLabel = platform === "ios" ? "App Store" : "Google Play";
+  const storeLabel = platform === "ios" ? t("web.global.shareAppModal.appStore") : t("web.bookExpressLink.googlePlay");
   const storeIcon = platform === "ios" ? "🍎" : "🤖";
 
   return (
@@ -73,10 +77,10 @@ function AppDownloadBanner({
 
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm text-gray-900 truncate">
-              Book {providerName} seamlessly
+              {t("web.bookExpressLink.bookSeamlessly", { name: providerName })}
             </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-snug">
-              Download the Beautonomi app for instant bookings, notifications &amp; easy rescheduling.
+              {t("web.bookExpressLink.downloadHint")}
             </p>
           </div>
 
@@ -84,7 +88,7 @@ function AppDownloadBanner({
           <button
             onClick={onDismiss}
             className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="Dismiss"
+            aria-label={t("common.dismiss")}
           >
             ✕
           </button>
@@ -98,7 +102,7 @@ function AppDownloadBanner({
           style={{ backgroundColor: "#FF0077" }}
         >
           <span>{storeIcon}</span>
-          <span>Get the app on {storeLabel}</span>
+          <span>{t("web.bookExpressLink.getTheAppOn", { store: storeLabel })}</span>
         </a>
       </div>
     </div>
@@ -108,11 +112,13 @@ function AppDownloadBanner({
 const DISMISS_KEY = "beautonomi_app_banner_dismissed";
 
 export default function ExpressBookLinkPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
   const linkSlug = params?.linkSlug as string;
+  const embed = isBookingEmbedEnabled(searchParams);
   const [error, setError] = useState<string | null>(null);
   const [providerName, setProviderName] = useState("");
   const [platform, setPlatform] = useState<DevicePlatform>("other");
@@ -149,7 +155,7 @@ export default function ExpressBookLinkPage() {
         );
         const data = res.data;
         if (!data?.provider_slug) {
-          setError("Booking link not found");
+          setError(t("customer.expressBookLink.notFound"));
           return;
         }
 
@@ -215,8 +221,8 @@ export default function ExpressBookLinkPage() {
       } catch (err) {
         const message =
           err instanceof FetchError
-            ? (err.status === 404 ? "Booking link not found or expired" : err.message)
-            : "Failed to load booking link";
+            ? (err.status === 404 ? t("web.bookExpressLink.notFoundOrExpired") : err.message)
+            : t("customer.expressBookLink.loadFailed");
         setError(message);
       }
     };
@@ -228,7 +234,7 @@ export default function ExpressBookLinkPage() {
   if (!linkSlug) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Invalid booking link</p>
+        <p className="text-muted-foreground">{t("customer.expressBookLink.invalidLink")}</p>
       </div>
     );
   }
@@ -237,16 +243,18 @@ export default function ExpressBookLinkPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-4">
         <p className="text-destructive text-center">{error}</p>
-        <Button asChild variant="outline">
-          <Link href="/search">Find a provider</Link>
-        </Button>
-        {showBanner && (
+        {!embed ? (
+          <Button asChild variant="outline">
+            <Link href="/search">{t("customer.expressBookLink.findProvider")}</Link>
+          </Button>
+        ) : null}
+        {showBanner && !embed ? (
           <AppDownloadBanner
-            providerName={providerName || "your provider"}
+            providerName={providerName || t("web.bookExpressLink.yourProvider")}
             platform={platform as "ios" | "android"}
             onDismiss={handleDismiss}
           />
-        )}
+        ) : null}
       </div>
     );
   }
@@ -254,24 +262,24 @@ export default function ExpressBookLinkPage() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center gap-6 p-6"
-      style={{ paddingBottom: showBanner ? "160px" : undefined }}
+      style={{ paddingBottom: showBanner && !embed ? "160px" : undefined }}
     >
-      <LoadingTimeout loadingMessage="Opening booking..." />
+      <LoadingTimeout loadingMessage={t("web.bookExpressLink.opening")} />
 
       {/* Beautonomi branding during load */}
       <div className="text-center space-y-1 mt-2">
         <p className="text-xs text-gray-400">
-          Powered by Beautonomi
+          {t("web.bookExpressLink.poweredBy")}
         </p>
       </div>
 
-      {showBanner && (
+      {showBanner && !embed ? (
         <AppDownloadBanner
-          providerName={providerName || "your provider"}
+          providerName={providerName || t("web.bookExpressLink.yourProvider")}
           platform={platform as "ios" | "android"}
           onDismiss={handleDismiss}
         />
-      )}
+      ) : null}
     </div>
   );
 }

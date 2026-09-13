@@ -27,6 +27,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface TimeBlock {
   id: string;
@@ -60,12 +62,14 @@ interface BlockedTimeType {
 }
 
 const QUICK_TYPES = [
-  { name: "Lunch Break", color: "#F59E0B" },
-  { name: "Team Meeting", color: "#6366F1" },
-  { name: "Training", color: "#10B981" },
-  { name: "Personal Time", color: "#EC4899" },
-  { name: "Admin Time", color: "#64748B" },
-];
+  { name: "Lunch Break", color: "#F59E0B", labelKey: "quickTypeLunchBreak" },
+  { name: "Team Meeting", color: "#6366F1", labelKey: "quickTypeTeamMeeting" },
+  { name: "Training", color: "#10B981", labelKey: "quickTypeTraining" },
+  { name: "Personal Time", color: "#EC4899", labelKey: "quickTypePersonalTime" },
+  { name: "Admin Time", color: "#64748B", labelKey: "quickTypeAdminTime" },
+] as const;
+
+type TbTranslate = (key: string, opts?: Record<string, unknown>) => string;
 
 const QUICK_DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -81,39 +85,41 @@ function timeToMinutes(time: string): number {
 }
 
 /** Render an "HH:mm" 24h string as a locale-friendly 12h label, e.g. "2:30 PM". */
-function formatTimeLabel(time: string): string {
+function formatTimeLabel(time: string, tb: TbTranslate): string {
   const [h = "0", m = "0"] = time.split(":");
   const hours = Number(h);
   const minutes = Number(m);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-  const period = hours >= 12 ? "PM" : "AM";
+  const period = hours >= 12 ? tb("periodPm") : tb("periodAm");
   const hour12 = hours % 12 === 0 ? 12 : hours % 12;
   return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
 }
 
 /** Human-readable duration between two "HH:mm" times, e.g. "1 hr 30 min". */
-function formatDurationLabel(start: string, end: string): string {
+function formatDurationLabel(start: string, end: string, tb: TbTranslate): string {
   const mins = timeToMinutes(end) - timeToMinutes(start);
   if (mins <= 0) return "";
   const hours = Math.floor(mins / 60);
   const remainder = mins % 60;
   const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours} hr`);
-  if (remainder > 0) parts.push(`${remainder} min`);
+  if (hours > 0) parts.push(tb("durationHours", { count: hours }));
+  if (remainder > 0) parts.push(tb("durationMinutes", { count: remainder }));
   return parts.join(" ");
 }
 
 /** Confirmation bar shown under the iOS spinner so it always has a dismiss path. */
 function PickerDoneBar({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
+  const done = t("provider.mobile.screens.timeBlocks.done");
   return (
     <View style={twStyle("flex-row justify-end border-t border-gray-100 px-3 py-2")}>
       <TouchableOpacity
         onPress={onDone}
         style={twStyle("rounded-lg bg-gray-900 px-5 py-2")}
-        accessibilityLabel="Done"
+        accessibilityLabel={done}
         accessibilityRole="button"
       >
-        <Text style={twStyle("text-sm font-semibold text-white")}>Done</Text>
+        <Text style={twStyle("text-sm font-semibold text-white")}>{done}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -121,6 +127,12 @@ function PickerDoneBar({ onDone }: { onDone: () => void }) {
 
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
+  const { t } = useTranslation();
+  const tb = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.timeBlocks.${key}`, opts) as string,
+    [t],
+  );
   const { screenPadding } = useResponsive();
   const { provider } = useProvider();
   const providerTz = provider?.timezone?.trim() || null;
@@ -251,7 +263,7 @@ export function TimeBlocksContent() {
         is_active: true,
       });
       if (typeErr || !createdType) {
-        Alert.alert("Couldn't add type", typeErr || "Please try again.");
+        Alert.alert(tb("couldntAddType"), typeErr || tb("tryAgain"));
         return;
       }
       typeId = createdType.id;
@@ -260,12 +272,12 @@ export function TimeBlocksContent() {
     const selectedType = activeTypes.find((type) => type.id === typeId);
     const trimmed = name.trim() || typedName || selectedType?.name || "";
     if (!trimmed) {
-      Alert.alert("Required", "Choose a type or enter what you are blocking (e.g. Lunch, Meeting).");
+      Alert.alert(tb("requiredTitle"), tb("nameOrTypeRequired"));
       return;
     }
     const dateStr = format(blockDate, "yyyy-MM-dd");
     if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
-      Alert.alert("Invalid times", "End time must be after start time.");
+      Alert.alert(tb("invalidTimesTitle"), tb("invalidTimesBody"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -287,7 +299,7 @@ export function TimeBlocksContent() {
       ? await patchBlock(`/api/provider/time-blocks/${editingBlock.id}`, payload)
       : await postBlock("/api/provider/time-blocks", payload);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(tb("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -301,23 +313,28 @@ export function TimeBlocksContent() {
     const { error: err } = await patchBlock(`/api/provider/time-blocks/${block.id}`, {
       is_active: block.is_active === false,
     });
-    if (err) Alert.alert("Error", err);
+    if (err) Alert.alert(tb("errorTitle"), err);
     else refresh();
   };
 
   const handleDelete = (block: TimeBlock) => {
     Alert.alert(
-      "Delete time block",
-      `Remove "${block.name}" (${block.date} ${block.start_time}–${block.end_time})?`,
+      tb("deleteBlockTitle"),
+      tb("deleteBlockBody", {
+        name: block.name,
+        date: block.date,
+        start: block.start_time,
+        end: block.end_time,
+      }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: tb("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: tb("delete"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const { error: err } = await deleteBlock(`/api/provider/time-blocks/${block.id}`, {});
-            if (err) Alert.alert("Error", err);
+            if (err) Alert.alert(tb("errorTitle"), err);
             else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               refresh();
@@ -349,7 +366,7 @@ export function TimeBlocksContent() {
   const handleSaveType = async () => {
     const trimmed = typeName.trim();
     if (!trimmed) {
-      Alert.alert("Required", "Enter a type name.");
+      Alert.alert(tb("requiredTitle"), tb("typeNameRequired"));
       return;
     }
     const payload = {
@@ -362,7 +379,7 @@ export function TimeBlocksContent() {
       ? await patchType(`/api/provider/blocked-time-types/${editingType.id}`, payload)
       : await postType("/api/provider/blocked-time-types", payload);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(tb("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -375,22 +392,22 @@ export function TimeBlocksContent() {
     const { error: err } = await patchType(`/api/provider/blocked-time-types/${type.id}`, {
       is_active: type.is_active === false,
     });
-    if (err) Alert.alert("Error", err);
+    if (err) Alert.alert(tb("errorTitle"), err);
     else refreshTypes();
   };
 
   const handleDeleteType = (type: BlockedTimeType) => {
     Alert.alert(
-      "Delete blocked time type",
-      `Remove "${type.name}"? Existing blocks using this type may lose their category.`,
+      tb("deleteTypeTitle"),
+      tb("deleteTypeBody", { name: type.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: tb("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: tb("delete"),
           style: "destructive",
           onPress: async () => {
             const { error: err } = await deleteType(`/api/provider/blocked-time-types/${type.id}`, {});
-            if (err) Alert.alert("Error", err);
+            if (err) Alert.alert(tb("errorTitle"), err);
             else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               refreshTypes();
@@ -431,28 +448,28 @@ export function TimeBlocksContent() {
             onPress={() => setViewMonth((m) => startOfMonth(addMonths(m, -1)))}
             style={twStyle("h-9 w-9 items-center justify-center rounded-full bg-gray-100")}
             accessibilityRole="button"
-            accessibilityLabel="Previous months"
+            accessibilityLabel={tb("previousMonthsA11y")}
           >
-            <Ionicons name="chevron-back" size={20} color="#374151" />
+            <DirectionalIcon name="chevron-back" size={20} color="#374151" />
           </TouchableOpacity>
           <View style={twStyle("flex-1 px-2")}>
             <Text style={twStyle("text-center text-sm font-semibold text-gray-900")}>{rangeCaption}</Text>
-            <Text style={twStyle("text-center text-[11px] text-gray-500")}>Showing 4 months of blocks</Text>
+            <Text style={twStyle("text-center text-[11px] text-gray-500")}>{tb("showingMonths")}</Text>
           </View>
           <TouchableOpacity
             onPress={() => setViewMonth((m) => startOfMonth(addMonths(m, 1)))}
             style={twStyle("h-9 w-9 items-center justify-center rounded-full bg-gray-100")}
             accessibilityRole="button"
-            accessibilityLabel="Next months"
+            accessibilityLabel={tb("nextMonthsA11y")}
           >
-            <Ionicons name="chevron-forward" size={20} color="#374151" />
+            <DirectionalIcon name="chevron-forward" size={20} color="#374151" />
           </TouchableOpacity>
         </View>
 
         <View style={twStyle("mb-4 flex-row rounded-2xl bg-gray-100 p-1")}>
           {[
-            { key: "blocks" as const, label: "Time blocks" },
-            { key: "types" as const, label: "Types" },
+            { key: "blocks" as const, label: tb("tabBlocks") },
+            { key: "types" as const, label: tb("tabTypes") },
           ].map((tab) => {
             const selected = activeTab === tab.key;
             return (
@@ -473,9 +490,9 @@ export function TimeBlocksContent() {
           blocks.length === 0 ? (
             <EmptyState
               icon="ban-outline"
-              title="No time blocks in this range"
-              description={`No blocks between ${rangeCaption}. Block off slots (lunch, meetings, personal time) so clients can't book.`}
-              actionLabel="Add time block"
+              title={tb("emptyBlocksTitle")}
+              description={tb("emptyBlocksBody", { range: rangeCaption })}
+              actionLabel={tb("addTimeBlock")}
               onAction={openAdd}
             />
           ) : (
@@ -485,7 +502,7 @@ export function TimeBlocksContent() {
                 style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3")}
               >
                 <Ionicons name="add" size={18} color="#374151" />
-                <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add time block</Text>
+                <Text style={twStyle("ms-2 font-medium text-gray-700")}>{tb("addTimeBlock")}</Text>
               </TouchableOpacity>
               {blocks.map((block) => (
                 <View
@@ -506,47 +523,55 @@ export function TimeBlocksContent() {
                         color={block.blocked_time_type_color || "#6b7280"}
                       />
                     </View>
-                    <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("ms-3 flex-1")}>
                       <View style={twStyle("flex-row items-center")}>
                         <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
                           {block.name}
                         </Text>
                         {block.is_recurring && (
-                          <View style={twStyle("ml-2 rounded-full bg-blue-100 px-2 py-0.5")}>
-                            <Text style={twStyle("text-xs font-medium text-blue-700")}>Weekly</Text>
+                          <View style={twStyle("ms-2 rounded-full bg-blue-100 px-2 py-0.5")}>
+                            <Text style={twStyle("text-xs font-medium text-blue-700")}>{tb("weekly")}</Text>
                           </View>
                         )}
                         {block.is_active === false && (
-                          <View style={twStyle("ml-2 rounded-full bg-gray-100 px-2 py-0.5")}>
-                            <Text style={twStyle("text-xs font-medium text-gray-600")}>Inactive</Text>
+                          <View style={twStyle("ms-2 rounded-full bg-gray-100 px-2 py-0.5")}>
+                            <Text style={twStyle("text-xs font-medium text-gray-600")}>{tb("inactive")}</Text>
                           </View>
                         )}
                       </View>
                       <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                         {block.is_recurring
-                          ? `Every ${format(new Date(`${block.date}T12:00:00`), "EEEE")} · ${block.start_time} – ${block.end_time}`
-                          : `${block.date} · ${block.start_time} – ${block.end_time}`}
+                          ? tb("recurringEvery", {
+                              day: format(new Date(`${block.date}T12:00:00`), "EEEE"),
+                              start: block.start_time,
+                              end: block.end_time,
+                            })
+                          : tb("oneOffWhen", {
+                              date: block.date,
+                              start: block.start_time,
+                              end: block.end_time,
+                            })}
                       </Text>
                       <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                        {block.team_member_name || "All team members"}
+                        {block.team_member_name || tb("allTeamMembers")}
                       </Text>
                     </View>
                   </View>
                   <View style={twStyle("mt-3 flex-row")}>
                     <TouchableOpacity
                       onPress={() => openEditBlock(block)}
-                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                      style={twStyle("me-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
                     >
                       <Ionicons name="create-outline" size={16} color="#374151" />
-                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>Edit</Text>
+                      <Text style={twStyle("ms-1 text-sm font-semibold text-gray-700")}>{tb("edit")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleToggleBlockActive(block)}
-                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                      style={twStyle("me-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
                     >
                       <Ionicons name={block.is_active === false ? "play-outline" : "pause-outline"} size={16} color="#374151" />
-                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>
-                        {block.is_active === false ? "Activate" : "Pause"}
+                      <Text style={twStyle("ms-1 text-sm font-semibold text-gray-700")}>
+                        {block.is_active === false ? tb("activate") : tb("pause")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -567,14 +592,14 @@ export function TimeBlocksContent() {
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3")}
             >
               <Ionicons name="add" size={18} color="#374151" />
-              <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add blocked time type</Text>
+              <Text style={twStyle("ms-2 font-medium text-gray-700")}>{tb("addBlockedTimeType")}</Text>
             </TouchableOpacity>
             {rawTypes.length === 0 ? (
               <EmptyState
                 icon="pricetag-outline"
-                title="No blocked time types"
-                description="Create types like Lunch Break, Training, or Meeting to categorize calendar blocks."
-                actionLabel="Add type"
+                title={tb("emptyTypesTitle")}
+                description={tb("emptyTypesBody")}
+                actionLabel={tb("addType")}
                 onAction={openAddType}
               />
             ) : (
@@ -584,14 +609,14 @@ export function TimeBlocksContent() {
                     <View
                       style={[twStyle("h-9 w-9 rounded-xl border border-gray-200"), { backgroundColor: type.color || "#FF0077" }]}
                     />
-                    <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("ms-3 flex-1")}>
                       <View style={twStyle("flex-row items-center")}>
                         <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
                           {type.name}
                         </Text>
                         {type.is_active === false && (
                           <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
-                            <Text style={twStyle("text-xs font-medium text-gray-600")}>Inactive</Text>
+                            <Text style={twStyle("text-xs font-medium text-gray-600")}>{tb("inactive")}</Text>
                           </View>
                         )}
                       </View>
@@ -605,18 +630,18 @@ export function TimeBlocksContent() {
                   <View style={twStyle("mt-3 flex-row")}>
                     <TouchableOpacity
                       onPress={() => openEditType(type)}
-                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                      style={twStyle("me-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
                     >
                       <Ionicons name="create-outline" size={16} color="#374151" />
-                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>Edit</Text>
+                      <Text style={twStyle("ms-1 text-sm font-semibold text-gray-700")}>{tb("edit")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleToggleTypeActive(type)}
-                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                      style={twStyle("me-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
                     >
                       <Ionicons name={type.is_active === false ? "play-outline" : "pause-outline"} size={16} color="#374151" />
-                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>
-                        {type.is_active === false ? "Activate" : "Pause"}
+                      <Text style={twStyle("ms-1 text-sm font-semibold text-gray-700")}>
+                        {type.is_active === false ? tb("activate") : tb("pause")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -640,31 +665,32 @@ export function TimeBlocksContent() {
           setEditingBlock(null);
           setActivePicker(null);
         }}
-        title={editingBlock ? "Edit time block" : "Add time block"}
-        subtitle={editingBlock ? "Update the blocked slot shown on your calendar" : "Block off a slot so clients can't book"}
+        title={editingBlock ? tb("editTimeBlock") : tb("addTimeBlock")}
+        subtitle={editingBlock ? tb("editSheetSubtitle") : tb("addSheetSubtitle")}
       >
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("nameLabel")}</Text>
         <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-          Choose a common block type or type your own. This label appears on the calendar.
+          {tb("nameHint")}
         </Text>
         <View style={twStyle("mb-3 flex-row flex-wrap")}>
           {QUICK_TYPES.map((type) => {
+            const label = tb(type.labelKey);
             const existing = activeTypes.find((t) => t.name.toLowerCase() === type.name.toLowerCase());
-            const selected = selectedTypeId === existing?.id || (!selectedTypeId && customTypeName === type.name);
+            const selected = selectedTypeId === existing?.id || (!selectedTypeId && (customTypeName === type.name || customTypeName === label));
             return (
               <TouchableOpacity
                 key={type.name}
                 onPress={() => {
-                  setName(type.name);
-                  setCustomTypeName(existing ? "" : type.name);
+                  setName(label);
+                  setCustomTypeName(existing ? "" : label);
                   setSelectedTypeId(existing?.id ?? null);
                 }}
                 style={[
-                  twStyle(selected ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                  twStyle(selected ? "mb-2 me-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 me-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
                 ]}
               >
                 <Text style={twStyle(selected ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
-                  {type.name}
+                  {label}
                 </Text>
               </TouchableOpacity>
             );
@@ -672,7 +698,7 @@ export function TimeBlocksContent() {
         </View>
         {activeTypes.length > 0 && (
           <>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Saved types</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("savedTypes")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")}>
               {activeTypes.map((type) => {
                 const selected = selectedTypeId === type.id;
@@ -686,7 +712,7 @@ export function TimeBlocksContent() {
                     }}
                     style={[
                       twStyle(selected ? "flex-row items-center rounded-xl bg-indigo-600 px-3 py-2" : "flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"),
-                      { marginRight: 8 },
+                      { marginEnd: 8 },
                     ]}
                   >
                     <View
@@ -695,7 +721,7 @@ export function TimeBlocksContent() {
                         height: 10,
                         borderRadius: 999,
                         backgroundColor: type.color || "#6b7280",
-                        marginRight: 8,
+                        marginEnd: 8,
                       }}
                     />
                     <Text style={twStyle(selected ? "text-sm font-medium text-white" : "text-sm font-medium text-gray-700")}>
@@ -709,7 +735,7 @@ export function TimeBlocksContent() {
         )}
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="Custom type, e.g. Stock take"
+          placeholder={tb("customTypePlaceholder")}
           placeholderTextColor="#9ca3af"
           value={customTypeName || name}
           onChangeText={(text) => {
@@ -721,7 +747,7 @@ export function TimeBlocksContent() {
 
         {activeStaff.length > 0 && !calendarScopeOwn && (
           <>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Applies to</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("appliesTo")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -735,7 +761,7 @@ export function TimeBlocksContent() {
                       ? "bg-indigo-600"
                       : "border border-gray-200 bg-gray-50"
                   }`),
-                  { marginRight: 8 },
+                  { marginEnd: 8 },
                 ]}
                 onPress={() => setSelectedStaffId(null)}
               >
@@ -745,11 +771,11 @@ export function TimeBlocksContent() {
                   color={selectedStaffId === null ? "#fff" : "#6b7280"}
                 />
                 <Text
-                  style={twStyle(`ml-2 text-sm font-medium ${
+                  style={twStyle(`ms-2 text-sm font-medium ${
                     selectedStaffId === null ? "text-white" : "text-gray-700"
                   }`)}
                 >
-                  All team
+                  {tb("allTeam")}
                 </Text>
               </TouchableOpacity>
               {activeStaff.map((member) => {
@@ -763,7 +789,7 @@ export function TimeBlocksContent() {
                           ? "bg-indigo-600"
                           : "border border-gray-200 bg-gray-50"
                       }`),
-                      { marginRight: 8 },
+                      { marginEnd: 8 },
                     ]}
                     onPress={() => setSelectedStaffId(member.id)}
                   >
@@ -773,7 +799,7 @@ export function TimeBlocksContent() {
                       color={isSelected ? "#fff" : "#6b7280"}
                     />
                     <Text
-                      style={twStyle(`ml-2 text-sm font-medium ${
+                      style={twStyle(`ms-2 text-sm font-medium ${
                         isSelected ? "text-white" : "text-gray-700"
                       }`)}
                     >
@@ -786,7 +812,7 @@ export function TimeBlocksContent() {
           </>
         )}
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("dateLabel")}</Text>
         <TouchableOpacity
           onPress={() => setActivePicker((p) => (p === "date" ? null : "date"))}
           style={twStyle(
@@ -794,11 +820,11 @@ export function TimeBlocksContent() {
               activePicker === "date" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
             } px-4 py-3`,
           )}
-          accessibilityLabel={`Date: ${format(blockDate, "EEE, d MMM yyyy")}`}
+          accessibilityLabel={tb("dateA11y", { date: format(blockDate, "EEE, d MMM yyyy") })}
           accessibilityRole="button"
         >
           <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>
+          <Text style={twStyle("ms-2 text-base text-gray-900")}>
             {format(blockDate, "EEE, d MMM yyyy")}
           </Text>
         </TouchableOpacity>
@@ -827,7 +853,7 @@ export function TimeBlocksContent() {
             />
           ))}
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Start time</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("startTime")}</Text>
         <TouchableOpacity
           onPress={() => setActivePicker((p) => (p === "start" ? null : "start"))}
           style={twStyle(
@@ -835,11 +861,11 @@ export function TimeBlocksContent() {
               activePicker === "start" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
             } px-4 py-3`,
           )}
-          accessibilityLabel={`Start time: ${formatTimeLabel(startTime)}`}
+          accessibilityLabel={tb("startTimeA11y", { time: formatTimeLabel(startTime, tb) })}
           accessibilityRole="button"
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>{formatTimeLabel(startTime)}</Text>
+          <Text style={twStyle("ms-2 text-base text-gray-900")}>{formatTimeLabel(startTime, tb)}</Text>
         </TouchableOpacity>
         {activePicker === "start" &&
           (Platform.OS === "ios" ? (
@@ -876,7 +902,7 @@ export function TimeBlocksContent() {
             />
           ))}
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Duration</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("duration")}</Text>
         <View style={twStyle("mb-4 flex-row flex-wrap")}>
           {QUICK_DURATIONS.map((minutes) => {
             const selected = timeToMinutes(endTime) - timeToMinutes(startTime) === minutes;
@@ -885,17 +911,17 @@ export function TimeBlocksContent() {
                 key={minutes}
                 onPress={() => setEndTime(addMinutesToTime(startTime, minutes))}
                 style={[
-                  twStyle(selected ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                  twStyle(selected ? "mb-2 me-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 me-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
                 ]}
               >
                 <Text style={twStyle(selected ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
-                  {minutes < 60 ? `${minutes} min` : `${minutes / 60} hr`}
+                  {minutes < 60 ? tb("quickDurationMin", { count: minutes }) : tb("quickDurationHr", { count: minutes / 60 })}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End time</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("endTime")}</Text>
         <TouchableOpacity
           onPress={() => setActivePicker((p) => (p === "end" ? null : "end"))}
           style={twStyle(
@@ -903,11 +929,11 @@ export function TimeBlocksContent() {
               activePicker === "end" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
             } px-4 py-3`,
           )}
-          accessibilityLabel={`End time: ${formatTimeLabel(endTime)}`}
+          accessibilityLabel={tb("endTimeA11y", { time: formatTimeLabel(endTime, tb) })}
           accessibilityRole="button"
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>{formatTimeLabel(endTime)}</Text>
+          <Text style={twStyle("ms-2 text-base text-gray-900")}>{formatTimeLabel(endTime, tb)}</Text>
         </TouchableOpacity>
         {activePicker === "end" &&
           (Platform.OS === "ios" ? (
@@ -938,15 +964,15 @@ export function TimeBlocksContent() {
         {timeToMinutes(endTime) > timeToMinutes(startTime) ? (
           <View style={twStyle("mb-4 mt-3 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5")}>
             <Ionicons name="hourglass-outline" size={16} color="#6366f1" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-              {formatTimeLabel(startTime)} – {formatTimeLabel(endTime)} ({formatDurationLabel(startTime, endTime)})
+            <Text style={twStyle("ms-2 text-sm font-medium text-indigo-700")}>
+              {tb("durationPreview", { start: formatTimeLabel(startTime, tb), end: formatTimeLabel(endTime, tb), duration: formatDurationLabel(startTime, endTime, tb) })}
             </Text>
           </View>
         ) : (
           <View style={twStyle("mb-4 mt-3 flex-row items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5")}>
             <Ionicons name="alert-circle-outline" size={16} color="#b45309" />
-            <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-amber-800")}>
-              End time must be after the start time.
+            <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-amber-800")}>
+              {tb("endAfterStart")}
             </Text>
           </View>
         )}
@@ -959,11 +985,11 @@ export function TimeBlocksContent() {
         >
           <View style={twStyle("flex-row items-center")}>
             <Ionicons name="repeat-outline" size={20} color={isRecurring ? "#2563eb" : "#6b7280"} />
-            <View style={twStyle("ml-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Repeat weekly</Text>
+            <View style={twStyle("ms-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{tb("repeatWeekly")}</Text>
               {isRecurring && (
                 <Text style={twStyle("mt-0.5 text-xs text-blue-600")}>
-                  Repeats every {format(blockDate, "EEEE")}
+                  {tb("repeatsEvery", { day: format(blockDate, "EEEE") })}
                 </Text>
               )}
             </View>
@@ -979,7 +1005,7 @@ export function TimeBlocksContent() {
                 twStyle("h-5 w-5 rounded-full bg-white"),
                 {
                   marginTop: 2,
-                  marginLeft: isRecurring ? 22 : 2,
+                  marginStart: isRecurring ? 22 : 2,
                   shadowColor: "#000",
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.15,
@@ -991,13 +1017,13 @@ export function TimeBlocksContent() {
           </View>
         </TouchableOpacity>
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("notesOptional")}</Text>
         <TextInput
           style={[
             twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
             { minHeight: 60, textAlignVertical: "top" },
           ]}
-          placeholder="e.g. Team meeting, training"
+          placeholder={tb("notesPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={notes}
           onChangeText={setNotes}
@@ -1005,7 +1031,7 @@ export function TimeBlocksContent() {
           maxLength={200}
         />
         <ActionButton
-          label={creating || creatingType || updatingBlock ? "Saving…" : editingBlock ? "Save changes" : "Add block"}
+          label={creating || creatingType || updatingBlock ? tb("saving") : editingBlock ? tb("saveChanges") : tb("addBlock")}
           onPress={handleSaveBlock}
           loading={creating || creatingType || updatingBlock}
           disabled={timeToMinutes(endTime) <= timeToMinutes(startTime)}
@@ -1018,44 +1044,44 @@ export function TimeBlocksContent() {
           setTypeSheetOpen(false);
           setEditingType(null);
         }}
-        title={editingType ? "Edit blocked time type" : "Add blocked time type"}
-        subtitle="Use types to label lunch breaks, meetings, training, or admin time"
+        title={editingType ? tb("editTypeTitle") : tb("addTypeTitle")}
+        subtitle={tb("typeSheetSubtitle")}
       >
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("nameLabel")}</Text>
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="e.g. Lunch Break"
+          placeholder={tb("typeNamePlaceholder")}
           placeholderTextColor="#9ca3af"
           value={typeName}
           onChangeText={setTypeName}
         />
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Description</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("description")}</Text>
         <TextInput
           style={[
             twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
             { minHeight: 70, textAlignVertical: "top" },
           ]}
-          placeholder="Optional note for your team"
+          placeholder={tb("descriptionPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={typeDescription}
           onChangeText={setTypeDescription}
           multiline
           maxLength={200}
         />
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tb("color")}</Text>
         <View style={twStyle("mb-4 flex-row flex-wrap")}>
           {["#FF0077", "#F59E0B", "#6366F1", "#10B981", "#EC4899", "#64748B", "#EF4444", "#0EA5E9"].map((color) => (
             <TouchableOpacity
               key={color}
               onPress={() => setTypeColor(color)}
               style={[
-                twStyle("mb-2 mr-3 h-10 w-10 rounded-full border-2"),
+                twStyle("mb-2 me-3 h-10 w-10 rounded-full border-2"),
                 {
                   backgroundColor: color,
                   borderColor: typeColor === color ? "#111827" : "#ffffff",
                 },
               ]}
-              accessibilityLabel={`Use color ${color}`}
+              accessibilityLabel={tb("useColorA11y", { color })}
             />
           ))}
         </View>
@@ -1066,7 +1092,7 @@ export function TimeBlocksContent() {
         >
           <View style={twStyle("flex-row items-center")}>
             <Ionicons name="checkmark-circle-outline" size={20} color={typeActive ? "#16a34a" : "#6b7280"} />
-            <Text style={twStyle("ml-3 text-sm font-medium text-gray-900")}>Active</Text>
+            <Text style={twStyle("ms-3 text-sm font-medium text-gray-900")}>{tb("active")}</Text>
           </View>
           <View
             style={[
@@ -1077,13 +1103,13 @@ export function TimeBlocksContent() {
             <View
               style={[
                 twStyle("h-5 w-5 rounded-full bg-white"),
-                { marginTop: 2, marginLeft: typeActive ? 22 : 2 },
+                { marginTop: 2, marginStart: typeActive ? 22 : 2 },
               ]}
             />
           </View>
         </TouchableOpacity>
         <ActionButton
-          label={creatingType || updatingType ? "Saving…" : editingType ? "Save type" : "Add type"}
+          label={creatingType || updatingType ? tb("saving") : editingType ? tb("saveType") : tb("addType")}
           onPress={handleSaveType}
           loading={creatingType || updatingType}
           fullWidth
@@ -1094,6 +1120,9 @@ export function TimeBlocksContent() {
 }
 
 export default function TimeBlocksScreen() {
+  const { t } = useTranslation();
+  const tb = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.timeBlocks.${key}`, opts) as string;
   const { provider } = useProvider();
   const providerTz = provider?.timezone?.trim() || null;
   const businessToday = startOfBusinessDayLocalDate(providerTz);
@@ -1106,9 +1135,9 @@ export default function TimeBlocksScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Time Blocks"
+        title={tb("title")}
         showBack
-        subtitle={`${thisMonthLabel} · ${blocks.length} block${blocks.length === 1 ? "" : "s"}`}
+        subtitle={tb("headerSubtitle", { month: thisMonthLabel, count: blocks.length })}
       />
       <TimeBlocksContent />
     </ScreenContainer>

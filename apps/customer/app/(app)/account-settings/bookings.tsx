@@ -9,6 +9,7 @@ import { Colors } from "@/constants/colors";
 import type { Booking } from "@/types/api";
 import { fetchAllBookingsPages } from "@/features/bookings/fetchAllBookingsPages";
 import { useTranslation } from "@beautonomi/i18n";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 function parseValidDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value) return null;
@@ -19,12 +20,12 @@ function parseValidDate(value: unknown): Date | null {
 function formatDate(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return parsed.toLocaleDateString(getTenantLocaleTag(), { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 function formatTime(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return parsed.toLocaleTimeString(getTenantLocaleTag(), { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 type SortPreset = "appt_desc" | "appt_asc" | "booked_desc" | "booked_asc";
@@ -126,9 +127,9 @@ export default function AccountBookingsScreen() {
   }, [user?.id]);
 
   const TABS = [
-    { key: "upcoming" as const, label: "Upcoming" },
-    { key: "past" as const, label: "Past" },
-    { key: "cancelled" as const, label: "Cancelled" },
+    { key: "upcoming" as const, label: t("customer.accountBookingsScreen.tabUpcoming") },
+    { key: "past" as const, label: t("customer.accountBookingsScreen.tabPast") },
+    { key: "cancelled" as const, label: t("customer.accountBookingsScreen.tabCancelled") },
   ];
 
   if (loading && !bookings.length) {
@@ -147,20 +148,20 @@ export default function AccountBookingsScreen() {
             <TouchableOpacity
               key={t.key}
               onPress={() => setTab(t.key)}
-              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: tab === t.key ? Colors.primary : Colors.gray[100], marginRight: 8 }}
+              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: tab === t.key ? Colors.primary : Colors.gray[100], marginEnd: 8 }}
             >
               <Text style={{ fontWeight: "500", color: tab === t.key ? Colors.white : Colors.gray[700] }}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 12, marginBottom: 6 }}>Sort</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 12, marginBottom: 6 }}>{t("customer.accountBookingsScreen.sortLabel")}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingEnd: 8 }}>
           {(
             [
-              { key: "appt_desc" as const, label: "Appt · newest" },
-              { key: "appt_asc" as const, label: "Appt · soonest" },
-              { key: "booked_desc" as const, label: "Booked · newest" },
-              { key: "booked_asc" as const, label: "Booked · oldest" },
+              { key: "appt_desc" as const, label: t("customer.accountBookingsScreen.sortApptNewest") },
+              { key: "appt_asc" as const, label: t("customer.accountBookingsScreen.sortApptSoonest") },
+              { key: "booked_desc" as const, label: t("customer.accountBookingsScreen.sortBookedNewest") },
+              { key: "booked_asc" as const, label: t("customer.accountBookingsScreen.sortBookedOldest") },
             ] as const
           ).map((c) => {
             const active = sortPreset === c.key;
@@ -173,7 +174,7 @@ export default function AccountBookingsScreen() {
                   paddingVertical: 7,
                   borderRadius: 9999,
                   backgroundColor: active ? Colors.gray[900] : Colors.gray[100],
-                  marginRight: 8,
+                  marginEnd: 8,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Sort: ${c.label}`}

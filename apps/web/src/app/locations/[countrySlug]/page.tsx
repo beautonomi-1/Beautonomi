@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import {
   cityDisplayToSlug,
   getSeoMarketByCountrySlug,
@@ -25,14 +27,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   const origin = await getPublicSiteOriginFromHeaders();
   const path = `/locations/${market.slug}`;
-  const title = locationHubMetaTitle({ countryName: market.name });
-  const description = locationHubMetaDescription({ countryName: market.name });
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
+  const title = locationHubMetaTitle(t, { countryName: market.name });
+  const description = locationHubMetaDescription(t, { countryName: market.name });
   return {
     title,
     description,
     alternates: {
       canonical: `${origin}${path}`,
-      languages: getHreflangAlternateUrls(path),
+      languages: await hreflangForPath(path),
     },
     openGraph: { title, description, url: `${origin}${path}`, type: "website" },
   };
@@ -57,8 +61,10 @@ export default async function CountryLocationPage({ params }: Props) {
     categorySlug: null,
   });
 
-  const title = `Beauty freelancers & salons in ${market.name}`;
-  const description = locationHubMetaDescription({ countryName: market.name });
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
+  const title = locationHubMetaTitle(t, { countryName: market.name });
+  const description = locationHubMetaDescription(t, { countryName: market.name });
 
   const jsonLd = {
     "@context": "https://schema.org",

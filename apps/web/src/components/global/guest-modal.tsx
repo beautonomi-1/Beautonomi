@@ -1,9 +1,11 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState } from "react";
 import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 
 const GuestModal = () => {
+  const { t } = useTranslation();
   const [bedrooms, setBedrooms] = useState<number>(0);
   const [beds, setBeds] = useState<number>(0);
   const [bathrooms, setBathrooms] = useState<number>(0);
@@ -13,8 +15,8 @@ const GuestModal = () => {
       <div className=" pb-3">
         <div className="border-b pb-6 flex justify-between items-center mb-4 pt-4">
           <div>
-            <Label className="font-light text-base">Adults</Label>
-            <p className="text-sm font-light text-gray-600">Ages 13 or above</p>
+            <Label className="font-light text-base">{t("web.global.guestModal.adults")}</Label>
+            <p className="text-sm font-light text-gray-600">{t("web.global.guestModal.adultsAges")}</p>
           </div>
           <div className="flex items-center space-x-7">
             <Button
@@ -34,8 +36,8 @@ const GuestModal = () => {
         </div>
         <div className="border-b pb-6 pt-2 flex justify-between items-center mb-4">
           <div>
-            <Label className="font-light text-base">Children</Label>
-            <p className="text-sm font-light text-gray-600">2 - 12</p>
+            <Label className="font-light text-base">{t("web.global.guestModal.children")}</Label>
+            <p className="text-sm font-light text-gray-600">{t("web.global.guestModal.childrenAges")}</p>
           </div>
           <div className="flex items-center space-x-7">
             <Button
@@ -55,8 +57,8 @@ const GuestModal = () => {
         </div>
         <div className="border-b pb-6 pt-2 flex justify-between items-center mb-4">
           <div>
-            <Label className="font-light text-base">Infants</Label>
-            <p className="text-sm font-light text-gray-600">Under 2</p>
+            <Label className="font-light text-base">{t("web.global.guestModal.infants")}</Label>
+            <p className="text-sm font-light text-gray-600">{t("web.global.guestModal.underTwo")}</p>
           </div>
           <div className="flex items-center space-x-7">
             <Button
@@ -76,8 +78,8 @@ const GuestModal = () => {
         </div>
         <div className="border-b pb-6 pt-2 flex justify-between items-center mb-4">
           <div>
-            <Label className="font-light text-base">Pets</Label>
-            <p className="text-sm font-light text-gray-600 underline">Bringing a service animal?</p>
+            <Label className="font-light text-base">{t("web.global.guestModal.pets")}</Label>
+            <p className="text-sm font-light text-gray-600 underline">{t("web.global.guestModal.serviceAnimal")}</p>
           </div>
           <div className="flex items-center space-x-7">
             <Button

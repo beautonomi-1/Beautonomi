@@ -15,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import { useApiMutation } from "@/hooks/useApi";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   buildConfirmedAfterInlineConfirmModel,
   buildProviderBookingCreatedSuccessModel,
@@ -61,6 +62,8 @@ function iconPresentation(iconName: "checkmark-circle" | "time-outline" | "card-
 }
 
 export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss }: Props) {
+  const { t } = useTranslation();
+  const bs = (key: string) => t(`provider.mobile.components.bookingCreatedSuccess.${key}`) as string;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const navigatedRef = useRef(false);
@@ -113,12 +116,12 @@ export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss
     if (!payload?.bookingId || confirming) return;
     const res = await patchBooking(`/api/provider/bookings/${payload.bookingId}`, { status: "booked" });
     if (res.error) {
-      Alert.alert("Could not confirm", res.error);
+      Alert.alert(bs("couldNotConfirm"), res.error);
       return;
     }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setConfirmedInline(true);
-  }, [confirming, patchBooking, payload?.bookingId]);
+  }, [confirming, patchBooking, payload?.bookingId, t]);
 
   if (!visible || !payload || !model) return null;
 
@@ -230,12 +233,12 @@ export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss
                   { backgroundColor: Colors.primary, opacity: confirming ? 0.7 : 1 },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Confirm booking"
+                accessibilityLabel={bs("confirmBookingA11y")}
               >
                 {confirming ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={twStyle("text-sm font-bold text-white")}>Confirm booking</Text>
+                  <Text style={twStyle("text-sm font-bold text-white")}>{bs("confirmBooking")}</Text>
                 )}
               </TouchableOpacity>
             ) : null}
@@ -247,9 +250,9 @@ export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss
                   `w-full items-center rounded-2xl border border-gray-200 px-5 py-3.5 ${model.showConfirmCta ? "mt-2.5" : ""}`,
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Review booking"
+                accessibilityLabel={bs("reviewBookingA11y")}
               >
-                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Review booking</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>{bs("reviewBooking")}</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -263,9 +266,9 @@ export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss
                   { backgroundColor: Colors.primary },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="View booking"
+                accessibilityLabel={bs("viewBookingA11y")}
               >
-                <Text style={twStyle("text-sm font-bold text-white")}>View booking</Text>
+                <Text style={twStyle("text-sm font-bold text-white")}>{bs("viewBooking")}</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -275,9 +278,9 @@ export function ProviderBookingCreatedSuccessSheet({ visible, payload, onDismiss
                 `w-full items-center rounded-2xl px-5 py-3 ${model.showConfirmCta || model.showReviewCta || model.showViewCta ? "mt-1" : ""}`,
               )}
               accessibilityRole="button"
-              accessibilityLabel="Back to bookings"
+              accessibilityLabel={bs("backToBookingsA11y")}
             >
-              <Text style={twStyle("text-sm font-semibold text-gray-400")}>Back to bookings</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-400")}>{bs("backToBookings")}</Text>
             </TouchableOpacity>
           </View>
         </View>

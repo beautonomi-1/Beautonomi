@@ -45,6 +45,7 @@ import {
   type ProviderServiceLike,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeAtHomeLinePrice } from "@beautonomi/utils";
 import { repriceLegacySelectedServices } from "../lib/legacy-at-home-pricing";
@@ -309,6 +310,7 @@ function freshBookingStateForUrl(
 }
 
 export default function BookingFlow() {
+  const { t } = useTranslation();
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -436,13 +438,13 @@ export default function BookingFlow() {
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        "Discard this booking and start over? Your selections and add-ons will be cleared."
+        t("web.book.flow.discardConfirm")
       )
     ) {
       return;
     }
     applyFreshBookingStart();
-  }, [applyFreshBookingStart]);
+  }, [applyFreshBookingStart, t]);
 
   /** Direct service/product deep links skip “packages first” — user chose a specific offering or retail item. */
   const serviceDirect = Boolean(
@@ -1450,23 +1452,23 @@ export default function BookingFlow() {
   const getStepTitle = () => {
     switch (currentStep) {
       case "services":
-        return "Select Services";
+        return t("booking.selectService");
       case "groupParticipants":
-        return "Add Participants";
+        return t("web.booking.groupParticipants.title");
       case "venue":
-        return "How would you like your service?";
+        return t("web.book.engine.whereAppointment");
       case "calendar":
-        return "Choose Date & Time";
+        return t("web.book.engine.chooseDateTime");
       case "promotions":
-        return "Promotions & Rewards";
+        return t("web.booking.promotions.title");
       case "yourInfo":
-        return "Your Information";
+        return t("web.book.engine.yourDetails");
       case "forms":
-        return "Additional Details";
+        return t("web.book.engine.additionalDetails");
       case "payment":
-        return "Review & Pay";
+        return t("booking.reviewAndPay");
       default:
-        return "Booking";
+        return t("booking.bookAppointment");
     }
   };
 
@@ -1477,8 +1479,8 @@ export default function BookingFlow() {
         <div className="flex items-center justify-between px-4 py-3 h-14">
           <button
             onClick={handleBack}
-            className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors touch-target"
-            aria-label="Go back"
+            className="p-2 -ms-2 rounded-full hover:bg-gray-100 transition-colors touch-target"
+            aria-label={t("web.book.continue.goBack")}
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
@@ -1488,8 +1490,8 @@ export default function BookingFlow() {
               clearBookingFlowStorage();
               router.push("/");
             }}
-            className="p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors touch-target"
-            aria-label="Close"
+            className="p-2 -me-2 rounded-full hover:bg-gray-100 transition-colors touch-target"
+            aria-label={t("common.close")}
           >
             <X className="w-6 h-6" />
           </button>
@@ -1518,7 +1520,7 @@ export default function BookingFlow() {
             })}
           </div>
           <div className="text-xs text-gray-500 mt-1 text-center">
-            Step {progressStepIndex + 1} of {effectiveStepOrder.length}
+            {t("web.onboarding.tour.stepOf", { current: progressStepIndex + 1, total: effectiveStepOrder.length })}
           </div>
           <div className="flex justify-center mt-2">
             <button
@@ -1526,7 +1528,7 @@ export default function BookingFlow() {
               onClick={handleStartOver}
               className="text-xs font-medium text-gray-500 hover:text-gray-800 underline underline-offset-2 decoration-gray-400 hover:decoration-gray-700"
             >
-              Start over
+              {t("checkout.startOver")}
             </button>
           </div>
         </div>

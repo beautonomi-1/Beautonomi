@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "ex
 import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
 import { openAppSettings } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] as const;
 
@@ -21,11 +22,15 @@ export function BarcodeScannerModal({
   visible,
   onClose,
   onScanned,
-  title = "Scan barcode",
+  title,
   busy = false,
   errorMessage = null,
-  webFallbackMessage = "Use the mobile app to scan barcodes.",
+  webFallbackMessage,
 }: Props) {
+  const { t } = useTranslation();
+  const bc = (key: string) => t(`provider.mobile.components.barcodeScanner.${key}`) as string;
+  const resolvedTitle = title ?? bc("defaultTitle");
+  const resolvedWeb = webFallbackMessage ?? bc("webFallback");
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [locked, setLocked] = useState(false);
 
@@ -60,10 +65,10 @@ export function BarcodeScannerModal({
       <Modal visible={visible} transparent animationType="fade">
         <View style={twStyle("flex-1 items-center justify-center bg-black/60 px-6")}>
           <View style={twStyle("w-full max-w-sm rounded-2xl bg-white p-5")}>
-            <Text style={twStyle("mb-2 text-base font-semibold text-gray-900")}>{title}</Text>
-            <Text style={twStyle("mb-4 text-sm text-gray-600")}>{webFallbackMessage}</Text>
+            <Text style={twStyle("mb-2 text-base font-semibold text-gray-900")}>{resolvedTitle}</Text>
+            <Text style={twStyle("mb-4 text-sm text-gray-600")}>{resolvedWeb}</Text>
             <TouchableOpacity onPress={onClose} style={twStyle("rounded-xl bg-indigo-600 py-3")}>
-              <Text style={twStyle("text-center font-semibold text-white")}>Close</Text>
+              <Text style={twStyle("text-center font-semibold text-white")}>{bc("close")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -75,7 +80,7 @@ export function BarcodeScannerModal({
     <Modal visible={visible} animationType="slide">
       <View style={twStyle("flex-1 bg-black")}>
         <View style={twStyle("flex-row items-center justify-between px-4 pt-12 pb-3")}>
-          <Text style={twStyle("text-lg font-semibold text-white")}>{title}</Text>
+          <Text style={twStyle("text-lg font-semibold text-white")}>{resolvedTitle}</Text>
           <TouchableOpacity onPress={onClose} accessibilityRole="button">
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
@@ -83,12 +88,12 @@ export function BarcodeScannerModal({
 
         {!permission?.granted ? (
           <View style={twStyle("flex-1 items-center justify-center px-6")}>
-            <Text style={twStyle("mb-4 text-center text-white")}>Camera permission is required to scan barcodes.</Text>
+            <Text style={twStyle("mb-4 text-center text-white")}>{bc("cameraRequired")}</Text>
             <TouchableOpacity onPress={() => void requestPermission()} style={twStyle("mb-3 rounded-xl bg-white px-6 py-3")}>
-              <Text style={twStyle("font-semibold text-gray-900")}>Continue</Text>
+              <Text style={twStyle("font-semibold text-gray-900")}>{bc("continue")}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => void openAppSettings()}>
-              <Text style={twStyle("text-indigo-300")}>Open settings</Text>
+              <Text style={twStyle("text-indigo-300")}>{bc("openSettings")}</Text>
             </TouchableOpacity>
           </View>
         ) : (

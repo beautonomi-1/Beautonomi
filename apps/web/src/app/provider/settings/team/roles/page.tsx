@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -62,6 +63,7 @@ const permissionCategories = [
 ];
 
 export default function RolesSettings() {
+  const { t } = useTranslation();
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -84,7 +86,7 @@ export default function RolesSettings() {
       setRoles(response.data || []);
     } catch (error: any) {
       console.error("Error loading roles:", error);
-      toast.error("Failed to load roles");
+      toast.error(t("web.provider.settings.pages.team/roles.failedToLoadRoles"));
     } finally {
       setIsLoading(false);
     }
@@ -117,21 +119,21 @@ export default function RolesSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this role?")) return;
+    if (!confirm(t("web.provider.settings.pages.team/roles.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/roles/${id}`);
-      toast.success("Role deleted");
+      toast.success(t("web.provider.settings.pages.team/roles.roleDeleted"));
       loadRoles();
     } catch (error: any) {
-      toast.error(error.message || "Failed to delete role");
+      toast.error(error.message || t("web.provider.settings.pages.team/roles.failedToDelete"));
     }
   };
 
   const handleSave = async () => {
     try {
       if (!formData.name.trim()) {
-        toast.error("Role name is required");
+        toast.error(t("web.provider.settings.pages.team/roles.roleNameIsRequired"));
         return;
       }
 
@@ -142,7 +144,7 @@ export default function RolesSettings() {
           permissions: formData.permissions,
           is_active: formData.is_active,
         });
-        toast.success("Role updated");
+        toast.success(t("web.provider.settings.pages.team/roles.roleUpdated"));
       } else {
         await fetcher.post("/api/provider/roles", {
           name: formData.name.trim(),
@@ -150,12 +152,12 @@ export default function RolesSettings() {
           permissions: formData.permissions,
           is_active: formData.is_active,
         });
-        toast.success("Role created");
+        toast.success(t("web.provider.settings.pages.team/roles.roleCreated"));
       }
       setIsDialogOpen(false);
       loadRoles();
     } catch (error: any) {
-      toast.error(error.message || "Failed to save role");
+      toast.error(error.message || t("web.provider.settings.pages.team/roles.failedToSave"));
     }
   };
 
@@ -193,31 +195,60 @@ export default function RolesSettings() {
   }, {} as Record<string, typeof permissionCategories>);
 
   const categoryLabels: Record<string, string> = {
-    calendar: "Calendar & Appointments",
-    sales: "Sales & Payments",
-    catalogue: "Services & Products",
-    team: "Team Management",
-    settings: "Business Settings",
-    clients: "Client Management",
+    calendar: t("web.provider.settings.pages.team/roles.catCalendar"),
+    sales: t("web.provider.settings.pages.team/roles.catSales"),
+    catalogue: t("web.provider.settings.pages.team/roles.catCatalogue"),
+    team: t("web.provider.settings.pages.team/roles.catTeam"),
+    settings: t("web.provider.settings.pages.team/roles.catSettings"),
+    clients: t("web.provider.settings.pages.team/roles.catClients"),
+    engagement: t("web.provider.settings.pages.team/roles.catEngagement"),
   };
+  const permName = (id: string) => t(`web.provider.settings.pages.team/roles.perm.${({
+    view_calendar: "viewCalendar",
+    create_appointments: "createAppointments",
+    edit_appointments: "editAppointments",
+    cancel_appointments: "cancelAppointments",
+    delete_appointments: "deleteAppointments",
+    view_sales: "viewSales",
+    create_sales: "createSales",
+    process_payments: "processPayments",
+    view_reports: "viewReports",
+    view_services: "viewServices",
+    edit_services: "editServices",
+    view_products: "viewProducts",
+    edit_products: "editProducts",
+    view_team: "viewTeam",
+    manage_team: "manageTeam",
+    view_settings: "viewSettings",
+    edit_settings: "editSettings",
+    view_clients: "viewClients",
+    edit_clients: "editClients",
+    view_reviews: "viewReviews",
+    edit_reviews: "editReviews",
+    view_client_ratings: "viewClientRatings",
+    rate_clients: "rateClients",
+    view_messages: "viewMessages",
+    send_messages: "sendMessages",
+    create_explore_posts: "createExplorePosts",
+  } as Record<string, string>)[id] ?? id}`);
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Team", href: "/provider/settings/team/roles" },
-    { label: "Roles" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.team/roles.team"), href: "/provider/settings/team/roles" },
+    { label: t("web.provider.settings.pages.team/roles.roles") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Roles"
-        subtitle="Configure team roles"
+        title={t("web.provider.settings.categories.team.items.roles.title")}
+        subtitle={t("web.provider.settings.categories.team.items.roles.description")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading roles..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.team/roles.loadingRoles")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -225,33 +256,33 @@ export default function RolesSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Roles"
-      subtitle="Configure team roles"
+      title={t("web.provider.settings.pages.team/roles.roles")}
+      subtitle={t("web.provider.settings.pages.team/roles.configureTeamRoles")}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
-              Create and manage team roles with different permissions
+{t("web.provider.settings.pages.team/roles.createAndManage")}
             </p>
           </div>
           <Button
             onClick={handleCreate}
             className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Role
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.team/roles.addRole")}
           </Button>
         </div>
 
         {roles.length === 0 ? (
           <SectionCard className="p-8 sm:p-12">
             <EmptyState
-              title="No roles yet"
-              description="Create roles to group permissions together for easier team management"
+              title={t("web.provider.settings.pages.team/roles.noRolesYet")}
+              description={t("web.provider.settings.pages.team/roles.emptyHint")}
               action={{
-                label: "Add Role",
+                label: t("web.provider.settings.pages.team/roles.addRole"),
                 onClick: handleCreate,
               }}
             />
@@ -273,12 +304,12 @@ export default function RolesSettings() {
                       )}
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline" className="text-xs">
-                          {permissionCount} permission{permissionCount !== 1 ? "s" : ""}
+{t("web.provider.settings.pages.team/roles.permissionCount", { count: permissionCount })}
                         </Badge>
                         <Badge
                           className={role.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
                         >
-                          {role.is_active ? "Active" : "Inactive"}
+{role.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                         </Badge>
                       </div>
                     </div>
@@ -290,8 +321,8 @@ export default function RolesSettings() {
                       onClick={() => handleEdit(role)}
                       className="flex-1 min-h-[36px] touch-manipulation"
                     >
-                      <Edit className="w-3 h-3 mr-1" />
-                      Edit
+                      <Edit className="w-3 h-3 me-1" />
+{t("web.provider.common.edit")}
                     </Button>
                     <Button
                       variant="outline"
@@ -299,8 +330,8 @@ export default function RolesSettings() {
                       onClick={() => handleDelete(role.id)}
                       className="text-red-600 hover:text-red-700 flex-1 min-h-[36px] touch-manipulation"
                     >
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      Delete
+                      <Trash2 className="w-3 h-3 me-1" />
+{t("web.provider.common.delete")}
                     </Button>
                   </div>
                 </SectionCard>
@@ -313,32 +344,32 @@ export default function RolesSettings() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>{editingRole ? "Edit Role" : "Add Role"}</DialogTitle>
+<DialogTitle>{editingRole ? t("web.provider.settings.pages.team/roles.editRole") : t("web.provider.settings.pages.team/roles.addRole")}</DialogTitle>
             <DialogDescription>
               {editingRole
-                ? "Update role information and permissions"
-                : "Create a new role with specific permissions"}
+                ? t("web.provider.settings.pages.team/roles.updateHint")
+                : t("web.provider.settings.pages.team/roles.createHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Name *</Label>
+<Label htmlFor="name">{t("web.provider.onboarding.leftover2.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Manager, Staff, Receptionist"
+                placeholder={t("web.provider.settings.pages.team/roles.eGManagerStaffReceptionist")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+<Label htmlFor="description">{t("web.provider.common.description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description"
+                placeholder={t("web.provider.settings.pages.team/roles.optionalDescription")}
                 rows={3}
                 className="mt-1.5"
               />
@@ -347,7 +378,7 @@ export default function RolesSettings() {
             <Separator />
 
             <div>
-              <Label className="mb-3 block">Permissions</Label>
+<Label className="mb-3 block">{t("web.provider.settings.pages.team/permissions.permissions")}</Label>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {Object.entries(groupedPermissions).map(([category, perms]) => (
                   <div key={category} className="space-y-2">
@@ -359,17 +390,17 @@ export default function RolesSettings() {
                         onClick={() => handleSelectAll(category)}
                         className="text-xs min-h-[32px] touch-manipulation"
                       >
-                        {perms.every((p) => formData.permissions[p.id]) ? "Deselect All" : "Select All"}
+{perms.every((p) => formData.permissions[p.id]) ? t("web.provider.bookings.bulkActions.deselectAll") : t("web.provider.bookings.bulkActions.selectAll")}
                       </Button>
                     </div>
-                    <div className="space-y-2 pl-4">
+                    <div className="space-y-2 ps-4">
                       {perms.map((perm) => (
                         <div
                           key={perm.id}
                           className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
                         >
                           <Label htmlFor={perm.id} className="text-sm cursor-pointer flex-1">
-                            {perm.name}
+{permName(perm.id)}
                           </Label>
                           <Switch
                             id={perm.id}
@@ -395,7 +426,7 @@ export default function RolesSettings() {
                 className="w-4 h-4"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active
+{t("web.provider.common.active")}
               </Label>
             </div>
           </div>
@@ -405,13 +436,13 @@ export default function RolesSettings() {
               onClick={() => setIsDialogOpen(false)}
               className="min-h-[44px] touch-manipulation"
             >
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
               className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {editingRole ? "Update" : "Create"}
+{editingRole ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Redirect } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -122,6 +123,12 @@ function periodMetric(value: number | undefined): number {
 
 /** Content-only for use in Finance hub (Overview tab). */
 export function FinanceOverviewContent({ locationId = null }: { locationId?: string | null } = {}) {
+  const { t } = useTranslation();
+  const fin = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.finance.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<MoneyRangeKey>("month");
   const [txLimit, setTxLimit] = useState(50);
@@ -186,7 +193,7 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
         showsVerticalScrollIndicator={false}
       >
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-600")}>All-time available to withdraw</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-600")}>{fin("allTimeAvailable")}</Text>
           <Text style={twStyle("mt-1 text-2xl font-bold text-gray-900")}>
             {earnings.payout_balance_unavailable
               ? "—"
@@ -194,12 +201,12 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-500")}>
             {earnings.payout_balance_unavailable
-              ? "Withdrawable balance is still loading. Pull to refresh."
-              : "Platform-held payoutable earnings minus completed payouts and pending requests."}
+              ? fin("withdrawLoading")
+              : fin("withdrawHint")}
           </Text>
           {(earnings.pending_payouts ?? 0) > 0 && (
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              Pending payouts: {formatCurrency(earnings.pending_payouts, currency)}
+              {fin("pendingPayouts", { amount: formatCurrency(earnings.pending_payouts, currency) })}
             </Text>
           )}
         </View>
@@ -213,9 +220,9 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
         ) : null}
 
         <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginEnd: 12 }]}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>
-              {rangeLabel} — total earned (ledger)
+              {fin("rangeTotalEarned", { range: rangeLabel })}
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(earnings.recognized_revenue_total ?? 0, currency)}
@@ -224,14 +231,15 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               <Text
                 style={twStyle(`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`)}
               >
-                {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
-                {earnings.growth_percentage}% vs comparison period
+                {fin("vsComparison", {
+                  value: `${(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}${earnings.growth_percentage}`,
+                })}
               </Text>
             )}
           </View>
           <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>
-              {rangeLabel} — provider earnings
+              {fin("rangeProviderEarnings", { range: rangeLabel })}
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(
@@ -240,7 +248,7 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               )}
             </Text>
             <Text style={twStyle("mt-1 text-[10px] text-gray-500")}>
-              All provider_earnings rows; tips and travel are listed separately below
+              {fin("providerEarningsHint")}
             </Text>
           </View>
         </View>
@@ -256,47 +264,47 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
           (periodMetric(earnings.membership_sales_this_period) > 0) ||
           (periodMetric(earnings.refunds_this_period) > 0)) && (
           <>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Revenue Streams ({rangeLabel})</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>{fin("revenueStreams", { range: rangeLabel })}</Text>
             <View style={twStyle("mb-4 flex-row flex-wrap")}>
               {periodMetric(earnings.product_sales_earnings_this_period) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>Product order earnings</Text>
+                <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>{fin("productOrderEarnings")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-indigo-900")}>
                     {formatCurrency(periodMetric(earnings.product_sales_earnings_this_period), currency)}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Platform-held ecommerce net</Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>{fin("platformHeldEcommerce")}</Text>
                 </View>
               )}
               {periodMetric(earnings.travel_fees_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-sky-100 bg-sky-50/60 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-sky-700")}>Travel fees</Text>
+                  <Text style={twStyle("text-xs font-medium text-sky-700")}>{fin("travelFees")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-sky-900")}>
                     {formatCurrency(periodMetric(earnings.travel_fees_this_period), currency)}
                   </Text>
                 </View>
               )}
               {periodMetric(earnings.tips_this_period) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-emerald-700")}>Tips</Text>
+                <View style={[twStyle("rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-emerald-700")}>{fin("tips")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-emerald-900")}>
                     {formatCurrency(periodMetric(earnings.tips_this_period), currency)}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-[10px] text-emerald-500")}>
-                    Ledger tip rows in {rangeLabel.toLowerCase()}
+                    {fin("ledgerTipRows", { range: rangeLabel.toLowerCase() })}
                   </Text>
                 </View>
               )}
               {periodMetric(earnings.cancellation_fees_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-amber-100 bg-amber-50/60 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-amber-700")}>Cancellation Fees</Text>
+                  <Text style={twStyle("text-xs font-medium text-amber-700")}>{fin("cancellationFees")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-amber-900")}>
                     {formatCurrency(periodMetric(earnings.cancellation_fees_this_period), currency)}
                   </Text>
                 </View>
               )}
               {periodMetric(earnings.additional_charges_this_period) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-blue-100 bg-blue-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-blue-700")}>Additional Charges</Text>
+                <View style={[twStyle("rounded-2xl border border-blue-100 bg-blue-50/60 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-blue-700")}>{fin("additionalCharges")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-blue-900")}>
                     {formatCurrency(periodMetric(earnings.additional_charges_this_period), currency)}
                   </Text>
@@ -304,15 +312,15 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               )}
               {(earnings.gift_card_sales_this_period ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-pink-100 bg-pink-50/60 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-pink-700")}>Gift-card liability</Text>
+                  <Text style={twStyle("text-xs font-medium text-pink-700")}>{fin("giftCardLiability")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-pink-900")}>
                     {formatCurrency(earnings.gift_card_sales_this_period, currency)}
                   </Text>
                 </View>
               )}
               {(earnings.membership_sales_this_period ?? 0) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-purple-100 bg-purple-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-purple-700")}>Membership liability</Text>
+                <View style={[twStyle("rounded-2xl border border-purple-100 bg-purple-50/60 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-purple-700")}>{fin("membershipLiability")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-purple-900")}>
                     {formatCurrency(earnings.membership_sales_this_period, currency)}
                   </Text>
@@ -320,19 +328,19 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               )}
               {periodMetric(earnings.refunds_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-red-100 bg-red-50/60 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-red-700")}>Refunds</Text>
+                  <Text style={twStyle("text-xs font-medium text-red-700")}>{fin("refunds")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-red-900")}>
                     {formatCurrency(periodMetric(earnings.refunds_this_period), currency)}
                   </Text>
                 </View>
               )}
               {periodMetric(earnings.walk_in_additional_charges_this_period) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-gray-100 bg-gray-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-gray-600")}>Walk-in Add-ons</Text>
+                <View style={[twStyle("rounded-2xl border border-gray-100 bg-gray-50/80 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-gray-600")}>{fin("walkInAddons")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-gray-800")}>
                     {formatCurrency(periodMetric(earnings.walk_in_additional_charges_this_period), currency)}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-[10px] text-gray-500")}>Not in payout balance</Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-gray-500")}>{fin("notInPayoutBalance")}</Text>
                 </View>
               )}
             </View>
@@ -344,15 +352,15 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
           (earnings.promo_discounts_this_period ?? 0) > 0) && (
           <View style={twStyle("mb-4")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>
-              Discounts on bookings ({rangeLabel})
+              {fin("discountsOnBookings", { range: rangeLabel })}
             </Text>
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-              Already reflected in what the customer paid — not added on top of earnings.
+              {fin("discountsHint")}
             </Text>
             <View style={twStyle("flex-row flex-wrap")}>
               {(earnings.membership_discounts_this_period ?? 0) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Membership discount</Text>
+                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>{fin("membershipDiscount")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
                     {formatCurrency(earnings.membership_discounts_this_period ?? 0, currency)}
                   </Text>
@@ -360,15 +368,15 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               )}
               {(earnings.loyalty_discounts_this_period ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Loyalty discount</Text>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>{fin("loyaltyDiscount")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
                     {formatCurrency(earnings.loyalty_discounts_this_period ?? 0, currency)}
                   </Text>
                 </View>
               )}
               {(earnings.promo_discounts_this_period ?? 0) > 0 && (
-                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Promo / coupon discount</Text>
+                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginEnd: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>{fin("promoDiscount")}</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
                     {formatCurrency(earnings.promo_discounts_this_period ?? 0, currency)}
                   </Text>
@@ -379,20 +387,20 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
         )}
 
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-          <View style={twStyle("flex-1 mr-2")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
+          <View style={twStyle("flex-1 me-2")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>{fin("transactions")}</Text>
             {locationId ? (
-              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Recent activity across all locations</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{fin("recentActivityAllLocations")}</Text>
             ) : null}
           </View>
           {transactions.length > 0 && (
-            <Text style={twStyle("text-xs text-gray-500 shrink-0")}>{transactions.length} in {rangeLabel.toLowerCase()}</Text>
+            <Text style={twStyle("text-xs text-gray-500 shrink-0")}>{fin("txCountInRange", { count: transactions.length, range: rangeLabel.toLowerCase() })}</Text>
           )}
         </View>
         {transactions.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-100 bg-gray-50/50 p-6")}>
             <Text style={twStyle("text-center text-sm text-gray-500")}>
-              No transactions in this period.
+              {fin("noTransactions")}
             </Text>
           </View>
         ) : (
@@ -415,7 +423,7 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {formatDateTimeSafe(tx.date)}
-                    {platformFee ? " · Retained by platform" : ""}
+                    {platformFee ? fin("retainedByPlatform") : ""}
                   </Text>
                 </View>
                 <Text style={twStyle(`text-sm font-semibold ${amountClass}`)}>
@@ -436,11 +444,11 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
               `mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3 ${loading ? "opacity-60" : ""}`,
             )}
             accessibilityRole="button"
-            accessibilityLabel="Load more transactions"
+            accessibilityLabel={fin("loadMoreA11y")}
           >
             <Ionicons name="chevron-down" size={16} color={Colors.primary} />
-            <Text style={twStyle("ml-1 text-sm font-semibold text-primary")}>
-              {loading ? "Loading…" : `Load more (${transactions.length} of ${transactionsTotal})`}
+            <Text style={twStyle("ms-1 text-sm font-semibold text-primary")}>
+              {loading ? fin("loading") : fin("loadMore", { loaded: transactions.length, total: transactionsTotal })}
             </Text>
           </TouchableOpacity>
         ) : null}

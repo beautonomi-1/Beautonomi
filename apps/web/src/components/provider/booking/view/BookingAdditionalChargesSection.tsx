@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Loader2, Plus } from "lucide-react";
@@ -39,6 +41,7 @@ export function BookingAdditionalChargesSection({
   onUpdated,
 }: BookingAdditionalChargesSectionProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const canProcessPayments = isOwner || hasPermission("process_payments");
@@ -73,7 +76,7 @@ export function BookingAdditionalChargesSection({
   const requestCharge = async () => {
     const amt = Number(amount);
     if (!description.trim() || !Number.isFinite(amt) || amt <= 0) {
-      toast.error("Enter description and amount");
+      toast.error(t("web.provider.bookingAdditionalCharges.enterDescriptionAmount"));
       return;
     }
     setSaving(true);
@@ -82,13 +85,13 @@ export function BookingAdditionalChargesSection({
         description: description.trim(),
         amount: amt,
       });
-      toast.success("Charge requested");
+      toast.success(t("web.provider.bookingAdditionalCharges.chargeRequested"));
       setDescription("");
       setAmount("");
       await load();
       onUpdated?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to request charge");
+      toast.error(error instanceof Error ? error.message : t("web.provider.bookingAdditionalCharges.requestFailed"));
     } finally {
       setSaving(false);
     }
@@ -100,11 +103,11 @@ export function BookingAdditionalChargesSection({
         `/api/provider/bookings/${bookingId}/additional-charges/${chargeId}/mark-paid`,
         {},
       );
-      toast.success("Charge marked paid");
+      toast.success(t("web.provider.bookingAdditionalCharges.markedPaid"));
       await load();
       onUpdated?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to mark paid");
+      toast.error(error instanceof Error ? error.message : t("web.provider.bookingAdditionalCharges.markPaidFailed"));
     }
   };
 
@@ -112,9 +115,9 @@ export function BookingAdditionalChargesSection({
     setNotifyingId(chargeId);
     try {
       await fetcher.post(`/api/provider/bookings/${bookingId}/additional-charges/${chargeId}/notify`, {});
-      toast.success("Reminder sent");
+      toast.success(t("web.provider.bookingAdditionalCharges.reminderSent"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send reminder");
+      toast.error(error instanceof Error ? error.message : t("web.provider.bookingAdditionalCharges.reminderFailed"));
     } finally {
       setNotifyingId(null);
     }
@@ -122,7 +125,7 @@ export function BookingAdditionalChargesSection({
 
   const openPaycloudForCharge = (chargeId: string, chargeAmount: number) => {
     if (chargeAmount <= 0) {
-      toast.error("There is no remaining balance to collect.");
+      toast.error(t("web.provider.bookingAdditionalCharges.noBalance"));
       return;
     }
     setPaycloudChargeId(chargeId);
@@ -134,7 +137,7 @@ export function BookingAdditionalChargesSection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">Additional charges</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookingAdditionalCharges.title")}</BookingSectionLabel>
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
       ) : charges.length > 0 ? (
@@ -146,8 +149,8 @@ export function BookingAdditionalChargesSection({
               <li key={c.id} className="rounded-xl border border-gray-100 p-3 text-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{c.description ?? "Charge"}</p>
-                    <p className="text-xs text-gray-500 capitalize">{c.status ?? "pending"}</p>
+                    <p className="font-medium truncate">{c.description ?? t("web.provider.bookingAdditionalCharges.chargeFallback")}</p>
+                    <p className="text-xs text-gray-500 capitalize">{c.status ?? t("web.provider.bookingAdditionalCharges.pending")}</p>
                   </div>
                   <span className="font-medium shrink-0">{formatMoney(amt)}</span>
                 </div>
@@ -159,14 +162,14 @@ export function BookingAdditionalChargesSection({
                       disabled={notifyingId === c.id}
                       onClick={() => void sendToClient(c.id)}
                     >
-                      {notifyingId === c.id ? "Sending…" : "Send to client"}
+                      {notifyingId === c.id ? t("web.provider.bookingAdditionalCharges.sending") : t("web.provider.bookingAdditionalCharges.sendToClient")}
                     </button>
                     <button
                       type="button"
                       className="text-xs font-semibold underline touch-manipulation min-h-[36px] px-1"
                       onClick={() => void markPaid(c.id)}
                     >
-                      Mark paid
+{t("web.provider.bookingAdditionalCharges.markPaid")}
                     </button>
                     {paycloudEnabled ? (
                       <PaycloudCollectButton
@@ -185,18 +188,18 @@ export function BookingAdditionalChargesSection({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500 mb-3">No additional charges yet.</p>
+        <p className="text-sm text-gray-500 mb-3">{t("web.provider.bookingAdditionalCharges.empty")}</p>
       )}
 
       <PermissionGateInline
         allowed={canProcessPayments}
-        message="You do not have permission to request additional charges."
+        message={t("web.provider.bookingAdditionalCharges.noPermission")}
       >
         <div className="space-y-2 border-t pt-3">
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Description"
+            placeholder={t("web.provider.bookingAdditionalCharges.description")}
             className="rounded-xl min-h-[44px]"
           />
           <Input
@@ -205,7 +208,7 @@ export function BookingAdditionalChargesSection({
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount"
+            placeholder={t("web.provider.bookingAdditionalCharges.amount")}
             className="rounded-xl min-h-[44px]"
           />
           <BookingActionButton disabled={saving} onClick={() => void requestCharge()}>
@@ -213,8 +216,8 @@ export function BookingAdditionalChargesSection({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <Plus className="mr-2 h-4 w-4" />
-                Request charge
+                <Plus className="me-2 h-4 w-4" />
+{t("web.provider.bookingAdditionalCharges.requestCharge")}
               </>
             )}
           </BookingActionButton>

@@ -30,6 +30,8 @@ import {
   launchImageLibraryWithPermission,
   runAfterNativeUiSettles,
 } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type GalleryItem = { id: string; url: string; position: number };
 type GalleryResponse = { items?: GalleryItem[]; thumbnailUrl?: string | null; avatarUrl?: string | null };
@@ -44,6 +46,12 @@ function fileNameFromUri(uri: string): string {
 }
 
 export default function GalleryScreen() {
+  const { t } = useTranslation();
+  const gl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.gallery.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -72,10 +80,10 @@ export default function GalleryScreen() {
   const handleDelete = useCallback(
     (item: GalleryItem) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      Alert.alert("Remove photo", "Remove this photo from your gallery?", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(gl("removeTitle"), gl("removeBody"), [
+        { text: gl("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: gl("remove"),
           style: "destructive",
           onPress: async () => {
             const res = await deleteItem(`/api/provider/gallery?index=${item.position}`);
@@ -84,7 +92,7 @@ export default function GalleryScreen() {
         },
       ]);
     },
-    [deleteItem, refresh]
+    [deleteItem, refresh, gl]
   );
 
   const handleAddByUrl = useCallback(async () => {
@@ -116,12 +124,12 @@ export default function GalleryScreen() {
         body: formData,
       });
       if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload photo."));
+        Alert.alert(gl("uploadFailedTitle"), getApiErrorMessage(res.error, gl("uploadFailedFallback")));
         return false;
       }
       return true;
     },
-    []
+    [gl]
   );
 
   const pickFromLibraryAndUpload = useCallback(
@@ -142,8 +150,8 @@ export default function GalleryScreen() {
               selectionLimit: allowMulti ? 10 : 1,
             },
             {
-              title: "Permission needed",
-              message: "Photo library access is needed to choose a photo. You can enable it in system settings.",
+              title: gl("permissionTitle"),
+              message: gl("libraryPermissionBody"),
             },
           );
 
@@ -156,8 +164,8 @@ export default function GalleryScreen() {
           const eligible = result.assets.filter((a) => a.fileSize == null || a.fileSize <= MAX_BYTES);
           if (tooLarge.length > 0) {
             Alert.alert(
-              "Some files were too large",
-              `${tooLarge.length} image${tooLarge.length === 1 ? "" : "s"} exceeded 8MB and ${tooLarge.length === 1 ? "was" : "were"} skipped.`,
+              gl("filesTooLargeTitle"),
+              gl("filesTooLargeBody", { count: tooLarge.length }),
             );
           }
           if (eligible.length === 0) return;
@@ -171,12 +179,12 @@ export default function GalleryScreen() {
           if (okCount > 0) await refresh();
           if (okCount < eligible.length) {
             Alert.alert(
-              "Some uploads failed",
-              `${eligible.length - okCount} of ${eligible.length} photo${eligible.length === 1 ? "" : "s"} could not be uploaded. Please try again.`,
+              gl("someUploadsFailedTitle"),
+              gl("someUploadsFailedBody", { failed: eligible.length - okCount, count: eligible.length }),
             );
           }
         } catch (e) {
-          Alert.alert("Upload failed", e instanceof Error ? e.message : "Something went wrong.");
+          Alert.alert(gl("uploadFailedTitle"), e instanceof Error ? e.message : gl("genericError"));
         } finally {
           setUploading(false);
         }
@@ -190,7 +198,7 @@ export default function GalleryScreen() {
         await run();
       }
     },
-    [refresh, uploadGalleryMultipart]
+    [refresh, uploadGalleryMultipart, gl]
   );
 
   const takePhotoAndUpload = useCallback(
@@ -204,8 +212,8 @@ export default function GalleryScreen() {
               base64: false,
             },
             {
-              title: "Permission needed",
-              message: "Camera access is needed to take a photo.",
+              title: gl("permissionTitle"),
+              message: gl("cameraPermissionBody"),
             },
           );
 
@@ -217,7 +225,7 @@ export default function GalleryScreen() {
           const ok = await uploadGalleryMultipart(asset);
           if (ok) await refresh();
         } catch (e) {
-          Alert.alert("Upload failed", e instanceof Error ? e.message : "Something went wrong.");
+          Alert.alert(gl("uploadFailedTitle"), e instanceof Error ? e.message : gl("genericError"));
         } finally {
           setUploading(false);
         }
@@ -231,7 +239,7 @@ export default function GalleryScreen() {
         await run();
       }
     },
-    [refresh, uploadGalleryMultipart]
+    [refresh, uploadGalleryMultipart, gl]
   );
 
   const openAddModal = useCallback(() => {
@@ -243,20 +251,19 @@ export default function GalleryScreen() {
 
   const promptChangeListingOrProfile = useCallback(
     (applyAs: "thumbnail" | "avatar") => {
-      const label = applyAs === "thumbnail" ? "listing image" : "profile circle";
       Alert.alert(
-        `Change ${label}`,
-        "Choose a photo from your library. It will be added to your gallery and set as this image.",
+        applyAs === "thumbnail" ? gl("changeListingTitle") : gl("changeProfileTitle"),
+        gl("changeImageBody"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: gl("cancel"), style: "cancel" },
           {
-            text: "Choose photo",
+            text: gl("choosePhoto"),
             onPress: () => void pickFromLibraryAndUpload({ applyAs, deferAfterModal: false }),
           },
         ]
       );
     },
-    [pickFromLibraryAndUpload]
+    [pickFromLibraryAndUpload, gl]
   );
 
   const handleSetThumbnail = useCallback(
@@ -282,7 +289,7 @@ export default function GalleryScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Gallery" onBack={() => router.back()} />
+        <ScreenHeader title={gl("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -293,7 +300,7 @@ export default function GalleryScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Gallery" onBack={() => router.back()} />
+        <ScreenHeader title={gl("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -304,8 +311,8 @@ export default function GalleryScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Gallery"
-        subtitle="Portfolio & photos"
+        title={gl("title")}
+        subtitle={gl("subtitle")}
         onBack={() => router.back()}
         rightAction={
           uploading ? (
@@ -316,7 +323,7 @@ export default function GalleryScreen() {
             <TouchableOpacity
               onPress={openAddModal}
               style={twStyle("rounded-full bg-gray-100 p-2")}
-              accessibilityLabel="Add photo"
+              accessibilityLabel={gl("addPhotoA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="add" size={22} color="#374151" />
@@ -332,13 +339,13 @@ export default function GalleryScreen() {
       >
         {/* Listing image & Profile circle — tap to pick from library in one step */}
         <View style={twStyle("px-4 pt-2 pb-4 flex-row")}>
-          <View style={[twStyle("flex-1 items-center"), { marginRight: 16 }]}>
-            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>Listing image</Text>
+          <View style={[twStyle("flex-1 items-center"), { marginEnd: 16 }]}>
+            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>{gl("listingImage")}</Text>
             <Pressable
               onPress={() => promptChangeListingOrProfile("thumbnail")}
               disabled={uploading}
               accessibilityRole="button"
-              accessibilityLabel="Change listing image from photo library"
+              accessibilityLabel={gl("changeListingA11y")}
               style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
             >
               <View
@@ -361,15 +368,15 @@ export default function GalleryScreen() {
                 )}
               </View>
             </Pressable>
-            <Text style={twStyle("text-[10px] text-primary mt-1 font-medium")}>Tap to change</Text>
+            <Text style={twStyle("text-[10px] text-primary mt-1 font-medium")}>{gl("tapToChange")}</Text>
           </View>
           <View style={twStyle("flex-1 items-center")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>Profile circle</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>{gl("profileCircle")}</Text>
             <Pressable
               onPress={() => promptChangeListingOrProfile("avatar")}
               disabled={uploading}
               accessibilityRole="button"
-              accessibilityLabel="Change profile circle from photo library"
+              accessibilityLabel={gl("changeProfileA11y")}
               style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
             >
               <View
@@ -392,27 +399,27 @@ export default function GalleryScreen() {
                 )}
               </View>
             </Pressable>
-            <Text style={twStyle("text-[10px] text-indigo-600 mt-1 font-medium")}>Tap to change</Text>
+            <Text style={twStyle("text-[10px] text-indigo-600 mt-1 font-medium")}>{gl("tapToChange")}</Text>
           </View>
         </View>
         <Text style={twStyle("px-4 text-sm text-gray-600 pb-3")}>
-          Tap the previews above to pick from your phone, or use the star and person icons on any gallery photo.
+          {gl("previewHint")}
         </Text>
         {items.length === 0 ? (
           <View style={twStyle("py-12 px-4 items-center")}>
             <Ionicons name="images-outline" size={48} color="#9ca3af" />
-            <Text style={twStyle("mt-4 text-center text-gray-600")}>No photos yet</Text>
+            <Text style={twStyle("mt-4 text-center text-gray-600")}>{gl("emptyTitle")}</Text>
             <Text style={twStyle("mt-2 text-center text-sm text-gray-500 px-2")}>
-              Upload from your device or add a photo by URL
+              {gl("emptyBody")}
             </Text>
             <TouchableOpacity
               onPress={openAddModal}
-              style={[twStyle("mt-6 rounded-xl bg-gray-900 px-6 py-4 flex-row items-center"), { marginRight: 8 }]}
-              accessibilityLabel="Add photo"
+              style={[twStyle("mt-6 rounded-xl bg-gray-900 px-6 py-4 flex-row items-center"), { marginEnd: 8 }]}
+              accessibilityLabel={gl("addPhotoA11y")}
               accessibilityRole="button"
             >
-              <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={twStyle("text-sm font-medium text-white")}>Add photo</Text>
+              <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginEnd: 8 }} />
+              <Text style={twStyle("text-sm font-medium text-white")}>{gl("addPhoto")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -423,7 +430,7 @@ export default function GalleryScreen() {
                 style={{
                   width: "47%",
                   aspectRatio: 1,
-                  marginRight: 12,
+                  marginEnd: 12,
                   marginBottom: 12,
                   borderRadius: 12,
                   overflow: "hidden",
@@ -436,7 +443,7 @@ export default function GalleryScreen() {
                 <TouchableOpacity
                   onPress={() => handleDelete(item)}
                   style={twStyle("absolute top-2 right-2 h-8 w-8 items-center justify-center rounded-full bg-black/60")}
-                  accessibilityLabel="Remove photo from gallery"
+                  accessibilityLabel={gl("removePhotoA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={18} color="#fff" />
@@ -446,9 +453,9 @@ export default function GalleryScreen() {
                     onPress={() => handleSetThumbnail(item.url)}
                     style={[
                       twStyle(`h-8 w-8 items-center justify-center rounded-full ${thumbnailUrl === item.url ? "bg-primary" : "bg-black/60"}`),
-                      { marginRight: 8 },
+                      { marginEnd: 8 },
                     ]}
-                    accessibilityLabel={thumbnailUrl === item.url ? "Listing image" : "Set as listing image"}
+                    accessibilityLabel={thumbnailUrl === item.url ? gl("listingImageA11y") : gl("setListingA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name={thumbnailUrl === item.url ? "star" : "star-outline"} size={18} color="#fff" />
@@ -458,7 +465,7 @@ export default function GalleryScreen() {
                     style={twStyle(
                       `h-8 w-8 items-center justify-center rounded-full ${avatarUrl === item.url ? "bg-indigo-600" : "bg-black/60"}`
                     )}
-                    accessibilityLabel={avatarUrl === item.url ? "Profile circle" : "Set as profile circle"}
+                    accessibilityLabel={avatarUrl === item.url ? gl("profileCircleA11y") : gl("setProfileA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name={avatarUrl === item.url ? "person-circle" : "person-circle-outline"} size={18} color="#fff" />
@@ -486,13 +493,13 @@ export default function GalleryScreen() {
               setAddModalVisible(false);
               setAddMode("choice");
             }}
-            accessibilityLabel="Dismiss add photo options"
+            accessibilityLabel={gl("dismissAddA11y")}
           />
           <View style={twStyle("bg-white rounded-t-2xl p-5 pb-10")}>
             {addMode === "choice" ? (
               <>
-                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-1")}>Add photo</Text>
-                <Text style={twStyle("text-sm text-gray-500 mb-4")}>Choose how to add a photo</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-1")}>{gl("addPhoto")}</Text>
+                <Text style={twStyle("text-sm text-gray-500 mb-4")}>{gl("addHow")}</Text>
                 <TouchableOpacity
                   onPress={() => {
                     setAddModalVisible(false);
@@ -500,17 +507,17 @@ export default function GalleryScreen() {
                     takePhotoAndUpload(true);
                   }}
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-3")}
-                  accessibilityLabel="Take a photo"
+                  accessibilityLabel={gl("takePhotoA11y")}
                   accessibilityRole="button"
                 >
-                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginEnd: 12 }]}>
                     <Ionicons name="camera-outline" size={22} color="#374151" />
                   </View>
-                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                    <Text style={twStyle("font-medium text-gray-900")}>Take photo</Text>
-                    <Text style={twStyle("text-sm text-gray-500")}>Use your camera</Text>
+                  <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{gl("takePhoto")}</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>{gl("useCamera")}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -519,32 +526,32 @@ export default function GalleryScreen() {
                     void pickFromLibraryAndUpload({ deferAfterModal: true });
                   }}
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-3")}
-                  accessibilityLabel="Choose from photo library"
+                  accessibilityLabel={gl("chooseLibraryA11y")}
                   accessibilityRole="button"
                 >
-                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginEnd: 12 }]}>
                     <Ionicons name="images-outline" size={22} color="#374151" />
                   </View>
-                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                    <Text style={twStyle("font-medium text-gray-900")}>Choose from library</Text>
-                    <Text style={twStyle("text-sm text-gray-500")}>Pick an existing photo</Text>
+                  <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{gl("chooseFromLibrary")}</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>{gl("pickExisting")}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setAddMode("url")}
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-4")}
-                  accessibilityLabel="Add photo by URL"
+                  accessibilityLabel={gl("addByUrlA11y")}
                   accessibilityRole="button"
                 >
-                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginEnd: 12 }]}>
                     <Ionicons name="link-outline" size={22} color="#374151" />
                   </View>
-                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                    <Text style={twStyle("font-medium text-gray-900")}>Add by URL</Text>
-                    <Text style={twStyle("text-sm text-gray-500")}>Paste a link to an image</Text>
+                  <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{gl("addByUrl")}</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>{gl("pasteLink")}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -553,16 +560,16 @@ export default function GalleryScreen() {
                   }}
                   style={twStyle("rounded-xl border border-gray-200 py-3 items-center")}
                 >
-                  <Text style={twStyle("font-medium text-gray-700")}>Cancel</Text>
+                  <Text style={twStyle("font-medium text-gray-700")}>{gl("cancel")}</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
                 <TouchableOpacity onPress={() => setAddMode("choice")} style={twStyle("flex-row items-center mb-3")}>
-                  <Ionicons name="arrow-back" size={20} color="#374151" style={{ marginRight: 8 }} />
-                  <Text style={twStyle("text-base text-gray-700")}>Back</Text>
+                  <DirectionalIcon name="arrow-back" size={20} color="#374151" style={{ marginEnd: 8 }} />
+                  <Text style={twStyle("text-base text-gray-700")}>{gl("back")}</Text>
                 </TouchableOpacity>
-                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-2")}>Add photo by URL</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-2")}>{gl("addByUrlTitle")}</Text>
                 <TextInput
                   value={newUrl}
                   onChangeText={setNewUrl}
@@ -578,16 +585,16 @@ export default function GalleryScreen() {
                       setAddModalVisible(false);
                       setAddMode("choice");
                     }}
-                    style={[twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center"), { marginRight: 12 }]}
+                    style={[twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center"), { marginEnd: 12 }]}
                   >
-                    <Text style={twStyle("font-medium text-gray-700")}>Cancel</Text>
+                    <Text style={twStyle("font-medium text-gray-700")}>{gl("cancel")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleAddByUrl}
                     disabled={adding || !newUrl.trim()}
                     style={twStyle("flex-1 rounded-xl bg-gray-900 py-3 items-center")}
                   >
-                    <Text style={twStyle("font-medium text-white")}>{adding ? "Adding…" : "Add"}</Text>
+                    <Text style={twStyle("font-medium text-white")}>{adding ? gl("adding") : gl("add")}</Text>
                   </TouchableOpacity>
                 </View>
               </>

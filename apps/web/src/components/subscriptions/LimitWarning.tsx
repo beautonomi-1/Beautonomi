@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ export default function LimitWarning({
   onUpgrade,
   className = "",
 }: LimitWarningProps) {
+  const { t } = useTranslation();
   if (limit === null) {
     return null; // Unlimited, no warning needed
   }
@@ -36,14 +39,14 @@ export default function LimitWarning({
     return null;
   }
 
-  const featureLabels = {
-    bookings: "Bookings",
-    messages: "Messages",
-    staff: "Staff Members",
-    locations: "Locations",
-  };
-
-  const featureLabel = featureLabels[featureType] || featureType;
+  const featureLabel = t(
+    {
+      bookings: "web.layout.navbar.bookings",
+      messages: "web.provider.sidebar.items.messages",
+      staff: "web.providerExtras.staffMembers",
+      locations: "web.provider.sidebar.items.locations",
+    }[featureType],
+  );
 
   return (
     <Alert
@@ -55,15 +58,25 @@ export default function LimitWarning({
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>
         {isExceeded
-          ? `${featureLabel} Limit Reached`
-          : `${featureLabel} Limit Warning`}
+          ? t("web.providerExtras.limitReached", { feature: featureLabel })
+          : t("web.providerExtras.limitWarning", { feature: featureLabel })}
       </AlertTitle>
       <AlertDescription className="mt-2">
         <div className="space-y-2">
           <p>
             {isExceeded
-              ? `You've reached your monthly ${featureLabel.toLowerCase()} limit (${currentUsage}/${limit}) on the ${planName} plan.`
-              : `You've used ${currentUsage} of ${limit} ${featureLabel.toLowerCase()} this month (${Math.round(percentageUsed)}%).`}
+              ? t("web.providerExtras.limitReachedBody", {
+                  feature: featureLabel.toLowerCase(),
+                  current: currentUsage,
+                  limit,
+                  plan: planName,
+                })
+              : t("web.providerExtras.limitWarningBody", {
+                  feature: featureLabel.toLowerCase(),
+                  current: currentUsage,
+                  limit,
+                  percent: Math.round(percentageUsed),
+                })}
           </p>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
@@ -85,13 +98,13 @@ export default function LimitWarning({
               onClick={onUpgrade}
             >
               <Link href="/provider/subscription">
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Upgrade Plan
+                <TrendingUp className="w-4 h-4 me-2" />
+                {t("web.providerExtras.upgradePlan")}
               </Link>
             </Button>
             {isExceeded && (
               <p className="text-sm text-gray-600">
-                Upgrade to continue using this feature
+                {t("web.providerExtras.upgradeToContinue")}
               </p>
             )}
           </div>

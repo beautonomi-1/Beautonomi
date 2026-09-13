@@ -15,6 +15,7 @@ import {
   FlipHorizontal,
 } from "lucide-react";
 import type { ExplorePost } from "@/types/explore";
+import { useTranslation } from "@beautonomi/i18n";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
@@ -50,6 +51,7 @@ export function ExplorePostForm({
   preseedBookingId,
   preseedAddToGallery,
 }: ExplorePostFormProps) {
+  const { t } = useTranslation();
   const [caption, setCaption] = useState(post?.caption ?? preseedCaption ?? "");
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(
     post?.primary_category_slug ?? null
@@ -149,8 +151,8 @@ export function ExplorePostForm({
           videoRef.current.srcObject = stream;
         }
       } catch (err: any) {
-        setCameraError(err?.message || "Camera access denied");
-        toast.error("Could not access camera");
+        setCameraError(err?.message || t("web.provider.explorePostForm.cameraAccessDenied"));
+        toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
       }
     },
     [captureType, stopCamera, facingMode]
@@ -224,17 +226,17 @@ export function ExplorePostForm({
 
   const uploadFile = async (file: File) => {
     if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
-      toast.error(`You can add up to ${MAX_MEDIA_ITEMS} media files.`);
+      toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
       return;
     }
     if (!ALLOWED_TYPES.includes(file.type)) {
-      toast.error("Invalid file type");
+      toast.error(t("web.provider.explorePostForm.invalidFileType"));
       return;
     }
     const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
     const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
     if (file.size > maxSize) {
-      toast.error(`File too large. Max ${isVideo ? "50MB" : "5MB"}.`);
+      toast.error(t("web.provider.explorePostForm.fileTooLarge", { size: isVideo ? "50MB" : "5MB" }));
       return;
     }
     setIsUploading(true);
@@ -252,7 +254,7 @@ export function ExplorePostForm({
         stopCamera();
       }
     } catch {
-      toast.error("Upload failed");
+      toast.error(t("web.provider.explorePostForm.uploadFailed"));
     } finally {
       setIsUploading(false);
     }
@@ -291,23 +293,23 @@ export function ExplorePostForm({
     if (!files?.length) return;
     const remainingSlots = MAX_MEDIA_ITEMS - mediaPaths.length;
     if (remainingSlots <= 0) {
-      toast.error(`You can add up to ${MAX_MEDIA_ITEMS} media files.`);
+      toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
       return;
     }
     if (files.length > remainingSlots) {
-      toast.error(`Only ${remainingSlots} more media file${remainingSlots === 1 ? "" : "s"} can be added.`);
+      toast.error(t("web.provider.explorePostForm.remainingSlots", { count: remainingSlots }));
     }
 
     for (let i = 0; i < Math.min(files.length, remainingSlots); i++) {
       const file = files[i];
       if (!ALLOWED_TYPES.includes(file.type)) {
-        toast.error(`${file.name}: Invalid type. Use JPEG, PNG, WebP, MP4, or WebM.`);
+        toast.error(t("web.provider.explorePostForm.invalidTypeNamed", { name: file.name }));
         continue;
       }
       const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
       const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
       if (file.size > maxSize) {
-        toast.error(`${file.name}: Max ${isVideo ? "50MB" : "5MB"}.`);
+        toast.error(t("web.provider.explorePostForm.fileTooLargeNamed", { name: file.name, size: isVideo ? "50MB" : "5MB" }));
         continue;
       }
       await uploadFile(file);
@@ -323,7 +325,7 @@ export function ExplorePostForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mediaPaths.length) {
-      toast.error("Add at least one photo or video.");
+      toast.error(t("web.provider.explorePostForm.addMediaRequired"));
       return;
     }
     setIsSubmitting(true);
@@ -337,7 +339,7 @@ export function ExplorePostForm({
           offering_id: offeringId || null,
           status: post.status,
         });
-        toast.success("Post updated.");
+        toast.success(t("web.provider.explorePostForm.postUpdated"));
       } else {
         await fetcher.post("/api/explore/posts", {
           caption: caption || null,
@@ -350,12 +352,12 @@ export function ExplorePostForm({
           ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
         });
         setIsPosted(true);
-        toast.success("Posted!");
+        toast.success(t("web.provider.explorePostForm.posted"));
         await new Promise((r) => setTimeout(r, 800));
       }
       onSuccess();
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to save post.";
+      const msg = err instanceof FetchError ? err.message : t("web.provider.explorePostForm.saveFailed");
       toast.error(msg);
     } finally {
       setIsSubmitting(false);
@@ -416,7 +418,7 @@ export function ExplorePostForm({
                   captureType === "photo" ? "bg-white text-black" : "text-white"
                 }`}
               >
-                Photo
+                {t("web.provider.explorePostForm.photo")}
               </button>
               <button
                 type="button"
@@ -425,7 +427,7 @@ export function ExplorePostForm({
                   captureType === "video" ? "bg-white text-black" : "text-white"
                 }`}
               >
-                Video
+                {t("web.provider.explorePostForm.video")}
               </button>
             </div>
             <button
@@ -464,7 +466,7 @@ export function ExplorePostForm({
               {captureType === "video" && isRecording && (
                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 text-red-500 text-xs font-medium">
                   <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  Recording
+                  {t("web.provider.explorePostForm.recording")}
                 </div>
               )}
             </button>
@@ -473,7 +475,7 @@ export function ExplorePostForm({
         {isUploading && (
           <div className="mt-3 flex items-center gap-2 text-primary text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Uploading...
+            {t("web.provider.explorePostForm.uploading")}
           </div>
         )}
       </div>
@@ -585,13 +587,13 @@ export function ExplorePostForm({
                 type="button"
                 onClick={() => setCaptureMode("camera")}
                 disabled={isUploading}
-                className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99] border-b sm:border-b-0 sm:border-r border-gray-200"
+                className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99] border-b sm:border-b-0 sm:border-e border-gray-200"
               >
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                   <Camera className="w-8 h-8 text-primary" />
                 </div>
-                <span className="text-gray-700 font-medium">Camera</span>
-                <span className="text-xs text-gray-500">Take photo or video</span>
+                <span className="text-gray-700 font-medium">{t("web.provider.explorePostForm.camera")}</span>
+                <span className="text-xs text-gray-500">{t("web.provider.explorePostForm.takePhotoOrVideo")}</span>
               </button>
               <button
                 type="button"
@@ -606,9 +608,9 @@ export function ExplorePostForm({
                     <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
                       <ImageIcon className="w-8 h-8 text-gray-500" />
                     </div>
-                    <span className="text-gray-700 font-medium">Gallery</span>
+                    <span className="text-gray-700 font-medium">{t("web.provider.explorePostForm.gallery")}</span>
                     <span className="text-xs text-gray-500">
-                      Photos · Videos · Max 5MB/50MB
+                      {t("web.provider.explorePostForm.galleryHint")}
                     </span>
                   </>
                 )}
@@ -635,7 +637,7 @@ export function ExplorePostForm({
             className="mt-3 flex items-center gap-2 text-primary text-sm font-medium hover:underline disabled:opacity-50"
           >
             <Camera className="w-4 h-4" />
-            Take photo or video
+            {t("web.provider.explorePostForm.takePhotoOrVideo")}
           </button>
         )}
 
@@ -647,7 +649,7 @@ export function ExplorePostForm({
             className="mt-1 flex items-center gap-2 text-gray-600 text-sm font-medium hover:underline disabled:opacity-50"
           >
             <Upload className="w-4 h-4" />
-            Add from gallery
+            {t("web.provider.explorePostForm.addFromGallery")}
           </button>
         )}
 
@@ -668,7 +670,7 @@ export function ExplorePostForm({
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           className="w-full min-h-[100px] max-h-[160px] resize-none rounded-xl border border-gray-200 px-4 py-3 text-[15px] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
-          placeholder="Write a caption..."
+          placeholder={t("web.provider.explorePostForm.captionPlaceholder")}
           rows={3}
         />
       </div>
@@ -677,14 +679,14 @@ export function ExplorePostForm({
       {categories.length > 0 && (
         <div className="mt-4">
           <label className="text-sm font-medium text-gray-700 mb-2 block">
-            Category <span className="text-gray-400 font-normal">(helps customers find your post)</span>
+            {t("web.provider.explorePostForm.category")} <span className="text-gray-400 font-normal">{t("web.provider.explorePostForm.categoryHint")}</span>
           </label>
           <select
             value={primaryCategorySlug ?? ""}
             onChange={(e) => setPrimaryCategorySlug(e.target.value || null)}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           >
-            <option value="">None</option>
+            <option value="">{t("web.provider.explorePostForm.none")}</option>
             {categories.map((c) => (
               <option key={c.id} value={c.slug}>
                 {c.name}
@@ -698,14 +700,14 @@ export function ExplorePostForm({
       {offerings.length > 0 && (
         <div className="mt-4">
           <label className="text-sm font-medium text-gray-700 mb-2 block">
-            Link to service <span className="text-gray-400 font-normal">(Book this look)</span>
+            {t("web.provider.explorePostForm.linkToService")} <span className="text-gray-400 font-normal">{t("web.provider.explorePostForm.linkToServiceHint")}</span>
           </label>
           <select
             value={offeringId ?? ""}
             onChange={(e) => setOfferingId(e.target.value || null)}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           >
-            <option value="">None</option>
+            <option value="">{t("web.provider.explorePostForm.none")}</option>
             {offerings.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.title}
@@ -718,7 +720,7 @@ export function ExplorePostForm({
       {/* Tags */}
       <div className="mt-4">
         <label className="text-sm font-medium text-gray-700 mb-2 block">
-          Tags <span className="text-gray-400 font-normal">(helps customers discover your post)</span>
+          {t("web.provider.explorePostForm.tags")} <span className="text-gray-400 font-normal">{t("web.provider.explorePostForm.tagsHint")}</span>
         </label>
         <div className="flex flex-wrap gap-2 mb-2">
           {tags.map((tag) => (
@@ -730,7 +732,7 @@ export function ExplorePostForm({
               <button
                 type="button"
                 onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                className="ml-0.5 hover:text-primary/70"
+                className="ms-0.5 hover:text-primary/70"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -752,7 +754,7 @@ export function ExplorePostForm({
                 setTagInput("");
               }
             }}
-            placeholder="e.g. hair, braids, balayage..."
+            placeholder={t("web.provider.explorePostForm.tagsPlaceholder")}
             className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             maxLength={30}
           />
@@ -768,7 +770,7 @@ export function ExplorePostForm({
             disabled={!tagInput.trim() || tags.length >= 10}
             className="px-4 py-2 rounded-lg bg-gray-100 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Add
+            {t("web.provider.explorePostForm.add")}
           </button>
         </div>
         {/* Quick-add suggestions */}
@@ -790,7 +792,7 @@ export function ExplorePostForm({
             ))}
         </div>
         {tags.length >= 10 && (
-          <p className="text-xs text-gray-400 mt-1">Maximum 10 tags per post</p>
+          <p className="text-xs text-gray-400 mt-1">{t("web.provider.explorePostForm.maxTags")}</p>
         )}
       </div>
 
@@ -803,8 +805,8 @@ export function ExplorePostForm({
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
           />
           <span>
-            <span className="block text-sm font-medium text-gray-800">Also add to my portfolio</span>
-            <span className="block text-xs text-gray-500 mt-0.5">Shows this photo in your provider gallery too.</span>
+            <span className="block text-sm font-medium text-gray-800">{t("web.provider.explorePostForm.alsoAddToPortfolio")}</span>
+            <span className="block text-xs text-gray-500 mt-0.5">{t("web.provider.explorePostForm.alsoAddToPortfolioHint")}</span>
           </span>
         </label>
       )}
@@ -818,11 +820,11 @@ export function ExplorePostForm({
           {isSubmitting ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : isPosted ? (
-            "Posted!"
+            t("web.provider.explorePostForm.posted")
           ) : post ? (
-            "Save changes"
+            t("web.provider.explorePostForm.saveChanges")
           ) : (
-            "Share"
+            t("web.provider.explorePostForm.share")
           )}
         </Button>
         {onCancel && (
@@ -832,7 +834,7 @@ export function ExplorePostForm({
             onClick={onCancel}
             className="h-12 rounded-xl px-6"
           >
-            Cancel
+            {t("web.provider.explorePostForm.cancel")}
           </Button>
         )}
       </div>

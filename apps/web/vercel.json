@@ -17,7 +17,9 @@
     { "path": "/api/cron/send-reminders", "schedule": "0 * * * *" },
     { "path": "/api/cron/expire-booking-holds", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/expire-pending-payment-bookings", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/expire-stale-pending-bookings", "schedule": "0 * * * *" },
+    { "path": "/api/cron/expire-stale-pending-bookings", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/pending-confirmation-nudges", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/booking-closeout-reminders", "schedule": "0 * * * *" },
     { "path": "/api/cron/expire-pending-payment-orders", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/expire-on-demand-requests", "schedule": "5 2 * * *" },
     { "path": "/api/cron/expire-custom-requests", "schedule": "15 2 * * *" },
@@ -68,7 +70,8 @@
     { "path": "/api/cron/agent-provider-ops", "schedule": "30 5 * * *" },
     { "path": "/api/cron/agent-provider-digest", "schedule": "0 6 * * 1" },
     { "path": "/api/cron/purge-notification-delivery-queue", "schedule": "10 3 * * *" },
-    { "path": "/api/cron/purge-ads-events", "schedule": "20 3 * * *" }
+    { "path": "/api/cron/purge-ads-events", "schedule": "20 3 * * *" },
+    { "path": "/api/cron/explore-embeddings-backfill", "schedule": "30 4 * * *" }
   ],
   "headers": [
     {

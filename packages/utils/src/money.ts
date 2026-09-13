@@ -11,10 +11,22 @@ import {
 
 export { currencySelectLabelFromCatalog as currencySelectLabel };
 
+let defaultMoneyLocale = "en-ZA";
+
+/** Set once per session by LocaleProvider (web / mobile). */
+export function setDefaultMoneyLocale(locale: string): void {
+  const trimmed = locale?.trim();
+  if (trimmed) defaultMoneyLocale = trimmed;
+}
+
+export function getDefaultMoneyLocale(): string {
+  return defaultMoneyLocale;
+}
+
 export function formatMoney(
   amount: number,
   currency: string = "ZAR",
-  locale: string = "en-ZA",
+  locale: string = defaultMoneyLocale,
 ): string {
   const code = normalizeCurrencyCode(currency);
   return new Intl.NumberFormat(locale, {
@@ -26,7 +38,7 @@ export function formatMoney(
 export function formatMoneyCompact(
   amount: number,
   currency: string = "ZAR",
-  locale: string = "en-ZA",
+  locale: string = defaultMoneyLocale,
 ): string {
   const code = normalizeCurrencyCode(currency);
   return new Intl.NumberFormat(locale, {

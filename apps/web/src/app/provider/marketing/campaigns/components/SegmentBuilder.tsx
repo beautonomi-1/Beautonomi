@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React from "react";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ interface SegmentBuilderProps {
 }
 
 export default function SegmentBuilder({ criteria, onCriteriaChange, availableTags: _availableTags = [] }: SegmentBuilderProps) {
+  const { t } = useTranslation();
   const updateCriteria = (key: keyof SegmentCriteria, value: any) => {
     onCriteriaChange({ ...criteria, [key]: value });
   };
@@ -31,10 +33,10 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-sm font-medium mb-2 block">Booking Criteria</Label>
+        <Label className="text-sm font-medium mb-2 block">{t("web.provider.pages.marketing/segment-builder.bookingCriteria")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="min_bookings" className="text-xs text-gray-500">Min Bookings</Label>
+            <Label htmlFor="min_bookings" className="text-xs text-gray-500">{t("web.provider.pages.marketing/segment-builder.minBookings")}</Label>
             <Input
               id="min_bookings"
               type="number"
@@ -45,24 +47,24 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
             />
           </div>
           <div>
-            <Label htmlFor="max_bookings" className="text-xs text-gray-500">Max Bookings</Label>
+            <Label htmlFor="max_bookings" className="text-xs text-gray-500">{t("web.provider.pages.marketing/segment-builder.maxBookings")}</Label>
             <Input
               id="max_bookings"
               type="number"
               min="0"
               value={criteria.max_bookings || ""}
               onChange={(e) => updateCriteria("max_bookings", e.target.value ? parseInt(e.target.value) : undefined)}
-              placeholder="Unlimited"
+              placeholder={t("web.provider.common.unlimited")}
             />
           </div>
         </div>
       </div>
 
       <div>
-        <Label className="text-sm font-medium mb-2 block">Spending Criteria</Label>
+        <Label className="text-sm font-medium mb-2 block">{t("web.provider.pages.marketing/segment-builder.spendingCriteria")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="min_spent" className="text-xs text-gray-500">Min Spent ($)</Label>
+            <Label htmlFor="min_spent" className="text-xs text-gray-500">{t("web.provider.pages.marketing/segment-builder.minSpent")}</Label>
             <Input
               id="min_spent"
               type="number"
@@ -74,7 +76,7 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
             />
           </div>
           <div>
-            <Label htmlFor="max_spent" className="text-xs text-gray-500">Max Spent ($)</Label>
+            <Label htmlFor="max_spent" className="text-xs text-gray-500">{t("web.provider.pages.marketing/segment-builder.maxSpent")}</Label>
             <Input
               id="max_spent"
               type="number"
@@ -82,14 +84,14 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
               step="0.01"
               value={criteria.max_spent || ""}
               onChange={(e) => updateCriteria("max_spent", e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="Unlimited"
+              placeholder={t("web.provider.common.unlimited")}
             />
           </div>
         </div>
       </div>
 
       <div>
-        <Label htmlFor="last_booking_days" className="text-sm font-medium mb-2 block">Last Booking</Label>
+        <Label htmlFor="last_booking_days" className="text-sm font-medium mb-2 block">{t("web.provider.pages.marketing/segment-builder.lastBooking")}</Label>
         <Select
           value={
             criteria.last_booking_days != null
@@ -104,22 +106,22 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Any time" />
+            <SelectValue placeholder={t("web.provider.pages.marketing/segment-builder.anyTime")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={RADIX_SELECT_ANY}>Any time</SelectItem>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="60">Last 60 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-            <SelectItem value="180">Last 6 months</SelectItem>
-            <SelectItem value="365">Last year</SelectItem>
+            <SelectItem value={RADIX_SELECT_ANY}>{t("web.provider.pages.marketing/segment-builder.anyTime")}</SelectItem>
+            <SelectItem value="7">{t("web.provider.pages.marketing/segment-builder.last7Days")}</SelectItem>
+            <SelectItem value="30">{t("web.provider.pages.marketing/segment-builder.last30Days")}</SelectItem>
+            <SelectItem value="60">{t("web.provider.pages.marketing/segment-builder.last60Days")}</SelectItem>
+            <SelectItem value="90">{t("web.provider.pages.marketing/segment-builder.last90Days")}</SelectItem>
+            <SelectItem value="180">{t("web.provider.pages.marketing/segment-builder.last6Months")}</SelectItem>
+            <SelectItem value="365">{t("web.provider.pages.marketing/segment-builder.lastYear")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <Label className="text-sm font-medium mb-2 block">Client Status</Label>
+        <Label className="text-sm font-medium mb-2 block">{t("web.provider.pages.marketing/segment-builder.clientStatus")}</Label>
         <div className="flex items-center space-x-2">
           <Checkbox
             id="is_favorite"
@@ -127,7 +129,7 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
             onCheckedChange={(checked) => updateCriteria("is_favorite", checked ? true : undefined)}
           />
           <Label htmlFor="is_favorite" className="text-sm font-normal cursor-pointer">
-            Only favorite clients
+            {t("web.provider.pages.marketing/segment-builder.onlyFavorites")}
           </Label>
         </div>
       </div>

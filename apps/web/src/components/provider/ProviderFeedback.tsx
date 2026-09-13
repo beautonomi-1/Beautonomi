@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { cn } from "@/lib/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -55,7 +57,9 @@ interface ProviderLoadingStateProps {
   className?: string;
 }
 
-export function ProviderLoadingState({ message = "Loading…", className }: ProviderLoadingStateProps) {
+export function ProviderLoadingState({ message, className }: ProviderLoadingStateProps) {
+  const { t } = useTranslation();
+  const resolved = message ?? t("web.book.continue.loadingEllipsis");
   return (
     <div
       className={cn(
@@ -66,7 +70,7 @@ export function ProviderLoadingState({ message = "Loading…", className }: Prov
       aria-live="polite"
     >
       <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
-      <p className="text-sm text-gray-500">{message}</p>
+      <p className="text-sm text-gray-500">{resolved}</p>
     </div>
   );
 }
@@ -79,15 +83,17 @@ interface ProviderErrorStateProps {
 }
 
 export function ProviderErrorState({
-  title = "Something went wrong",
+  title,
   message,
   onRetry,
   className,
 }: ProviderErrorStateProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("common.error");
   return (
     <Alert variant="destructive" className={cn("rounded-2xl border-red-200 bg-red-50", className)}>
       <AlertCircle className="h-4 w-4" />
-      <AlertTitle>{title}</AlertTitle>
+      <AlertTitle>{resolvedTitle}</AlertTitle>
       <AlertDescription className="mt-1">{message}</AlertDescription>
       {onRetry && (
         <Button
@@ -96,7 +102,7 @@ export function ProviderErrorState({
           onClick={onRetry}
           className="mt-3 min-h-[44px] touch-manipulation"
         >
-          Try again
+          {t("common.retry")}
         </Button>
       )}
     </Alert>

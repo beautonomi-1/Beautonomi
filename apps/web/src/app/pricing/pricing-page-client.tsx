@@ -237,7 +237,7 @@ export default function PricingPageClient({
                         <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
                           <Check className="h-3.5 w-3.5 text-primary" />
                         </span>
-                        <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-primary [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
+                        <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-primary [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:ps-5">
                           <PricingFeatureHtml html={feature} />
                         </div>
                       </li>

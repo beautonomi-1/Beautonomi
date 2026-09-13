@@ -56,7 +56,7 @@ export function SkeletonCard() {
     <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", backgroundColor: "#fff", padding: 16 }}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <Skeleton width={44} height={44} borderRadius={12} />
-        <View style={{ marginLeft: 12, flex: 1 }}>
+        <View style={{ marginStart: 12, flex: 1 }}>
           <Skeleton height={14} style={{ width: "60%" }} />
           <Skeleton height={10} style={{ width: "40%", marginTop: 6 }} />
         </View>
@@ -69,7 +69,7 @@ export function SkeletonStatRow() {
   return (
     <View style={{ flexDirection: "row" }}>
       {[0, 1].map((i) => (
-        <View key={i} style={{ flex: 1, marginRight: i === 0 ? 12 : 0, borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", backgroundColor: "#fff", padding: 16 }}>
+        <View key={i} style={{ flex: 1, marginEnd: i === 0 ? 12 : 0, borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", backgroundColor: "#fff", padding: 16 }}>
           <Skeleton height={10} style={{ width: "50%" }} />
           <Skeleton height={24} style={{ width: "70%", marginTop: 8 }} />
           <Skeleton height={10} style={{ width: "30%", marginTop: 6 }} />

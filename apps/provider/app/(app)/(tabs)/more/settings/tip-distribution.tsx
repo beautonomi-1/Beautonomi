@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Alert, Switch } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -32,6 +33,12 @@ interface TipDistribution {
 }
 
 export default function TipDistributionScreen() {
+  const { t } = useTranslation();
+  const td = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.tipDistribution.${key}`, opts) as string,
+    [t],
+  );
   const { data: settings, loading, refresh } = useApi<TipDistribution>("/api/provider/tips/distribution");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
@@ -51,7 +58,7 @@ export default function TipDistributionScreen() {
       keep_all_tips: keepAll,
       distribute_to_staff: distribute,
     });
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(td("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDirty(false);
@@ -70,13 +77,13 @@ export default function TipDistributionScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Tip Distribution" showBack subtitle="How tips are shared" />
+      <ScreenHeader title={td("title")} showBack subtitle={td("subtitle")} />
 
       {stats && (
         <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="This Month"
+              title={td("statThisMonth")}
               value={formatCurrency(stats.total_tips_this_month)}
               icon="cash-outline"
               iconColor="#22c55e"
@@ -84,9 +91,9 @@ export default function TipDistributionScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Distributed"
+              title={td("statDistributed")}
               value={formatCurrency(stats.total_distributed)}
               icon="people-outline"
               iconColor="#6366f1"
@@ -96,7 +103,7 @@ export default function TipDistributionScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Avg Tip"
+              title={td("statAvgTip")}
               value={formatCurrency(stats.avg_tip_amount)}
               icon="trending-up-outline"
               iconColor="#f59e0b"
@@ -110,8 +117,8 @@ export default function TipDistributionScreen() {
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Keep All Tips</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Business keeps 100% of tips</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{td("keepAllTitle")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{td("keepAllHint")}</Text>
           </View>
           <Switch
             value={keepAll}
@@ -123,8 +130,8 @@ export default function TipDistributionScreen() {
 
         <View style={twStyle(`flex-row items-center justify-between ${keepAll ? "opacity-40" : ""}`)}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Distribute to Staff</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Tips go to staff members</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{td("distributeTitle")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{td("distributeHint")}</Text>
           </View>
           <Switch
             value={distribute}
@@ -139,17 +146,15 @@ export default function TipDistributionScreen() {
       {!keepAll && distribute && (
         <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-3")}>
           <View style={twStyle("flex-row items-start")}>
-            <Ionicons name="information-circle" size={16} color="#6366f1" style={{ marginTop: 2, marginRight: 8 }} />
+            <Ionicons name="information-circle" size={16} color="#6366f1" style={{ marginTop: 2, marginEnd: 8 }} />
             <Text style={twStyle("flex-1 text-xs text-indigo-700")}>
-              Tips will be allocated to the staff member who performed the service. Advanced
-              split methods (equal split, custom pool) can be configured per-team in the
-              provider portal.
+              {td("distributeInfo")}
             </Text>
           </View>
         </View>
       )}
 
-      <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
+      <ActionButton label={td("save")} onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
       <View style={twStyle("h-8")} />
     </ScreenContainer>
   );

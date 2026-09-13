@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, Share, Linking, Alert } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import QRCode from "react-native-qrcode-svg";
+import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
@@ -50,6 +51,12 @@ export function PaystackTerminalCollectSheet({
   currency: string;
   customerReference?: string | null;
 }) {
+  const { t } = useTranslation();
+  const pt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.paystackTerminalCollect.${key}`, opts) as string,
+    [t],
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CollectResult | null>(null);
@@ -65,7 +72,7 @@ export function PaystackTerminalCollectSheet({
     let cancelled = false;
     const charge = Number(expectedAmount.toFixed(2));
     if (charge <= 0) {
-      setError("There is no remaining balance to collect.");
+      setError(pt("noRemainingBalance"));
       return;
     }
     setLoading(true);
@@ -84,9 +91,9 @@ export function PaystackTerminalCollectSheet({
       );
       if (cancelled) return;
       if (res.error) {
-        setError(res.error.message ?? "Failed to prepare terminal payment.");
+        setError(res.error.message ?? pt("prepareFailed"));
       } else if (!res.data?.terminal?.terminal_code) {
-        setError("No active Paystack Terminal is available. Create one first.");
+        setError(pt("noActiveTerminal"));
       } else {
         setResult(res.data);
         if (!selectedTerminalId && res.data.terminal?.id) {
@@ -98,62 +105,62 @@ export function PaystackTerminalCollectSheet({
     return () => {
       cancelled = true;
     };
-  }, [visible, entityType, entityId, expectedAmount, customerReference, selectedTerminalId]);
+  }, [visible, entityType, entityId, expectedAmount, customerReference, selectedTerminalId, pt]);
 
   const terminal = result?.terminal;
   const link = terminal?.payment_link || terminal?.terminal_url || terminal?.qr_url || null;
   const qrValue = link || (terminal?.terminal_code ? `https://paystack.shop/pay/${terminal.terminal_code}` : null);
   const amount = Number(result?.expectedAmount ?? expectedAmount);
+  const amountLabel = `${currency} ${amount.toFixed(2)}`;
 
   const onCopy = async (value: string, label: string) => {
     await Clipboard.setStringAsync(value);
-    Alert.alert("Copied", `${label} copied to clipboard.`);
+    Alert.alert(pt("copiedTitle"), pt("copiedBody", { label }));
   };
 
   const onShare = () => {
     void Share.share({
-      title: "Paystack Terminal",
+      title: pt("title"),
       message: link
-        ? `Pay ${currency} ${amount.toFixed(2)} using this Paystack Terminal link: ${link}`
-        : `Pay ${currency} ${amount.toFixed(2)} using Paystack Terminal code ${terminal?.terminal_code}.`,
+        ? pt("shareWithLink", { amount: amountLabel, link })
+        : pt("shareWithCode", { amount: amountLabel, code: terminal?.terminal_code }),
       url: link ?? undefined,
     });
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Paystack Terminal">
+    <BottomSheet visible={visible} onClose={onClose} title={pt("title")}>
       {loading ? (
         <View style={twStyle("py-8 items-center")}>
           <ActivityIndicator color="#16a34a" />
-          <Text style={twStyle("text-sm text-gray-500 mt-3")}>Preparing in-person payment…</Text>
+          <Text style={twStyle("text-sm text-gray-500 mt-3")}>{pt("preparing")}</Text>
         </View>
       ) : error ? (
         <View style={twStyle("py-6")}>
           <Text style={twStyle("text-sm text-red-700")}>{error}</Text>
           <TouchableOpacity onPress={onClose} style={twStyle("mt-4 rounded-xl border border-gray-300 px-3 py-3")}>
-            <Text style={twStyle("text-center font-semibold text-gray-700")}>Close</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-700")}>{pt("close")}</Text>
           </TouchableOpacity>
         </View>
       ) : terminal ? (
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-3")}>
-            Ask the customer to scan this QR or use the link to pay. Paystack generates the transaction
-            reference; once it arrives, allocate it from your terminal inbox.
+            {pt("instructions")}
           </Text>
           {result?.terminals && result.terminals.length > 1 ? (
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("text-xs font-semibold text-gray-500 mb-2")}>Collect on terminal</Text>
+              <Text style={twStyle("text-xs font-semibold text-gray-500 mb-2")}>{pt("collectOnTerminal")}</Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
-                {result.terminals.map((t) => {
-                  const active = (selectedTerminalId ?? terminal?.id) === t.id;
+                {result.terminals.map((item) => {
+                  const active = (selectedTerminalId ?? terminal?.id) === item.id;
                   return (
                     <TouchableOpacity
-                      key={t.id ?? t.terminal_code}
-                      onPress={() => t.id && setSelectedTerminalId(t.id)}
+                      key={item.id ?? item.terminal_code}
+                      onPress={() => item.id && setSelectedTerminalId(item.id)}
                       style={twStyle(`rounded-full border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`)}
                     >
                       <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-600"}`)}>
-                        {t.display_name || t.name || t.terminal_code}
+                        {item.display_name || item.name || item.terminal_code}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -169,37 +176,37 @@ export function PaystackTerminalCollectSheet({
             </View>
           ) : null}
           <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-3")}>
-            <Text style={twStyle("text-xs uppercase tracking-wide text-emerald-700")}>Terminal code</Text>
+            <Text style={twStyle("text-xs uppercase tracking-wide text-emerald-700")}>{pt("terminalCode")}</Text>
             <Text style={twStyle("mt-2 font-mono text-2xl font-semibold text-emerald-950")}>
               {terminal.terminal_code}
             </Text>
             <Text style={twStyle("mt-2 text-sm text-emerald-800")}>
-              Expected: {currency} {amount.toFixed(2)}
+              {pt("expected", { amount: amountLabel })}
             </Text>
           </View>
           <View style={twStyle("flex-row gap-2")}>
             <TouchableOpacity onPress={onShare} style={twStyle("flex-1 rounded-xl bg-emerald-600 px-3 py-3")}>
-              <Text style={twStyle("text-center font-semibold text-white")}>Share</Text>
+              <Text style={twStyle("text-center font-semibold text-white")}>{pt("share")}</Text>
             </TouchableOpacity>
           </View>
           {link ? (
             <View style={twStyle("flex-row gap-2 mt-2")}>
               <TouchableOpacity
-                onPress={() => onCopy(link, "Payment link")}
+                onPress={() => onCopy(link, pt("paymentLink"))}
                 style={twStyle("flex-1 rounded-xl border border-gray-300 px-3 py-3")}
               >
-                <Text style={twStyle("text-center font-semibold text-gray-700")}>Copy link</Text>
+                <Text style={twStyle("text-center font-semibold text-gray-700")}>{pt("copyLink")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void Linking.openURL(link)}
                 style={twStyle("flex-1 rounded-xl border border-gray-300 px-3 py-3")}
               >
-                <Text style={twStyle("text-center font-semibold text-gray-700")}>Open link</Text>
+                <Text style={twStyle("text-center font-semibold text-gray-700")}>{pt("openLink")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
           <TouchableOpacity onPress={onClose} style={twStyle("mt-3 rounded-xl px-3 py-3")}>
-            <Text style={twStyle("text-center font-semibold text-gray-500")}>Done</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-500")}>{pt("done")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

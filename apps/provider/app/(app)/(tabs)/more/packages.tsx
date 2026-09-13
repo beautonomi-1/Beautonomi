@@ -30,6 +30,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
 import { normalizePackagesList, normalizeProductsList } from "@/lib/unpack-provider-api";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PackageItem {
   id: string;
@@ -85,13 +86,21 @@ interface FormItem {
   label: string;
 }
 
-function formatVariantLabel(variant?: ProductVariant | null): string {
+function formatVariantLabel(variant?: ProductVariant | null, fallback = ""): string {
   if (!variant) return "";
   const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
-  return optionLabel || variant.sku || "Variant";
+  return optionLabel || variant.sku || fallback;
 }
 
 export default function PackagesScreen() {
+  const { t } = useTranslation();
+  const pk = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.packages.${key}`, opts) as string,
+    [t],
+  );
+  const variantFallback = pk("variantFallback");
+  const itemFallback = pk("itemFallback");
   const { isTablet } = useResponsive();
   const params = useLocalSearchParams<{ editId?: string | string[] }>();
   const editParamHandledRef = useRef<string | null>(null);
@@ -190,11 +199,11 @@ export default function PackagesScreen() {
         product_id: it.product_id ?? undefined,
         product_variant_id: it.product_variant_id ?? undefined,
         quantity: it.quantity,
-        label: it.offering?.title ?? (it.product ? `${it.product.name}${formatVariantLabel(it.product_variant) ? ` — ${formatVariantLabel(it.product_variant)}` : ""}` : "Item"),
+        label: it.offering?.title ?? (it.product ? `${it.product.name}${formatVariantLabel(it.product_variant, variantFallback) ? ` — ${formatVariantLabel(it.product_variant, variantFallback)}` : ""}` : itemFallback),
       })),
     });
     setShowForm(true);
-  }, []);
+  }, [variantFallback, itemFallback]);
 
   useEffect(() => {
     const raw = params.editId;
@@ -250,7 +259,7 @@ export default function PackagesScreen() {
           ? {
               ...it,
               product_variant_id: variant?.id ?? undefined,
-              label: variant ? `${product.name} — ${formatVariantLabel(variant)}` : product.name,
+              label: variant ? `${product.name} — ${formatVariantLabel(variant, variantFallback)}` : product.name,
             }
           : it
       )),
@@ -259,15 +268,15 @@ export default function PackagesScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Package name is required");
+      Alert.alert(pk("requiredTitle"), pk("nameRequired"));
       return;
     }
     if (!form.price || Number(form.price) <= 0) {
-      Alert.alert("Required", "Please enter a valid price");
+      Alert.alert(pk("requiredTitle"), pk("priceRequired"));
       return;
     }
     if (form.items.length === 0) {
-      Alert.alert("Required", "Add at least one service or product");
+      Alert.alert(pk("requiredTitle"), pk("itemsRequired"));
       return;
     }
     const missingVariant = form.items.find((item) => {
@@ -276,7 +285,7 @@ export default function PackagesScreen() {
       return Boolean(product?.has_variants && (product.variants?.length ?? 0) > 0 && !item.product_variant_id);
     });
     if (missingVariant) {
-      Alert.alert("Variant required", "Choose the exact product variant included in this package.");
+      Alert.alert(pk("variantRequiredTitle"), pk("variantRequiredBody"));
       return;
     }
 
@@ -297,10 +306,10 @@ export default function PackagesScreen() {
 
     if (editingPkg) {
       const { error } = await updatePkg(`/api/provider/packages/${editingPkg.id}`, payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(pk("errorTitle"), error); return; }
     } else {
       const { error } = await createPackage(payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(pk("errorTitle"), error); return; }
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -311,14 +320,14 @@ export default function PackagesScreen() {
   }
 
   function handleDelete(pkg: ServicePackage) {
-    Alert.alert("Delete Package", `Delete "${pkg.name}"? This cannot be undone.`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(pk("deleteTitle"), pk("deleteBody", { name: pkg.name }), [
+      { text: pk("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: pk("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deletePkg(`/api/provider/packages/${pkg.id}`);
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(pk("errorTitle"), error);
           else refreshPackages();
         },
       },
@@ -328,9 +337,9 @@ export default function PackagesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Packages"
+        title={pk("title")}
         showBack
-        subtitle={`${packages.length} packages`}
+        subtitle={pk("subtitle", { count: packages.length })}
         rightAction={
           <TouchableOpacity
             style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: Colors.gray[900] }}
@@ -342,14 +351,14 @@ export default function PackagesScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search packages..." />
+      <SearchBar value={search} onChangeText={setSearch} placeholder={pk("searchPlaceholder")} />
 
       <View style={{ marginVertical: 12 }}>
         <FilterChipGroup
           options={[
-            { label: "All", value: "all" },
-            { label: "Active", value: "active" },
-            { label: "Inactive", value: "inactive" },
+            { label: pk("filterAll"), value: "all" },
+            { label: pk("filterActive"), value: "active" },
+            { label: pk("filterInactive"), value: "inactive" },
           ]}
           selected={filter}
           onSelect={setFilter}
@@ -363,8 +372,8 @@ export default function PackagesScreen() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="gift-outline"
-          title="No packages"
-          description="Bundle services and products into packages for your clients"
+          title={pk("emptyTitle")}
+          description={pk("emptyDesc")}
         />
       ) : (
         <FlatList
@@ -383,7 +392,7 @@ export default function PackagesScreen() {
             <View
               style={[
                 isTablet ? { flex: 1 } : undefined,
-                isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined,
+                isTablet && index % 2 === 0 ? { marginEnd: 12 } : undefined,
               ]}
             >
             <TouchableOpacity
@@ -401,7 +410,7 @@ export default function PackagesScreen() {
                 <View style={{ alignItems: "flex-end" }}>
                   <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(pkg.price, pkg.currency)}</Text>
                   {pkg.discount_percentage != null && pkg.discount_percentage > 0 && (
-                    <Text style={{ fontSize: 12, color: "#16a34a" }}>{pkg.discount_percentage}% off</Text>
+                    <Text style={{ fontSize: 12, color: "#16a34a" }}>{pk("percentOff", { percent: pkg.discount_percentage })}</Text>
                   )}
                 </View>
               </View>
@@ -411,8 +420,8 @@ export default function PackagesScreen() {
                   <View key={item.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: i > 0 ? 6 : 0 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                       <Ionicons name={item.offering_id ? "cut-outline" : "cube-outline"} size={14} color="#6b7280" />
-                      <Text style={{ marginLeft: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
-                        {item.offering?.title ?? (item.product ? `${item.product.name}${formatVariantLabel(item.product_variant) ? ` — ${formatVariantLabel(item.product_variant)}` : ""}` : "Item")}
+                      <Text style={{ marginStart: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
+                        {item.offering?.title ?? (item.product ? `${item.product.name}${formatVariantLabel(item.product_variant, variantFallback) ? ` — ${formatVariantLabel(item.product_variant, variantFallback)}` : ""}` : itemFallback)}
                       </Text>
                     </View>
                     {item.quantity > 1 && (
@@ -421,14 +430,14 @@ export default function PackagesScreen() {
                   </View>
                 ))}
                 {(pkg.items ?? []).length === 0 && (
-                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>No items</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{pk("noItems")}</Text>
                 )}
               </View>
 
               <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 2, backgroundColor: pkg.is_active ? "#dcfce7" : Colors.gray[100] }}>
                   <Text style={{ fontSize: 10, fontWeight: "500", color: pkg.is_active ? "#15803d" : Colors.gray[500] }}>
-                    {pkg.is_active ? "Active" : "Inactive"}
+                    {pkg.is_active ? pk("active") : pk("inactive")}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => handleDelete(pkg)}>
@@ -447,44 +456,44 @@ export default function PackagesScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => { setShowForm(false); setEditingPkg(null); }}
-        title={editingPkg ? "Edit Package" : "New Package"}
+        title={editingPkg ? pk("editTitle") : pk("newTitle")}
         snapHeight={isTablet ? "full" : "auto"}
       >
         <View>
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Package Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("nameLabel")}</Text>
           <TextInput
             style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Luxury Pamper Package"
+            placeholder={pk("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("description")}</Text>
           <TextInput
             style={{ marginBottom: 12, minHeight: 60, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.description}
-            onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Brief description..."
+            onChangeText={(text) => setForm((p) => ({ ...p, description: text }))}
+            placeholder={pk("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             textAlignVertical="top"
           />
 
           <View style={{ marginBottom: 12, flexDirection: "row" }}>
-            <View style={{ flex: 2, marginRight: 8 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Price *</Text>
+            <View style={{ flex: 2, marginEnd: 8 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("priceLabel")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.price}
-                onChangeText={(t) => setForm((p) => ({ ...p, price: t }))}
-                placeholder="0.00"
+                onChangeText={(text) => setForm((p) => ({ ...p, price: text }))}
+                placeholder={pk("pricePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="decimal-pad"
               />
             </View>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Currency</Text>
+            <View style={{ flex: 1, marginEnd: 8 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("currency")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.currency}
@@ -496,7 +505,7 @@ export default function PackagesScreen() {
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Discount %</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("discountPct")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.discount_percentage}
@@ -509,13 +518,13 @@ export default function PackagesScreen() {
           </View>
 
           <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Items ({form.items.length})</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("itemsCount", { count: form.items.length })}</Text>
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 6 }}
               onPress={() => setShowItemPicker(true)}
             >
               <Ionicons name="add" size={16} color="#6366f1" />
-              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#4f46e5" }}>Add Item</Text>
+              <Text style={{ marginStart: 4, fontSize: 12, fontWeight: "500", color: "#4f46e5" }}>{pk("addItem")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -541,7 +550,7 @@ export default function PackagesScreen() {
                       return (
                         <View style={{ marginTop: 8 }}>
                           <Text style={{ marginBottom: 6, fontSize: 11, fontWeight: "700", color: "#6d28d9", textTransform: "uppercase" }}>
-                            Variant
+                            {pk("variant")}
                           </Text>
                           <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                             {product.variants.map((variant) => {
@@ -551,7 +560,7 @@ export default function PackagesScreen() {
                                   key={variant.id}
                                   onPress={() => updateItemVariant(idx, product, variant)}
                                   style={{
-                                    marginRight: 8,
+                                    marginEnd: 8,
                                     marginBottom: 8,
                                     borderRadius: 999,
                                     borderWidth: 1,
@@ -562,7 +571,7 @@ export default function PackagesScreen() {
                                   }}
                                 >
                                   <Text style={{ fontSize: 12, fontWeight: "600", color: selected ? "#6d28d9" : Colors.gray[700] }}>
-                                    {formatVariantLabel(variant)}
+                                    {formatVariantLabel(variant, variantFallback)}
                                   </Text>
                                 </TouchableOpacity>
                               );
@@ -573,14 +582,14 @@ export default function PackagesScreen() {
                     })()}
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity - 1)} style={{ marginRight: 8 }}>
+                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity - 1)} style={{ marginEnd: 8 }}>
                       <Ionicons name="remove-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
-                    <Text style={{ width: 24, textAlign: "center", fontSize: 14, fontWeight: "600", marginRight: 8 }}>{item.quantity}</Text>
-                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity + 1)} style={{ marginRight: 8 }}>
+                    <Text style={{ width: 24, textAlign: "center", fontSize: 14, fontWeight: "600", marginEnd: 8 }}>{item.quantity}</Text>
+                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity + 1)} style={{ marginEnd: 8 }}>
                       <Ionicons name="add-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeItem(idx)} style={{ marginLeft: 8 }}>
+                    <TouchableOpacity onPress={() => removeItem(idx)} style={{ marginStart: 8 }}>
                       <Ionicons name="close-circle" size={20} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
@@ -590,7 +599,7 @@ export default function PackagesScreen() {
           )}
 
           <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Active</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pk("active")}</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -600,7 +609,7 @@ export default function PackagesScreen() {
           </View>
 
           <ActionButton
-            label={editingPkg ? "Update Package" : "Create Package"}
+            label={editingPkg ? pk("updatePackage") : pk("createPackage")}
             onPress={handleSave}
             loading={creating || updating}
             fullWidth
@@ -609,9 +618,9 @@ export default function PackagesScreen() {
       </BottomSheet>
 
       {/* Item picker sheet */}
-      <BottomSheet visible={showItemPicker} onClose={() => setShowItemPicker(false)} title="Add Item">
+      <BottomSheet visible={showItemPicker} onClose={() => setShowItemPicker(false)} title={pk("addItemTitle")}>
         <View>
-          <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Services</Text>
+          <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>{pk("services")}</Text>
           {servicesLoadError && !services ? (
             <ErrorState message={servicesLoadError} onRetry={refreshServices} />
           ) : (
@@ -624,9 +633,9 @@ export default function PackagesScreen() {
               >
                 <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                   <Ionicons name="cut-outline" size={18} color="#6366f1" />
-                  <View style={{ marginLeft: 10 }}>
+                  <View style={{ marginStart: 10 }}>
                     <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{svc.title}</Text>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${svc.duration_minutes}min · ${getTenantDefaultCurrency()} ${svc.price}`}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{pk("durationPrice", { minutes: svc.duration_minutes, currency: getTenantDefaultCurrency(), price: svc.price })}</Text>
                   </View>
                 </View>
                 <Ionicons name="add-circle-outline" size={22} color="#6366f1" />
@@ -634,7 +643,7 @@ export default function PackagesScreen() {
             ))
           )}
 
-          <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Products</Text>
+          <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>{pk("products")}</Text>
           {productsLoadError && !rawProducts ? (
             <ErrorState message={productsLoadError} onRetry={refreshProducts} />
           ) : (
@@ -647,11 +656,11 @@ export default function PackagesScreen() {
               >
                 <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                   <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
-                  <View style={{ marginLeft: 10 }}>
+                  <View style={{ marginStart: 10 }}>
                     <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
                     <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                       {prod.has_variants && (prod.variants?.length ?? 0) > 0
-                        ? `${prod.variants?.length} variants`
+                        ? pk("variantsCount", { count: prod.variants?.length })
                         : `${getTenantDefaultCurrency()} ${prod.retail_price}`}
                     </Text>
                   </View>

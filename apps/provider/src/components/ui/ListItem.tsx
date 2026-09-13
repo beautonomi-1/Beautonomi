@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ListItemProps {
   title: string;
@@ -28,7 +28,7 @@ export function ListItem({
       disabled={!onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      {leftContent && <View style={twStyle("mr-3")}>{leftContent}</View>}
+      {leftContent && <View style={twStyle("me-3")}>{leftContent}</View>}
       <View style={twStyle("flex-1")}>
         <Text style={twStyle("text-base font-medium text-gray-900")} numberOfLines={1}>
           {title}
@@ -39,9 +39,9 @@ export function ListItem({
           </Text>
         )}
       </View>
-      {rightContent && <View style={twStyle("ml-2")}>{rightContent}</View>}
+      {rightContent && <View style={twStyle("ms-2")}>{rightContent}</View>}
       {showChevron && onPress && (
-        <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginLeft: 4 }} />
+        <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" style={{ marginStart: 4 }} />
       )}
     </TouchableOpacity>
   );

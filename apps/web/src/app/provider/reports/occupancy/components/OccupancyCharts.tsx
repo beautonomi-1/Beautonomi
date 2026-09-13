@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useMemo } from "react";
 import {
   BarChart,
@@ -24,6 +25,7 @@ export type OccupancyDateRow = {
 };
 
 export function OccupancyMinutesChart({ rows }: { rows: OccupancyDateRow[] }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows.map((r) => ({
@@ -35,7 +37,7 @@ export function OccupancyMinutesChart({ rows }: { rows: OccupancyDateRow[] }) {
   );
 
   if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No days in range.</p>;
+    return <p className="py-8 text-center text-sm text-gray-500">{t("web.provider.reports.pages.occupancy.noDaysInRange")}</p>;
   }
 
   return (
@@ -57,6 +59,7 @@ export function OccupancyMinutesChart({ rows }: { rows: OccupancyDateRow[] }) {
 }
 
 export function OccupancyPercentChart({ rows }: { rows: OccupancyDateRow[] }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows.map((r) => ({
@@ -70,7 +73,7 @@ export function OccupancyPercentChart({ rows }: { rows: OccupancyDateRow[] }) {
   if (!hasAny) {
     return (
       <p className="py-6 text-center text-sm text-gray-500">
-        Occupancy % is not shown when there is no scheduled availability in this range.
+        {t("web.provider.reports.pages.occupancy.occupancyHiddenNoAvailability")}
       </p>
     );
   }

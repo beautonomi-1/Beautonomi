@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { MapPin } from "lucide-react";
 import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 
@@ -98,6 +99,7 @@ export function MapboxMapPreviewUnavailable({
   city,
   className = "",
 }: MapboxMapPreviewUnavailableProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`flex items-center justify-center bg-gray-100 text-gray-500 ${className}`}
@@ -105,7 +107,7 @@ export function MapboxMapPreviewUnavailable({
     >
       <div className="text-center p-4">
         <MapPin className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-        <p className="text-sm">Map preview unavailable</p>
+        <p className="text-sm">{t("web.mapbox.preview.unavailable")}</p>
         <p className="text-xs mt-1">{placeName || (addressLine1 && city ? `${addressLine1}, ${city}` : addressLine1 || city || "")}</p>
       </div>
     </div>

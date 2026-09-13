@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { BookingSectionCard, BookingSectionLabel, BookingSummaryRow } from "../ui";
 
 interface BookingCustomFieldsBlockProps {
@@ -7,11 +9,12 @@ interface BookingCustomFieldsBlockProps {
 }
 
 export function BookingCustomFieldsBlock({ values }: BookingCustomFieldsBlockProps) {
+  const { t } = useTranslation();
   if (!values || Object.keys(values).length === 0) return null;
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">Custom fields</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.customFields")}</BookingSectionLabel>
       {Object.entries(values).map(([name, value]) => (
         <BookingSummaryRow
           key={name}

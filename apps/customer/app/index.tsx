@@ -695,46 +695,47 @@ export default function Index() {
   // §Release-audit 2026-04: explicit error screen instead of fail-open to customer.
   if (portalState === "error") {
     const kind = portalErrorKind ?? "network";
+    const pg = (key: string) => t(`customer.mobile.screens.portalGate.${key}`);
     const { title, body, primaryLabel, showRetry, showSignOut } = (() => {
       switch (kind) {
         case "unauthorized":
           return {
-            title: "Please sign in again",
-            body: "Your session expired while we were checking your account.",
-            primaryLabel: "Sign in again",
+            title: pg("unauthorizedTitle"),
+            body: pg("unauthorizedBody"),
+            primaryLabel: pg("unauthorizedCta"),
             showRetry: false,
             showSignOut: false,
           };
         case "timeout":
           return {
-            title: "Taking longer than expected",
-            body: "We couldn't reach our servers in time. Check your connection and try again.",
-            primaryLabel: "Try again",
+            title: pg("timeoutTitle"),
+            body: pg("timeoutBody"),
+            primaryLabel: t("common.retry"),
             showRetry: true,
             showSignOut: true,
           };
         case "no_portal":
           return {
-            title: "We couldn't place your account",
-            body: "Your account is signed in but we couldn't confirm a customer role. Retry or sign out and back in.",
-            primaryLabel: "Try again",
+            title: pg("noPortalTitle"),
+            body: pg("noPortalBody"),
+            primaryLabel: t("common.retry"),
             showRetry: true,
             showSignOut: true,
           };
         case "config_missing":
           return {
-            title: "App not configured",
-            body: "This build is missing a required setting (EXPO_PUBLIC_APP_URL). Please reinstall the latest app from the store, or contact support if the problem persists.",
-            primaryLabel: "Sign out",
+            title: pg("configMissingTitle"),
+            body: pg("configMissingBody"),
+            primaryLabel: t("common.signOut"),
             showRetry: false,
             showSignOut: false,
           };
         case "network":
         default:
           return {
-            title: "Couldn't verify your account",
-            body: "We had trouble confirming your customer access. Check your connection and try again.",
-            primaryLabel: "Try again",
+            title: pg("networkTitle"),
+            body: pg("networkBody"),
+            primaryLabel: t("common.retry"),
             showRetry: true,
             showSignOut: true,
           };
@@ -777,9 +778,9 @@ export default function Index() {
               signOut();
             }}
             accessibilityRole="button"
-            accessibilityLabel="Sign out"
+            accessibilityLabel={t("common.signOut")}
           >
-            <Text style={{ color: "#6b7280", fontSize: 14, textDecorationLine: "underline" }}>Sign out</Text>
+            <Text style={{ color: "#6b7280", fontSize: 14, textDecorationLine: "underline" }}>{t("common.signOut")}</Text>
           </TouchableOpacity>
         ) : null}
       </View>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SegmentTabs, type SegmentTabItem } from "@/components/ui/SegmentTabs";
@@ -24,6 +25,9 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 }
 
 export default function OrdersHubScreen() {
+  const { t } = useTranslation();
+  const oh = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.ordersHub.${key}`, opts) as string;
   const params = useLocalSearchParams<{ order?: string | string[]; tab?: string | string[] }>();
   const deepLinkOrderId = firstParam(params.order);
   const tabParam = firstParam(params.tab);
@@ -43,10 +47,10 @@ export default function OrdersHubScreen() {
 
   const tabs = useMemo<SegmentTabItem[]>(
     () => [
-      { key: "orders", label: "Orders", badgeCount: navCounts?.active_product_orders ?? 0 },
-      { key: "returns", label: "Returns", badgeCount: navCounts?.open_return_requests ?? 0 },
+      { key: "orders", label: oh("tabOrders"), badgeCount: navCounts?.active_product_orders ?? 0 },
+      { key: "returns", label: oh("tabReturns"), badgeCount: navCounts?.open_return_requests ?? 0 },
     ],
-    [navCounts?.active_product_orders, navCounts?.open_return_requests],
+    [navCounts?.active_product_orders, navCounts?.open_return_requests, t],
   );
 
   const totalNeedAction =
@@ -56,12 +60,12 @@ export default function OrdersHubScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Orders & returns"
+        title={oh("title")}
         showBack
         subtitle={
           totalNeedAction > 0
-            ? `${totalNeedAction} ${totalNeedAction === 1 ? "item needs" : "items need"} your action`
-            : "Product orders & refunds"
+            ? oh("itemsNeedAction", { count: totalNeedAction })
+            : oh("subtitleIdle")
         }
       />
       <View style={{ marginBottom: 16 }}>

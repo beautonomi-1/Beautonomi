@@ -8,6 +8,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { CreditCard, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import Breadcrumb from "../../../../components/breadcrumb";
 import BackButton from "../../../../components/back-button";
 
@@ -28,6 +29,7 @@ interface BookingWithCharges {
 }
 
 export default function PayAdditionalChargePage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -76,17 +78,17 @@ export default function PayAdditionalChargePage() {
       );
 
       if (!foundCharge) {
-        setError("Additional charge not found");
+        setError(t("web.accountSettings.payAdditionalCharge.notFound"));
         return;
       }
 
       if (foundCharge.status === 'paid') {
-        setError("This charge has already been paid");
+        setError(t("web.accountSettings.payAdditionalCharge.alreadyPaid"));
         return;
       }
 
       if (foundCharge.status === 'rejected') {
-        setError("This charge has been rejected");
+        setError(t("web.accountSettings.payAdditionalCharge.rejected"));
         return;
       }
 
@@ -94,10 +96,10 @@ export default function PayAdditionalChargePage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.accountSettings.payAdditionalCharge.timeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load charge";
+          : t("web.accountSettings.payAdditionalCharge.loadFailed");
       setError(errorMessage);
       console.error("Error loading charge:", err);
     } finally {
@@ -127,7 +129,7 @@ export default function PayAdditionalChargePage() {
 
       const payload = response.data;
       if (payload?.fully_settled) {
-        toast.success("Charge paid successfully.");
+        toast.success(t("web.accountSettings.payAdditionalCharge.paidSuccess"));
         router.push(`/account-settings/bookings/${bookingId}`);
         return;
       }
@@ -135,11 +137,11 @@ export default function PayAdditionalChargePage() {
       if (payload?.authorization_url) {
         window.location.href = payload.authorization_url;
       } else {
-        throw new Error("Payment link not received");
+        throw new Error(t("web.accountSettings.payAdditionalCharge.noPaymentLink"));
       }
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError ? err.message : "Failed to initiate payment";
+        err instanceof FetchError ? err.message : t("web.accountSettings.payAdditionalCharge.initiateFailed");
       toast.error(errorMessage);
       console.error("Error initiating payment:", err);
     } finally {
@@ -150,7 +152,7 @@ export default function PayAdditionalChargePage() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading payment details..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.payAdditionalCharge.loading")} />
         </div>
     );
   }
@@ -159,10 +161,10 @@ export default function PayAdditionalChargePage() {
     return (
       <div className="container mx-auto px-4 py-8">
           <EmptyState
-            title="Charge not found"
-            description={error || "The additional charge you're looking for doesn't exist or has already been paid"}
+            title={t("web.accountSettings.payAdditionalCharge.notFoundTitle")}
+            description={error || t("web.accountSettings.payAdditionalCharge.notFoundDescription")}
             action={{
-              label: "Back to Booking",
+              label: t("web.accountSettings.payAdditionalCharge.backToBooking"),
               onClick: () => router.push(`/account-settings/bookings/${bookingId}`),
             }}
           />
@@ -174,23 +176,23 @@ export default function PayAdditionalChargePage() {
     <div className="w-full max-w-2xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
         <BackButton 
           href={`/account-settings/bookings/${bookingId}`} 
-          label="Back to Booking" 
+          label={t("web.accountSettings.payAdditionalCharge.backToBooking")} 
         />
         <Breadcrumb
           items={[
-            { label: "Account", href: "/account-settings" },
-            { label: "Bookings", href: "/account-settings/bookings" },
-            { label: `Booking #${booking?.booking_number}`, href: `/account-settings/bookings/${bookingId}` },
-            { label: "Pay Additional Charge" },
+            { label: t("web.accountSettings.payAdditionalCharge.breadcrumbAccount"), href: "/account-settings" },
+            { label: t("web.accountSettings.payAdditionalCharge.breadcrumbBookings"), href: "/account-settings/bookings" },
+            { label: t("web.accountSettings.payAdditionalCharge.breadcrumbBooking", { number: booking?.booking_number }), href: `/account-settings/bookings/${bookingId}` },
+            { label: t("web.accountSettings.payAdditionalCharge.breadcrumbPay") },
           ]}
         />
 
         <div className="mt-6">
           <h1 className="text-2xl md:text-3xl font-semibold mb-2 text-gray-900">
-            Pay Additional Charge
+            {t("web.accountSettings.payAdditionalCharge.title")}
           </h1>
           <p className="text-gray-600 mb-6">
-            Complete payment for this additional charge from your booking
+            {t("web.accountSettings.payAdditionalCharge.subtitle")}
           </p>
 
           {/* Charge Details */}
@@ -204,14 +206,14 @@ export default function PayAdditionalChargePage() {
                   {charge.description}
                 </h2>
                 <p className="text-sm text-gray-600">
-                  Requested on {new Date(charge.requested_at).toLocaleDateString()}
+                  {t("web.accountSettings.payAdditionalCharge.requestedOn", { date: new Date(charge.requested_at).toLocaleDateString() })}
                 </p>
               </div>
             </div>
 
             <div className="border-t pt-4">
               <div className="flex justify-between items-center mb-4">
-                <span className="text-lg font-medium text-gray-700">Amount Due</span>
+                <span className="text-lg font-medium text-gray-700">{t("web.accountSettings.payAdditionalCharge.amountDue")}</span>
                 <span className="text-3xl font-bold text-gray-900">
                   {charge.currency} {charge.amount.toFixed(2)}
                 </span>
@@ -223,10 +225,10 @@ export default function PayAdditionalChargePage() {
                     <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-yellow-900">
-                        Payment Pending
+                        {t("web.accountSettings.payAdditionalCharge.paymentPending")}
                       </p>
                       <p className="text-xs text-yellow-700 mt-1">
-                        This charge is awaiting your payment. Please complete payment to proceed.
+                        {t("web.accountSettings.payAdditionalCharge.paymentPendingHint")}
                       </p>
                     </div>
                   </div>
@@ -239,10 +241,10 @@ export default function PayAdditionalChargePage() {
                     <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-blue-900">
-                        Payment Approved
+                        {t("web.accountSettings.payAdditionalCharge.paymentApproved")}
                       </p>
                       <p className="text-xs text-blue-700 mt-1">
-                        This charge has been approved. Please complete payment.
+                        {t("web.accountSettings.payAdditionalCharge.paymentApprovedHint")}
                       </p>
                     </div>
                   </div>
@@ -258,16 +260,16 @@ export default function PayAdditionalChargePage() {
                     className="rounded border-gray-300"
                   />
                   <span className="text-sm text-gray-700">
-                    Use wallet balance ({charge.currency} {walletBalance.toFixed(2)} available)
+                    {t("web.accountSettings.payAdditionalCharge.useWallet", { currency: charge.currency, amount: walletBalance.toFixed(2) })}
                   </span>
                 </label>
               )}
-              <label className="block text-sm text-gray-600 mb-1">Gift card code (optional)</label>
+              <label className="block text-sm text-gray-600 mb-1">{t("web.accountSettings.payAdditionalCharge.giftCardLabel")}</label>
               <input
                 type="text"
                 value={giftCardCode}
                 onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
-                placeholder="Enter gift card code"
+                placeholder={t("web.accountSettings.payAdditionalCharge.giftCardPlaceholder")}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
               />
 
@@ -279,19 +281,19 @@ export default function PayAdditionalChargePage() {
                 className="w-full text-lg font-semibold h-14 mt-4"
               >
                 {isProcessing ? (
-                  "Processing..."
+                  t("web.accountSettings.payAdditionalCharge.processing")
                 ) : charge.status === 'paid' ? (
-                  "Already Paid"
+                  t("web.accountSettings.payAdditionalCharge.alreadyPaidCta")
                 ) : (
                   <>
-                    <CreditCard className="w-5 h-5 mr-2" />
-                    Pay {charge.currency} {charge.amount.toFixed(2)} Now
+                    <CreditCard className="w-5 h-5 me-2" />
+                    {t("web.accountSettings.payAdditionalCharge.payNow", { currency: charge.currency, amount: charge.amount.toFixed(2) })}
                   </>
                 )}
               </Button>
 
               <p className="text-xs text-gray-500 text-center mt-4">
-                Apply wallet or gift card first; any remainder is paid securely by card.
+                {t("web.accountSettings.payAdditionalCharge.secureHint")}
               </p>
             </div>
           </div>
@@ -300,10 +302,10 @@ export default function PayAdditionalChargePage() {
           {booking && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <p className="text-sm text-gray-600">
-                <span className="font-medium">Booking:</span> #{booking.booking_number}
+                <span className="font-medium">{t("web.accountSettings.payAdditionalCharge.bookingLabel")}</span> #{booking.booking_number}
               </p>
               <p className="text-sm text-gray-600 mt-1">
-                <span className="font-medium">Provider:</span> {booking.provider?.business_name || "Provider"}
+                <span className="font-medium">{t("web.accountSettings.payAdditionalCharge.providerLabel")}</span> {booking.provider?.business_name || t("web.accountSettings.payAdditionalCharge.providerFallback")}
               </p>
             </div>
           )}

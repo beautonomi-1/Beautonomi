@@ -29,6 +29,7 @@ import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBoot
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 import { ImageCropperProvider } from "@/components/image-crop";
 import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -67,23 +68,24 @@ function SplashController() {
 }
 
 function ForceUpdateGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const { updateRequired, openUpdate } = useForceUpdate();
   if (updateRequired) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", padding: 24 }}>
         <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", textAlign: "center" }}>
-          Update required
+          {t("provider.mobile.screens.appUpdate.title")}
         </Text>
         <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, color: "#4B5563", textAlign: "center" }}>
-          A newer version of Beautonomi Partner is required to keep bookings, payments, and provider tools working correctly.
+          {t("provider.mobile.screens.appUpdate.body")}
         </Text>
         <TouchableOpacity
           onPress={openUpdate}
           accessibilityRole="button"
-          accessibilityLabel="Update Beautonomi Partner now"
+          accessibilityLabel={t("provider.mobile.screens.appUpdate.ctaA11y")}
           style={{ marginTop: 24, minHeight: 48, borderRadius: 14, backgroundColor: "#111827", paddingHorizontal: 28, paddingVertical: 14 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Update now</Text>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{t("provider.mobile.screens.appUpdate.cta")}</Text>
         </TouchableOpacity>
       </View>
     );

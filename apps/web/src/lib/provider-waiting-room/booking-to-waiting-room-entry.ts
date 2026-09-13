@@ -24,6 +24,8 @@ export type WaitingRoomBookingEmbedRow = {
   special_requests?: string | null;
   is_group_booking?: boolean | null;
   group_booking_id?: string | null;
+  customer_running_late_at?: string | null;
+  customer_running_late_minutes?: number | null;
   customers?: WaitingRoomCustomerEmbed | WaitingRoomCustomerEmbed[];
   booking_services?: WaitingRoomBookingServiceEmbed[] | null;
 };
@@ -92,6 +94,8 @@ export function mapBookingEmbedToWaitingRoomEntry(booking: WaitingRoomBookingEmb
     estimated_wait_time: undefined,
     is_group_booking: Boolean(booking.is_group_booking),
     group_booking_id: booking.group_booking_id ?? null,
+    customer_running_late_at: booking.customer_running_late_at ?? null,
+    customer_running_late_minutes: booking.customer_running_late_minutes ?? null,
   };
 }
 
@@ -107,6 +111,8 @@ export const WAITING_ROOM_BOOKING_SELECT = `
   special_requests,
   is_group_booking,
   group_booking_id,
+  customer_running_late_at,
+  customer_running_late_minutes,
   customers:users!bookings_customer_id_fkey(full_name, email, phone),
   booking_services(
     offering_id,

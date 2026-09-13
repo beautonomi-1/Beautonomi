@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -51,6 +52,7 @@ interface Form {
 }
 
 export default function ProviderFormsPage() {
+  const { t } = useTranslation();
   const [forms, setForms] = useState<Form[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -65,7 +67,7 @@ export default function ProviderFormsPage() {
       setForms(res?.data ?? []);
     } catch (error) {
       console.error("Failed to load forms:", error);
-      toast.error("Failed to load forms");
+      toast.error(t("web.provider.formsPage.failedToLoad"));
       setForms([]);
     } finally {
       setIsLoading(false);
@@ -92,7 +94,7 @@ export default function ProviderFormsPage() {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      toast.error("Title is required");
+      toast.error(t("web.provider.formsPage.titleRequired"));
       return;
     }
     try {
@@ -101,64 +103,64 @@ export default function ProviderFormsPage() {
           title: title.trim(),
           description: description.trim() || undefined,
         });
-        toast.success("Form updated");
+        toast.success(t("web.provider.formsPage.updated"));
       } else {
         await fetcher.post(`/api/provider/forms`, {
           title: title.trim(),
           description: description.trim() || undefined,
         });
-        toast.success("Form created");
+        toast.success(t("web.provider.formsPage.created"));
       }
       setIsDialogOpen(false);
       loadForms();
     } catch (error) {
       console.error("Failed to save form:", error);
-      toast.error(editingForm ? "Failed to update form" : "Failed to create form");
+      toast.error(editingForm ? t("web.provider.formsPage.updateFailed") : t("web.provider.formsPage.createFailed"));
     }
   };
 
   const handleDelete = async (form: Form) => {
-    if (!confirm(`Delete form "${form.title}"?`)) return;
+    if (!confirm(t("web.provider.formsPage.deleteConfirm", { title: form.title }))) return;
     try {
       await fetcher.delete(`/api/provider/forms/${form.id}`);
-      toast.success("Form deleted");
+      toast.success(t("web.provider.formsPage.deleted"));
       loadForms();
     } catch (error) {
       console.error("Failed to delete form:", error);
-      toast.error("Failed to delete form");
+      toast.error(t("web.provider.formsPage.deleteFailed"));
     }
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading forms..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.formsPage.loading")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Forms"
-        subtitle="Intake, consent, and waiver forms for bookings"
+        title={t("web.provider.formsPage.title")}
+        subtitle={t("web.provider.formsPage.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Resources & Forms", href: "/provider/resources" },
-          { label: "Forms" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+          { label: t("web.provider.sidebar.sections.resourcesForms"), href: "/provider/resources" },
+          { label: t("web.provider.sidebar.items.forms") },
         ]}
       />
 
       <SectionCard className="mt-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h3 className="text-lg font-semibold">Your forms</h3>
+          <h3 className="text-lg font-semibold">{t("web.provider.formsPage.yourForms")}</h3>
           <Button onClick={openCreate} className="gap-2">
             <Plus className="w-4 h-4" />
-            Add form
+            {t("web.provider.formsPage.addForm")}
           </Button>
         </div>
 
         {forms.length === 0 ? (
           <EmptyState
-            title="No forms yet"
-            description="Create intake, consent, or waiver forms to collect information from clients at booking."
-            action={{ label: "Add form", onClick: openCreate }}
+            title={t("web.provider.formsPage.emptyTitle")}
+            description={t("web.provider.formsPage.emptyDescription")}
+            action={{ label: t("web.provider.formsPage.addForm"), onClick: openCreate }}
           />
         ) : (
           <>
@@ -178,7 +180,7 @@ export default function ProviderFormsPage() {
                         <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{form.description}</p>
                       )}
                     </div>
-                    <Badge variant="secondary" className="shrink-0">{form.form_type ?? "intake"}</Badge>
+                    <Badge variant="secondary" className="shrink-0">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
                   </div>
 
                   <div className="text-sm text-gray-600">
@@ -186,7 +188,7 @@ export default function ProviderFormsPage() {
                       href={`/provider/forms/${form.id}`}
                       className="text-primary hover:underline"
                     >
-                      {(form.fields ?? []).length} fields
+                      {t("web.provider.formsPage.fieldsCount", { count: (form.fields ?? []).length })}
                     </Link>
                   </div>
 
@@ -194,7 +196,7 @@ export default function ProviderFormsPage() {
                     <Button variant="outline" size="sm" className="min-h-[44px] flex-1" asChild>
                       <Link href={`/provider/forms/${form.id}`} className="gap-1">
                         <ListOrdered className="w-4 h-4" />
-                        Fields
+                        {t("web.provider.formsPage.fields")}
                       </Link>
                     </Button>
                     <Button
@@ -202,7 +204,7 @@ export default function ProviderFormsPage() {
                       size="sm"
                       className="min-h-[44px]"
                       onClick={() => openEdit(form)}
-                      aria-label="Edit form"
+                      aria-label={t("web.provider.formsPage.editFormA11y")}
                     >
                       <FileEdit className="w-4 h-4" />
                     </Button>
@@ -211,7 +213,7 @@ export default function ProviderFormsPage() {
                       size="sm"
                       className="min-h-[44px] text-destructive"
                       onClick={() => handleDelete(form)}
-                      aria-label="Delete form"
+                      aria-label={t("web.provider.formsPage.deleteFormA11y")}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -225,10 +227,10 @@ export default function ProviderFormsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Fields</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("web.provider.formsPage.colTitle")}</TableHead>
+                    <TableHead>{t("web.provider.formsPage.colType")}</TableHead>
+                    <TableHead>{t("web.provider.formsPage.fields")}</TableHead>
+                    <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -248,29 +250,29 @@ export default function ProviderFormsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{form.form_type ?? "intake"}</Badge>
+                        <Badge variant="secondary">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
                       </TableCell>
                       <TableCell>
                         <Link
                           href={`/provider/forms/${form.id}`}
                           className="text-primary hover:underline"
                         >
-                          {(form.fields ?? []).length} fields
+                          {t("web.provider.formsPage.fieldsCount", { count: (form.fields ?? []).length })}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" asChild>
                             <Link href={`/provider/forms/${form.id}`} className="gap-1">
                               <ListOrdered className="w-4 h-4" />
-                              Fields
+                              {t("web.provider.formsPage.fields")}
                             </Link>
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => openEdit(form)}
-                            aria-label="Edit form"
+                            aria-label={t("web.provider.formsPage.editFormA11y")}
                           >
                             <FileEdit className="w-4 h-4" />
                           </Button>
@@ -278,7 +280,7 @@ export default function ProviderFormsPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(form)}
-                            aria-label="Delete form"
+                            aria-label={t("web.provider.formsPage.deleteFormA11y")}
                           >
                             <Trash2 className="w-4 h-4 text-destructive" />
                           </Button>
@@ -296,34 +298,34 @@ export default function ProviderFormsPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingForm ? "Edit form" : "New form"}</DialogTitle>
+            <DialogTitle>{editingForm ? t("web.provider.formsPage.editForm") : t("web.provider.formsPage.newForm")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="form-title">Title</Label>
+              <Label htmlFor="form-title">{t("web.provider.formsPage.titleLabel")}</Label>
               <Input
                 id="form-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Client intake"
+                placeholder={t("web.provider.formsPage.titlePlaceholder")}
               />
             </div>
             <div>
-              <Label htmlFor="form-desc">Description (optional)</Label>
+              <Label htmlFor="form-desc">{t("web.provider.formsPage.descriptionLabel")}</Label>
               <Textarea
                 id="form-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief description of this form"
+                placeholder={t("web.provider.formsPage.descriptionPlaceholder")}
                 rows={2}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
-            <Button onClick={handleSave}>{editingForm ? "Update" : "Create"}</Button>
+            <Button onClick={handleSave}>{editingForm ? t("web.provider.common.update") : t("web.provider.common.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

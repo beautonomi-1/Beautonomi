@@ -59,7 +59,7 @@ const Ratings: React.FC<RatingsProps> = ({ isMultiColumn }) => {
         >
           <div className={`${isMultiColumn ? "grid grid-cols-7 gap-6 min-w-max" : ""} border-b pb-10 mb-10`}>
             {isMultiColumn ? (
-              <div className="border-r pr-6">
+              <div className="border-e pe-6">
                 <p className="mb-1 text-xs lg:text-sm font-light text-secondary">
                   Overall ratings
                 </p>
@@ -72,7 +72,7 @@ const Ratings: React.FC<RatingsProps> = ({ isMultiColumn }) => {
                       <div
                         className={`border-t-4 rounded-full w-24 text-xs ${
                           rating === 5 ? "border-black" : "border-accent"
-                        } mr-2`}
+                        } me-2`}
                       ></div>
                     </div>
                   ))}
@@ -83,7 +83,7 @@ const Ratings: React.FC<RatingsProps> = ({ isMultiColumn }) => {
               <div
                 key={index}
                 className={`${
-                  isMultiColumn ? " border-r pr-6" : "flex justify-between items-center "
+                  isMultiColumn ? " border-e pe-6" : "flex justify-between items-center "
                 } ${index === ratingCategories.length - 1 && !isMultiColumn ? "" : ""}`}
               >
                 {isMultiColumn ? (

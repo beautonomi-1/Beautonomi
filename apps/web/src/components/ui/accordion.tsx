@@ -79,7 +79,7 @@ const AccordionTrigger = React.forwardRef<
         </AccordionPrimitive.Trigger>
         {buttonChildren.length > 0 && (
           <div 
-            className="flex items-center gap-2 ml-2"
+            className="flex items-center gap-2 ms-2"
             onClick={(e) => {
               // Prevent accordion toggle when clicking action buttons
               e.stopPropagation();

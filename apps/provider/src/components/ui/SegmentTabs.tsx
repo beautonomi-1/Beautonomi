@@ -46,7 +46,7 @@ export function SegmentTabs({ tabs, activeKey, onSelect, style: styleProp }: Seg
               justifyContent: "center",
               borderRadius: 8,
               paddingVertical: 10,
-              marginRight: index < tabs.length - 1 ? 4 : 0,
+              marginEnd: index < tabs.length - 1 ? 4 : 0,
               ...(isActive
                 ? { backgroundColor: "#fff", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 }
                 : {}),
@@ -64,7 +64,7 @@ export function SegmentTabs({ tabs, activeKey, onSelect, style: styleProp }: Seg
             {badge ? (
               <View
                 style={{
-                  marginLeft: 6,
+                  marginStart: 6,
                   minWidth: 18,
                   height: 18,
                   paddingHorizontal: 5,

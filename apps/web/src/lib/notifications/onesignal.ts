@@ -1561,6 +1561,37 @@ export async function sendTemplateNotification(
     smsBody = finalizeServiceStartedNotificationBody(smsBody, dur);
   }
 
+  const baseTemplateCopy = { title, body, emailSubject, emailBody, smsBody };
+  let recipientLangs = new Map<string, string>();
+  let translationRows = new Map<
+    string,
+    import("@/lib/notifications/template-translations").LocalizedTemplateCopy
+  >();
+  let pushHeadings: Record<string, string> = { en: title };
+  let pushContents: Record<string, string> = { en: body };
+  if (userIds.length > 0) {
+    try {
+      const {
+        getRecipientLanguageCodes,
+        getTemplateTranslationRows,
+        buildLocalizedPushMaps,
+      } = await import("@/lib/notifications/template-translations");
+      recipientLangs = await getRecipientLanguageCodes(templateClient, userIds);
+      const uniqueLangs = [...new Set(recipientLangs.values())];
+      translationRows = await getTemplateTranslationRows(templateClient, templateKey, uniqueLangs);
+      const localized = buildLocalizedPushMaps(
+        baseTemplateCopy,
+        translationRows,
+        uniqueLangs,
+        variables,
+      );
+      pushHeadings = localized.headings;
+      pushContents = localized.contents;
+    } catch {
+      // Non-fatal: English-only delivery still works.
+    }
+  }
+
   const templateUrlRelative = resolved.urlPath
     ? substituteTemplatePath(resolved.urlPath, variables)
     : "";
@@ -1793,9 +1824,22 @@ export async function sendTemplateNotification(
   if (hasEmailSmsWork) {
     // Per-user recipient list: gated map when preferences apply, otherwise every
     // recipient gets exactly the requested email/SMS channels.
+    const { resolveLocalizedTemplateCopy } = await import(
+      "@/lib/notifications/template-translations"
+    );
+    const buildRecipientCopy = (userId: string) => {
+      const lang = recipientLangs.get(userId) ?? "en";
+      return resolveLocalizedTemplateCopy(baseTemplateCopy, translationRows, lang, variables);
+    };
     const recipients = emailSmsByUser
-      ? Array.from(emailSmsByUser.entries()).map(([userId, channels]) => ({ userId, channels }))
-      : userIds.map((userId) => ({ userId, channels: requestedEmailSms }));
+      ? Array.from(emailSmsByUser.entries()).map(([userId, channels]) => {
+          const copy = buildRecipientCopy(userId);
+          return { userId, channels, ...copy };
+        })
+      : userIds.map((userId) => {
+          const copy = buildRecipientCopy(userId);
+          return { userId, channels: requestedEmailSms, ...copy };
+        });
     if (recipients.length > 0) {
       const bookingId = (variables as { booking_id?: string })?.booking_id ?? null;
       const { enqueueTemplateEmailSmsChannels } = await import(
@@ -1919,8 +1963,8 @@ export async function sendTemplateNotification(
   const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: userIds,
     channels: channelsToSend,
-    headings: { en: title },
-    contents: { en: body },
+    headings: pushHeadings,
+    contents: pushContents,
     data: { type: templateKey, template_key: templateKey, ...variables },
   };
 

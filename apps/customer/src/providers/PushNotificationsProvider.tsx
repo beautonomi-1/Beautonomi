@@ -163,8 +163,8 @@ function CustomerPushPermissionNudge() {
           paddingVertical: 10,
         }}
       >
-        <Ionicons name="notifications-outline" size={20} color="#1D4ED8" style={{ marginRight: 10 }} />
-        <View style={{ flex: 1, marginRight: 8 }}>
+        <Ionicons name="notifications-outline" size={20} color="#1D4ED8" style={{ marginEnd: 10 }} />
+        <View style={{ flex: 1, marginEnd: 8 }}>
           <Text style={{ fontSize: 13, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
             {t("common.pushPermission.bannerTitle")}
           </Text>
@@ -198,7 +198,7 @@ function CustomerPushPermissionNudge() {
         <TouchableOpacity
           onPress={handleDismiss}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={{ marginLeft: 8 }}
+          style={{ marginStart: 8 }}
           accessibilityRole="button"
           accessibilityLabel={t("common.pushPermission.dismiss")}
         >

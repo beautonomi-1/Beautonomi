@@ -139,12 +139,12 @@ export function StepReview({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Review your booking
+          {t("web.book.engine.reviewTitle")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Confirm details before securing your slot
+          {t("web.book.engine.reviewSubtitle")}
         </p>
       </div>
 
@@ -166,13 +166,13 @@ export function StepReview({
               onClick={onEditServices}
               className="flex items-center gap-1 text-xs opacity-70 hover:opacity-100 transition-opacity touch-manipulation"
             >
-              <Pencil className="h-3 w-3" /> Edit
+              <Pencil className="h-3 w-3" /> {t("web.book.engine.edit")}
             </button>
           )}
         </div>
         {data.selectedPackage ? (
           <div className="flex justify-between text-sm py-1.5 border-b border-white/10">
-            <span className="opacity-90">{data.selectedPackage.name} (package)</span>
+            <span className="opacity-90">{t("web.book.engine.packageSuffix", { name: data.selectedPackage.name })}</span>
             <span className="opacity-95">{formatCurrency(data.servicesSubtotal, currency)}</span>
           </div>
         ) : (
@@ -190,7 +190,7 @@ export function StepReview({
                 <div className="flex justify-between text-sm gap-3">
                   <span className="opacity-90 min-w-0">
                     {s.title}
-                    {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
+                    {s.duration_minutes ? t("web.book.engine.durationMin", { minutes: s.duration_minutes }) : ""}
                   </span>
                   <span className="opacity-95 shrink-0">{formatCurrency(s.price, s.currency)}</span>
                 </div>
@@ -205,7 +205,7 @@ export function StepReview({
         )}
         {addonsTotal > 0 && (
           <div className="flex justify-between text-sm py-1.5 border-b border-white/10">
-            <span className="opacity-75">Add-ons</span>
+            <span className="opacity-75">{t("web.book.engine.addons")}</span>
             <span className="opacity-95">+{formatCurrency(addonsTotal, currency)}</span>
           </div>
         )}
@@ -217,12 +217,12 @@ export function StepReview({
         {showPaymentNote && (
           <p className="text-xs opacity-75 py-2 border-b border-white/10">
             {paymentSettings?.deposit_required
-              ? "A deposit or full payment may be required at checkout."
-              : "Pay online now or pay in person at the venue."}
+              ? t("web.book.engine.depositOrPayAtVenue")
+              : t("web.book.engine.payOnlineOrInPerson")}
           </p>
         )}
         <div className="flex justify-between font-semibold text-lg pt-4 mt-2">
-          <span>Total</span>
+          <span>{t("web.book.engine.total")}</span>
           <span style={{ color: BOOKING_ACCENT }}>{formatCurrency(total, currency)}</span>
         </div>
       </div>
@@ -238,13 +238,13 @@ export function StepReview({
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-2 flex-1">
             <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <strong>When:</strong> {whenStr}
+              <strong>{t("web.book.engine.when")}</strong> {whenStr}
             </p>
             <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <strong>Where:</strong> {whereStr}
+              <strong>{t("web.book.engine.where")}</strong> {whereStr}
             </p>
             <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <strong>With:</strong> {data.selectedStaff?.name ?? "Anyone available"}
+              <strong>{t("web.book.engine.withStaff")}</strong> {data.selectedStaff?.name ?? t("web.book.engine.anyoneAvailable")}
             </p>
           </div>
           <div className="flex flex-col gap-2 shrink-0">
@@ -255,7 +255,7 @@ export function StepReview({
                 className="flex items-center gap-1 text-xs hover:underline touch-manipulation"
                 style={{ color: BOOKING_ACCENT }}
               >
-                <Pencil className="h-3 w-3" /> Change time
+                <Pencil className="h-3 w-3" /> {t("web.book.engine.changeTime")}
               </button>
             )}
             {onEditVenue && (
@@ -265,7 +265,7 @@ export function StepReview({
                 className="flex items-center gap-1 text-xs hover:underline touch-manipulation"
                 style={{ color: BOOKING_ACCENT }}
               >
-                <Pencil className="h-3 w-3" /> Change venue
+                <Pencil className="h-3 w-3" /> {t("web.book.engine.changeVenue")}
               </button>
             )}
           </div>
@@ -351,12 +351,12 @@ export function StepReview({
         {isCreatingHold ? (
           <>
             <span className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Securing slot...
+            {t("web.book.engine.securingSlot")}
           </>
         ) : (
           <>
             <Lock className="h-5 w-5" />
-            Confirm & continue
+            {t("web.book.engine.confirmContinue")}
           </>
         )}
       </button>
@@ -366,7 +366,7 @@ export function StepReview({
         style={{ color: BOOKING_TEXT_SECONDARY }}
       >
         <Shield className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
-        <span>Secure checkout · Your payment details are protected</span>
+        <span>{t("web.book.engine.secureCheckout")}</span>
       </div>
     </div>
   );

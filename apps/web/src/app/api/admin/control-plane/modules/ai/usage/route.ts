@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/admin/control-plane/modules/ai/usage
- * List AI usage log with filters (superadmin only).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -20,25 +19,39 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to") ?? undefined;
 
     const supabase = getSupabaseAdmin();
-    let q = supabase
-      .from("ai_usage_log")
-      .select("id, actor_user_id, provider_id, feature_key, model, tokens_in, tokens_out, cost_estimate, success, error_code, created_at", { count: "exact" })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyFilters = (q: any) => {
+      let filtered = q;
+      if (featureKey) filtered = filtered.eq("feature_key", featureKey);
+      if (providerId) filtered = filtered.eq("provider_id", providerId);
+      if (fromDate) filtered = filtered.gte("created_at", fromDate);
+      if (toDate) filtered = filtered.lte("created_at", toDate);
+      return filtered;
+    };
+
+    let q = applyFilters(
+      supabase
+        .from("ai_usage_log")
+        .select(
+          "id, actor_user_id, provider_id, tenant_id, feature_key, model, model_provider, runtime, gateway, tokens_in, tokens_out, cost_estimate, latency_ms, fallback_used, breaker_tripped, success, error_code, created_at",
+          { count: "exact" },
+        ),
+    )
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (featureKey) q = q.eq("feature_key", featureKey);
-    if (providerId) q = q.eq("provider_id", providerId);
-    if (fromDate) q = q.gte("created_at", fromDate);
-    if (toDate) q = q.lte("created_at", toDate);
-
     const { data, error, count } = await q;
-
     if (error) throw error;
 
+    const { data: summaryRows } = await applyFilters(
+      supabase.from("ai_usage_log").select("tokens_in, tokens_out, cost_estimate"),
+    );
+
     const total = count ?? 0;
-    const tokensIn = (data ?? []).reduce((s, r) => s + (r.tokens_in ?? 0), 0);
-    const tokensOut = (data ?? []).reduce((s, r) => s + (r.tokens_out ?? 0), 0);
-    const costEst = (data ?? []).reduce((s, r) => s + Number(r.cost_estimate ?? 0), 0);
+    const tokensIn = (summaryRows ?? []).reduce((s, r) => s + (r.tokens_in ?? 0), 0);
+    const tokensOut = (summaryRows ?? []).reduce((s, r) => s + (r.tokens_out ?? 0), 0);
+    const costEst = (summaryRows ?? []).reduce((s, r) => s + Number(r.cost_estimate ?? 0), 0);
 
     return successResponse({
       items: data ?? [],

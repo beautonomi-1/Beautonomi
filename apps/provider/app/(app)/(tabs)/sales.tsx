@@ -62,6 +62,8 @@ import {
 } from "@/features/products/resolveBarcodeForWalkInSale";
 import { resolveBarcodeForPosSale } from "@/features/products/resolveBarcodeForPosSale";
 import { pt } from "@/lib/provider-translate";
+import { useTranslation, i18n } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -194,7 +196,7 @@ function parseServiceVariantsPayload(data: unknown): ServiceVariantRow[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((v: Record<string, unknown>) => ({
     id: String(v.id),
-    title: String(v.title ?? v.variant_name ?? "Option"),
+    title: String(v.title ?? v.variant_name ?? (i18n.t("provider.mobile.screens.sales.optionFallback") as string)),
     price: Number(v.price ?? 0),
     currency: typeof v.currency === "string" ? v.currency : undefined,
   }));
@@ -204,7 +206,7 @@ function formatProductVariantLabel(v: ProductVariantRow): string {
   const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
   if (vals.length) return vals.join(" / ");
   if (v.sku) return String(v.sku);
-  return "Option";
+  return i18n.t("provider.mobile.screens.sales.optionFallback") as string;
 }
 
 function newCartLineId(): string {
@@ -221,15 +223,25 @@ type CheckoutStep =
 
 type PaymentMethod = "cash" | "yoco" | "paycloud" | "card" | "eft" | "paystack_terminal";
 
-const DATE_RANGES = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "All Time", value: "all" },
-];
+const DATE_RANGE_VALUES = [
+  { key: "dateRangeToday", value: "today" },
+  { key: "dateRangeWeek", value: "week" },
+  { key: "dateRangeMonth", value: "month" },
+  { key: "dateRangeAll", value: "all" },
+] as const;
 
 export default function SalesScreen() {
+  const { t } = useTranslation();
+  const sl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.sales.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
+  const DATE_RANGES = useMemo(
+    () => DATE_RANGE_VALUES.map((r) => ({ label: sl(r.key), value: r.value })),
+    [sl],
+  );
   const fromTransactionsHub = useFromTransactionsHub();
   const handleBack = useProviderStackBack();
   const tenantCurrency = getTenantDefaultCurrency();
@@ -264,13 +276,13 @@ export default function SalesScreen() {
 
   const paymentMethodOptions = useMemo(() => {
     const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
-      { label: "Cash", value: "cash", icon: "cash-outline" },
+      { label: sl("payCash"), value: "cash", icon: "cash-outline" },
       ...(yocoEnabled
-        ? [{ label: "Yoco terminal", value: "yoco" as const, icon: "card-outline" as const }]
+        ? [{ label: sl("payYoco"), value: "yoco" as const, icon: "card-outline" as const }]
         : []),
       ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
         ? [{
-            label: paycloudInFlight ? "Resume card machine" : "Card machine",
+            label: paycloudInFlight ? sl("payResumeCardMachine") : sl("payCardMachine"),
             value: "paycloud" as const,
             icon: "card-outline" as const,
           }]
@@ -278,18 +290,18 @@ export default function SalesScreen() {
       ...(manualCardEnabled
         ? [{ label: manualCardCollectOptionLabel(), value: "card" as const, icon: "reader-outline" as const }]
         : []),
-      { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
+      { label: sl("payEft"), value: "eft", icon: "swap-horizontal-outline" },
     ];
     if (paystackTerminalEnabled) {
       const insertAt = 2 + (yocoEnabled ? 1 : 0) + (canProcessPayments && paycloudEnabled && paycloudCollectEnabled ? 1 : 0);
       base.splice(insertAt, 0, {
-        label: "Paystack Terminal",
+        label: sl("payPaystackTerminal"),
         value: "paystack_terminal",
         icon: "qr-code-outline",
       });
     }
     return base;
-  }, [paystackTerminalEnabled, yocoEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments]);
+  }, [paystackTerminalEnabled, yocoEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments, sl]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -443,11 +455,11 @@ export default function SalesScreen() {
     return rawClients.map((c) => ({
       id: c.id,
       customer_id: c.customer_id,
-      full_name: c.customer?.full_name || "Unknown",
+      full_name: c.customer?.full_name || sl("unknownClient"),
       phone: c.customer?.phone || "",
       email: c.customer?.email || "",
     }));
-  }, [rawClients]);
+  }, [rawClients, sl]);
   const { execute: createSale, loading: creatingSale } = useApiPost<
     object,
     { id: string; ref_number?: string | null }
@@ -494,7 +506,7 @@ export default function SalesScreen() {
       );
       setVariantLoadingId(null);
       if (res.error) {
-        Alert.alert("Could not load options", res.error.message);
+        Alert.alert(sl("couldNotLoadOptions"), res.error.message);
         return;
       }
       rows = parseServiceVariantsPayload(res.data);
@@ -571,7 +583,7 @@ export default function SalesScreen() {
   function addSimpleProductToCart(product: ProductItem) {
     const max = maxSellableUnits(product as PosProductItem, null);
     if (max <= 0) {
-      Alert.alert("Out of stock", `${product.name} is out of stock.`);
+      Alert.alert(sl("outOfStockTitle"), sl("outOfStockNamed", { name: product.name }));
       return;
     }
     const unit = Number(product.retail_price ?? 0);
@@ -607,7 +619,7 @@ export default function SalesScreen() {
   function addProductVariantToCart(product: ProductItem, variant: ProductVariantRow) {
     const max = maxSellableUnits(product as PosProductItem, variant as never);
     if (max <= 0) {
-      Alert.alert("Out of stock", "That variant is out of stock.");
+      Alert.alert(sl("outOfStockTitle"), sl("outOfStockVariant"));
       return;
     }
     const unit = Number(variant.retail_price ?? 0);
@@ -653,7 +665,7 @@ export default function SalesScreen() {
   function applyPosBarcodeResolve(resolved: ReturnType<typeof resolveBarcodeForPosSale>) {
     if (resolved.action === "error") {
       setBarcodeLookupError(resolved.message);
-      Alert.alert("Barcode lookup", resolved.message);
+      Alert.alert(sl("barcodeLookupTitle"), resolved.message);
       return;
     }
     setBarcodeLookupError(null);
@@ -682,10 +694,10 @@ export default function SalesScreen() {
       if (res.error) {
         const message = mapApiErrorCodeToMessage(
           res.error.code,
-          res.error.message ?? "Lookup failed",
+          res.error.message ?? sl("lookupFailed"),
         );
         setBarcodeLookupError(message);
-        Alert.alert("Barcode lookup", message);
+        Alert.alert(sl("barcodeLookupTitle"), message);
         return;
       }
       applyPosBarcodeResolve(
@@ -784,11 +796,11 @@ export default function SalesScreen() {
     });
     const { data, error } = await createSale(payload);
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(sl("errorTitle"), error);
       return;
     }
     if (!data?.id) {
-      Alert.alert("Error", "Sale was saved but the receipt could not be opened.");
+      Alert.alert(sl("errorTitle"), sl("receiptUnavailable"));
       return;
     }
     yocoPendingSaleIdRef.current = null;
@@ -800,7 +812,7 @@ export default function SalesScreen() {
       saleNumber: data.ref_number ?? null,
       total: grandTotal,
       items: [...cart],
-      client: selectedClient?.full_name ?? "Walk-in",
+      client: selectedClient?.full_name ?? sl("walkIn"),
       method: method as PaymentMethod,
       date: new Date().toISOString(),
     });
@@ -820,11 +832,11 @@ export default function SalesScreen() {
         }),
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sl("errorTitle"), error);
         return;
       }
       if (!data?.id) {
-        Alert.alert("Error", "Could not prepare Paystack Terminal sale");
+        Alert.alert(sl("errorTitle"), sl("couldNotPreparePaystack"));
         return;
       }
       const res = await api.post<{
@@ -842,30 +854,30 @@ export default function SalesScreen() {
           entity_id: data.id,
           expected_amount: Number(grandTotal.toFixed(2)),
           customer_reference: selectedClient?.full_name
-            ? `Sale for ${selectedClient.full_name}`
-            : "Walk-in sale",
+            ? sl("saleForClient", { name: selectedClient.full_name })
+            : sl("walkInSale"),
         }),
         { timeout: 120_000 },
       );
       if (res.error) {
-        Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
+        Alert.alert(sl("paystackTerminalTitle"), res.error.message ?? sl("paystackPrepareFailed"));
         return;
       }
       const terminal = res.data?.terminal;
       if (!terminal?.terminal_code) {
-        Alert.alert("Paystack Terminal", "No active Paystack Terminal is available. Create one first.");
+        Alert.alert(sl("paystackTerminalTitle"), sl("paystackNoTerminal"));
         return;
       }
       setPaystackTerminalPrompt({
         code: terminal.terminal_code,
         link: terminal.payment_link ?? terminal.terminal_url ?? terminal.qr_url ?? null,
-        reference: selectedClient?.full_name ? `Sale for ${selectedClient.full_name}` : "Walk-in sale",
+        reference: selectedClient?.full_name ? sl("saleForClient", { name: selectedClient.full_name }) : sl("walkInSale"),
         expectedAmount: Number(res.data?.expectedAmount ?? grandTotal),
       });
       refreshSales();
       refreshMetrics();
     } catch (err) {
-      Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to prepare terminal payment.");
+      Alert.alert(sl("paystackTerminalTitle"), err instanceof Error ? err.message : sl("paystackPrepareFailed"));
     } finally {
       setPreparingPaystackTerminal(false);
     }
@@ -899,11 +911,11 @@ export default function SalesScreen() {
           }),
         );
         if (error) {
-          Alert.alert("Error", error);
+          Alert.alert(sl("errorTitle"), error);
           return;
         }
         if (!data?.id) {
-          Alert.alert("Error", "Could not prepare card sale");
+          Alert.alert(sl("errorTitle"), sl("couldNotPrepareCardSale"));
           return;
         }
         saleId = data.id;
@@ -923,11 +935,11 @@ export default function SalesScreen() {
           }),
         );
         if (error) {
-          Alert.alert("Error", error);
+          Alert.alert(sl("errorTitle"), error);
           return;
         }
         if (!data?.id) {
-          Alert.alert("Error", "Could not prepare card sale");
+          Alert.alert(sl("errorTitle"), sl("couldNotPrepareCardSale"));
           return;
         }
         saleId = data.id;
@@ -943,7 +955,7 @@ export default function SalesScreen() {
   async function finalizeYocoSale(result: { reference: string }) {
     const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
     if (!saleId || !result.reference) {
-      Alert.alert("Error", "Could not finalize card sale");
+      Alert.alert(sl("errorTitle"), sl("couldNotFinalizeCardSale"));
       return;
     }
     const patch = await api.patch(`/api/provider/sales/${saleId}`, {
@@ -953,12 +965,12 @@ export default function SalesScreen() {
     });
     if (patch.error) {
       Alert.alert(
-        "Payment received — finish recording",
-        "The terminal payment succeeded but this sale is still pending. Tap Finish recording to retry without charging the customer again.",
+        sl("finishRecordingTitle"),
+        sl("finishRecordingBody"),
         [
-          { text: "Later", style: "cancel" },
+          { text: sl("later"), style: "cancel" },
           {
-            text: "Finish recording",
+            text: sl("finishRecording"),
             onPress: () => {
               void finalizeYocoSale(result);
             },
@@ -975,7 +987,7 @@ export default function SalesScreen() {
       saleNumber: null,
       total: grandTotal,
       items: [...cart],
-      client: selectedClient?.full_name ?? "Walk-in",
+      client: selectedClient?.full_name ?? sl("walkIn"),
       method: "yoco",
       date: new Date().toISOString(),
     });
@@ -987,7 +999,7 @@ export default function SalesScreen() {
   async function finalizePaycloudSale(result: { id: string }) {
     const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
     if (!saleId) {
-      Alert.alert("Error", "Could not finalize card sale");
+      Alert.alert(sl("errorTitle"), sl("couldNotFinalizeCardSale"));
       return;
     }
     const patch = await api.patch(`/api/provider/sales/${saleId}`, {
@@ -997,12 +1009,12 @@ export default function SalesScreen() {
     });
     if (patch.error) {
       Alert.alert(
-        "Payment received — finish recording",
-        "The terminal payment succeeded but this sale is still pending. Tap Finish recording to retry without charging the customer again.",
+        sl("finishRecordingTitle"),
+        sl("finishRecordingBody"),
         [
-          { text: "Later", style: "cancel" },
+          { text: sl("later"), style: "cancel" },
           {
-            text: "Finish recording",
+            text: sl("finishRecording"),
             onPress: () => {
               void finalizePaycloudSale(result);
             },
@@ -1020,7 +1032,7 @@ export default function SalesScreen() {
       saleNumber: null,
       total: grandTotal,
       items: [...cart],
-      client: selectedClient?.full_name ?? "Walk-in",
+      client: selectedClient?.full_name ?? sl("walkIn"),
       method: "paycloud",
       date: new Date().toISOString(),
     });
@@ -1052,23 +1064,23 @@ export default function SalesScreen() {
       <BottomSheet
         visible
         onClose={() => setCheckoutStep("idle")}
-        title="Select Client"
+        title={sl("selectClientTitle")}
         snapHeight="full"
       >
         <SearchBar
-          placeholder="Search clients..."
+          placeholder={sl("searchClientsPlaceholder")}
           value={clientSearch}
           onChangeText={setClientSearch}
         />
         <TouchableOpacity
           style={{ marginTop: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], padding: 16 }}
           onPress={handleWalkIn}
-          accessibilityLabel="Walk-in customer, no client selected"
+          accessibilityLabel={sl("walkInA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="person-outline" size={20} color={Colors.gray[500]} />
-          <Text style={{ marginLeft: 12, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-            Walk-in (No client)
+          <Text style={{ marginStart: 12, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
+            {sl("walkInNoClient")}
           </Text>
         </TouchableOpacity>
         <View style={{ marginTop: 12 }}>
@@ -1077,7 +1089,7 @@ export default function SalesScreen() {
               key={c.id}
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
               onPress={() => handleSelectClient(c)}
-              accessibilityLabel={`Select client ${c.full_name}`}
+              accessibilityLabel={sl("selectClientA11y", { name: c.full_name })}
               accessibilityRole="button"
             >
               <View style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#eef2ff" }}>
@@ -1090,7 +1102,7 @@ export default function SalesScreen() {
                     .toUpperCase()}
                 </Text>
               </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ marginStart: 12, flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                   {c.full_name}
                 </Text>
@@ -1098,7 +1110,7 @@ export default function SalesScreen() {
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{c.phone}</Text>
                 )}
               </View>
-              <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+              <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
             </TouchableOpacity>
           ))}
         </View>
@@ -1110,11 +1122,11 @@ export default function SalesScreen() {
     if (inCart) {
       return (
         <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 4 }}>
-          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity - 1)} accessibilityLabel="Decrease quantity">
+          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity - 1)} accessibilityLabel={sl("decreaseQtyA11y")}>
             <Ionicons name="remove" size={16} color="#6366f1" />
           </TouchableOpacity>
           <Text style={{ marginHorizontal: 8, fontSize: 14, fontWeight: "600", color: "#4338ca" }}>{inCart.quantity}</Text>
-          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity + 1)} accessibilityLabel="Increase quantity">
+          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity + 1)} accessibilityLabel={sl("increaseQtyA11y")}>
             <Ionicons name="add" size={16} color="#6366f1" />
           </TouchableOpacity>
         </View>
@@ -1132,11 +1144,11 @@ export default function SalesScreen() {
           setProductPick(null);
           setCheckoutStep("idle");
         }}
-        title="Add Items"
+        title={sl("addItemsTitle")}
         snapHeight="full"
       >
         <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
-          Client: {selectedClient?.full_name ?? "Walk-in"}
+          {sl("clientLine", { name: selectedClient?.full_name ?? sl("walkIn") })}
         </Text>
 
         {servicePick ? (
@@ -1145,13 +1157,13 @@ export default function SalesScreen() {
               onPress={() => setServicePick(null)}
               style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
               accessibilityRole="button"
-              accessibilityLabel="Back to services list"
+              accessibilityLabel={sl("backToServicesA11y")}
             >
-              <Ionicons name="chevron-back" size={22} color="#6366f1" />
-              <Text style={{ marginLeft: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>Back</Text>
+              <DirectionalIcon name="chevron-back" size={22} color="#6366f1" />
+              <Text style={{ marginStart: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>{sl("back")}</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{servicePick.parent.title}</Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Choose an option</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{sl("chooseOption")}</Text>
             <TouchableOpacity
               style={{
                 marginTop: 12,
@@ -1166,7 +1178,7 @@ export default function SalesScreen() {
               }}
               onPress={() => addServiceVariantChoice(servicePick.parent, null)}
             >
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Standard</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{sl("standard")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                 {formatCurrency(servicePick.parent.price, servicePick.parent.currency)}
               </Text>
@@ -1200,13 +1212,13 @@ export default function SalesScreen() {
               onPress={() => setProductPick(null)}
               style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
               accessibilityRole="button"
-              accessibilityLabel="Back to products list"
+              accessibilityLabel={sl("backToProductsA11y")}
             >
-              <Ionicons name="chevron-back" size={22} color="#6366f1" />
-              <Text style={{ marginLeft: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>Back</Text>
+              <DirectionalIcon name="chevron-back" size={22} color="#6366f1" />
+              <Text style={{ marginStart: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>{sl("back")}</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{productPick.name}</Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Select variant</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{sl("selectVariant")}</Text>
             {(productPick.variants ?? []).map((v) => {
               const q = Number(v.quantity ?? 0);
               const disabled = q <= 0;
@@ -1232,7 +1244,7 @@ export default function SalesScreen() {
                     {formatProductVariantLabel(v)}
                   </Text>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{q} in stock</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{sl("inStock", { count: q })}</Text>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                       {formatCurrency(v.retail_price)}
                     </Text>
@@ -1247,19 +1259,19 @@ export default function SalesScreen() {
               <TouchableOpacity
                 style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "services" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
                 onPress={() => setCartTab("services")}
-                accessibilityLabel="Services tab"
+                accessibilityLabel={sl("servicesTabA11y")}
               >
                 <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "services" ? Colors.gray[900] : Colors.gray[500] }}>
-                  Services
+                  {sl("servicesTab")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "products" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
                 onPress={() => setCartTab("products")}
-                accessibilityLabel="Products tab"
+                accessibilityLabel={sl("productsTabA11y")}
               >
                 <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "products" ? Colors.gray[900] : Colors.gray[500] }}>
-                  Products
+                  {sl("productsTab")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1290,25 +1302,25 @@ export default function SalesScreen() {
                         ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
                       }}
                       onPress={() => void handleServiceRowPress(svc)}
-                      accessibilityLabel={`Add ${svc.title} to cart`}
+                      accessibilityLabel={sl("addToCartA11y", { name: svc.title })}
                     >
-                      <View style={{ flex: 1, paddingRight: 8 }}>
+                      <View style={{ flex: 1, paddingEnd: 8 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{svc.title}</Text>
                           {svc.service_type === "package" && (
-                            <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#f3e8ff" }}>
-                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#6b21a8" }}>PACKAGE</Text>
+                            <View style={{ marginStart: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#f3e8ff" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#6b21a8" }}>{sl("packageBadge")}</Text>
                             </View>
                           )}
                         </View>
-                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes} min</Text>
+                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{sl("durationMinutes", { count: svc.duration_minutes })}</Text>
                       </View>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(svc.price, svc.currency)}</Text>
+                        <Text style={{ marginEnd: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(svc.price, svc.currency)}</Text>
                         {loading ? (
                           <ActivityIndicator size="small" color="#6366f1" />
                         ) : hasVariantOptions && !inCart ? (
-                          <Ionicons name="chevron-forward" size={22} color="#6366f1" />
+                          <DirectionalIcon name="chevron-forward" size={22} color="#6366f1" />
                         ) : (
                           renderCartItemControls(inCart)
                         )}
@@ -1317,7 +1329,7 @@ export default function SalesScreen() {
                   );
                 })}
                 {(!catalogue || catalogue.length === 0) && (
-                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No active services</Text>
+                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>{sl("noActiveServices")}</Text>
                 )}
               </View>
             )}
@@ -1327,13 +1339,13 @@ export default function SalesScreen() {
                 {!productPick ? (
                   <View style={{ marginBottom: 12 }}>
                     <Text style={{ marginBottom: 8, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-                      Scan or enter barcode
+                      {sl("scanOrEnterBarcode")}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <TextInput
                         value={barcodeInput}
                         onChangeText={setBarcodeInput}
-                        placeholder="Barcode / SKU"
+                        placeholder={sl("barcodePlaceholder")}
                         autoCapitalize="none"
                         autoCorrect={false}
                         returnKeyType="done"
@@ -1361,7 +1373,7 @@ export default function SalesScreen() {
                           opacity: barcodeLookupBusy ? 0.6 : 1,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Look up barcode"
+                        accessibilityLabel={sl("lookupBarcodeA11y")}
                       >
                         <Ionicons name="search" size={20} color="#fff" />
                       </TouchableOpacity>
@@ -1377,7 +1389,7 @@ export default function SalesScreen() {
                           paddingVertical: 12,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Scan barcode with camera"
+                        accessibilityLabel={sl("scanBarcodeA11y")}
                       >
                         <Ionicons name="barcode-outline" size={22} color="#6d28d9" />
                       </TouchableOpacity>
@@ -1405,8 +1417,8 @@ export default function SalesScreen() {
                       ? Math.min(...variantPrices)
                       : Number(prod.retail_price ?? 0);
                   const stockLabel = hasOpts
-                    ? `${prod.effective_quantity ?? prod.quantity ?? 0} in stock`
-                    : `${prod.quantity ?? prod.stock_quantity ?? 0} in stock`;
+                    ? sl("inStock", { count: prod.effective_quantity ?? prod.quantity ?? 0 })
+                    : sl("inStock", { count: prod.quantity ?? prod.stock_quantity ?? 0 });
                   return (
                     <TouchableOpacity
                       key={prod.id}
@@ -1423,36 +1435,36 @@ export default function SalesScreen() {
                       }}
                       onPress={() => !oos && handleProductRowPress(prod)}
                       disabled={oos}
-                      accessibilityLabel={`Add ${prod.name} to cart`}
+                      accessibilityLabel={sl("addToCartA11y", { name: prod.name })}
                     >
-                      <View style={{ flex: 1, paddingRight: 8 }}>
+                      <View style={{ flex: 1, paddingEnd: 8 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{prod.name}</Text>
                           {hasOpts && (
-                            <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#e0e7ff" }}>
-                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#3730a3" }}>VARIANTS</Text>
+                            <View style={{ marginStart: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#e0e7ff" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#3730a3" }}>{sl("variantsBadge")}</Text>
                             </View>
                           )}
                         </View>
                         {prod.sku && !hasOpts && (
-                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {prod.sku}</Text>
+                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{sl("skuLine", { sku: prod.sku })}</Text>
                         )}
                         <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{stockLabel}</Text>
                       </View>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={{ marginRight: 12, alignItems: "flex-end" }}>
+                        <View style={{ marginEnd: 12, alignItems: "flex-end" }}>
                           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(displayPrice)}</Text>
                           {hasOpts && variantPrices.length > 1 && (
-                            <Text style={{ fontSize: 10, color: Colors.gray[500] }}>from</Text>
+                            <Text style={{ fontSize: 10, color: Colors.gray[500] }}>{sl("priceFrom")}</Text>
                           )}
                         </View>
-                        {hasOpts ? <Ionicons name="chevron-forward" size={20} color="#6366f1" /> : renderCartItemControls(inCart)}
+                        {hasOpts ? <DirectionalIcon name="chevron-forward" size={20} color="#6366f1" /> : renderCartItemControls(inCart)}
                       </View>
                     </TouchableOpacity>
                   );
                 })}
                 {products.length === 0 && (
-                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No products available</Text>
+                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>{sl("noProducts")}</Text>
                 )}
               </View>
             )}
@@ -1462,7 +1474,7 @@ export default function SalesScreen() {
         {!servicePick && !productPick && cart.length > 0 && (
           <View style={{ marginTop: 16 }}>
             <ActionButton
-              label={`Continue with ${cart.length} item${cart.length > 1 ? "s" : ""} (${formatCurrency(cartTotal)})`}
+              label={sl("continueWithItems", { count: cart.length, amount: formatCurrency(cartTotal) })}
               variant="secondary"
               onPress={() => setCheckoutStep("review")}
               fullWidth
@@ -1479,13 +1491,13 @@ export default function SalesScreen() {
       <BottomSheet
         visible
         onClose={() => setCheckoutStep("idle")}
-        title="Review Order"
+        title={sl("reviewTitle")}
         snapHeight="full"
       >
         <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
           <Ionicons name="person-outline" size={18} color={Colors.gray[500]} />
-          <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[700] }}>
-            {selectedClient?.full_name ?? "Walk-in Customer"}
+          <Text style={{ marginStart: 8, fontSize: 14, color: Colors.gray[700] }}>
+            {selectedClient?.full_name ?? sl("walkInCustomer")}
           </Text>
         </View>
 
@@ -1499,7 +1511,10 @@ export default function SalesScreen() {
                 {item.name}
               </Text>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                {item.type === "product" ? "Product" : "Service"} · Qty: {item.quantity}
+                {sl("lineQty", {
+                  type: item.type === "product" ? sl("lineProduct") : sl("lineService"),
+                  quantity: item.quantity,
+                })}
               </Text>
             </View>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
@@ -1510,23 +1525,23 @@ export default function SalesScreen() {
 
         {staffMembers && staffMembers.length > 0 && (
           <View style={{ marginTop: 16 }}>
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Assigned To</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{sl("assignedTo")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               <TouchableOpacity
-                style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }, !selectedStaffId ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
+                style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginEnd: 8, marginBottom: 8 }, !selectedStaffId ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
                 onPress={() => setSelectedStaffId(null)}
-                accessibilityLabel="No staff assigned"
+                accessibilityLabel={sl("noStaffA11y")}
               >
                 <Text style={{ fontSize: 12, fontWeight: "500", color: !selectedStaffId ? Colors.white : Colors.gray[600] }}>
-                  None
+                  {sl("none")}
                 </Text>
               </TouchableOpacity>
               {staffMembers.map((s) => (
                 <TouchableOpacity
                   key={s.id}
-                  style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }, selectedStaffId === s.id ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
+                  style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginEnd: 8, marginBottom: 8 }, selectedStaffId === s.id ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
                   onPress={() => setSelectedStaffId(s.id)}
-                  accessibilityLabel={`Assign to ${s.name}`}
+                  accessibilityLabel={sl("assignToA11y", { name: s.name })}
                 >
                   <Text style={{ fontSize: 12, fontWeight: "500", color: selectedStaffId === s.id ? Colors.white : Colors.gray[600] }}>
                     {s.name}
@@ -1539,7 +1554,7 @@ export default function SalesScreen() {
 
         <View style={{ marginTop: 16 }}>
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-            Discount ({tenantCurrency})
+            {sl("discountWithCurrency", { currency: tenantCurrency })}
           </Text>
           <TextInput
             style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
@@ -1548,13 +1563,13 @@ export default function SalesScreen() {
             value={discount}
             onChangeText={setDiscount}
             keyboardType="numeric"
-            accessibilityLabel="Discount amount"
+            accessibilityLabel={sl("discountAmountA11y")}
           />
         </View>
 
         <View style={{ marginTop: 12 }}>
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-            Tip ({tenantCurrency})
+            {sl("tipWithCurrency", { currency: tenantCurrency })}
           </Text>
           <TextInput
             style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
@@ -1563,12 +1578,12 @@ export default function SalesScreen() {
             value={tip}
             onChangeText={setTip}
             keyboardType="numeric"
-            accessibilityLabel="Tip amount"
+            accessibilityLabel={sl("tipAmountA11y")}
           />
         </View>
 
         <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-          Payment Method
+          {sl("paymentMethod")}
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
           {paymentMethodOptions.map((pm) => (
@@ -1579,11 +1594,11 @@ export default function SalesScreen() {
                 paymentMethod === pm.value ? { borderColor: "#818cf8", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[200], backgroundColor: Colors.white },
               ]}
               onPress={() => setPaymentMethod(pm.value)}
-              accessibilityLabel={`Payment method: ${pm.label}`}
+              accessibilityLabel={sl("paymentMethodA11y", { label: pm.label })}
               accessibilityRole="button"
             >
-              <Ionicons name={pm.icon} size={16} color={paymentMethod === pm.value ? "#6366f1" : Colors.gray[500]} style={{ marginRight: 6 }} />
-              <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: paymentMethod === pm.value ? "#4338ca" : Colors.gray[600] }}>
+              <Ionicons name={pm.icon} size={16} color={paymentMethod === pm.value ? "#6366f1" : Colors.gray[500]} style={{ marginEnd: 6 }} />
+              <Text style={{ marginStart: 6, fontSize: 14, fontWeight: "500", color: paymentMethod === pm.value ? "#4338ca" : Colors.gray[600] }}>
                 {pm.label}
               </Text>
             </TouchableOpacity>
@@ -1597,30 +1612,32 @@ export default function SalesScreen() {
 
         <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Subtotal</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{sl("subtotal")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{formatCurrency(cartTotal)}</Text>
           </View>
           {discountAmount > 0 && (
             <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Discount</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{sl("discount")}</Text>
               <Text style={{ fontSize: 14, color: Colors.error }}>-{formatCurrency(discountAmount)}</Text>
             </View>
           )}
           <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
-              VAT ({(taxRate * 100).toFixed(0)}%){taxInclusive ? " (incl.)" : ""}
+              {taxInclusive
+                ? sl("vatLabelIncl", { percent: (taxRate * 100).toFixed(0) })
+                : sl("vatLabel", { percent: (taxRate * 100).toFixed(0) })}
             </Text>
             <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{formatCurrency(taxAmount)}</Text>
           </View>
           {tipAmount > 0 && (
             <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Tip</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{sl("tip")}</Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>+{formatCurrency(tipAmount)}</Text>
             </View>
           )}
           <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{sl("total")}</Text>
               <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(grandTotal)}</Text>
             </View>
           </View>
@@ -1630,8 +1647,8 @@ export default function SalesScreen() {
           <ActionButton
             label={
               paymentMethod === "paystack_terminal"
-                ? `Collect via Paystack Terminal - ${formatCurrency(grandTotal)}`
-                : `Complete Sale - ${formatCurrency(grandTotal)}`
+                ? sl("collectViaPaystack", { amount: formatCurrency(grandTotal) })
+                : sl("completeSale", { amount: formatCurrency(grandTotal) })
             }
             variant="secondary"
             onPress={handleCompleteSale}
@@ -1643,7 +1660,7 @@ export default function SalesScreen() {
         <TouchableOpacity
           style={{ marginTop: 12, alignItems: "center", paddingVertical: 8 }}
           onPress={() => setCheckoutStep("select_services")}
-          accessibilityLabel="Go back to item selection"
+          accessibilityLabel={sl("backToItemsA11y")}
           accessibilityRole="button"
         >
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
@@ -1709,7 +1726,7 @@ export default function SalesScreen() {
                 receiptData.saleId,
                 receiptData.saleNumber,
               ).catch((e) =>
-                Alert.alert("Share", e instanceof Error ? e.message : "Could not share receipt."),
+                Alert.alert(sl("shareTitle"), e instanceof Error ? e.message : sl("shareFailed")),
               );
             }}
             fullWidth
@@ -1724,11 +1741,11 @@ export default function SalesScreen() {
                 signedUrlPath: `/api/provider/sales/${encodeURIComponent(receiptData.saleId)}/receipt/signed-url`,
                 filename: `sale_${receiptData.saleNumber ?? receiptData.saleId}.pdf`,
                 title: pt("salesScreen.receiptTitle", undefined, "Receipt"),
-                label: "receipt",
+                label: sl("receiptLabel"),
               }).catch((e) =>
                 Alert.alert(
-                  "Receipt",
-                  e instanceof Error ? e.message : "Could not download receipt.",
+                  sl("receiptTitle"),
+                  e instanceof Error ? e.message : sl("receiptDownloadFailed"),
                 ),
               );
             }}
@@ -1752,14 +1769,14 @@ export default function SalesScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Sales"
-        subtitle={`${sales.length} transactions`}
+        title={sl("title")}
+        subtitle={sl("transactionsSubtitle", { count: sales.length })}
         {...(fromTransactionsHub ? { showBack: true, onBack: handleBack } : {})}
         rightAction={
           <TouchableOpacity
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
             onPress={() => router.push("/(app)/(tabs)/more/finance" as never)}
-            accessibilityLabel="View finance reports"
+            accessibilityLabel={sl("financeReportsA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="stats-chart-outline" size={20} color="#111" />
@@ -1783,33 +1800,33 @@ export default function SalesScreen() {
             gap: 10,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Sponsored listings and ads"
-          accessibilityHint="Opens settings where you can buy sponsored listing packs"
+          accessibilityLabel={sl("adsBannerA11y")}
+          accessibilityHint={sl("adsBannerHint")}
         >
           <Ionicons name="megaphone-outline" size={22} color="#4338ca" />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontWeight: "600", fontSize: 15, color: "#1e1b4b" }}>Grow with sponsored listings</Text>
+            <Text style={{ fontWeight: "600", fontSize: 15, color: "#1e1b4b" }}>{sl("adsBannerTitle")}</Text>
             <Text style={{ fontSize: 12, color: "#4338ca", marginTop: 4, lineHeight: 16 }}>
-              Buy a boost, reach more high-intent customers, and track the views, clicks, and bookings your ads generate.
+              {sl("adsBannerBody")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#4338ca" />
+          <DirectionalIcon name="chevron-forward" size={20} color="#4338ca" />
         </TouchableOpacity>
       ) : null}
 
       <View style={[ isTablet ? { flexDirection: "row" } : {} ]}>
-        <View style={[ isTablet ? { flex: 1 } : {}, isTablet && { marginRight: 12 } ]}>
+        <View style={[ isTablet ? { flex: 1 } : {}, isTablet && { marginEnd: 12 } ]}>
           <StatCard
-            title="Today's Revenue"
+            title={sl("todayRevenue")}
             value={formatCurrency(metrics?.revenue_today ?? 0)}
             icon="wallet-outline"
             iconColor="#22c55e"
             iconBg="#f0fdf4"
           />
         </View>
-        <View style={[ isTablet ? { flex: 1 } : { marginTop: 12 }, isTablet && { marginRight: 12 } ]}>
+        <View style={[ isTablet ? { flex: 1 } : { marginTop: 12 }, isTablet && { marginEnd: 12 } ]}>
           <StatCard
-            title="Monthly Revenue"
+            title={sl("monthlyRevenue")}
             value={formatCurrency(metrics?.revenue_this_month ?? 0)}
             icon="trending-up-outline"
             iconColor="#6366f1"
@@ -1819,9 +1836,9 @@ export default function SalesScreen() {
         </View>
         <View style={[ isTablet ? { flex: 1 } : { marginTop: 12 } ]}>
           <StatCard
-            title="Pending"
+            title={sl("pending")}
             value={formatCurrency(metrics?.pending_payments_amount ?? 0)}
-            subtitle={`${metrics?.pending_payments_count ?? 0} payments`}
+            subtitle={sl("pendingPayments", { count: metrics?.pending_payments_count ?? 0 })}
             icon="time-outline"
             iconColor="#f59e0b"
             iconBg="#fffbeb"
@@ -1839,14 +1856,14 @@ export default function SalesScreen() {
 
       <View style={{ marginTop: 16 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-          Transactions ({salesResponse?.total ?? sales.length})
+          {sl("transactionsHeading", { count: salesResponse?.total ?? sales.length })}
         </Text>
 
         <View style={{ marginBottom: 12 }}>
           <SearchBar
             value={salesSearchDebounced}
             onChangeText={setSalesSearchDebounced}
-            placeholder="Search by reference or client name"
+            placeholder={sl("searchPlaceholder")}
           />
         </View>
 
@@ -1858,24 +1875,24 @@ export default function SalesScreen() {
           salesSearchDebounced ? (
             <EmptyState
               icon="search-outline"
-              title="No matches"
-              description={`No transactions match "${salesSearchDebounced}". Try a different reference or name.`}
-              actionLabel="Clear search"
+              title={sl("noMatchesTitle")}
+              description={sl("noMatchesDesc", { query: salesSearchDebounced })}
+              actionLabel={sl("clearSearch")}
               onAction={() => setSalesSearchDebounced("")}
             />
           ) : dateRange !== "all" ? (
             <EmptyState
               icon="calendar-outline"
-              title="No sales in this range"
-              description="Try expanding the date range or switch to All time."
-              actionLabel="Show all time"
+              title={sl("noSalesInRangeTitle")}
+              description={sl("noSalesInRangeDesc")}
+              actionLabel={sl("showAllTime")}
               onAction={() => setDateRange("all")}
             />
           ) : (
             <EmptyState
               icon="receipt-outline"
-              title="No sales yet"
-              description="Sales created via POS will appear here"
+              title={sl("noSalesTitle")}
+              description={sl("noSalesDesc")}
             />
           )
         ) : (
@@ -1885,17 +1902,17 @@ export default function SalesScreen() {
                 key={sale.id}
                 style={[
                   { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
-                  isTablet ? { width: "48.5%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+                  isTablet ? { width: "48.5%", marginEnd: 12, marginBottom: 12 } : { marginBottom: 8 },
                 ]}
-                accessibilityLabel={`Sale: ${sale.client_name ?? "Walk-in"}, ${formatCurrency(sale.total)}`}
+                accessibilityLabel={sl("saleRowA11y", { client: sale.client_name ?? sl("walkIn"), amount: formatCurrency(sale.total) })}
               >
                 <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                      {sale.client_name ?? "Walk-in"}
+                      {sale.client_name ?? sl("walkIn")}
                     </Text>
                     <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                      {sale.ref_number} · {formatDate(sale.date, "MMM d")} at {formatTime(sale.date)}
+                      {sl("saleDateAt", { ref: sale.ref_number, date: formatDate(sale.date, "MMM d"), time: formatTime(sale.date) })}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
@@ -1904,7 +1921,7 @@ export default function SalesScreen() {
                 </View>
                 <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>
-                    {sale.items?.map((i) => i.name).join(", ") || "Items"}
+                    {sale.items?.map((i) => i.name).join(", ") || sl("itemsFallback")}
                   </Text>
                   <Badge status={sale.payment_method} size="sm" />
                 </View>
@@ -1917,7 +1934,7 @@ export default function SalesScreen() {
       <TouchableOpacity
         style={{ position: "absolute", bottom: 96, right: 20, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: "#4f46e5", elevation: 8 }}
         onPress={startNewSale}
-        accessibilityLabel="New sale"
+        accessibilityLabel={sl("newSaleA11y")}
         accessibilityRole="button"
       >
         <Ionicons name="add" size={28} color="#fff" />
@@ -1936,7 +1953,7 @@ export default function SalesScreen() {
         amountCents={Math.round(grandTotal * 100)}
         currency={tenantCurrency}
         saleId={yocoLinkedSaleId ?? undefined}
-        description={`POS Sale for ${selectedClient?.full_name ?? "Walk-in"}`}
+        description={sl("posSaleFor", { name: selectedClient?.full_name ?? sl("walkIn") })}
         onPaymentSuccess={(result) => finalizeYocoSale(result)}
       />
 
@@ -1956,26 +1973,26 @@ export default function SalesScreen() {
       <BottomSheet
         visible={!!paystackTerminalPrompt}
         onClose={handleClosePaystackTerminalPrompt}
-        title="Paystack Terminal"
+        title={sl("paystackTerminalTitle")}
       >
         {paystackTerminalPrompt ? (
           <View>
             <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
-              Ask the customer to pay using this Paystack link. Paystack generates the transaction reference; this sale stays pending until you allocate the webhooked payment.
+              {sl("paystackPromptBody")}
             </Text>
             <View style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#ecfdf5", padding: 16 }}>
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase" }}>
-                Terminal code
+                {sl("terminalCode")}
               </Text>
               <Text style={{ marginTop: 6, fontFamily: "monospace", fontSize: 24, fontWeight: "800", color: "#064e3b" }}>
                 {paystackTerminalPrompt.code}
               </Text>
               <Text style={{ marginTop: 8, fontSize: 14, color: "#047857" }}>
-                Expected: {formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)}
+                {sl("expectedAmount", { amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency) })}
               </Text>
               {paystackTerminalPrompt.reference ? (
                 <Text style={{ marginTop: 4, fontSize: 12, color: "#047857" }}>
-                  Note: {paystackTerminalPrompt.reference}
+                  {sl("noteLine", { reference: paystackTerminalPrompt.reference })}
                 </Text>
               ) : null}
             </View>
@@ -1983,22 +2000,34 @@ export default function SalesScreen() {
               <TouchableOpacity
                 onPress={() => {
                   void Share.share({
-                    title: "Paystack Terminal",
+                    title: sl("paystackTerminalTitle"),
                     message: paystackTerminalPrompt.link
-                      ? `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using this Paystack Terminal link: ${paystackTerminalPrompt.link}${paystackTerminalPrompt.reference ? ` Note: ${paystackTerminalPrompt.reference}` : ""}`
-                      : `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using Paystack Terminal code ${paystackTerminalPrompt.code}${paystackTerminalPrompt.reference ? `. Note: ${paystackTerminalPrompt.reference}` : ""}.`,
+                      ? sl("paystackShareWithLink", {
+                          amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency),
+                          link: paystackTerminalPrompt.link,
+                          note: paystackTerminalPrompt.reference
+                            ? sl("paystackShareNote", { reference: paystackTerminalPrompt.reference })
+                            : "",
+                        })
+                      : sl("paystackShareWithCode", {
+                          amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency),
+                          code: paystackTerminalPrompt.code,
+                          note: paystackTerminalPrompt.reference
+                            ? sl("paystackShareNotePeriod", { reference: paystackTerminalPrompt.reference })
+                            : "",
+                        }),
                   });
                 }}
                 style={{ flex: 1, borderRadius: 12, backgroundColor: "#16a34a", paddingVertical: 12 }}
               >
-                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>Share</Text>
+                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>{sl("share")}</Text>
               </TouchableOpacity>
               {paystackTerminalPrompt.link ? (
                 <TouchableOpacity
                   onPress={() => void Linking.openURL(paystackTerminalPrompt.link || "")}
                   style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: "#16a34a", paddingVertical: 12 }}
                 >
-                  <Text style={{ textAlign: "center", fontWeight: "700", color: "#15803d" }}>Open link</Text>
+                  <Text style={{ textAlign: "center", fontWeight: "700", color: "#15803d" }}>{sl("openLink")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -2006,7 +2035,7 @@ export default function SalesScreen() {
               style={{ marginTop: 12, alignItems: "center", paddingVertical: 8 }}
               onPress={handleClosePaystackTerminalPrompt}
             >
-              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Done</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{sl("done")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -2015,7 +2044,7 @@ export default function SalesScreen() {
       <BarcodeScannerModal
         visible={barcodeScanOpen}
         onClose={() => setBarcodeScanOpen(false)}
-        title="Scan product barcode"
+        title={sl("scanProductBarcode")}
         busy={barcodeLookupBusy}
         errorMessage={barcodeLookupError}
         onScanned={(code) => {

@@ -15,6 +15,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type PostCompletionStep = "choose" | "photo" | "rate" | "done";
 
@@ -41,6 +42,7 @@ export function PostCompletionSheet({
   onDismiss,
   onRated,
 }: PostCompletionSheetProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [step, setStep] = useState<PostCompletionStep>("choose");
   const [hasExistingRating, setHasExistingRating] = useState(false);
@@ -72,7 +74,7 @@ export function PostCompletionSheet({
   const goToExplorePhoto = () => {
     markSeen();
     const qs = new URLSearchParams({
-      caption: `Fresh ${primaryServiceName} \u2728`,
+      caption: t("web.provider.postCompletion.freshCaption", { service: primaryServiceName }),
       addToGallery: "1",
       bookingId,
       returnTo: "booking",
@@ -84,7 +86,7 @@ export function PostCompletionSheet({
 
   const submitRating = async () => {
     if (rateStars < 1) {
-      setRateError("Select a rating (1–5 stars).");
+      setRateError(t("web.provider.postCompletion.selectRating"));
       return;
     }
     setSubmittingRate(true);
@@ -97,10 +99,10 @@ export function PostCompletionSheet({
       });
       setStep("done");
       onRated?.();
-      toast.success("Rating saved");
+      toast.success(t("web.provider.postCompletion.ratingSaved"));
       window.setTimeout(() => markSeen(), 800);
     } catch (error) {
-      setRateError(error instanceof Error ? error.message : "Failed to submit rating.");
+      setRateError(error instanceof Error ? error.message : t("web.provider.postCompletion.submitFailed"));
     } finally {
       setSubmittingRate(false);
     }
@@ -122,40 +124,40 @@ export function PostCompletionSheet({
                   <Trophy className="h-10 w-10 text-primary" aria-hidden />
                 </div>
               </div>
-              <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
+              <DialogTitle className="text-center text-xl">{t("web.provider.postCompletion.title")}</DialogTitle>
               <DialogDescription className="space-y-2 text-center">
                 {pointsNum > 0 ? (
                   <span className="block font-medium text-primary">
-                    You earned {pointsNum} points. They’ve been added to your balance.
+                    {t("web.provider.postCompletion.pointsEarned", { count: pointsNum })}
                   </span>
                 ) : (
                   <span className="block text-sm text-muted-foreground">
-                    You earn points for each completed booking—keep going to unlock badges.
+                    {t("web.provider.postCompletion.pointsHint")}
                   </span>
                 )}
               </DialogDescription>
             </DialogHeader>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-start">
               <div className="mb-1 flex items-center gap-2">
                 <Camera className="h-4 w-4 text-primary" aria-hidden />
-                <span className="text-sm font-semibold text-gray-900">Show off your work</span>
+                <span className="text-sm font-semibold text-gray-900">{t("web.provider.postCompletion.showWork")}</span>
               </div>
               <p className="mb-3 text-xs leading-5 text-gray-600">
-                Post a photo to Explore to reach new clients and grow your portfolio.
+                {t("web.provider.postCompletion.showWorkHint")}
               </p>
               <Button onClick={() => setStep("photo")} className="w-full">
-                <Camera className="mr-2 h-4 w-4" aria-hidden />
-                Add a photo of your work
+                <Camera className="me-2 h-4 w-4" aria-hidden />
+                {t("web.provider.postCompletion.addPhoto")}
               </Button>
             </div>
             <DialogFooter className="mt-2 flex-col-reverse gap-2 sm:flex-col">
               {!hasExistingRating ? (
                 <Button variant="outline" onClick={() => setStep("rate")} className="w-full">
-                  Rate {customerName}
+                  {t("web.provider.postCompletion.rateCustomer", { name: customerName })}
                 </Button>
               ) : null}
               <Button variant="ghost" onClick={markSeen} className="w-full">
-                Done for now
+                {t("web.provider.postCompletion.doneForNow")}
               </Button>
             </DialogFooter>
           </>
@@ -164,21 +166,21 @@ export function PostCompletionSheet({
         {step === "photo" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Show off your work</DialogTitle>
+              <DialogTitle>{t("web.provider.postCompletion.photoTitle")}</DialogTitle>
               <DialogDescription>
-                Post to Explore to reach new clients. You can also add it to your gallery.
+                {t("web.provider.postCompletion.photoDescription")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col gap-2 sm:flex-col">
               <Button onClick={goToExplorePhoto} className="w-full">
-                Open Explore
+                {t("web.provider.postCompletion.openExplore")}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setStep(hasExistingRating ? "choose" : "rate")}
                 className="w-full"
               >
-                {hasExistingRating ? "Back" : "Skip to rate client"}
+                {hasExistingRating ? t("web.provider.postCompletion.back") : t("web.provider.postCompletion.skipToRate")}
               </Button>
             </DialogFooter>
           </>
@@ -187,8 +189,8 @@ export function PostCompletionSheet({
         {step === "rate" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Rate {customerName}</DialogTitle>
-              <DialogDescription>How was this client?</DialogDescription>
+              <DialogTitle>{t("web.provider.postCompletion.rateCustomer", { name: customerName })}</DialogTitle>
+              <DialogDescription>{t("web.provider.postCompletion.howWasClient")}</DialogDescription>
             </DialogHeader>
             <div className="flex justify-center gap-2 py-2">
               {[1, 2, 3, 4, 5].map((n) => (
@@ -197,7 +199,7 @@ export function PostCompletionSheet({
                   type="button"
                   onClick={() => setRateStars(n)}
                   className={`text-2xl ${rateStars >= n ? "text-amber-500" : "text-gray-300"}`}
-                  aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                  aria-label={t("web.provider.postCompletion.starA11y", { count: n })}
                 >
                   ★
                 </button>
@@ -206,15 +208,15 @@ export function PostCompletionSheet({
             <Textarea
               value={rateComment}
               onChange={(e) => setRateComment(e.target.value)}
-              placeholder="Optional comment"
+              placeholder={t("web.provider.postCompletion.commentPlaceholder")}
             />
             {rateError ? <p className="text-sm text-red-600">{rateError}</p> : null}
             <DialogFooter className="flex-col gap-2 sm:flex-col">
               <Button onClick={() => void submitRating()} disabled={submittingRate} className="w-full">
-                {submittingRate ? "Saving..." : "Submit rating"}
+                {submittingRate ? t("web.provider.postCompletion.saving") : t("web.provider.postCompletion.submitRating")}
               </Button>
               <Button variant="ghost" onClick={() => setStep("choose")} className="w-full">
-                Back
+                {t("web.provider.postCompletion.back")}
               </Button>
             </DialogFooter>
           </>
@@ -222,8 +224,8 @@ export function PostCompletionSheet({
 
         {step === "done" ? (
           <div className="py-6 text-center">
-            <DialogTitle className="mb-2">Thanks!</DialogTitle>
-            <DialogDescription>Your rating was saved.</DialogDescription>
+            <DialogTitle className="mb-2">{t("web.provider.postCompletion.thanks")}</DialogTitle>
+            <DialogDescription>{t("web.provider.postCompletion.ratingSavedBody")}</DialogDescription>
           </div>
         ) : null}
       </DialogContent>

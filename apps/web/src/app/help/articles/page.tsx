@@ -259,7 +259,7 @@ export default function ArticlePage() {
             </section>
           </article>
         </div>
-        <div className="w-full h-full max-w-72 p-4 mt-10 border rounded-md md:mt-10 md:ml-10">
+        <div className="w-full h-full max-w-72 p-4 mt-10 border rounded-md md:mt-10 md:ms-10">
           <h2 className="mb-3 text-base font-normal ">
             Get help with your bookings, account, and more.
           </h2>

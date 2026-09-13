@@ -1208,7 +1208,7 @@ function CustomerOnboardingWizard() {
               ) : (
                 <>
                   {continueLabel}
-                  {!isLastStep && <ChevronRight className="ml-1 h-4 w-4" />}
+                  {!isLastStep && <ChevronRight className="ms-1 h-4 w-4" />}
                 </>
               )}
             </Button>

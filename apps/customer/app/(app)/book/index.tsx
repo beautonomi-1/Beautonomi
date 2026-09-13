@@ -16,7 +16,7 @@ import { AddressPicker } from "@/components/AddressPicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useTranslation } from "@beautonomi/i18n";
+import { translatePublicCategoryLabel, useTranslation } from "@beautonomi/i18n";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
@@ -54,6 +54,7 @@ import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { Skeleton } from "@/components/Skeleton";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import type {
   PublicProviderDetail,
   ProviderServicesResponse,
@@ -370,9 +371,10 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
   variant: { title?: string; price: number; duration_minutes: number } | null;
   selectedServices?: SelectedServiceItem[];
 }) {
+  const { t } = useTranslation();
   const items = selectedServices && selectedServices.length > 0 ? selectedServices : null;
   const displayName = items
-    ? items.length === 1 ? items[0].title : `${items.length} services`
+    ? items.length === 1 ? items[0].title : t("customer.mobile.screens.bookFlow.servicesCount", { count: items.length })
     : (variant?.title ?? service?.title);
   const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
   const displayDuration = items
@@ -388,9 +390,9 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
       backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12, marginBottom: 12,
     }}>
       {provider.thumbnail_url ? (
-        <Image source={{ uri: provider.thumbnail_url }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
+        <Image source={{ uri: provider.thumbnail_url }} style={{ width: 44, height: 44, borderRadius: 22, marginEnd: 12 }} contentFit="cover" cachePolicy="memory-disk" />
       ) : (
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
           <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 18 }}>{(provider.business_name || "P").charAt(0).toUpperCase()}</Text>
         </View>
       )}
@@ -398,7 +400,7 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{provider.business_name}</Text>
         {(displayName || displayDuration != null) && (
           <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
-            {displayName} · {displayDuration} min · {currency} {Number(displayPrice ?? 0).toFixed(2)}
+            {displayName} · {t("booking.minutes", { count: displayDuration ?? 0 })} · {currency} {Number(displayPrice ?? 0).toFixed(2)}
           </Text>
         )}
       </View>
@@ -438,7 +440,7 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
         borderColor: isToday && !isSelected ? `${Colors.primary}40` : "transparent",
       }}
       accessibilityRole="button"
-      accessibilityLabel={`Select ${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`}
+      accessibilityLabel={`Select ${date.toLocaleDateString(getTenantLocaleTag(), { weekday: "long", month: "long", day: "numeric" })}`}
       accessibilityState={{ selected: isSelected, disabled: !!disabled }}
     >
       <Text style={{
@@ -480,7 +482,12 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
    ═══════════════════════════════════════════ */
 export default function BookScreen() {
   useScreenTracking("Book");
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const bf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`customer.mobile.screens.bookFlow.${key}`, opts ?? {}) as string,
+    [t],
+  );
   const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   // §UX-audit 2026-04: previously every sticky bottom bar and floating
   // header on this screen hard-coded `paddingBottom: 28` / `paddingTop: 52`,
@@ -993,14 +1000,17 @@ export default function BookScreen() {
     let list = categoriesOrdered;
     const cq = categoryFilterText.trim().toLowerCase();
     if (cq && nCats >= MANY_CATEGORIES) {
-      list = list.filter((c) => c.name.toLowerCase().includes(cq));
+      list = list.filter((c) => {
+        const translated = translatePublicCategoryLabel(t, c.name, c.name, { language: i18n.language });
+        return c.name.toLowerCase().includes(cq) || translated.toLowerCase().includes(cq);
+      });
     }
     if (pinnedCategoryId && !list.some((c) => c.id === pinnedCategoryId)) {
       const pinned = categoriesOrdered.find((c) => c.id === pinnedCategoryId);
       if (pinned) list = [pinned, ...list];
     }
     return list;
-  }, [categoriesOrdered, categoryFilterText, servicesData?.categories?.length, pinnedCategoryId]);
+  }, [categoriesOrdered, categoryFilterText, servicesData?.categories?.length, pinnedCategoryId, t, i18n.language]);
 
   const showServiceSearch =
     serviceMenuStats.total >= 28 || serviceMenuStats.maxInCat >= MANY_SERVICES_IN_CATEGORY;
@@ -1214,7 +1224,7 @@ export default function BookScreen() {
                 title: String(it.title ?? "").trim(),
                 durationLabel:
                   typeof it.duration_minutes === "number" && it.duration_minutes > 0
-                    ? `${it.duration_minutes} min`
+                    ? t("booking.minutes", { count: it.duration_minutes })
                     : undefined,
               }))
               .filter((row) => row.title.length > 0);
@@ -1572,7 +1582,7 @@ export default function BookScreen() {
       );
       if (loadSlotsCounterRef.current !== requestId) return;
       if (res.error) {
-        setSlotLoadError((res.error as { message?: string })?.message ?? "Failed to load available times");
+        setSlotLoadError((res.error as { message?: string })?.message ?? bf("failedLoadTimes"));
         setSlots([]);
         return;
       }
@@ -1581,7 +1591,7 @@ export default function BookScreen() {
       setSelectedSlot(null);
     } catch {
       if (loadSlotsCounterRef.current !== requestId) return;
-      setSlotLoadError("Failed to load available times");
+      setSlotLoadError(bf("failedLoadTimes"));
       setSlots([]);
     } finally {
       if (loadSlotsCounterRef.current === requestId) setLoadingSlots(false);
@@ -1601,6 +1611,7 @@ export default function BookScreen() {
     excludeHoldIdForSlots,
     reschedule_booking_id,
     provider?.timezone,
+    bf,
   ]);
 
   // Restore snapshot and reload stale data when screen regains focus (handles tab switching)
@@ -2186,18 +2197,18 @@ export default function BookScreen() {
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
           {/* Custom header skeleton */}
           <View style={{ flexDirection: "row", alignItems: "center", paddingTop: insets.top + 12, paddingHorizontal: contentPadding, paddingBottom: 12, backgroundColor: "#fff" }}>
-            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginRight: 12 }} />
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginEnd: 12 }} />
             <Skeleton width="40%" height={18} />
           </View>
           <View style={{ paddingHorizontal: contentPadding }}>
             {/* Step indicator skeleton */}
             <View style={{ flexDirection: "row", paddingVertical: 12 }}>
-              {[1, 2, 3, 4].map((i) => <Skeleton key={i} width={28} height={28} borderRadius={14} style={i < 4 ? { marginRight: 8 } : undefined} />)}
+              {[1, 2, 3, 4].map((i) => <Skeleton key={i} width={28} height={28} borderRadius={14} style={i < 4 ? { marginEnd: 8 } : undefined} />)}
             </View>
             {/* Provider summary skeleton */}
             <View style={{ flexDirection: "row", backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12 }}>
               <Skeleton width={44} height={44} borderRadius={22} />
-              <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flex: 1, marginStart: 12 }}>
                 <Skeleton width="60%" height={16} />
                 <Skeleton width="80%" height={12} style={{ marginTop: 6 }} />
               </View>
@@ -2341,15 +2352,15 @@ export default function BookScreen() {
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
           >
-            <Ionicons name="arrow-back" size={20} color="#111827" />
+            <DirectionalIcon name="arrow-back" size={20} color="#111827" />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flex: 1, marginStart: 12 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>
               {activePackage ? activePackage.name : t("booking.bookAppointment")}
             </Text>
             {activePackage && (
               <Text style={{ fontSize: 12, color: "#16A34A", fontWeight: "600", marginTop: 1 }}>
-                Package · {activePackage.currency} {activePackage.price.toFixed(2)}
+                {bf("packagePriceLine", { currency: activePackage.currency, price: activePackage.price.toFixed(2) })}
               </Text>
             )}
           </View>
@@ -2369,7 +2380,7 @@ export default function BookScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
-            accessibilityLabel="Booking steps and options"
+            accessibilityLabel={bf("bookingStepsA11y")}
             accessibilityRole="none"
           >
             {/* Step Indicator */}
@@ -2400,9 +2411,9 @@ export default function BookScreen() {
                       borderColor: "#BBF7D0", padding: 16, marginBottom: 20,
                     }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                        <Ionicons name="gift" size={18} color="#16A34A" style={{ marginRight: 6 }} />
+                        <Ionicons name="gift" size={18} color="#16A34A" style={{ marginEnd: 6 }} />
                         <Text style={{ fontSize: 11, fontWeight: "700", color: "#15803D", textTransform: "uppercase", letterSpacing: 0.8 }}>
-                          Package
+                          {bf("packageLabel")}
                         </Text>
                       </View>
                       <Text style={{ fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 6 }}>
@@ -2413,8 +2424,8 @@ export default function BookScreen() {
                           {activePackage.currency} {activePackage.price.toFixed(2)}
                         </Text>
                         {activePackage.discount_percentage != null && activePackage.discount_percentage > 0 && (
-                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#16A34A", marginLeft: 8 }}>
-                            · Save {activePackage.discount_percentage}%
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#16A34A", marginStart: 8 }}>
+                            {bf("savePercent", { percent: activePackage.discount_percentage })}
                           </Text>
                         )}
                       </View>
@@ -2437,11 +2448,11 @@ export default function BookScreen() {
 
                     {/* Included services — locked, no remove button */}
                     <Text style={{ fontSize: 15, fontWeight: "700", color: "#374151", marginBottom: 10 }}>
-                      What&apos;s included
+                      {bf("whatsIncluded")}
                     </Text>
                     {loading && activePackage && selectedServices.length === 0 ? (
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-                        <ActivityIndicator color={Colors.primary} style={{ marginRight: 10 }} />
+                        <ActivityIndicator color={Colors.primary} style={{ marginEnd: 10 }} />
                         <Text style={{ fontSize: 14, color: "#6B7280" }}>
                           {t("booking.loadingPackage", "Loading package…")}
                         </Text>
@@ -2458,10 +2469,10 @@ export default function BookScreen() {
                           borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8,
                         }}
                       >
-                        <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginRight: 10 }} />
+                        <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginEnd: 10 }} />
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{item.title}</Text>
-                          <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{item.duration_minutes} min</Text>
+                          <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{t("booking.minutes", { count: item.duration_minutes })}</Text>
                         </View>
                       </View>
                     ))
@@ -2475,7 +2486,7 @@ export default function BookScreen() {
                               borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8,
                             }}
                           >
-                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginRight: 10 }} />
+                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginEnd: 10 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{row.title}</Text>
                               {row.durationLabel ? (
@@ -2495,7 +2506,7 @@ export default function BookScreen() {
                     {selectedPackageProducts.length > 0 && (
                       <>
                         <Text style={{ fontSize: 15, fontWeight: "700", color: "#374151", marginBottom: 10, marginTop: 16 }}>
-                          Retail included
+                          {bf("retailIncluded")}
                         </Text>
                         {selectedPackageProducts.map((p) => (
                           <View
@@ -2512,7 +2523,7 @@ export default function BookScreen() {
                               marginBottom: 8,
                             }}
                           >
-                            <Ionicons name="cube-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
+                            <Ionicons name="cube-outline" size={18} color="#6B7280" style={{ marginEnd: 10 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{p.name}</Text>
                               <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
@@ -2527,15 +2538,15 @@ export default function BookScreen() {
                 ) : (
                   /* ── Regular mode: full editable service selection ── */
                   <View>
-                    <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Select service(s)</Text>
-                    <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>Tap a category to expand or collapse. Add one or more services for yourself or your group.</Text>
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{bf("selectServices")}</Text>
+                    <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>{bf("selectServicesHint")}</Text>
                     {selectedServices.length > 0 && (
                       <View style={{ marginBottom: 16, padding: 14, backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#BBF7D0" }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#166534", marginBottom: 8 }}>Your selection ({selectedServices.length})</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#166534", marginBottom: 8 }}>{bf("yourSelection", { count: selectedServices.length })}</Text>
                         {selectedServices.map((item, idx) => (
                           <View key={`${item.offeringId}-${idx}`} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: idx < selectedServices.length - 1 ? 1 : 0, borderColor: "rgba(0,0,0,0.06)" }}>
-                            <Text style={{ fontSize: 14, color: "#111827", flex: 1 }} numberOfLines={1}>{item.title} · {item.duration_minutes} min · {item.currency} {item.price.toFixed(2)}</Text>
-                            <TouchableOpacity onPress={() => { haptic.light(); setSelectedServices((prev) => prev.filter((_, i) => i !== idx)); }} hitSlop={8} accessibilityLabel="Remove service">
+                            <Text style={{ fontSize: 14, color: "#111827", flex: 1 }} numberOfLines={1}>{item.title} · {t("booking.minutes", { count: item.duration_minutes })} · {item.currency} {item.price.toFixed(2)}</Text>
+                            <TouchableOpacity onPress={() => { haptic.light(); setSelectedServices((prev) => prev.filter((_, i) => i !== idx)); }} hitSlop={8} accessibilityLabel={bf("removeServiceA11y")}>
                               <Ionicons name="close-circle" size={22} color="#B91C1C" />
                             </TouchableOpacity>
                           </View>
@@ -2601,12 +2612,12 @@ export default function BookScreen() {
                           marginBottom: 8,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`${cat.name}, ${serviceCount} services, ${isCollapsed ? "Expand" : "Collapse"}`}
+                        accessibilityLabel={bf("categoryA11y", { name: translatePublicCategoryLabel(t, cat.name, cat.name, { language: i18n.language }), count: serviceCount, action: isCollapsed ? bf("expand") : bf("collapse") })}
                         accessibilityState={{ expanded: !isCollapsed }}
                       >
-                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{cat.name}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{translatePublicCategoryLabel(t, cat.name, cat.name, { language: i18n.language })}</Text>
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <Text style={{ fontSize: 13, color: "#6B7280", marginRight: 8 }}>{serviceCount} {serviceCount === 1 ? "service" : "services"}</Text>
+                          <Text style={{ fontSize: 13, color: "#6B7280", marginEnd: 8 }}>{bf("serviceCount", { count: serviceCount })}</Text>
                           <Ionicons name={isCollapsed ? "chevron-down" : "chevron-up"} size={20} color="#6B7280" />
                         </View>
                       </Pressable>
@@ -2619,7 +2630,7 @@ export default function BookScreen() {
                           (v) => selectedServices.some((s) => s.offeringId === v.id)
                         );
                         return (
-                          <View key={svc.id} style={{ marginBottom: 6, marginLeft: 4 }}>
+                          <View key={svc.id} style={{ marginBottom: 6, marginStart: 4 }}>
                             <Pressable
                               onPress={() => {
                                 haptic.light();
@@ -2661,8 +2672,10 @@ export default function BookScreen() {
                               accessibilityRole="button"
                               accessibilityLabel={
                                 hasVariants
-                                  ? `${svc.title}, ${svc.variants!.length} options, ${variantsExpanded ? "tap to hide" : "tap to show"}`
-                                  : `Add ${svc.title}, ${svc.duration_minutes} minutes`
+                                  ? (variantsExpanded
+                                      ? bf("variantOptionsA11yHide", { name: svc.title, count: svc.variants!.length })
+                                      : bf("variantOptionsA11yShow", { name: svc.title, count: svc.variants!.length }))
+                                  : bf("addServiceA11y", { name: svc.title, minutes: svc.duration_minutes })
                               }
                               accessibilityState={hasVariants ? { expanded: variantsExpanded } : undefined}
                             >
@@ -2670,8 +2683,8 @@ export default function BookScreen() {
                                 <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
                                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
                                   {hasVariants
-                                    ? `${svc.variants!.length} option${svc.variants!.length === 1 ? "" : "s"} · tap to ${variantsExpanded ? "hide" : "choose"}`
-                                    : `${svc.duration_minutes} min`}
+                                    ? bf(variantsExpanded ? "optionsHintHide" : "optionsHintChoose", { count: svc.variants!.length })
+                                    : t("booking.minutes", { count: svc.duration_minutes })}
                                 </Text>
                               </View>
                               {!hasVariants && (
@@ -2683,7 +2696,7 @@ export default function BookScreen() {
                                   t={houseCallT}
                                 />
                               )}
-                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginLeft: 8 }} />}
+                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginStart: 8 }} />}
                               {hasVariants && (
                                 <Ionicons
                                   name={variantsExpanded ? "chevron-up" : "chevron-down"}
@@ -2693,7 +2706,7 @@ export default function BookScreen() {
                               )}
                             </Pressable>
                             {hasVariants && variantsExpanded && (
-                              <View style={{ paddingLeft: 8, marginTop: 6 }}>
+                              <View style={{ paddingStart: 8, marginTop: 6 }}>
                                 {svc.variants!.map((v, vi) => {
                                   const isVariantSelected = selectedServices.some((s) => s.offeringId === v.id);
                                   return (
@@ -2734,14 +2747,18 @@ export default function BookScreen() {
                                         marginTop: vi === 0 ? 0 : 6,
                                       }}
                                       accessibilityRole="button"
-                                      accessibilityLabel={`${isVariantSelected ? "Remove" : "Add"} ${v.title ?? svc.title} ${v.duration_minutes} minutes`}
+                                      accessibilityLabel={
+                                        isVariantSelected
+                                          ? bf("removeVariantA11y", { name: v.title ?? svc.title, minutes: v.duration_minutes })
+                                          : bf("addVariantA11y", { name: v.title ?? svc.title, minutes: v.duration_minutes })
+                                      }
                                       accessibilityState={{ selected: isVariantSelected }}
                                     >
                                       <View style={{ flex: 1 }}>
                                         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                                          {v.title || v.variant_name || `${v.duration_minutes} min`}
+                                          {v.title || v.variant_name || t("booking.minutes", { count: v.duration_minutes })}
                                         </Text>
-                                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{t("booking.minutes", { count: v.duration_minutes })}</Text>
                                       </View>
                                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                                         <HouseCallServicePriceText
@@ -2755,7 +2772,7 @@ export default function BookScreen() {
                                           name={isVariantSelected ? "checkmark-circle" : "add-circle-outline"}
                                           size={20}
                                           color={Colors.primary}
-                                          style={{ marginLeft: 6 }}
+                                          style={{ marginStart: 6 }}
                                         />
                                       </View>
                                     </Pressable>
@@ -2778,7 +2795,7 @@ export default function BookScreen() {
                               ),
                             }));
                           }}
-                          style={{ paddingVertical: 12, paddingHorizontal: 14, marginTop: 4, marginLeft: 4 }}
+                          style={{ paddingVertical: 12, paddingHorizontal: 14, marginTop: 4, marginStart: 4 }}
                           accessibilityRole="button"
                           accessibilityLabel={t("booking.loadMoreServices")}
                         >
@@ -2828,7 +2845,7 @@ export default function BookScreen() {
                     >
                       <View style={{
                         width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
-                        alignItems: "center", justifyContent: "center", marginRight: 14,
+                        alignItems: "center", justifyContent: "center", marginEnd: 14,
                       }}>
                         <Ionicons name="business-outline" size={24} color="#7C3AED" />
                       </View>
@@ -2860,7 +2877,7 @@ export default function BookScreen() {
                         >
                           <View style={{
                             width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
-                            alignItems: "center", justifyContent: "center", marginRight: 14,
+                            alignItems: "center", justifyContent: "center", marginEnd: 14,
                           }}>
                             <Ionicons name="business-outline" size={24} color="#7C3AED" />
                           </View>
@@ -2894,7 +2911,7 @@ export default function BookScreen() {
                   >
                     <View style={{
                       width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
-                      alignItems: "center", justifyContent: "center", marginRight: 14,
+                      alignItems: "center", justifyContent: "center", marginEnd: 14,
                     }}>
                       <Ionicons name="business-outline" size={24} color="#7C3AED" />
                     </View>
@@ -2942,7 +2959,7 @@ export default function BookScreen() {
                   >
                     <View style={{
                       width: 48, height: 48, borderRadius: 12, backgroundColor: "#ECFDF5",
-                      alignItems: "center", justifyContent: "center", marginRight: 14,
+                      alignItems: "center", justifyContent: "center", marginEnd: 14,
                     }}>
                       <Ionicons name="home-outline" size={24} color="#059669" />
                     </View>
@@ -3010,7 +3027,7 @@ export default function BookScreen() {
                                 backgroundColor: isSelected ? Colors.primaryLight : "#F9FAFB",
                               }}
                             >
-                              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center", marginEnd: 10 }}>
                                 <Ionicons name={addr.is_default ? "star" : "home-outline"} size={18} color={isSelected ? Colors.primary : "#6B7280"} />
                               </View>
                               <View style={{ flex: 1 }}>
@@ -3025,7 +3042,7 @@ export default function BookScreen() {
                           onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
                           style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10 }}
                         >
-                          <Ionicons name="search-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                          <Ionicons name="search-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.enterDifferentAddress")}</Text>
                         </TouchableOpacity>
                       </View>
@@ -3036,7 +3053,7 @@ export default function BookScreen() {
                           onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
                           style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
                         >
-                          <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                          <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.searchAddress")}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -3045,9 +3062,9 @@ export default function BookScreen() {
                           style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
                         >
                           {atHomePrefillState.status === "locating" ? (
-                            <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                            <ActivityIndicator size="small" color={Colors.primary} style={{ marginEnd: 8 }} />
                           ) : (
-                            <Ionicons name="navigate-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                            <Ionicons name="navigate-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
                           )}
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.useCurrentLocation")}</Text>
                         </TouchableOpacity>
@@ -3212,7 +3229,7 @@ export default function BookScreen() {
                                     : Colors.gray[200],
                               alignItems: "center",
                               justifyContent: "center",
-                              marginRight: 14,
+                              marginEnd: 14,
                             }}
                           >
                             {travelFeePreview.status === "loading" ? (
@@ -3243,12 +3260,12 @@ export default function BookScreen() {
                                   (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes != null) && (
                                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
                                     {(travelFeePreview as { distanceKm?: number }).distanceKm != null &&
-                                      `About ${(travelFeePreview as { distanceKm: number }).distanceKm} km`}
+                                      bf("travelAboutKm", { km: (travelFeePreview as { distanceKm: number }).distanceKm })}
                                     {(travelFeePreview as { distanceKm?: number }).distanceKm != null &&
                                       (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes != null &&
                                       " · "}
                                     {(travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes != null &&
-                                      `~${(travelFeePreview as { travelTimeMinutes: number }).travelTimeMinutes} min`}
+                                      bf("travelAboutMinutes", { count: (travelFeePreview as { travelTimeMinutes: number }).travelTimeMinutes })}
                                   </Text>
                                 )}
                               </>
@@ -3297,7 +3314,7 @@ export default function BookScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={t("booking.anyStaff")}
                   >
-                    <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                    <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
                       <Ionicons name="people-outline" size={22} color={Colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -3329,12 +3346,12 @@ export default function BookScreen() {
                         backgroundColor: isSelected ? Colors.primaryLight : "#fff",
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Select ${s.name}`}
+                      accessibilityLabel={bf("selectStaffA11y", { name: s.name })}
                     >
                       {s.avatar_url ? (
-                        <Image source={{ uri: s.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
+                        <Image source={{ uri: s.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24, marginEnd: 12 }} contentFit="cover" cachePolicy="memory-disk" />
                       ) : (
-                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
                           <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 18 }}>{initial}</Text>
                         </View>
                       )}
@@ -3354,14 +3371,14 @@ export default function BookScreen() {
               <View style={{ backgroundColor: "#FFFBEB", borderRadius: 16, padding: contentPadding, alignItems: "center" }}>
                 <Ionicons name="alert-circle-outline" size={32} color="#F59E0B" />
                 <Text style={{ color: "#92400E", marginTop: 8, textAlign: "center", fontSize: 14, lineHeight: 20 }}>
-                  Online booking for this provider requires staff selection. Book via the website instead.
+                  {bf("staffRequiredWebHint")}
                 </Text>
                 <TouchableOpacity
                   onPress={() => Linking.openURL(`${APP_URL}/book/${slug}`)}
                   style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 14 }}
                   accessibilityRole="button" accessibilityLabel={t("booking.bookInBrowser")}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Book in Browser</Text>
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>{bf("bookInBrowser")}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -3376,7 +3393,7 @@ export default function BookScreen() {
                       {t("booking.pickDate")}
                     </Text>
                     <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 3 }}>
-                      {weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                      {weekStart.toLocaleDateString(getTenantLocaleTag(), { month: "long", year: "numeric" })}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -3405,7 +3422,7 @@ export default function BookScreen() {
                     }}
                     accessibilityLabel={t("time.previousWeek")}
                   >
-                    <Ionicons name="chevron-back" size={18} color={weekOffset === 0 ? "#D1D5DB" : "#374151"} />
+                    <DirectionalIcon name="chevron-back" size={18} color={weekOffset === 0 ? "#D1D5DB" : "#374151"} />
                   </TouchableOpacity>
 
                   <View style={{ flex: 1, flexDirection: "row", marginHorizontal: 6 }}>
@@ -3440,7 +3457,7 @@ export default function BookScreen() {
                     }}
                     accessibilityLabel={t("time.nextWeek")}
                   >
-                    <Ionicons name="chevron-forward" size={18} color={weekOffset >= maxWeekOffset ? "#D1D5DB" : "#374151"} />
+                    <DirectionalIcon name="chevron-forward" size={18} color={weekOffset >= maxWeekOffset ? "#D1D5DB" : "#374151"} />
                   </TouchableOpacity>
                 </View>
 
@@ -3485,13 +3502,13 @@ export default function BookScreen() {
                 {/* Date context header */}
                 <View style={{ marginBottom: 20 }}>
                   <Text style={{ fontSize: 20, fontWeight: "800", color: "#111827", letterSpacing: -0.5 }}>
-                    Pick a time
+                    {bf("pickATime")}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setStep("date")}
                     style={{ flexDirection: "row", alignItems: "center", marginTop: 6, alignSelf: "flex-start" }}
                     accessibilityRole="button"
-                    accessibilityLabel="Change date"
+                    accessibilityLabel={bf("changeDateA11y")}
                   >
                     <View style={{
                       flexDirection: "row", alignItems: "center", gap: 6,
@@ -3501,7 +3518,7 @@ export default function BookScreen() {
                     }}>
                       <Ionicons name="calendar-outline" size={14} color={Colors.primary} />
                       <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
-                        {selectedDay.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                        {selectedDay.toLocaleDateString(getTenantLocaleTag(), { weekday: "short", month: "short", day: "numeric" })}
                       </Text>
                       <Ionicons name="pencil-outline" size={12} color={Colors.primary} />
                     </View>
@@ -3511,7 +3528,7 @@ export default function BookScreen() {
                 {loadingSlots ? (
                   <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                      <Skeleton key={i} width={80} height={44} borderRadius={12} style={{ marginRight: 8, marginBottom: 8 }} />
+                      <Skeleton key={i} width={80} height={44} borderRadius={12} style={{ marginEnd: 8, marginBottom: 8 }} />
                     ))}
                   </View>
                 ) : slotLoadError ? (
@@ -3524,7 +3541,7 @@ export default function BookScreen() {
                       onPress={() => loadSlots()}
                       style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>{bf("retry")}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : slots.length === 0 ? (
@@ -3537,7 +3554,7 @@ export default function BookScreen() {
                       onPress={() => setStep("date")}
                       style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Try Another Date</Text>
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>{bf("tryAnotherDate")}</Text>
                     </TouchableOpacity>
                     {provider?.id && (
                       <TouchableOpacity
@@ -3565,9 +3582,9 @@ export default function BookScreen() {
                         }}
                       >
                         {waitlistJoining ? (
-                          <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                          <ActivityIndicator size="small" color={Colors.primary} style={{ marginEnd: 8 }} />
                         ) : (
-                          <Ionicons name="hourglass-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                          <Ionicons name="hourglass-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
                         )}
                         <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
                           {user ? (waitlistJoining ? t("booking.joiningWaitlist") : t("booking.joinWaitlist")) : t("booking.signInToJoinWaitlist")}
@@ -3585,7 +3602,7 @@ export default function BookScreen() {
                       onPress={() => setStep("date")}
                       style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Try Another Date</Text>
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>{bf("tryAnotherDate")}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -3672,11 +3689,11 @@ export default function BookScreen() {
                                   <View style={{ flexDirection: "row", gap: 14, marginBottom: 10 }}>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                                       <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#4ade80" }} />
-                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>Available</Text>
+                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>{bf("available")}</Text>
                                     </View>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                                       <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: "#fee2e2", borderWidth: 1.5, borderColor: "#fca5a5" }} />
-                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>Unavailable</Text>
+                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>{bf("unavailable")}</Text>
                                     </View>
                                   </View>
                                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -3719,14 +3736,14 @@ export default function BookScreen() {
                                           elevation: isSelected ? 3 : 0,
                                         }}
                                         accessibilityRole="button"
-                                        accessibilityLabel={isUnavailable ? `${timeStr} — unavailable` : `Select time ${timeStr}`}
+                                        accessibilityLabel={isUnavailable ? bf("timeUnavailableA11y", { time: timeStr }) : bf("selectTimeA11y", { time: timeStr })}
                                         accessibilityState={{ selected: isSelected, disabled: isUnavailable }}
                                       >
                                         <Text style={{ fontWeight: "700", fontSize: 14, color: isSelected ? "#fff" : isUnavailable ? "#ef4444" : "#15803d" }}>
                                           {timeStr}
                                         </Text>
                                         <Text style={{ fontSize: 9, fontWeight: "700", color: isSelected ? "rgba(255,255,255,0.8)" : isUnavailable ? "#fca5a5" : "#16a34a", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.3 }}>
-                                          {isUnavailable ? "Taken" : "Open"}
+                                          {isUnavailable ? bf("slotTaken") : bf("slotOpen")}
                                         </Text>
                                       </TouchableOpacity>
                                     );
@@ -3783,8 +3800,13 @@ export default function BookScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{label}</Text>
                           <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                            {addon.duration_minutes ? `+${addon.duration_minutes} min • ` : ""}
-                            {currency} {price.toFixed(2)}
+                            {addon.duration_minutes
+                              ? bf("addonDurationPrice", {
+                                  minutes: addon.duration_minutes,
+                                  currency,
+                                  price: price.toFixed(2),
+                                })
+                              : `${currency} ${price.toFixed(2)}`}
                           </Text>
                         </View>
                         {isSelected && <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />}
@@ -3827,9 +3849,9 @@ export default function BookScreen() {
                       if (canGoCalPrev) setCalendarMonth(new Date(calendarYear, calendarMonthIdx - 1, 1));
                     }}
                     style={{ padding: 8, opacity: canGoCalPrev ? 1 : 0.35 }}
-                    accessibilityLabel="Previous month"
+                    accessibilityLabel={bf("previousMonthA11y")}
                   >
-                    <Ionicons name="chevron-back" size={22} color="#111827" />
+                    <DirectionalIcon name="chevron-back" size={22} color="#111827" />
                   </TouchableOpacity>
                   <Text style={{ fontSize: 17, fontWeight: "700", color: "#111827" }}>
                     {CAL_MONTHS[calendarMonthIdx]} {calendarYear}
@@ -3840,9 +3862,9 @@ export default function BookScreen() {
                       if (canGoCalNext) setCalendarMonth(new Date(calendarYear, calendarMonthIdx + 1, 1));
                     }}
                     style={{ padding: 8, opacity: canGoCalNext ? 1 : 0.35 }}
-                    accessibilityLabel="Next month"
+                    accessibilityLabel={bf("nextMonthA11y")}
                   >
-                    <Ionicons name="chevron-forward" size={22} color="#111827" />
+                    <DirectionalIcon name="chevron-forward" size={22} color="#111827" />
                   </TouchableOpacity>
                 </View>
                 <View style={{ flexDirection: "row", marginBottom: 6 }}>
@@ -3876,7 +3898,7 @@ export default function BookScreen() {
                             }}
                             accessibilityRole="button"
                             accessibilityState={{ selected: sel, disabled: outOfRange }}
-                            accessibilityLabel={cell.toLocaleDateString("en-US", {
+                            accessibilityLabel={cell.toLocaleDateString(getTenantLocaleTag(), {
                               weekday: "long",
                               month: "long",
                               day: "numeric",
@@ -3944,27 +3966,27 @@ export default function BookScreen() {
                   activePackage && loading && selectedServices.length === 0
                     ? t("booking.loadingPackage", "Loading package…")
                     : activePackage
-                      ? `Book ${activePackage.name}`
-                      : "Next"
+                      ? bf("bookPackage", { name: activePackage.name })
+                      : bf("next")
                 }
                 accessibilityState={{ disabled: selectedServices.length === 0 }}
               >
                 {activePackage && loading && selectedServices.length === 0 ? (
                   <>
-                    <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+                    <ActivityIndicator color="#fff" style={{ marginEnd: 10 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                       {t("booking.loadingPackage", "Loading package…")}
                     </Text>
                   </>
                 ) : activePackage ? (
                   <>
-                    <Ionicons name="gift-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Book {activePackage.name}</Text>
+                    <Ionicons name="gift-outline" size={18} color="#fff" style={{ marginEnd: 8 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("bookPackage", { name: activePackage.name })}</Text>
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
-                    <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("next")}</Text>
+                    <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
                   </>
                 )}
               </TouchableOpacity>
@@ -3990,11 +4012,11 @@ export default function BookScreen() {
                       alignItems: "center", flexDirection: "row", justifyContent: "center",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Next"
+                    accessibilityLabel={bf("next")}
                     accessibilityState={{ disabled: !venueValid }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
-                    <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("next")}</Text>
+                    <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
                   </TouchableOpacity>
                 );
               })()}
@@ -4014,11 +4036,11 @@ export default function BookScreen() {
                   alignItems: "center", flexDirection: "row", justifyContent: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Next"
+                accessibilityLabel={bf("next")}
                 accessibilityState={{ disabled: !selectedStaff }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
-                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("next")}</Text>
+                <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
               </TouchableOpacity>
             </View>
           )}
@@ -4036,11 +4058,11 @@ export default function BookScreen() {
                   alignItems: "center", flexDirection: "row", justifyContent: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Next"
+                accessibilityLabel={bf("next")}
                 accessibilityState={{ disabled: !selectedDay }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
-                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("next")}</Text>
+                <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
               </TouchableOpacity>
             </View>
           )}
@@ -4059,7 +4081,7 @@ export default function BookScreen() {
 accessibilityLabel={t("booking.nextAddExtras")}
                 >
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{t("booking.nextAddExtras")}</Text>
-                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
               </TouchableOpacity>
             </View>
           )}
@@ -4082,12 +4104,12 @@ accessibilityLabel={t("booking.nextAddExtras")}
               >
                 {creatingHold ? (
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Reserving...</Text>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", borderTopColor: "#fff", marginEnd: 8 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("reserving")}</Text>
                   </View>
                 ) : (
                   <>
-                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" style={{ marginEnd: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                       {user ? t("booking.continueToPayment") : t("booking.signInToContinue")}
                     </Text>
@@ -4127,7 +4149,7 @@ accessibilityLabel={t("booking.nextAddExtras")}
         onUseCurrentLocation={() => {
           if (coords) {
             setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude });
-            setAtHomeAddress((a) => ({ ...a, line1: a.line1 || "Current location", city: a.city || "" }));
+            setAtHomeAddress((a) => ({ ...a, line1: a.line1 || bf("currentLocation"), city: a.city || "" }));
           }
           setAddressPickerVisible(false);
         }}

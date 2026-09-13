@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useEffect, useState } from "react";
 import { RefreshCw, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,12 +30,15 @@ interface LoadingTimeoutProps {
  */
 export default function LoadingTimeout({
   timeoutMs = 30000, // Increased from 12s to 30s to give more time before showing timeout
-  loadingMessage = "Loading...",
-  timeoutMessage = "Taking longer than expected",
+  loadingMessage,
+  timeoutMessage,
   onRetry,
   isLoading = true,
   className = "",
 }: LoadingTimeoutProps) {
+  const { t } = useTranslation();
+  const resolvedLoading = loadingMessage ?? t("common.loading");
+  const resolvedTimeout = timeoutMessage ?? t("web.ui.loadingTimeout.takingLonger");
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const pathname = usePathname();
   
@@ -71,9 +76,9 @@ export default function LoadingTimeout({
     return (
       <div className={`flex flex-col items-center justify-center py-12 px-4 ${className}`}>
         <div className="text-center space-y-4 max-w-md">
-          <p className="text-lg font-medium text-gray-900">{timeoutMessage}</p>
+          <p className="text-lg font-medium text-gray-900">{resolvedTimeout}</p>
           <p className="text-sm text-gray-600">
-            The request is taking longer than usual. This might be due to network issues or server load.
+            {t("web.ui.loadingTimeout.takingLongerBody")}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
             {onRetry && (
@@ -86,7 +91,7 @@ export default function LoadingTimeout({
                 variant="default"
               >
                 <RefreshCw className="h-4 w-4" />
-                Retry
+                {t("web.provider.common.retry")}
               </Button>
             )}
             <Button
@@ -98,7 +103,7 @@ export default function LoadingTimeout({
               className="flex items-center gap-2"
             >
               <Home className="h-4 w-4" />
-              {pathname?.startsWith("/provider") ? "Go to Dashboard" : "Go Home"}
+              {pathname?.startsWith("/provider") ? t("web.permissionGate.goToDashboard") : t("web.booking.confirmation.goHome")}
             </Button>
           </div>
         </div>
@@ -108,7 +113,7 @@ export default function LoadingTimeout({
 
   return (
     <div className={`flex flex-col items-center justify-center py-12 ${className}`}>
-      <p className="text-sm text-gray-600">{loadingMessage}</p>
+      <p className="text-sm text-gray-600">{resolvedLoading}</p>
     </div>
   );
 }

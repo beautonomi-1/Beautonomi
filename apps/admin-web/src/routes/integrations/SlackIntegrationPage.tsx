@@ -90,6 +90,7 @@ const EVENT_LABELS: Record<string, string> = {
   "finance.payment.failed": "Finance: payment failed",
   "finance.refund.high_value": "Finance: high-value refund",
   "finance.unrecognized_payments": "Finance: unrecognized payments",
+  "finance.fx.stale": "Finance: FX reference rates stale or incomplete",
   "subscription.churned": "Subscriptions: churned",
 };
 

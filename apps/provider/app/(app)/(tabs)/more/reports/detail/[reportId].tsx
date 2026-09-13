@@ -66,34 +66,35 @@ import {
 } from "@/lib/reportDateRanges";
 import { shareReportAsCsv } from "@/lib/reportExportCsv";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
+import { useTranslation } from "@beautonomi/i18n";
 
-const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "Last Month", value: "last_month" },
-  { label: "3 Months", value: "3months" },
+const DATE_RANGE_KEYS: { labelKey: string; value: ReportDateRangeKey }[] = [
+  { labelKey: "rangeToday", value: "today" },
+  { labelKey: "rangeThisWeek", value: "week" },
+  { labelKey: "rangeThisMonth", value: "month" },
+  { labelKey: "rangeLastMonth", value: "last_month" },
+  { labelKey: "range3Months", value: "3months" },
 ];
 
 /** Occupancy API 400s for windows >31 days — only offer sub-31-day presets for that report. */
-const OCCUPANCY_DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "Last Month", value: "last_month" },
+const OCCUPANCY_DATE_RANGE_KEYS: { labelKey: string; value: ReportDateRangeKey }[] = [
+  { labelKey: "rangeToday", value: "today" },
+  { labelKey: "rangeThisWeek", value: "week" },
+  { labelKey: "rangeThisMonth", value: "month" },
+  { labelKey: "rangeLastMonth", value: "last_month" },
 ];
 
-const PERIOD_MQY = [
-  { label: "Month", value: "month" },
-  { label: "Quarter", value: "quarter" },
-  { label: "Year", value: "year" },
+const PERIOD_MQY_KEYS = [
+  { labelKey: "periodMonth", value: "month" },
+  { labelKey: "periodQuarter", value: "quarter" },
+  { labelKey: "periodYear", value: "year" },
 ];
 
-const PERIOD_DMWY = [
-  { label: "Day", value: "day" },
-  { label: "Week", value: "week" },
-  { label: "Month", value: "month" },
-  { label: "Year", value: "year" },
+const PERIOD_DMWY_KEYS = [
+  { labelKey: "periodDay", value: "day" },
+  { labelKey: "periodWeek", value: "week" },
+  { labelKey: "periodMonth", value: "month" },
+  { labelKey: "periodYear", value: "year" },
 ];
 
 function buildReportUrl(
@@ -132,6 +133,8 @@ function buildReportUrl(
 }
 
 export default function ReportDetailScreen() {
+  const { t } = useTranslation();
+  const rd = (key: string) => t(`provider.mobile.screens.reportDetail.${key}`) as string;
   const router = useRouter();
   const { reportId: rawId } = useLocalSearchParams<{ reportId: string | string[] }>();
   const reportId = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -181,17 +184,17 @@ export default function ReportDetailScreen() {
   const handleShare = useCallback(async () => {
     if (data == null || !reportId) return;
     try {
-      await shareReportAsCsv(String(reportId), def?.title ?? "Report", data);
+      await shareReportAsCsv(String(reportId), def?.title ?? rd("reportFallback"), data);
     } catch {
-      Alert.alert("Export failed", "We couldn't share this report. Please try again.");
+      Alert.alert(rd("exportFailedTitle"), rd("exportFailedBody"));
     }
-  }, [data, def?.title, reportId]);
+  }, [data, def?.title, reportId, t]);
 
   if (!reportId || !def) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Report" showBack />
-        <ErrorState message="Unknown report." onRetry={() => router.back()} retryLabel="Back" />
+        <ScreenHeader title={rd("reportFallback")} showBack />
+        <ErrorState message={rd("unknownReport")} onRetry={() => router.back()} retryLabel={rd("back")} />
       </ScreenContainer>
     );
   }
@@ -209,7 +212,7 @@ export default function ReportDetailScreen() {
               void handleShare();
             }}
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
-            accessibilityLabel="Export and share report as CSV"
+            accessibilityLabel={rd("exportA11y")}
           >
             <Ionicons name="share-outline" size={18} color="#374151" />
           </TouchableOpacity>
@@ -221,16 +224,16 @@ export default function ReportDetailScreen() {
       {def.query === "fromTo" && (
         <View style={twStyle("mb-2")}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
-            {(reportId === "occupancy" ? OCCUPANCY_DATE_RANGES : DATE_RANGES).map((r) => (
+            {(reportId === "occupancy" ? OCCUPANCY_DATE_RANGE_KEYS : DATE_RANGE_KEYS).map((r) => (
               <TouchableOpacity
                 key={r.value}
-                style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8 }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setDateRange(r.value);
                 }}
               >
-                <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+                <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{rd(r.labelKey)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -240,21 +243,21 @@ export default function ReportDetailScreen() {
 
       {def.query === "periodMQY" && (
         <View style={twStyle("mb-4")}>
-          <FilterChipGroup options={PERIOD_MQY} selected={periodMQY} onSelect={setPeriodMQY} />
+          <FilterChipGroup options={PERIOD_MQY_KEYS.map((r) => ({ label: rd(r.labelKey), value: r.value }))} selected={periodMQY} onSelect={setPeriodMQY} />
         </View>
       )}
 
       {def.query === "periodDMWY" && (
         <View style={twStyle("mb-4")}>
-          <FilterChipGroup options={PERIOD_DMWY} selected={periodDMWY} onSelect={setPeriodDMWY} />
+          <FilterChipGroup options={PERIOD_DMWY_KEYS.map((r) => ({ label: rd(r.labelKey), value: r.value }))} selected={periodDMWY} onSelect={setPeriodDMWY} />
         </View>
       )}
 
       {def.query === "singleDate" && (
         <View style={twStyle("mb-4 flex-row flex-wrap items-center gap-2")}>
-          <Text style={twStyle("text-sm text-gray-600")}>Date</Text>
+          <Text style={twStyle("text-sm text-gray-600")}>{rd("dateLabel")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {DATE_RANGES.map((r) => (
+            {DATE_RANGE_KEYS.map((r) => (
               <TouchableOpacity
                 key={r.value}
                 onPress={() => {
@@ -262,9 +265,9 @@ export default function ReportDetailScreen() {
                   const d = getReportDateRange(r.value, { timezone: provider?.timezone });
                   setEodDate(d.to);
                 }}
-                style={[twStyle("mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")]}
+                style={[twStyle("me-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")]}
               >
-                <Text style={twStyle("text-xs text-gray-700")}>{r.label}</Text>
+                <Text style={twStyle("text-xs text-gray-700")}>{rd(r.labelKey)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -277,7 +280,7 @@ export default function ReportDetailScreen() {
           error={error}
           errorCode={errorCode}
           onRetry={refresh}
-          permissionMessage="Ask your business owner to grant view reports permission for sales and analytics reports."
+          permissionMessage={rd("permissionMessage")}
         />
       ) : null}
 

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Switch, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -10,6 +11,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /** Matches GET/PATCH `/api/provider/settings/sales/upselling` (`successResponse` body). */
 interface UpsellingSettings {
@@ -18,6 +20,12 @@ interface UpsellingSettings {
 }
 
 export default function UpsellingScreen() {
+  const { t } = useTranslation();
+  const us = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.upselling.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { data: settings, loading, refresh } = useApi<UpsellingSettings>("/api/provider/settings/sales/upselling");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
@@ -36,7 +44,7 @@ export default function UpsellingScreen() {
       upselling_enabled: enabled,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(us("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -47,21 +55,21 @@ export default function UpsellingScreen() {
   if (loading && !settings) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Upselling" showBack />
-        <LoadingState message="Loading settings..." />
+        <ScreenHeader title={us("title")} showBack />
+        <LoadingState message={us("loading")} />
       </ScreenContainer>
     );
   }
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Upselling" showBack subtitle="Increase average order value" />
+      <ScreenHeader title={us("title")} showBack subtitle={us("subtitle")} />
 
       {settings?.isUsingPlatformDefault && (
         <View style={twStyle("mb-4 flex-row rounded-xl border border-amber-100 bg-amber-50 p-3")}>
           <Ionicons name="information-circle" size={16} color="#f59e0b" style={{ marginTop: 1 }} />
-          <Text style={twStyle("ml-2 flex-1 text-xs leading-4 text-amber-700")}>
-            Using platform defaults for upselling. Save to set your own preference on this device.
+          <Text style={twStyle("ms-2 flex-1 text-xs leading-4 text-amber-700")}>
+            {us("platformDefaults")}
           </Text>
         </View>
       )}
@@ -72,10 +80,10 @@ export default function UpsellingScreen() {
             <View style={twStyle("h-11 w-11 items-center justify-center rounded-xl bg-amber-50")}>
               <Ionicons name="trending-up" size={22} color="#f59e0b" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>Enable Upselling</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>{us("enableTitle")}</Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Suggest additional services and products to clients (subject to platform rules)
+                {us("enableHint")}
               </Text>
             </View>
           </View>
@@ -93,7 +101,7 @@ export default function UpsellingScreen() {
 
       {enabled && (
         <>
-          <SectionHeader title="Manage" />
+          <SectionHeader title={us("manage")} />
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
             <TouchableOpacity
               style={twStyle("flex-row items-center justify-between px-4 py-3.5 border-b border-gray-50")}
@@ -103,12 +111,12 @@ export default function UpsellingScreen() {
                 <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
                   <Ionicons name="list-outline" size={16} color="#6b7280" />
                 </View>
-                <View style={twStyle("ml-3")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>Manage Addons</Text>
-                  <Text style={twStyle("text-[11px] text-gray-500")}>Create and edit service addons</Text>
+                <View style={twStyle("ms-3")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{us("manageAddons")}</Text>
+                  <Text style={twStyle("text-[11px] text-gray-500")}>{us("manageAddonsHint")}</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
             <TouchableOpacity
               style={twStyle("flex-row items-center justify-between px-4 py-3.5")}
@@ -118,34 +126,34 @@ export default function UpsellingScreen() {
                 <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
                   <Ionicons name="cube-outline" size={16} color="#6b7280" />
                 </View>
-                <View style={twStyle("ml-3")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>Manage Products</Text>
-                  <Text style={twStyle("text-[11px] text-gray-500")}>Products available for upselling</Text>
+                <View style={twStyle("ms-3")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{us("manageProducts")}</Text>
+                  <Text style={twStyle("text-[11px] text-gray-500")}>{us("manageProductsHint")}</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
           </View>
 
           <View style={twStyle("mb-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4")}>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>Upselling Tips</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>{us("tipsTitle")}</Text>
             <View>
               <View style={[twStyle("flex-row items-start"), { marginBottom: 8 }]}>
                 <Ionicons name="checkmark-circle" size={14} color="#6366f1" style={{ marginTop: 1 }} />
-                <Text style={twStyle("ml-2 flex-1 text-xs text-indigo-700")}>
-                  Keep addon prices reasonable — 20-30% of the main service price works best
+                <Text style={twStyle("ms-2 flex-1 text-xs text-indigo-700")}>
+                  {us("tipPrices")}
                 </Text>
               </View>
               <View style={[twStyle("flex-row items-start"), { marginBottom: 8 }]}>
                 <Ionicons name="checkmark-circle" size={14} color="#6366f1" style={{ marginTop: 1 }} />
-                <Text style={twStyle("ml-2 flex-1 text-xs text-indigo-700")}>
-                  Mark your best addons as &quot;Recommended&quot; to increase conversion
+                <Text style={twStyle("ms-2 flex-1 text-xs text-indigo-700")}>
+                  {us("tipRecommended")}
                 </Text>
               </View>
               <View style={twStyle("flex-row items-start")}>
                 <Ionicons name="checkmark-circle" size={14} color="#6366f1" style={{ marginTop: 1 }} />
-                <Text style={twStyle("ml-2 flex-1 text-xs text-indigo-700")}>
-                  Suggest products that complement the service (e.g., hair oil after a cut)
+                <Text style={twStyle("ms-2 flex-1 text-xs text-indigo-700")}>
+                  {us("tipComplement")}
                 </Text>
               </View>
             </View>
@@ -153,7 +161,7 @@ export default function UpsellingScreen() {
         </>
       )}
 
-      <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
+      <ActionButton label={us("save")} onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
       <View style={twStyle("h-8")} />
     </ScreenContainer>
   );

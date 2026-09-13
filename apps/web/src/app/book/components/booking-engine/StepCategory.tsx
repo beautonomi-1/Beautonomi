@@ -2,6 +2,9 @@
 
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 import type { ProviderCategoryOption } from "../../types/booking-engine";
 import {
   BOOKING_ACCENT,
@@ -38,14 +41,16 @@ export function StepCategory({
   onSelectCategory,
   onNext,
 }: StepCategoryProps) {
+  const { t } = useTranslation();
+  const { language } = useLocale();
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Choose a Category
+          {t("web.book.engine.chooseCategory")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Select the type of service you&apos;re looking for
+          {t("web.book.engine.chooseCategoryHint")}
         </p>
       </div>
 
@@ -59,7 +64,7 @@ export function StepCategory({
                 type="button"
                 onClick={() => onSelectCategory(cat)}
                 className={cn(
-                  "w-full text-left rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
+                  "w-full text-start rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
                   MIN_TAP,
                   BOOKING_ACTIVE_SCALE
                 )}
@@ -71,7 +76,7 @@ export function StepCategory({
               >
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                    {cat.name}
+                    {translatePublicCategory(t, cat.name, cat.name, { language })}
                   </p>
                   {cat.description && (
                     <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
@@ -100,7 +105,7 @@ export function StepCategory({
             boxShadow: BOOKING_SHADOW_CARD,
           }}
         >
-          Continue
+          {t("common.continue")}
         </button>
       </div>
     </div>

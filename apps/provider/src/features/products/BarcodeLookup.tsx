@@ -10,6 +10,7 @@ import {
   type BarcodeLookupApiPayload,
 } from "./resolveBarcodeForWalkInSale";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Props = {
   visible: boolean;
@@ -19,6 +20,8 @@ type Props = {
 /** Catalogue-only: scan or type a code, then open the product editor (not sell). */
 export function BarcodeLookupModal({ visible, onClose }: Props) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const bl = (key: string) => t(`provider.mobile.components.barcodeLookup.${key}`) as string;
   const [scanOpen, setScanOpen] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [lookupBusy, setLookupBusy] = useState(false);
@@ -37,13 +40,13 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
         );
         if (res.error) {
           setLookupError(
-            mapApiErrorCodeToMessage(res.error.code, res.error.message ?? "Lookup failed"),
+            mapApiErrorCodeToMessage(res.error.code, res.error.message ?? bl("lookupFailed")),
           );
           return;
         }
         const productId = res.data?.product?.id;
         if (!productId) {
-          setLookupError("No product found for this barcode or SKU");
+          setLookupError(bl("notFound"));
           return;
         }
         setManualCode("");
@@ -54,7 +57,7 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
         setLookupBusy(false);
       }
     },
-    [onClose, router],
+    [onClose, router, t],
   );
 
   return (
@@ -63,16 +66,16 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
         <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", padding: 20 }}>
           <View style={{ borderRadius: 16, backgroundColor: "#fff", padding: 20 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
-              Find product to edit
+              {bl("title")}
             </Text>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 16 }}>
-              Scan or enter a barcode / SKU to open the product editor.
+              {bl("subtitle")}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <TextInput
                 value={manualCode}
                 onChangeText={setManualCode}
-                placeholder="Barcode / SKU"
+                placeholder={bl("codePlaceholder")}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
@@ -99,7 +102,7 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
                   opacity: lookupBusy ? 0.6 : 1,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Look up product"
+                accessibilityLabel={bl("lookupA11y")}
               >
                 <Ionicons name="search" size={20} color="#fff" />
               </TouchableOpacity>
@@ -115,7 +118,7 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
                   paddingVertical: 12,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Scan barcode with camera"
+                accessibilityLabel={bl("scanA11y")}
               >
                 <Ionicons name="barcode-outline" size={22} color="#6d28d9" />
               </TouchableOpacity>
@@ -128,7 +131,7 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
               style={{ marginTop: 8, alignItems: "center", paddingVertical: 10 }}
               accessibilityRole="button"
             >
-              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[600] }}>Cancel</Text>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[600] }}>{bl("cancel")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -137,7 +140,7 @@ export function BarcodeLookupModal({ visible, onClose }: Props) {
       <BarcodeScannerModal
         visible={scanOpen}
         onClose={() => setScanOpen(false)}
-        title="Scan product barcode"
+        title={bl("scanTitle")}
         busy={lookupBusy}
         errorMessage={lookupError}
         onScanned={(code) => {

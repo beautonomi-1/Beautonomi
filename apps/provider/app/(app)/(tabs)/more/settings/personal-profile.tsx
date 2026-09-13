@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -36,6 +37,12 @@ type MeProfile = {
 };
 
 export default function PersonalProfileScreen() {
+  const { t } = useTranslation();
+  const pp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.personalProfile.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const handleBack = useSafetyStackBack();
   const { data, loading, error, refresh } = useApi<MeProfile>("/api/me/profile");
@@ -56,17 +63,17 @@ export default function PersonalProfileScreen() {
   const displayName =
     data?.preferred_name ||
     data?.full_name ||
-    "Your profile";
+    pp("displayNameFallback");
 
   const handleSave = useCallback(async () => {
     setSaveError(null);
     const trimmed = about.trim();
     if (trimmed.length === 0) {
-      setSaveError("Add a short bio so customers know who they're booking with.");
+      setSaveError(pp("bioRequired"));
       return;
     }
     if (trimmed.length > HARD_LIMIT) {
-      setSaveError(`Bio is too long. Keep it under ${HARD_LIMIT} characters.`);
+      setSaveError(pp("bioTooLong", { max: HARD_LIMIT }));
       return;
     }
     setSaving(true);
@@ -82,7 +89,7 @@ export default function PersonalProfileScreen() {
             ? res.error.message
             : typeof res.error === "string"
               ? res.error
-              : "Failed to save personal profile";
+              : pp("saveFailed");
         setSaveError(message);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
@@ -92,19 +99,19 @@ export default function PersonalProfileScreen() {
       router.back();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to save personal profile";
+        err instanceof Error ? err.message : pp("saveFailed");
       setSaveError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSaving(false);
     }
-  }, [about, biographyTitle, router]);
+  }, [about, biographyTitle, router, pp]);
 
   if (loading && !data) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Personal Profile" showBack onBack={handleBack} />
-        <LoadingState message="Loading your profile…" />
+        <ScreenHeader title={pp("title")} showBack onBack={handleBack} />
+        <LoadingState message={pp("loading")} />
       </ScreenContainer>
     );
   }
@@ -112,9 +119,9 @@ export default function PersonalProfileScreen() {
   if (error && !data) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Personal Profile" showBack onBack={handleBack} />
+        <ScreenHeader title={pp("title")} showBack onBack={handleBack} />
         <ErrorState
-          message="Couldn't load your profile."
+          message={pp("loadFailed")}
           onRetry={() => {
             void refresh();
           }}
@@ -129,7 +136,7 @@ export default function PersonalProfileScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Personal Profile" subtitle={displayName} showBack onBack={handleBack} />
+      <ScreenHeader title={pp("title")} subtitle={displayName} showBack onBack={handleBack} />
       <KeyboardAvoidingView
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
@@ -137,17 +144,16 @@ export default function PersonalProfileScreen() {
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 14 }}>
-            Add a short bio so customers know who they&apos;re booking with.
-            Keep it warm, personal, and to the point.
+            {pp("intro")}
           </Text>
 
           <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700], marginBottom: 6 }}>
-            Headline (optional)
+            {pp("headlineLabel")}
           </Text>
           <TextInput
             value={biographyTitle}
             onChangeText={setBiographyTitle}
-            placeholder="e.g. Hairstylist & color specialist, 10+ years"
+            placeholder={pp("headlinePlaceholder")}
             maxLength={120}
             style={{
               backgroundColor: Colors.white,
@@ -164,14 +170,14 @@ export default function PersonalProfileScreen() {
           />
 
           <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700], marginBottom: 6 }}>
-            Bio
+            {pp("bioLabel")}
           </Text>
           <TextInput
             value={about}
             onChangeText={(v) => {
               if (v.length <= HARD_LIMIT) setAbout(v);
             }}
-            placeholder="Share a little about your background, your style, and what clients can expect from a session with you."
+            placeholder={pp("bioPlaceholder")}
             multiline
             textAlignVertical="top"
             style={{
@@ -201,11 +207,11 @@ export default function PersonalProfileScreen() {
               }}
             >
               {aboutOver
-                ? `Soft limit ${SOFT_LIMIT}. Customers prefer concise bios.`
-                : `${aboutLen}/${SOFT_LIMIT}`}
+                ? pp("softLimit", { limit: SOFT_LIMIT })
+                : pp("charCount", { count: aboutLen, limit: SOFT_LIMIT })}
             </Text>
             <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
-              Max {HARD_LIMIT}
+              {pp("maxChars", { max: HARD_LIMIT })}
             </Text>
           </View>
 
@@ -237,11 +243,11 @@ export default function PersonalProfileScreen() {
               alignItems: "center",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Save personal profile"
+            accessibilityLabel={pp("saveA11y")}
             accessibilityState={{ disabled: !canSave }}
           >
             <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? pp("saving") : pp("save")}
             </Text>
           </TouchableOpacity>
         </View>

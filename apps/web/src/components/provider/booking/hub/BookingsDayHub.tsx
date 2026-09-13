@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, addDays, isSameDay, startOfDay, parseISO, isValid } from "date-fns";
 import { Clock } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fetcher } from "@/lib/http/fetcher";
 import { openCreateMode } from "@/stores/appointment-sidebar-store";
@@ -17,6 +18,7 @@ import { useBookingsHubStats } from "./useBookingsHubStats";
 import { BookingsOverviewTab } from "./BookingsOverviewTab";
 import { WaitlistQuickBookSheet } from "./WaitlistQuickBookSheet";
 import { BOOKING_BG, MIN_TAP } from "../tokens";
+import { useTranslation } from "@beautonomi/i18n";
 
 type HubTab = "day" | "overview";
 
@@ -49,6 +51,7 @@ interface BookingsDayHubProps {
   onNewGroupBooking?: () => void;
   onBookingsRefresh?: () => void;
   stalePendingCount?: number;
+  openCloseOutQueue?: boolean;
 }
 
 function bookingOnDate(booking: HubScheduleBooking, day: Date): boolean {
@@ -82,11 +85,18 @@ export function BookingsDayHub({
   onNewGroupBooking,
   onBookingsRefresh,
   stalePendingCount = 0,
+  openCloseOutQueue = false,
 }: BookingsDayHubProps) {
-  const [tab, setTab] = useState<HubTab>("day");
+  const { t } = useTranslation();
+  const [tab, setTab] = useState<HubTab>(openCloseOutQueue ? "overview" : "day");
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const [timeBlocks, setTimeBlocks] = useState<TimeBlockItem[]>([]);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [behindBusy, setBehindBusy] = useState(false);
+
+  useEffect(() => {
+    if (openCloseOutQueue) setTab("overview");
+  }, [openCloseOutQueue]);
 
   const { stats: apiStats } = useBookingsHubStats(statsRange, locationId);
   const stats = statsProp ?? (apiStats
@@ -147,18 +157,20 @@ export function BookingsDayHub({
   return (
     <div className={cn("flex flex-col", className)} style={{ backgroundColor: BOOKING_BG }}>
       <div className="flex gap-1 p-1 mx-4 mt-4 rounded-xl bg-white border">
-        {(["day", "overview"] as const).map((t) => (
+        {(["day", "overview"] as const).map((tabId) => (
           <button
-            key={t}
+            key={tabId}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => setTab(tabId)}
             className={cn(
               "flex-1 rounded-lg py-2.5 text-sm font-semibold capitalize touch-manipulation",
               MIN_TAP,
-              tab === t ? "bg-gray-900 text-white" : "text-gray-600",
+              tab === tabId ? "bg-gray-900 text-white" : "text-gray-600",
             )}
           >
-            {t}
+            {tabId === "day"
+              ? t("web.provider.bookings.dayHub.tabDay")
+              : t("web.provider.bookings.dayHub.tabOverview")}
           </button>
         ))}
       </div>
@@ -203,10 +215,47 @@ export function BookingsDayHub({
             onWaitlistQuickBook={() => setWaitlistOpen(true)}
           />
 
+          {isSameDay(selectedDate, new Date()) ? (
+            <div className="mx-4 mb-3">
+              <button
+                type="button"
+                disabled={behindBusy}
+                className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950 touch-manipulation disabled:opacity-60"
+                onClick={async () => {
+                  const delay = Number(window.prompt(t("web.provider.bookings.dayHub.runningBehindPrompt"), "15"));
+                  if (!Number.isFinite(delay) || delay <= 0) return;
+                  setBehindBusy(true);
+                  try {
+                    const res = await fetcher.post<{ data?: { notified?: number } }>(
+                      "/api/provider/bookings/running-behind",
+                      {
+                        delay_minutes: delay,
+                        location_id: locationId,
+                      },
+                    );
+                    toast.success(
+                      t("web.provider.bookings.dayHub.runningBehindNotify", {
+                        count: res.data?.notified ?? 0,
+                      }),
+                    );
+                  } catch {
+                    toast.error(t("web.provider.bookings.dayHub.runningBehindFailed"));
+                  } finally {
+                    setBehindBusy(false);
+                  }
+                }}
+              >
+                {behindBusy
+                  ? t("web.provider.bookings.dayHub.runningBehindBusy")
+                  : t("web.provider.bookings.dayHub.runningBehindAction")}
+              </button>
+            </div>
+          ) : null}
+
           {(stats?.waitingRoomCount ?? 0) > 0 ? (
             <div className="mx-4 mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 flex items-center gap-2">
               <Clock className="h-4 w-4 shrink-0" />
-              {stats!.waitingRoomCount} in waiting room
+              {t("web.provider.bookings.dayHub.waitingRoom", { count: stats!.waitingRoomCount })}
             </div>
           ) : null}
 
@@ -223,9 +272,11 @@ export function BookingsDayHub({
 
             {dayBlocks.map((block) => (
               <BookingSectionCard key={block.id} padding="sm" className="border-dashed bg-gray-50">
-                <p className="text-xs font-semibold uppercase text-gray-500">Blocked time</p>
+                <p className="text-xs font-semibold uppercase text-gray-500">
+                  {t("web.provider.bookings.dayHub.blockedTime")}
+                </p>
                 <p className="text-sm font-medium text-gray-800 mt-0.5">
-                  {block.name ?? "Unavailable"}
+                  {block.name ?? t("web.provider.bookings.dayHub.unavailable")}
                 </p>
                 {block.start_time ? (
                   <p className="text-xs text-gray-500 mt-1">
@@ -238,9 +289,9 @@ export function BookingsDayHub({
 
             {dayBookings.length === 0 && dayBlocks.length === 0 ? (
               <BookingEmptyState
-                title="No appointments yet"
-                description="Use quick actions above to schedule on this day."
-                actionLabel="New booking"
+                title={t("web.provider.bookings.dayHub.emptyTitle")}
+                description={t("web.provider.bookings.dayHub.emptyDescription")}
+                actionLabel={t("web.provider.bookings.dayHub.newBooking")}
                 onAction={() => {
                   const dateStr = format(selectedDate, "yyyy-MM-dd");
                   openCreateMode({ staffId: "", date: dateStr, startTime: "09:00" });
@@ -274,6 +325,7 @@ export function BookingsDayHub({
           getPrimaryAction={getPrimaryAction}
           onPrimaryAction={onPrimaryAction}
           pendingActionIds={pendingActionIds}
+          openCloseOutQueue={openCloseOutQueue}
         />
       )}
 

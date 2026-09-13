@@ -15,6 +15,11 @@ export interface AppointmentSettings {
   defaultAppointmentStatus: string;
   autoConfirmAppointments: boolean;
   requireConfirmationForBookings: boolean;
+  confirmationSlaHours?: number;
+  unconfirmedExpireHoursBeforeSlot?: number;
+  closeoutGraceMinutesSalon?: number;
+  closeoutGraceMinutesAtHome?: number;
+  lateArrivalGraceMinutes?: number;
   updatedAt: string | null;
 }
 
@@ -178,8 +183,14 @@ export async function getAppointmentSettingsFromDB(
 export async function determineAppointmentStatusFromDB(
   supabaseAdmin: any,
   providerId: string,
-  explicitStatus?: string
+  explicitStatus?: string,
+  options?: { bookingSource?: string | null },
 ): Promise<string> {
+  const bookingSource = options?.bookingSource?.trim().toLowerCase() ?? null;
+  if (bookingSource === "provider" || bookingSource === "walk_in") {
+    return mapToBookingStatusEnum(APPOINTMENT_STATUS.BOOKED);
+  }
+
   // §Provider-audit 2026-04: previously any non-empty `explicitStatus` from
   // the client body unconditionally short-circuited DB settings, so a stray
   // `defaultNewAppointmentStatus: "confirmed"` from the mobile calendar FAB

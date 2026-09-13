@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
@@ -23,6 +25,7 @@ import { ClientSpendBarChart } from "./components/ClientSummaryCharts";
 export default function ClientSummaryReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date(),
@@ -80,7 +83,7 @@ export default function ClientSummaryReport() {
       const exportData = formatReportDataForExport(data as unknown as ReportRow, "client-summary", exportCurrency);
       exportToCSV(exportData, "client-summary-report");
     } else {
-      exportToPDF("client-summary-report", "client-summary-report", "Client Summary Report");
+      exportToPDF("client-summary-report", "client-summary-report", t("web.provider.reports.pages.clients/summary.pdfTitle"));
     }
   };
 
@@ -88,10 +91,10 @@ export default function ClientSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/summary.title") },
         ]}
       >
         <ReportSkeleton />
@@ -103,19 +106,19 @@ export default function ClientSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/summary.title") },
         ]}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Client Summary"
-            subtitle="Understand your client base and retention"
+            title={t("web.provider.reports.pages.clients/summary.title")}
+            subtitle={t("web.provider.reports.pages.clients/summary.subtitleGate")}
           />
           <ReportSubscriptionRequired
-            feature="Client summary"
+            feature={t("web.provider.reports.pages.clients/summary.feature")}
             message={subscriptionGateMessage}
           />
         </div>
@@ -127,15 +130,15 @@ export default function ClientSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/summary.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load client summary data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.clients/summary.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -149,27 +152,27 @@ export default function ClientSummaryReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Client Summary" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.clients/summary.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="client-summary-report">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <PageHeader
-            title="Client Summary"
-            subtitle="Distinct clients, first visits, repeats in range — spend sums booking totals in window"
+            title={t("web.provider.reports.pages.clients/summary.title")}
+            subtitle={t("web.provider.reports.pages.clients/summary.subtitle")}
           />
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => handleExport("csv")} className="min-h-[44px] gap-2 touch-manipulation">
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">CSV</span>
+              <span className="hidden sm:inline">{t("web.provider.common.csv")}</span>
             </Button>
             <Button variant="outline" onClick={() => handleExport("pdf")} className="min-h-[44px] gap-2 touch-manipulation">
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">PDF</span>
+              <span className="hidden sm:inline">{t("web.provider.common.pdf")}</span>
             </Button>
           </div>
         </div>
@@ -180,7 +183,7 @@ export default function ClientSummaryReport() {
           <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
             <div>
-              <p className="font-medium text-sky-900">Facts & definitions</p>
+              <p className="font-medium text-sky-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
               <p className="mt-1">{data.basisNote}</p>
             </div>
           </div>
@@ -189,8 +192,8 @@ export default function ClientSummaryReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Clients (in window)</CardTitle>
-              <p className="text-xs text-gray-500">Distinct customers with an appointment scheduled</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/summary.clientsInWindow")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/summary.distinctWithAppointment")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -204,8 +207,8 @@ export default function ClientSummaryReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">New clients</CardTitle>
-              <p className="text-xs text-gray-500">First-ever booking in scope falls in range</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/summary.newClients")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/summary.firstEverBooking")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -219,8 +222,8 @@ export default function ClientSummaryReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg spend / client</CardTitle>
-              <p className="text-xs text-gray-500">Mean of Σ booking totals in window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/summary.avgSpendPerClient")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/summary.meanOfTotals")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -234,8 +237,8 @@ export default function ClientSummaryReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg bookings / client</CardTitle>
-              <p className="text-xs text-gray-500">In reporting window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/summary.avgBookingsPerClient")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/summary.inReportingWindow")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -255,21 +258,20 @@ export default function ClientSummaryReport() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Repeat className="h-5 w-5 text-indigo-600" />
-                Repeat visits in window
+                {t("web.provider.reports.pages.clients/summary.repeatVisitsInWindow")}
               </CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                {data.returningClients} clients had 2+ appointments scheduled in this range ({data.totalClients} active
-                clients).
+                {t("web.provider.reports.pages.clients/summary.repeatVisitsHint", { returning: data.returningClients, total: data.totalClients })}
               </p>
             </CardHeader>
             <CardContent>
               <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/95 to-fuchsia-50/80 px-5 py-4">
-                <p className="text-sm text-gray-600">Retention rate</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.clients/summary.retentionRate")}</p>
                 <p className="mt-1 text-3xl font-bold tabular-nums text-gray-900">
                   {data.clientRetention.retentionRate.toFixed(1)}%
                 </p>
                 <p className="mt-2 text-xs text-gray-600">
-                  Window: {data.clientRetention.inclusiveDayCount} inclusive days · {data.timezone}
+{t("web.provider.reports.pages.clients/summary.windowDaysTz", { days: data.clientRetention.inclusiveDayCount, tz: data.timezone })}
                 </p>
               </div>
             </CardContent>
@@ -277,8 +279,8 @@ export default function ClientSummaryReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Top spenders (in window)</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Sum of booking.total_amount per customer · top 10.</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.clients/summary.topSpenders")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.clients/summary.topSpendersHint")}</p>
             </CardHeader>
             <CardContent>
               <ClientSpendBarChart rows={spendChartRows} formatMoney={fmt} />
@@ -289,18 +291,18 @@ export default function ClientSummaryReport() {
         {data.topClients && data.topClients.length > 0 ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Client detail</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.clients/summary.clientDetail")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50/80">
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Bookings</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Σ totals</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Rating</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Last visit</th>
+                      <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.reports.pages.clients/summary.client")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.staff/performance.bookings")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/summary.sumTotals")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.staff/performance.rating")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/summary.lastVisit")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -314,9 +316,9 @@ export default function ClientSummaryReport() {
                             <span className="font-medium text-gray-900">{client.clientName}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-800">{client.totalBookings}</td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-gray-900">{fmt(client.totalSpent)}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-800">{client.totalBookings}</td>
+                        <td className="px-4 py-3 text-end font-medium tabular-nums text-gray-900">{fmt(client.totalSpent)}</td>
+                        <td className="px-4 py-3 text-end">
                           {client.averageRating > 0 ? (
                             <span className="inline-flex items-center gap-1 tabular-nums text-gray-800">
                               <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
@@ -326,7 +328,7 @@ export default function ClientSummaryReport() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
+                        <td className="px-4 py-3 text-end text-gray-600">
                           {new Date(client.lastVisit).toLocaleDateString(undefined, {
                             month: "short",
                             day: "numeric",
@@ -343,10 +345,10 @@ export default function ClientSummaryReport() {
         ) : (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Top clients</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.clients/summary.topClients")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="py-8 text-center text-sm text-gray-600">No client data for the selected filters.</p>
+              <p className="py-8 text-center text-sm text-gray-600">{t("web.provider.reports.pages.clients/summary.noClientData")}</p>
             </CardContent>
           </Card>
         )}

@@ -19,28 +19,11 @@ import {
   type YocoDevice,
   type YocoPaymentResult,
 } from "@/hooks/useYoco";
+import { useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-
-// §Yoco-synergy 2026-05: compact relative-time label for the device's
-// `last_used` timestamp so the picker matches the settings list's recency
-// hint without pulling in date-fns just for one string.
-function formatLastUsed(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "recently";
-  const diff = Math.max(0, Date.now() - ms);
-  const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  return `${months}mo ago`;
-}
 
 interface YocoPaymentSheetProps {
   visible: boolean;
@@ -72,6 +55,23 @@ export function YocoPaymentSheet({
   description,
   onPaymentSuccess,
 }: YocoPaymentSheetProps) {
+  const { t } = useTranslation();
+  const yp = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.yocoPaymentSheet.${key}`, opts) as string;
+  const formatLastUsed = (iso: string): string => {
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return yp("lastUsedRecent");
+    const diff = Math.max(0, Date.now() - ms);
+    const mins = Math.round(diff / 60_000);
+    if (mins < 1) return yp("lastUsedJustNow");
+    if (mins < 60) return yp("lastUsedMinutes", { count: mins });
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return yp("lastUsedHours", { count: hours });
+    const days = Math.round(hours / 24);
+    if (days < 30) return yp("lastUsedDays", { count: days });
+    const months = Math.round(days / 30);
+    return yp("lastUsedMonths", { count: months });
+  };
   const router = useRouter();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const { integration: yocoIntegration, loading: integrationLoading, reload: reloadIntegration } = useYocoIntegration();
@@ -126,7 +126,7 @@ export function YocoPaymentSheet({
 
   const handleProcess = useCallback(async () => {
     if (!selectedDevice) {
-      Alert.alert("Select Device", "Please select a Yoco device to process the payment.");
+      Alert.alert(yp("selectDeviceTitle"), yp("selectDeviceBody"));
       return;
     }
 
@@ -158,12 +158,12 @@ export function YocoPaymentSheet({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (result.receipt_url) {
           Alert.alert(
-            "Payment successful",
-            "Would you like to view the receipt?",
+            yp("paymentSuccessful"),
+            yp("viewReceiptPrompt"),
             [
-              { text: "Done", onPress: () => { onPaymentSuccess(result); onClose(); } },
-              { text: "View receipt", onPress: () => {
-                pushInAppBrowser(router, result.receipt_url!, "Receipt");
+              { text: yp("done"), onPress: () => { onPaymentSuccess(result); onClose(); } },
+              { text: yp("viewReceipt"), onPress: () => {
+                pushInAppBrowser(router, result.receipt_url!, yp("receiptTitle"));
                 onPaymentSuccess(result);
                 onClose();
               } },
@@ -176,12 +176,12 @@ export function YocoPaymentSheet({
       } else if (result.status === "pending") {
         // Hook normally polls until success/fail; this is edge case (e.g. no payment id)
         Alert.alert(
-          "Payment Pending",
-          "The payment is being processed. Please check the device.",
+          yp("paymentPendingTitle"),
+          yp("paymentPendingBody"),
         );
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Payment Failed", "The card payment was declined. Please try again.");
+        Alert.alert(yp("paymentFailedTitle"), yp("paymentFailedBody"));
       }
     }
   }, [selectedDevice, amountCents, currency, bookingId, saleId, description, processPayment, onPaymentSuccess, onClose, router]);
@@ -196,59 +196,59 @@ export function YocoPaymentSheet({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Card Payment"
-      subtitle={`Process ${displayAmount} via Yoco`}
+      title={yp("title")}
+      subtitle={yp("subtitle", { amount: displayAmount })}
       snapHeight="half"
     >
       {/* Amount display */}
       <View style={twStyle("mb-6 items-center rounded-2xl bg-gray-50 py-6")}>
-        <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>{yp("amountToCharge")}</Text>
         <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
       </View>
 
       {hostedCheckout?.checkout_url ? (
         <View style={twStyle("mb-6 items-center rounded-2xl border border-blue-100 bg-blue-50 p-4")}>
           <Text style={twStyle("mb-3 text-sm font-semibold text-blue-900")}>
-            Ask the customer to scan this Yoco checkout QR
+            {yp("scanQr")}
           </Text>
           <View style={twStyle("rounded-xl bg-white p-3")}>
             <QRCode value={hostedCheckout.qr_payload || hostedCheckout.checkout_url} size={180} />
           </View>
           <View style={twStyle("mt-3 flex-row")}>
             <TouchableOpacity
-              onPress={() => pushInAppBrowser(router, hostedCheckout.checkout_url!, "Pay with Yoco")}
-              style={[twStyle("rounded-full bg-blue-600 px-4 py-2"), { marginRight: 8 }]}
+              onPress={() => pushInAppBrowser(router, hostedCheckout.checkout_url!, yp("payWithYoco"))}
+              style={[twStyle("rounded-full bg-blue-600 px-4 py-2"), { marginEnd: 8 }]}
             >
-              <Text style={twStyle("text-xs font-semibold text-white")}>Open link</Text>
+              <Text style={twStyle("text-xs font-semibold text-white")}>{yp("openLink")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={async () => {
                 await Clipboard.setStringAsync(hostedCheckout.checkout_url!);
-                Alert.alert("Copied", "Yoco checkout link copied.");
+                Alert.alert(yp("copiedTitle"), yp("copiedBody"));
               }}
               style={twStyle("rounded-full border border-blue-200 bg-white px-4 py-2")}
             >
-              <Text style={twStyle("text-xs font-semibold text-blue-700")}>Copy link</Text>
+              <Text style={twStyle("text-xs font-semibold text-blue-700")}>{yp("copyLink")}</Text>
             </TouchableOpacity>
           </View>
         </View>
       ) : null}
 
       {/* Device selection */}
-      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Select Device</Text>
+      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>{yp("selectDevice")}</Text>
       {loading ? (
         <View style={twStyle("items-center py-8")}>
           <ActivityIndicator size="small" color="#6366f1" />
-          <Text style={twStyle("mt-2 text-xs text-gray-500")}>Loading…</Text>
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>{yp("loading")}</Text>
         </View>
       ) : !isConnected ? (
         // §Yoco-synergy 2026-05: deep-link to the settings device list so the
         // provider can connect Yoco in one tap instead of hunting through More.
         <View style={twStyle("items-center rounded-2xl border border-amber-200 bg-amber-50 py-8 px-4")}>
           <Ionicons name="link-outline" size={32} color="#d97706" />
-          <Text style={twStyle("mt-2 text-sm font-medium text-amber-800")}>Yoco not connected</Text>
+          <Text style={twStyle("mt-2 text-sm font-medium text-amber-800")}>{yp("notConnected")}</Text>
           <Text style={twStyle("mt-1 text-xs text-center text-amber-700")}>
-            Connect Yoco to charge cards from this booking.
+            {yp("notConnectedHint")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -257,21 +257,21 @@ export function YocoPaymentSheet({
             }}
             style={twStyle("mt-3 rounded-xl bg-amber-600 px-4 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Open Yoco settings"
+            accessibilityLabel={yp("openYocoSettingsA11y")}
           >
-            <Text style={twStyle("text-xs font-semibold text-white")}>Connect Yoco</Text>
+            <Text style={twStyle("text-xs font-semibold text-white")}>{yp("connectYoco")}</Text>
           </TouchableOpacity>
         </View>
       ) : activeDevices.length === 0 ? (
         <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 py-8 px-4")}>
           <Ionicons name="card-outline" size={32} color="#9ca3af" />
           <Text style={twStyle("mt-2 text-sm text-gray-500")}>
-            {devices.length > 0 ? "No active Yoco devices" : "No Yoco devices configured"}
+            {devices.length > 0 ? yp("noActiveDevices") : yp("noDevicesConfigured")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400 text-center")}>
             {devices.length > 0
-              ? "Activate a device in settings to take card payments."
-              : "Add a device from settings to take card payments."}
+              ? yp("activateDeviceHint")
+              : yp("addDeviceHint")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -280,10 +280,10 @@ export function YocoPaymentSheet({
             }}
             style={twStyle("mt-3 rounded-xl bg-indigo-600 px-4 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Manage Yoco devices"
+            accessibilityLabel={yp("manageDevicesA11y")}
           >
             <Text style={twStyle("text-xs font-semibold text-white")}>
-              {devices.length > 0 ? "Manage devices" : "Add a device"}
+              {devices.length > 0 ? yp("manageDevices") : yp("addDevice")}
             </Text>
           </TouchableOpacity>
           {devicesError ? (
@@ -308,7 +308,7 @@ export function YocoPaymentSheet({
                 return (
                   <View style={twStyle("mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2")}>
                     <Text style={twStyle("text-xs text-emerald-800")}>
-                      Mobile booking · using your portable Yoco terminal.
+                      {yp("mobileUsingPortable")}
                     </Text>
                   </View>
                 );
@@ -316,7 +316,7 @@ export function YocoPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-amber-800")}>
-                    Mobile booking · no portable device set up. Set a device to &quot;All Locations&quot; in Yoco settings so it follows you on-site.
+                    {yp("mobileNoPortable")}
                   </Text>
                 </View>
               );
@@ -325,7 +325,7 @@ export function YocoPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-amber-800")}>
-                    No active device is assigned to this booking&apos;s location. The selected device will still process the payment.
+                    {yp("noLocationDevice")}
                   </Text>
                 </View>
               );
@@ -334,7 +334,7 @@ export function YocoPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-indigo-800")}>
-                    Using your portable device — no terminal is assigned to this salon yet.
+                    {yp("usingPortableFallback")}
                   </Text>
                 </View>
               );
@@ -346,8 +346,8 @@ export function YocoPaymentSheet({
             const matchesBookingLocation = !!bookingLocationId && device.location_id === bookingLocationId;
             const isPortable = device.location_id == null;
             const lastUsedLabel = device.last_used_at
-              ? `Last used ${formatLastUsed(device.last_used_at)}`
-              : "Never used yet";
+              ? yp("lastUsed", { when: formatLastUsed(device.last_used_at) })
+              : yp("neverUsed");
             return (
               <TouchableOpacity
                 key={device.id}
@@ -359,10 +359,10 @@ export function YocoPaymentSheet({
                 accessibilityState={{ selected: isSelected }}
                 accessibilityLabel={`${device.name} ${
                   device.device_type === "virtual_checkout"
-                    ? "Hosted Checkout"
+                    ? yp("typeHostedCheckout")
                     : device.device_type === "web_pos"
-                      ? "Web POS"
-                      : "Card Machine"
+                      ? yp("typeWebPos")
+                      : yp("typeCardMachine")
                 }`}
               >
                 <View
@@ -382,7 +382,7 @@ export function YocoPaymentSheet({
                     color={isSelected ? "#6366f1" : "#6b7280"}
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row flex-wrap items-center")}>
                     <Text
                       style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}
@@ -390,36 +390,36 @@ export function YocoPaymentSheet({
                       {device.name}
                     </Text>
                     {matchesBookingLocation ? (
-                      <View style={twStyle("ml-2 rounded-full bg-emerald-100 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-emerald-100 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-emerald-700")}>
-                          this location
+                          {yp("thisLocation")}
                         </Text>
                       </View>
                     ) : null}
                     {isPortable ? (
-                      <View style={twStyle("ml-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-indigo-700")}>
-                          portable
+                          {yp("portable")}
                         </Text>
                       </View>
                     ) : null}
                   </View>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {device.device_type === "virtual_checkout"
-                      ? "Hosted Checkout (QR / link)"
+                      ? yp("typeHostedCheckoutQr")
                       : device.device_type === "web_pos"
-                        ? "Web POS"
-                        : "Card Machine"}
+                        ? yp("typeWebPos")
+                        : yp("typeCardMachine")}
                     {device.location_name
                       ? ` · ${device.location_name}`
                       : isPortable
-                        ? " · All locations"
+                        ? ` · ${yp("allLocations")}`
                         : ""}
                   </Text>
                   <Text style={twStyle("text-[11px] text-gray-400")}>
                     {lastUsedLabel}
                     {typeof device.total_transactions === "number" && device.total_transactions > 0
-                      ? ` · ${device.total_transactions} txn${device.total_transactions === 1 ? "" : "s"}`
+                      ? yp("txnCount", { count: device.total_transactions })
                       : ""}
                   </Text>
                 </View>
@@ -434,7 +434,7 @@ export function YocoPaymentSheet({
 
       {/* Process button */}
       <ActionButton
-        label={processing ? "Processing…" : `Charge ${displayAmount}`}
+        label={processing ? yp("processing") : yp("chargeAmount", { amount: displayAmount })}
         onPress={handleProcess}
         loading={processing}
         disabled={!selectedDevice || processing || activeDevices.length === 0 || !isConnected}

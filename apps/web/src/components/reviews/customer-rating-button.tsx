@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import RateCustomerModal from "./rate-customer-modal";
 import { fetcher } from "@/lib/http/fetcher";
 import { Star } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 interface ProviderClientRatingRow {
   id: string;
   booking_id: string;
@@ -33,6 +34,7 @@ export default function CustomerRatingButton({
   bookingStatus,
   onRatingSubmitted,
 }: CustomerRatingButtonProps) {
+  const { t } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [existingRating, setExistingRating] = useState<ProviderClientRatingRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,7 +78,7 @@ export default function CustomerRatingButton({
   if (isLoading) {
     return (
       <Button variant="outline" disabled>
-        Loading...
+        {t("common.loading")}
       </Button>
     );
   }
@@ -91,14 +93,14 @@ export default function CustomerRatingButton({
             {existingRating.rating}/5
           </span>
         </div>
-        <span className="text-xs text-gray-500">Rated</span>
+        <span className="text-xs text-gray-500">{t("web.reviews.customerRatingButton.rated")}</span>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setIsModalOpen(true)}
-          className="ml-auto text-xs"
+          className="ms-auto text-xs"
         >
-          Edit
+          {t("common.edit")}
         </Button>
       </div>
     );
@@ -113,7 +115,7 @@ export default function CustomerRatingButton({
         className="flex items-center gap-2"
       >
         <Star className="h-4 w-4" />
-        Rate Customer
+        {t("web.reviews.customerRatingButton.rateCustomer")}
       </Button>
       <RateCustomerModal
         open={isModalOpen}

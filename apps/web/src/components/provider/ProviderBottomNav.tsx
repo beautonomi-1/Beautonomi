@@ -13,8 +13,18 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
+import { useTranslation } from "@beautonomi/i18n";
+
+const PRIMARY_TABS = [
+  { id: "home", nameKey: "web.layout.bottomNav.home", icon: LayoutDashboard, link: "/provider/dashboard" },
+  { id: "calendar", nameKey: "web.provider.topbar.mobileTitles.calendar", icon: Calendar, link: "/provider/calendar" },
+  { id: "clients", nameKey: "web.provider.topbar.mobileTitles.clients", icon: Users, link: "/provider/clients" },
+  { id: "chats", nameKey: "web.layout.bottomNav.chats", icon: MessageSquare, link: "/provider/messaging" },
+  { id: "more", nameKey: "web.provider.topbar.mobileTitles.more", icon: Grid3x3, link: "/provider/more" },
+] as const;
 
 export function ProviderBottomNav() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const { branding } = usePlatformSettings();
   const primaryColor = branding?.primary_color || "#FF0077";
@@ -22,44 +32,15 @@ export function ProviderBottomNav() {
   const lastScrollY = useRef(0);
   const isScrollingUp = useRef(false);
 
-  // Primary navigation tabs — unified brand accent (matches mobile app)
-  const primaryTabs = [
-    { 
-      name: "Home", 
-      icon: LayoutDashboard, 
-      link: "/provider/dashboard",
-    },
-    { 
-      name: "Calendar", 
-      icon: Calendar, 
-      link: "/provider/calendar",
-    },
-    { 
-      name: "Clients", 
-      icon: Users, 
-      link: "/provider/clients",
-    },
-    { 
-      name: "Chats", 
-      icon: MessageSquare, 
-      link: "/provider/messaging",
-    },
-    { 
-      name: "More", 
-      icon: Grid3x3, 
-      link: "/provider/more",
-    },
-  ];
-
   // Determine active tab based on current pathname
   const getActiveTab = () => {
-    if (pathname === "/provider/dashboard") return "Home";
+    if (pathname === "/provider/dashboard") return "home";
     if (pathname?.startsWith("/provider/calendar") || 
         pathname?.startsWith("/provider/appointments") ||
-        pathname?.startsWith("/provider/bookings")) return "Calendar";
-    if (pathname?.startsWith("/provider/clients")) return "Clients";
+        pathname?.startsWith("/provider/bookings")) return "calendar";
+    if (pathname?.startsWith("/provider/clients")) return "clients";
     if (pathname?.startsWith("/provider/messaging") || 
-        pathname?.startsWith("/provider/chats")) return "Chats";
+        pathname?.startsWith("/provider/chats")) return "chats";
     if (pathname?.startsWith("/provider/more") ||
         pathname?.startsWith("/provider/settings") ||
         pathname?.startsWith("/provider/reports") ||
@@ -87,7 +68,7 @@ export function ProviderBottomNav() {
         pathname?.startsWith("/provider/notifications") ||
         pathname?.startsWith("/provider/recurring-appointments") ||
         pathname?.startsWith("/provider/express-booking") ||
-        pathname?.startsWith("/provider/front-desk")) return "More";
+        pathname?.startsWith("/provider/front-desk")) return "more";
     return "";
   };
 
@@ -141,13 +122,13 @@ export function ProviderBottomNav() {
         style={{ boxShadow: `0 -4px 16px color-mix(in srgb, ${primaryColor} 14%, transparent)` }}
       >
         <div className="flex items-center justify-around px-0.5 sm:px-1 max-w-lg mx-auto">
-          {primaryTabs.map((tab) => {
-            const isActive = activeTab === tab.name;
+          {PRIMARY_TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
             const Icon = tab.icon;
             
             return (
               <Link
-                key={tab.name}
+                key={tab.id}
                 href={tab.link}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
@@ -177,7 +158,7 @@ export function ProviderBottomNav() {
                     isActive ? "font-semibold" : "font-medium"
                   )}
                 >
-                  {tab.name}
+                  {t(tab.nameKey)}
                 </span>
                 {isActive && (
                   <div className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-primary" />
@@ -206,7 +187,7 @@ export function ProviderBottomNav() {
             "w-11 h-11 sm:w-12 sm:h-12",
             isVisible ? "bottom-20 sm:bottom-24" : "bottom-6 sm:bottom-8"
           )}
-          aria-label="Add appointment"
+          aria-label={t("web.provider.calendarMobile.addAppointment")}
         >
           <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>

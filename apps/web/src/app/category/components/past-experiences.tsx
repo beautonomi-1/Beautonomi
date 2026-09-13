@@ -228,7 +228,7 @@ export default function PastExperiences() {
       
 
   return (
-     <div className="max-w-[2340px] mx-auto pl-12">
+     <div className="max-w-[2340px] mx-auto ps-12">
            <h2 className='text-[32px] font-normal mb-4'>Past Experiences</h2>
      <div className="flex justify-start flex-wrap 2xl:gap-4 xl:gap-7">
        {cardsData.map((card, index) => (

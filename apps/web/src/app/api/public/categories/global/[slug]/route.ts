@@ -15,12 +15,23 @@ export async function GET(
     
     const supabase = await getSupabaseServer();
 
-    const { data: category, error } = await supabase
+    let { data: category, error } = await supabase
       .from("global_service_categories")
       .select("*")
       .eq("slug", slug)
       .eq("is_active", true)
       .single();
+
+    if (error && /name_i18n/i.test(error.message ?? "")) {
+      const retry = await supabase
+        .from("global_service_categories")
+        .select("id, slug, name, description, icon, display_order, is_featured, is_active")
+        .eq("slug", slug)
+        .eq("is_active", true)
+        .single();
+      category = retry.data;
+      error = retry.error;
+    }
 
     if (error || !category) {
       return NextResponse.json(

@@ -41,6 +41,8 @@ Source: `apps/web/.env.example`, `apps/web/next.config.mjs`, and API routes.
 | PAYSTACK_SECRET_KEY | Payments, refunds, webhooks | Required for Paystack API |
 | PAYSTACK_WEBHOOK_SECRET | Optional | Override webhook secret (else from platform_secrets) |
 | CRON_SECRET | /api/cron/* | Authorize cron triggers |
+| FRANKFURTER_API_BASE | FX ingest (optional) | Override Frankfurter v2 host (default `https://api.frankfurter.dev`, no key) |
+| FX_EXTENDED_API_BASE | FX ingest fallback | ER-API open access USD latest when Frankfurter misses a required pair |
 | STRICT_TENANT_HOST_RESOLUTION | Tenant resolution | Set `true` for global-ready production to fail closed on unknown hosts (no implicit ZA fallback) |
 | SUPPORTED_MARKET_COUNTRIES | Market availability | Comma-separated launched markets (ISO2), e.g. `ZA,UK,US` |
 | RESTRICTED_COUNTRIES | Compliance | Optional ISO2 deny list for legal/restricted access handling |

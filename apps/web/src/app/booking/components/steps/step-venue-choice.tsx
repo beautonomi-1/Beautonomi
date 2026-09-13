@@ -14,6 +14,7 @@ import { formatPublicLocationSubtitle, fetchProviderContactDisclosure } from "@/
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useSavedAddresses } from "@/hooks/useSavedAddresses";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
@@ -58,9 +59,17 @@ export default function StepVenueChoice({
   onNext: _onNext,
   providerSlug,
 }: StepVenueChoiceProps) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user } = useAuth();
+  const formatAddressLabel = (label?: string | null) => {
+    if (label === "Work") return t("web.booking.stepVenueChoice.labelWork");
+    if (label === "Office") return t("web.booking.stepVenueChoice.labelOffice");
+    if (label === "Other") return t("web.booking.stepVenueChoice.labelOther");
+    if (!label || label === "Home") return t("web.booking.stepVenueChoice.labelHome");
+    return label;
+  };
   const {
     addresses: savedAddresses,
     saveAddress,
@@ -172,7 +181,7 @@ export default function StepVenueChoice({
       }
     } catch (error) {
       console.error("Error loading provider locations:", error);
-      toast.error("Failed to load locations");
+      toast.error(t("web.booking.stepVenueChoice.loadLocationsFailed"));
     } finally {
       setIsLoadingLocations(false);
     }
@@ -193,7 +202,7 @@ export default function StepVenueChoice({
 
     const finalLabel = saveAddressLabel === "Other" ? customLabel : saveAddressLabel;
     if (!finalLabel || finalLabel.trim() === "") {
-      toast.error("Please enter a label for this address");
+      toast.error(t("web.booking.stepVenueChoice.enterAddressLabel"));
       return;
     }
 
@@ -202,7 +211,7 @@ export default function StepVenueChoice({
     const city = (struct?.city || "").trim();
     const country = (struct?.country || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME).trim();
     if (!address_line1 || !city || !country) {
-      toast.error("Address, city and country are required to save.");
+      toast.error(t("web.booking.stepVenueChoice.addressCityCountryRequired"));
       return;
     }
 
@@ -221,14 +230,14 @@ export default function StepVenueChoice({
       };
 
       await saveAddress(addressData);
-      toast.success(`Address saved as "${finalLabel}"`);
+      toast.success(t("web.booking.stepVenueChoice.addressSavedAs", { label: finalLabel }));
       setShowSaveAddressDialog(false);
       setAddressToSave(null);
       setSaveAddressLabel("Home");
       setCustomLabel("");
       await loadAddresses(); // Refresh saved addresses
     } catch (error: any) {
-      toast.error(error.message || "Failed to save address");
+      toast.error(error.message || t("web.booking.stepVenueChoice.saveAddressFailed"));
     }
   };
 
@@ -344,14 +353,14 @@ export default function StepVenueChoice({
         setShowAddressInput(false);
       } else {
         setZoneError(
-          response.data.reason || "We don't service this area yet! Would you like to book at our Salon instead?"
+          response.data.reason || t("web.booking.stepVenueChoice.zoneNotServiced")
         );
       }
     } catch (error) {
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to validate address"
+          : t("web.booking.stepVenueChoice.validateAddressFailed")
       );
     } finally {
       setIsValidating(false);
@@ -433,14 +442,14 @@ export default function StepVenueChoice({
         setShowAddressInput(false);
       } else {
         setZoneError(
-          response.data.reason || "We don't service this area yet! Would you like to book at our Salon instead?"
+          response.data.reason || t("web.booking.stepVenueChoice.zoneNotServiced")
         );
       }
     } catch (error) {
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to validate address"
+          : t("web.booking.stepVenueChoice.validateAddressFailed")
       );
     } finally {
       setIsValidating(false);
@@ -451,7 +460,7 @@ export default function StepVenueChoice({
     setZoneError(null);
     const result = await prefillFromCurrentLocation();
     if (!result) {
-      toast.error("Unable to get your location. Please enable location permissions or enter your address manually.");
+      toast.error(t("web.booking.stepVenueChoice.unableToGetLocation"));
       return;
     }
     const { address, latitude, longitude } = result;
@@ -467,9 +476,9 @@ export default function StepVenueChoice({
         longitude,
         place_name: [address.line1, address.city, address.country].filter(Boolean).join(", "),
       });
-      toast.success("Current location selected");
+      toast.success(t("web.booking.stepVenueChoice.currentLocationSelected"));
     } else {
-      toast.error("Could not resolve street address. Enter it manually.");
+      toast.error(t("web.booking.stepVenueChoice.couldNotResolveStreet"));
     }
   };
 
@@ -477,10 +486,10 @@ export default function StepVenueChoice({
     <div className="px-4 py-6 space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-          How would you like your service?
+          {t("web.booking.stepVenueChoice.title")}
         </h2>
         <p className="text-gray-600">
-          Choose between visiting our salon or having us come to you
+          {t("web.booking.stepVenueChoice.subtitle")}
         </p>
       </div>
 
@@ -494,16 +503,16 @@ export default function StepVenueChoice({
               ? "border-primary bg-pink-50"
               : "border-gray-200 bg-white hover:border-gray-300"
           }`}
-          aria-label="Book at salon"
+          aria-label={t("web.booking.stepVenueChoice.bookAtSalonAria")}
         >
           <Building2
             className={`w-8 h-8 mx-auto mb-3 ${
               bookingState.mode === "salon" ? "text-primary" : "text-gray-400"
             }`}
           />
-          <h3 className="font-semibold text-gray-900 mb-1">At the Salon</h3>
+          <h3 className="font-semibold text-gray-900 mb-1">{t("web.booking.stepVenueChoice.atTheSalon")}</h3>
           <p className="text-sm text-gray-600">
-            Visit our location for your service
+            {t("web.booking.stepVenueChoice.atTheSalonHint")}
           </p>
         </motion.button>
 
@@ -518,20 +527,20 @@ export default function StepVenueChoice({
               ? "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed"
               : "border-gray-200 bg-white hover:border-gray-300"
           }`}
-          aria-label="Book at home or office"
+          aria-label={t("web.booking.stepVenueChoice.bookAtHomeAria")}
         >
           <Home
             className={`w-8 h-8 mx-auto mb-3 ${
               bookingState.mode === "mobile" ? "text-primary" : offersMobileServices === false ? "text-gray-300" : "text-gray-400"
             }`}
           />
-          <h3 className="font-semibold text-gray-900 mb-1">At My Home/Office</h3>
+          <h3 className="font-semibold text-gray-900 mb-1">{t("web.booking.stepVenueChoice.atMyHomeOffice")}</h3>
           <p className="text-sm text-gray-600">
             {offersMobileServices === false 
-              ? "Not available for this provider"
+              ? t("web.booking.stepVenueChoice.mobileNotAvailable")
               : isLoadingProviderInfo
-              ? "Checking availability..."
-              : "We'll come to your location"}
+              ? t("web.booking.stepVenueChoice.checkingAvailability")
+              : t("web.booking.stepVenueChoice.wellComeToYou")}
           </p>
         </motion.button>
       </div>
@@ -545,12 +554,12 @@ export default function StepVenueChoice({
         >
           {isLoadingLocations ? (
             <div className="flex items-center justify-center py-8">
-              <div className="text-gray-500">Loading locations...</div>
+              <div className="text-gray-500">{t("web.booking.stepVenueChoice.loadingLocations")}</div>
             </div>
           ) : providerLocations.length > 1 ? (
             <div>
               <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                Select Location
+                {t("web.booking.stepVenueChoice.selectLocation")}
               </Label>
               <div className="space-y-2">
                 {providerLocations.map((location) => (
@@ -558,7 +567,7 @@ export default function StepVenueChoice({
                     key={location.id}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => updateBookingState({ selectedLocationId: location.id })}
-                    className={`w-full p-4 text-left border-2 rounded-lg transition-all touch-target ${
+                    className={`w-full p-4 text-start border-2 rounded-lg transition-all touch-target ${
                       bookingState.selectedLocationId === location.id
                         ? "border-primary bg-pink-50"
                         : "border-gray-200 bg-white hover:border-gray-300"
@@ -571,7 +580,7 @@ export default function StepVenueChoice({
                           <p className="font-medium text-gray-900">{location.name}</p>
                           {location.is_primary && (
                             <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">
-                              Primary
+                              {t("web.booking.stepVenueChoice.primary")}
                             </span>
                           )}
                         </div>
@@ -615,16 +624,16 @@ export default function StepVenueChoice({
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <button
                 onClick={() => setShowZonesInfo(!showZonesInfo)}
-                className="w-full flex items-center justify-between text-left"
+                className="w-full flex items-center justify-between text-start"
               >
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-blue-600" />
                   <span className="text-sm font-medium text-blue-900">
-                    Service Areas ({serviceZones.length})
+                    {t("web.booking.stepVenueChoice.serviceAreas", { count: serviceZones.length })}
                   </span>
                 </div>
                 <span className="text-xs text-blue-600">
-                  {showZonesInfo ? "Hide" : "Show"}
+                  {showZonesInfo ? t("web.booking.stepVenueChoice.hide") : t("web.booking.stepVenueChoice.show")}
                 </span>
               </button>
               {showZonesInfo && (
@@ -635,7 +644,10 @@ export default function StepVenueChoice({
                       <div className="text-blue-600">{zone.coverage}</div>
                       {zone.travelFee > 0 && (
                         <div className="text-blue-600">
-                          Travel fee: {zone.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || tenantCurrency}
+                          {t("web.booking.stepVenueChoice.travelFeeAmount", {
+                            amount: zone.travelFee.toFixed(2),
+                            currency: bookingState.selectedServices[0]?.currency || tenantCurrency,
+                          })}
                         </div>
                       )}
                     </div>
@@ -652,7 +664,9 @@ export default function StepVenueChoice({
                 <p className="text-sm font-medium text-amber-900">{zoneError}</p>
                 {serviceZones.length > 0 && (
                   <p className="text-xs text-amber-700 mt-1">
-                    This provider services: {serviceZones.map(z => z.name).join(", ")}
+                    {t("web.booking.stepVenueChoice.providerServices", {
+                      zones: serviceZones.map(z => z.name).join(", "),
+                    })}
                   </p>
                 )}
                 <Button
@@ -661,7 +675,7 @@ export default function StepVenueChoice({
                   className="mt-2"
                   onClick={() => handleModeSelect("salon")}
                 >
-                  Book at Salon Instead
+                  {t("web.booking.stepVenueChoice.bookAtSalonInstead")}
                 </Button>
               </div>
             </div>
@@ -670,7 +684,7 @@ export default function StepVenueChoice({
           {user && isLoadingSavedAddresses && (
             <div className="flex items-center gap-2 py-3 text-sm text-gray-600">
               <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" aria-hidden />
-              <span>Loading saved addresses…</span>
+              <span>{t("web.booking.stepVenueChoice.loadingSavedAddresses")}</span>
             </div>
           )}
 
@@ -684,7 +698,7 @@ export default function StepVenueChoice({
                 className="touch-target shrink-0"
                 onClick={() => void loadAddresses()}
               >
-                Try again
+                {t("web.booking.stepVenueChoice.tryAgain")}
               </Button>
             </div>
           )}
@@ -692,7 +706,7 @@ export default function StepVenueChoice({
           {!showAddressInput && savedAddresses.length > 0 && (
             <div>
               <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                Select Saved Address
+                {t("web.booking.stepVenueChoice.selectSavedAddress")}
               </Label>
               <div className="space-y-2">
                 {savedAddresses.map((address) => {
@@ -704,14 +718,14 @@ export default function StepVenueChoice({
                       key={address.id}
                       onClick={() => handleAddressSelect(address)}
                       disabled={isValidating}
-                      className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-pink-50 transition-all touch-target disabled:opacity-50"
+                      className="w-full p-4 text-start border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-pink-50 transition-all touch-target disabled:opacity-50"
                     >
                       <div className="flex items-start gap-3">
                         {getAddressIcon(address.label || "Home")}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-medium text-gray-900">
-                              {address.label || "Home"}
+                              {formatAddressLabel(address.label)}
                             </p>
                             {address.is_default && (
                               <Star className="w-4 h-4 text-primary fill-primary" />
@@ -741,8 +755,8 @@ export default function StepVenueChoice({
                 disabled={isGettingCurrentLocation || isValidating}
               >
                 {savedAddresses.length > 0
-                  ? "Enter New Address"
-                  : "Enter Address"}
+                  ? t("web.booking.stepVenueChoice.enterNewAddress")
+                  : t("web.booking.stepVenueChoice.enterAddress")}
               </Button>
               <Button
                 variant="outline"
@@ -753,12 +767,12 @@ export default function StepVenueChoice({
                 {isGettingCurrentLocation ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Locating...
+                    {t("web.booking.stepVenueChoice.locating")}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
                     <LocateFixed className="w-4 h-4" />
-                    Use Current Location
+                    {t("web.booking.stepVenueChoice.useCurrentLocation")}
                   </span>
                 )}
               </Button>
@@ -773,10 +787,10 @@ export default function StepVenueChoice({
             >
               <div>
                 <Label htmlFor="address" className="text-sm font-medium text-gray-700">
-                  Enter Your Address
+                  {t("web.booking.stepVenueChoice.enterYourAddress")}
                 </Label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Start typing your address and select from suggestions. We'll calculate travel fees based on your location.
+                  {t("web.booking.stepVenueChoice.addressHint")}
                 </p>
                 <AddressAutocomplete
                   value={addressInput}
@@ -786,7 +800,7 @@ export default function StepVenueChoice({
                     }
                   }}
                   onInputChange={(value) => setAddressInput(value)}
-                  placeholder="Enter your full address"
+                  placeholder={t("web.booking.stepVenueChoice.addressPlaceholder")}
                   required
                   disabled={isValidating}
                 />
@@ -801,7 +815,7 @@ export default function StepVenueChoice({
                   className="flex-1 touch-target"
                   disabled={isValidating}
                 >
-                  Cancel
+                  {t("web.booking.stepVenueChoice.cancel")}
                 </Button>
                 <Button
                   variant="outline"
@@ -812,12 +826,12 @@ export default function StepVenueChoice({
                   {isGettingCurrentLocation ? (
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Locating...
+                      {t("web.booking.stepVenueChoice.locating")}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-2">
                       <LocateFixed className="w-4 h-4" />
-                      Use Current Location
+                      {t("web.booking.stepVenueChoice.useCurrentLocation")}
                     </span>
                   )}
                 </Button>
@@ -831,19 +845,27 @@ export default function StepVenueChoice({
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-green-900">Address Confirmed</p>
+                    <p className="text-sm font-medium text-green-900">{t("web.booking.stepVenueChoice.addressConfirmed")}</p>
                     <p className="text-sm text-green-700 mt-1">
                       {bookingState.address.fullAddress}
                     </p>
                     {bookingState.address.travelFee !== undefined && (
                       <div className="mt-2 space-y-1">
                         <p className="text-sm font-medium text-green-900">
-                          Travel Fee: {bookingState.address.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || tenantCurrency}
+                          {t("web.booking.stepVenueChoice.travelFeeLabel", {
+                            amount: bookingState.address.travelFee.toFixed(2),
+                            currency: bookingState.selectedServices[0]?.currency || tenantCurrency,
+                          })}
                         </p>
                         {bookingState.address.distanceKm && (
                           <p className="text-xs text-green-700">
-                            Distance: {bookingState.address.distanceKm.toFixed(1)}km
-                            {bookingState.address.travelTimeMinutes && ` • Est. travel time: ${bookingState.address.travelTimeMinutes} min`}
+                            {t("web.booking.stepVenueChoice.distanceKm", {
+                              km: bookingState.address.distanceKm.toFixed(1),
+                            })}
+                            {bookingState.address.travelTimeMinutes &&
+                              t("web.booking.stepVenueChoice.estTravelTime", {
+                                minutes: bookingState.address.travelTimeMinutes,
+                              })}
                           </p>
                         )}
                         {bookingState.address.breakdown && bookingState.address.breakdown.length > 0 && (
@@ -864,15 +886,15 @@ export default function StepVenueChoice({
 
               {/* House Call Specific Details */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                <p className="text-sm font-medium text-blue-900">Additional Location Details</p>
+                <p className="text-sm font-medium text-blue-900">{t("web.booking.stepVenueChoice.additionalLocationDetails")}</p>
                 <p className="text-xs text-blue-700">
-                  Help your provider find you easily by providing these details
+                  {t("web.booking.stepVenueChoice.additionalLocationHint")}
                 </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="apartmentUnit" className="text-xs text-blue-800">
-                      Apartment/Unit Number
+                      {t("web.booking.stepVenueChoice.apartmentUnit")}
                     </Label>
                     <Input
                       id="apartmentUnit"
@@ -885,14 +907,14 @@ export default function StepVenueChoice({
                           },
                         });
                       }}
-                      placeholder="e.g., Apt 5B, Unit 12"
+                      placeholder={t("web.booking.stepVenueChoice.apartmentPlaceholder")}
                       className="mt-1 text-sm"
                     />
                   </div>
 
                   <div>
                     <Label htmlFor="buildingName" className="text-xs text-blue-800">
-                      Building/Complex Name
+                      {t("web.booking.stepVenueChoice.buildingName")}
                     </Label>
                     <Input
                       id="buildingName"
@@ -905,14 +927,14 @@ export default function StepVenueChoice({
                           },
                         });
                       }}
-                      placeholder="e.g., Sunset Towers"
+                      placeholder={t("web.booking.stepVenueChoice.buildingPlaceholder")}
                       className="mt-1 text-sm"
                     />
                   </div>
 
                   <div>
                     <Label htmlFor="floorNumber" className="text-xs text-blue-800">
-                      Floor Number
+                      {t("web.booking.stepVenueChoice.floorNumber")}
                     </Label>
                     <Input
                       id="floorNumber"
@@ -925,14 +947,14 @@ export default function StepVenueChoice({
                           },
                         });
                       }}
-                      placeholder="e.g., 3rd Floor"
+                      placeholder={t("web.booking.stepVenueChoice.floorPlaceholder")}
                       className="mt-1 text-sm"
                     />
                   </div>
 
                   <div>
                     <Label htmlFor="parkingInstructions" className="text-xs text-blue-800">
-                      Parking Instructions
+                      {t("web.booking.stepVenueChoice.parkingInstructions")}
                     </Label>
                     <Input
                       id="parkingInstructions"
@@ -945,7 +967,7 @@ export default function StepVenueChoice({
                           },
                         });
                       }}
-                      placeholder="e.g., Free street parking, Visitor parking lot"
+                      placeholder={t("web.booking.stepVenueChoice.parkingPlaceholder")}
                       className="mt-1 text-sm"
                     />
                   </div>
@@ -953,7 +975,7 @@ export default function StepVenueChoice({
 
                 <div>
                   <Label htmlFor="accessCodes" className="text-xs text-blue-800 mb-2 block">
-                    Access Codes (Optional)
+                    {t("web.booking.stepVenueChoice.accessCodes")}
                   </Label>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -971,10 +993,10 @@ export default function StepVenueChoice({
                             },
                           });
                         }}
-                        placeholder="Gate code"
+                        placeholder={t("web.booking.stepVenueChoice.gateCodePlaceholder")}
                         className="text-sm"
                       />
-                      <Label htmlFor="gateCode" className="text-xs text-blue-600 mt-0.5 block">Gate</Label>
+                      <Label htmlFor="gateCode" className="text-xs text-blue-600 mt-0.5 block">{t("web.booking.stepVenueChoice.gate")}</Label>
                     </div>
                     <div>
                       <Input
@@ -991,10 +1013,10 @@ export default function StepVenueChoice({
                             },
                           });
                         }}
-                        placeholder="Buzzer code"
+                        placeholder={t("web.booking.stepVenueChoice.buzzerCodePlaceholder")}
                         className="text-sm"
                       />
-                      <Label htmlFor="buzzerCode" className="text-xs text-blue-600 mt-0.5 block">Buzzer</Label>
+                      <Label htmlFor="buzzerCode" className="text-xs text-blue-600 mt-0.5 block">{t("web.booking.stepVenueChoice.buzzer")}</Label>
                     </div>
                     <div>
                       <Input
@@ -1011,17 +1033,17 @@ export default function StepVenueChoice({
                             },
                           });
                         }}
-                        placeholder="Door code"
+                        placeholder={t("web.booking.stepVenueChoice.doorCodePlaceholder")}
                         className="text-sm"
                       />
-                      <Label htmlFor="doorCode" className="text-xs text-blue-600 mt-0.5 block">Door</Label>
+                      <Label htmlFor="doorCode" className="text-xs text-blue-600 mt-0.5 block">{t("web.booking.stepVenueChoice.door")}</Label>
                     </div>
                   </div>
                 </div>
 
                 <div>
                   <Label htmlFor="locationLandmarks" className="text-xs text-blue-800">
-                    Landmarks/Directions
+                    {t("web.booking.stepVenueChoice.landmarks")}
                   </Label>
                   <Input
                     id="locationLandmarks"
@@ -1034,7 +1056,7 @@ export default function StepVenueChoice({
                         },
                       });
                     }}
-                    placeholder="e.g., Next to the blue mailbox, red door"
+                    placeholder={t("web.booking.stepVenueChoice.landmarksPlaceholder")}
                     className="mt-1 text-sm"
                   />
                 </div>
@@ -1046,38 +1068,38 @@ export default function StepVenueChoice({
           <Dialog open={showSaveAddressDialog} onOpenChange={setShowSaveAddressDialog}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Save This Address?</DialogTitle>
+                <DialogTitle>{t("web.booking.stepVenueChoice.saveThisAddress")}</DialogTitle>
                 <DialogDescription>
-                  Save this address for faster checkout next time
+                  {t("web.booking.stepVenueChoice.saveAddressDescription")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
                   <Label htmlFor="address-label" className="text-sm font-medium text-gray-700 mb-2 block">
-                    Label (e.g., Home, Work)
+                    {t("web.booking.stepVenueChoice.labelExample")}
                   </Label>
                   <Select value={saveAddressLabel} onValueChange={setSaveAddressLabel}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Home">Home</SelectItem>
-                      <SelectItem value="Work">Work</SelectItem>
-                      <SelectItem value="Office">Office</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Home">{t("web.booking.stepVenueChoice.labelHome")}</SelectItem>
+                      <SelectItem value="Work">{t("web.booking.stepVenueChoice.labelWork")}</SelectItem>
+                      <SelectItem value="Office">{t("web.booking.stepVenueChoice.labelOffice")}</SelectItem>
+                      <SelectItem value="Other">{t("web.booking.stepVenueChoice.labelOther")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {saveAddressLabel === "Other" && (
                   <div>
                     <Label htmlFor="custom-label" className="text-sm font-medium text-gray-700 mb-2 block">
-                      Custom Label
+                      {t("web.booking.stepVenueChoice.customLabel")}
                     </Label>
                     <Input
                       id="custom-label"
                       value={customLabel}
                       onChange={(e) => setCustomLabel(e.target.value)}
-                      placeholder="Enter label (e.g., Mom's House, Gym)"
+                      placeholder={t("web.booking.stepVenueChoice.customLabelPlaceholder")}
                     />
                   </div>
                 )}
@@ -1097,13 +1119,13 @@ export default function StepVenueChoice({
                     setCustomLabel("");
                   }}
                 >
-                  Skip
+                  {t("web.booking.stepVenueChoice.skip")}
                 </Button>
                 <Button
                   onClick={handleSaveAddress}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
-                  Save Address
+                  {t("web.booking.stepVenueChoice.saveAddress")}
                 </Button>
               </div>
             </DialogContent>

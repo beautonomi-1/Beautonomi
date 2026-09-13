@@ -14,6 +14,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 
+import { useTranslation } from "@beautonomi/i18n";
 type MatchCandidate = {
   entity_type: string;
   entity_id: string;
@@ -46,6 +47,7 @@ const TERMINAL_INBOX_URL = "/provider/settings/sales/paystack-terminal";
  * to render the pre-selected suggestion + one-tap allocate.
  */
 export function TerminalPaymentAlertListener() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const router = useRouter();
   const [payment, setPayment] = useState<TerminalPayment | null>(null);
@@ -126,14 +128,14 @@ export function TerminalPaymentAlertListener() {
         entity_type: topCandidate.entity_type,
         entity_id: topCandidate.entity_id,
       });
-      toast.success("Payment allocated");
+      toast.success(t("web.provider.terminalPaymentAlert.allocated"));
       setPayment(null);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Could not allocate payment.");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.terminalPaymentAlert.allocateFailed"));
     } finally {
       setAllocating(false);
     }
-  }, [payment, topCandidate]);
+  }, [payment, topCandidate, t]);
 
   if (!payment) return null;
 
@@ -141,7 +143,7 @@ export function TerminalPaymentAlertListener() {
     <Dialog open onOpenChange={(open) => !open && setPayment(null)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Payment received</DialogTitle>
+          <DialogTitle>{t("web.provider.terminalPaymentAlert.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
@@ -149,11 +151,11 @@ export function TerminalPaymentAlertListener() {
               {payment.currency} {Number(payment.paid_amount).toFixed(2)}
             </p>
             {payment.payer_name && (
-              <p className="mt-1 text-sm text-emerald-800">From {payment.payer_name}</p>
+              <p className="mt-1 text-sm text-emerald-800">{t("web.provider.terminalPaymentAlert.from", { name: payment.payer_name })}</p>
             )}
             {payment.customer_reference && (
               <p className="mt-1 text-xs text-emerald-700">
-                Reference: <span className="font-mono">{payment.customer_reference}</span>
+                {t("web.provider.terminalPaymentAlert.reference")} <span className="font-mono">{payment.customer_reference}</span>
               </p>
             )}
           </div>
@@ -161,27 +163,27 @@ export function TerminalPaymentAlertListener() {
           {topCandidate ? (
             <div className="rounded-lg border border-gray-200 p-3 text-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Suggested allocation
+                {t("web.provider.terminalPaymentAlert.suggestedAllocation")}
               </p>
               <p className="mt-1 font-medium text-gray-900">
-                {topCandidate.label || `${topCandidate.entity_type} ${topCandidate.entity_id.slice(0, 8)}`}
+                {topCandidate.label || t("web.provider.terminalPaymentAlert.entityFallback", { type: topCandidate.entity_type, id: topCandidate.entity_id.slice(0, 8) })}
               </p>
               {topCandidate.expected_amount > 0 && (
                 <p className="text-xs text-gray-500">
-                  Expected {payment.currency} {Number(topCandidate.expected_amount).toFixed(2)}
+{t("web.provider.terminalPaymentAlert.expected", { currency: payment.currency, amount: Number(topCandidate.expected_amount).toFixed(2) })}
                 </p>
               )}
             </div>
           ) : (
             <p className="text-sm text-gray-600">
-              No automatic match found. Open the inbox to assign this payment.
+              {t("web.provider.terminalPaymentAlert.noMatch")}
             </p>
           )}
 
           <div className="flex flex-wrap gap-2">
             {topCandidate && (
               <Button type="button" className="flex-1" disabled={allocating} onClick={handleAllocate}>
-                {allocating ? "Allocating…" : "Confirm & allocate"}
+                {allocating ? t("web.provider.terminalPaymentAlert.allocating") : t("web.provider.terminalPaymentAlert.confirmAllocate")}
               </Button>
             )}
             <Button
@@ -193,7 +195,7 @@ export function TerminalPaymentAlertListener() {
                 router.push(`${TERMINAL_INBOX_URL}?payment=${payment.id}`);
               }}
             >
-              {topCandidate ? "Assign to something else" : "Open inbox"}
+              {topCandidate ? t("web.provider.terminalPaymentAlert.assignElsewhere") : t("web.provider.terminalPaymentAlert.openInbox")}
             </Button>
             <Button
               type="button"
@@ -201,7 +203,7 @@ export function TerminalPaymentAlertListener() {
               className="w-full"
               onClick={() => setPayment(null)}
             >
-              Save for later
+              {t("web.provider.terminalPaymentAlert.saveForLater")}
             </Button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError, notFoundResponse 
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { sanitizeCategoryNameI18n } from "@/lib/categories/sanitize-category-name-i18n";
 
 const updateGlobalCategorySchema = z.object({
   name: z.string().min(1).optional(),
@@ -13,6 +14,7 @@ const updateGlobalCategorySchema = z.object({
   display_order: z.number().int().min(0).optional(),
   is_featured: z.boolean().optional(),
   is_active: z.boolean().optional(),
+  name_i18n: z.record(z.string(), z.string()).optional(),
 });
 
 /**
@@ -89,15 +91,29 @@ export async function PUT(
       updateData.is_featured = validated.is_featured;
     if (validated.is_active !== undefined)
       updateData.is_active = validated.is_active;
+    if (validated.name_i18n !== undefined)
+      updateData.name_i18n = sanitizeCategoryNameI18n(validated.name_i18n);
 
     updateData.updated_at = new Date().toISOString();
 
-    const { data: category, error } = await supabase
+    let { data: category, error } = await supabase
       .from("global_service_categories")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
+
+    if (error && /name_i18n/i.test(error.message ?? "") && "name_i18n" in updateData) {
+      const { name_i18n: _omit, ...withoutI18n } = updateData;
+      const retry = await supabase
+        .from("global_service_categories")
+        .update(withoutI18n)
+        .eq("id", id)
+        .select()
+        .single();
+      category = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       throw error;

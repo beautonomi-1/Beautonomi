@@ -45,6 +45,7 @@ import {
   formatPaycloudCollectLabel,
   PAYCLOUD_SETUP_LABEL,
 } from "@/lib/payments/paycloud-collect-cta";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ServiceItem {
   id: string;
@@ -89,12 +90,12 @@ interface CheckoutDialogProps {
 
 type PaymentMethod = "card" | "cash" | "mobile" | "gift_card" | "split";
 
-const PAYMENT_METHODS: { id: PaymentMethod; name: string; description: string; icon: React.ElementType }[] = [
-  { id: "cash", name: "Cash", description: "Pay with cash", icon: Banknote },
-  { id: "card", name: "Card machine", description: "Charge your Beautonomi card machine", icon: CreditCard },
-  { id: "mobile", name: "EFT / Bank Transfer", description: "Instant EFT or bank transfer", icon: Smartphone },
-  { id: "gift_card", name: "Gift Card", description: "Redeem gift card balance", icon: Gift },
-  { id: "split", name: "Split Payment", description: "Split between multiple methods", icon: Wallet },
+const PAYMENT_METHODS: { id: PaymentMethod; nameKey: string; descriptionKey: string; icon: React.ElementType }[] = [
+  { id: "cash", nameKey: "methodCash", descriptionKey: "methodCashDesc", icon: Banknote },
+  { id: "card", nameKey: "methodCard", descriptionKey: "methodCardDesc", icon: CreditCard },
+  { id: "mobile", nameKey: "methodMobile", descriptionKey: "methodMobileDesc", icon: Smartphone },
+  { id: "gift_card", nameKey: "methodGiftCard", descriptionKey: "methodGiftCardDesc", icon: Gift },
+  { id: "split", nameKey: "methodSplit", descriptionKey: "methodSplitDesc", icon: Wallet },
 ];
 
 const TIP_PERCENTAGES = [0, 10, 15, 20, 25];
@@ -106,6 +107,7 @@ export function CheckoutDialog({
   bookingLocationId = null,
   onComplete,
 }: CheckoutDialogProps) {
+  const { t } = useTranslation();
   const locale = useTenantLocaleTag();
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
@@ -258,13 +260,13 @@ export function CheckoutDialog({
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold text-white">
-                {step === "complete" ? "Payment Complete!" : "Checkout"}
+                {step === "complete" ? t("web.provider.portal.checkoutDialog.paymentComplete") : t("web.provider.portal.checkoutDialog.checkout")}
               </DialogTitle>
               <DialogDescription className="text-white/80 mt-1">
                 {checkoutData.client_name} • {checkoutData.team_member_name}
               </DialogDescription>
             </div>
-            <div className="text-right">
+            <div className="text-end">
               <p className="text-sm text-white/70">
                 {new Date(checkoutData.scheduled_date).toLocaleDateString(locale, {
                   weekday: "short",
@@ -283,10 +285,12 @@ export function CheckoutDialog({
             <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mb-4">
               <Check className="w-10 h-10 text-green-600" />
             </div>
-            <h3 className="text-2xl font-bold mb-2">Payment Successful!</h3>
+            <h3 className="text-2xl font-bold mb-2">{t("web.provider.portal.checkoutDialog.paymentSuccessful")}</h3>
             <p className="text-gray-600 mb-6">
-              {formatCurrency(calculations.total)} paid via{" "}
-              {PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.name}
+              {t("web.provider.portal.checkoutDialog.paidVia", {
+                amount: formatCurrency(calculations.total),
+                method: t(`web.provider.portal.checkoutDialog.${PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.nameKey ?? "methodCard"}`),
+              })}
             </p>
 
             <div className="flex gap-3 w-full max-w-xs">
@@ -307,12 +311,12 @@ export function CheckoutDialog({
                     window.URL.revokeObjectURL(url);
                   } catch (error) {
                     console.error("Failed to print receipt:", error);
-                    alert("Failed to print receipt. Please try again.");
+                    alert(t("web.provider.portal.checkoutDialog.printFailed"));
                   }
                 }}
               >
-                <Printer className="w-4 h-4 mr-2" />
-                Print
+                <Printer className="w-4 h-4 me-2" />
+                {t("web.provider.portal.checkoutDialog.print")}
               </Button>
               <Button 
                 variant="outline" 
@@ -324,15 +328,15 @@ export function CheckoutDialog({
                       checkoutData.appointment_id,
                       checkoutData.client_email
                     );
-                    alert("Receipt sent successfully!");
+                    alert(t("web.provider.portal.checkoutDialog.receiptSent"));
                   } catch (error) {
                     console.error("Failed to send receipt:", error);
-                    alert("Failed to send receipt. Please try again.");
+                    alert(t("web.provider.portal.checkoutDialog.sendReceiptFailed"));
                   }
                 }}
               >
-                <Mail className="w-4 h-4 mr-2" />
-                Email
+                <Mail className="w-4 h-4 me-2" />
+                {t("web.provider.portal.checkoutDialog.email")}
               </Button>
             </div>
 
@@ -340,7 +344,7 @@ export function CheckoutDialog({
               onClick={handleClose}
               className="mt-6 bg-primary hover:bg-primary-hover"
             >
-              Done
+              {t("web.provider.portal.checkoutDialog.done")}
             </Button>
           </div>
         ) : (
@@ -352,7 +356,7 @@ export function CheckoutDialog({
                   {/* Services */}
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                      Services
+                      {t("web.provider.portal.checkoutDialog.services")}
                     </h3>
                     {checkoutData.services.map((service) => (
                       <div
@@ -366,7 +370,7 @@ export function CheckoutDialog({
                           <div>
                             <p className="font-medium">{service.name}</p>
                             <p className="text-xs text-gray-500">
-                              {service.duration_minutes} min
+                              {t("web.provider.portal.checkoutDialog.durationMin", { count: service.duration_minutes })}
                               {service.quantity > 1 && ` × ${service.quantity}`}
                             </p>
                           </div>
@@ -382,7 +386,7 @@ export function CheckoutDialog({
                   {checkoutData.products && checkoutData.products.length > 0 && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                        Products
+                        {t("web.provider.portal.checkoutDialog.products")}
                       </h3>
                       {checkoutData.products.map((product) => (
                         <div
@@ -396,7 +400,7 @@ export function CheckoutDialog({
                             <div>
                               <p className="font-medium">{product.name}</p>
                               <p className="text-xs text-gray-500">
-                                Qty: {product.quantity}
+                                {t("web.provider.portal.checkoutDialog.qty", { count: product.quantity })}
                               </p>
                             </div>
                           </div>
@@ -413,7 +417,7 @@ export function CheckoutDialog({
                   {/* Discount */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <Label className="text-sm font-semibold">Discount</Label>
+                      <Label className="text-sm font-semibold">{t("web.provider.portal.checkoutDialog.discount")}</Label>
                       <div className="flex items-center gap-2">
                         <Select
                           value={discountType}
@@ -426,7 +430,7 @@ export function CheckoutDialog({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="percentage">%</SelectItem>
-                            <SelectItem value="fixed">R</SelectItem>
+                            <SelectItem value="fixed">{t("web.provider.portal.checkoutDialog.discountFixedUnit")}</SelectItem>
                           </SelectContent>
                         </Select>
                         <Input
@@ -444,11 +448,11 @@ export function CheckoutDialog({
                       <Input
                         value={promoCode}
                         onChange={(e) => setPromoCode(e.target.value)}
-                        placeholder="Promo code"
+                        placeholder={t("web.provider.portal.checkoutDialog.promoCode")}
                         className="h-9"
                       />
                       <Button variant="outline" size="sm">
-                        Apply
+                        {t("web.provider.portal.checkoutDialog.apply")}
                       </Button>
                     </div>
                   </div>
@@ -457,7 +461,7 @@ export function CheckoutDialog({
 
                   {/* Tip Selection */}
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold">Add Tip</Label>
+                    <Label className="text-sm font-semibold">{t("web.provider.portal.checkoutDialog.addTip")}</Label>
                     <div className="grid grid-cols-5 gap-2">
                       {TIP_PERCENTAGES.map((percent) => (
                         <Button
@@ -488,7 +492,7 @@ export function CheckoutDialog({
                           setCustomTip(e.target.value);
                           setTipPercentage(0);
                         }}
-                        placeholder="Custom amount"
+                        placeholder={t("web.provider.portal.checkoutDialog.customAmount")}
                         className="h-9"
                       />
                     </div>
@@ -500,7 +504,7 @@ export function CheckoutDialog({
                 <>
                   {/* Payment Method Selection - Mangomint style */}
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold">Payment Method</Label>
+                    <Label className="text-sm font-semibold">{t("web.provider.portal.checkoutDialog.paymentMethod")}</Label>
                     <div className="grid grid-cols-2 gap-2">
                       {visiblePaymentMethods.map((method) => {
                         const Icon = method.icon;
@@ -508,11 +512,11 @@ export function CheckoutDialog({
                         const isCardSetupBlocked =
                           method.id === "card" && paycloudEnabled && !paycloudReady && !paycloudInFlight;
                         const displayName =
-                          method.id === "card" && paycloudEnabled ? cardCollectLabel : method.name;
+                          method.id === "card" && paycloudEnabled ? cardCollectLabel : t(`web.provider.portal.checkoutDialog.${method.nameKey}`);
                         const displayDescription =
                           method.id === "card" && isCardSetupBlocked
-                            ? "Finish card machine setup to collect"
-                            : method.description;
+                            ? t("web.provider.portal.checkoutDialog.cardSetupBlocked")
+                            : t(`web.provider.portal.checkoutDialog.${method.descriptionKey}`);
                         const cardSetupHref = blockers[0]?.href ?? "/provider/settings/sales/card-machines";
                         if (isCardSetupBlocked) {
                           return (
@@ -520,7 +524,7 @@ export function CheckoutDialog({
                               key={method.id}
                               href={cardSetupHref}
                               className={cn(
-                                "relative p-3 rounded-xl border-2 text-left transition-all",
+                                "relative p-3 rounded-xl border-2 text-start transition-all",
                                 "border-amber-200 hover:border-amber-300 bg-amber-50/50",
                               )}
                             >
@@ -541,7 +545,7 @@ export function CheckoutDialog({
                             key={method.id}
                             type="button"
                             className={cn(
-                              "relative p-3 rounded-xl border-2 text-left transition-all",
+                              "relative p-3 rounded-xl border-2 text-start transition-all",
                               isSelected 
                                 ? "border-primary bg-primary/5 shadow-sm" 
                                 : "border-gray-200 hover:border-gray-300 bg-white"
@@ -582,11 +586,11 @@ export function CheckoutDialog({
 
                   {/* Notes */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Notes</Label>
+                    <Label className="text-sm font-semibold">{t("web.provider.portal.checkoutDialog.notes")}</Label>
                     <Textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Add payment notes..."
+                      placeholder={t("web.provider.portal.checkoutDialog.notesPlaceholder")}
                       className="h-20 resize-none"
                     />
                   </div>
@@ -599,7 +603,7 @@ export function CheckoutDialog({
                       onCheckedChange={(checked) => setSendReceipt(checked as boolean)}
                     />
                     <Label htmlFor="send-receipt" className="text-sm cursor-pointer">
-                      Send receipt to {checkoutData.client_email || "client"}
+                      {t("web.provider.portal.checkoutDialog.sendReceiptTo", { email: checkoutData.client_email || t("web.provider.portal.checkoutDialog.clientFallback") })}
                     </Label>
                   </div>
                 </>
@@ -611,24 +615,24 @@ export function CheckoutDialog({
               {/* Totals Summary */}
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
+                  <span className="text-gray-600">{t("web.provider.portal.checkoutDialog.subtotal")}</span>
                   <span>{formatCurrency(calculations.subtotal)}</span>
                 </div>
                 {calculations.discount > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Discount</span>
+                    <span>{t("web.provider.portal.checkoutDialog.discount")}</span>
                     <span>-{formatCurrency(calculations.discount)}</span>
                   </div>
                 )}
                 {calculations.tip > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Tip</span>
+                    <span className="text-gray-600">{t("web.provider.portal.checkoutDialog.tip")}</span>
                     <span>{formatCurrency(calculations.tip)}</span>
                   </div>
                 )}
                 <Separator className="my-2" />
                 <div className="flex justify-between text-lg font-bold">
-                  <span>Total</span>
+                  <span>{t("web.provider.portal.checkoutDialog.total")}</span>
                   <span className="text-primary">{formatCurrency(calculations.total)}</span>
                 </div>
               </div>
@@ -638,20 +642,20 @@ export function CheckoutDialog({
                 {step === "review" ? (
                   <>
                     <Button variant="outline" className="flex-1" onClick={handleClose}>
-                      Cancel
+                      {t("web.provider.portal.checkoutDialog.cancel")}
                     </Button>
                     <Button
                       className="flex-1 bg-primary hover:bg-primary-hover"
                       onClick={() => setStep("payment")}
                     >
-                      Continue to Payment
-                      <ChevronRight className="w-4 h-4 ml-2" />
+                      {t("web.provider.portal.checkoutDialog.continueToPayment")}
+                      <ChevronRight className="w-4 h-4 ms-2" />
                     </Button>
                   </>
                 ) : (
                   <>
                     <Button variant="outline" className="flex-1" onClick={() => setStep("review")}>
-                      Back
+                      {t("web.provider.portal.checkoutDialog.back")}
                     </Button>
                     <Button
                       className="flex-1 bg-primary hover:bg-primary-hover"
@@ -660,13 +664,13 @@ export function CheckoutDialog({
                     >
                       {isProcessing ? (
                         <>
-                          <span className="animate-spin mr-2">⏳</span>
-                          Processing...
+                          <span className="animate-spin me-2">⏳</span>
+                          {t("web.provider.portal.checkoutDialog.processing")}
                         </>
                       ) : (
                         <>
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Pay {formatCurrency(calculations.total)}
+                          <CreditCard className="w-4 h-4 me-2" />
+                          {t("web.provider.portal.checkoutDialog.payAmount", { amount: formatCurrency(calculations.total) })}
                         </>
                       )}
                     </Button>

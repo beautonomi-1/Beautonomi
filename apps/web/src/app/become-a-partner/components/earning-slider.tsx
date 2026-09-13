@@ -108,7 +108,7 @@ export default function EarningSlider() {
             <DialogTrigger asChild>
               <div className="flex items-center  mx-auto w-full lg:max-w-sm px-3 py-2 mt-4 border rounded-full cursor-pointer inputbox">
                 <SearchIcon className="w-5 h-5 text-muted" />
-                <div className="flex flex-col ml-4">
+                <div className="flex flex-col ms-4">
                   <span className="font-normal text-secondary">Faisalabad</span>
                   <span className="text-base font-light  text-gray-500">
                     Entire place
@@ -128,7 +128,7 @@ export default function EarningSlider() {
                     <Input
                       id="address"
                       placeholder="Faisalabad, Punjab, Pakistan"
-                      className="pl-8 rounded-full"
+                      className="ps-8 rounded-full"
                     />
                   </div>
                 </div>
@@ -209,7 +209,7 @@ export default function EarningSlider() {
             </DialogContent>
           </Dialog>
         </div>
-        <div className="w-full h-96 lg:h-auto mt-0 lg:ml-8">
+        <div className="w-full h-96 lg:h-auto mt-0 lg:ms-8">
           <EarningSliderMapPlaceholder />
         </div>
       </div>

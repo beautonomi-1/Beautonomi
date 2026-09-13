@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
@@ -49,9 +51,10 @@ function isPayrollOwnerRole(role: string | null | undefined): boolean {
 
 /** Tax/UIF auto-calculation may be added later; owners enter values manually today. */
 function ManualEntryHint() {
+  const { t } = useTranslation();
   return (
-    <Badge variant="secondary" className="ml-1 align-middle text-[10px] font-normal normal-case">
-      Manual
+    <Badge variant="secondary" className="ms-1 align-middle text-[10px] font-normal normal-case">
+      {t("web.provider.pages.team/payroll/[id].manual")}
     </Badge>
   );
 }
@@ -74,6 +77,7 @@ export default function PayrollDetailPage() {
   const router = useRouter();
   const { role } = useAuth();
   const { format: fmt } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const isOwner = isPayrollOwnerRole(role);
   const id = params?.id as string;
   const [payRun, setPayRun] = useState<PayRunDetail | null>(null);
@@ -94,7 +98,7 @@ export default function PayrollDetailPage() {
       setPayRun(payload?.data ?? null);
     } catch (err) {
       console.error("Failed to load pay run:", err);
-      toast.error("Failed to load pay run");
+      toast.error(t("web.provider.pages.team/payroll/[id].failedToLoadPayRun"));
     } finally {
       setIsLoading(false);
     }
@@ -125,10 +129,10 @@ export default function PayrollDetailPage() {
     try {
       setIsApproving(true);
       await fetcher.post(`/api/provider/pay-runs/${id}/approve`, {});
-      toast.success("Pay run approved");
+      toast.success(t("web.provider.pages.team/payroll/[id].payRunApproved"));
       loadPayRun();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to approve");
+      toast.error(err instanceof Error ? err.message : t("web.provider.pages.team/payroll/[id].failedToApprove"));
     } finally {
       setIsApproving(false);
     }
@@ -138,10 +142,10 @@ export default function PayrollDetailPage() {
     try {
       setIsMarkingPaid(true);
       await fetcher.post(`/api/provider/pay-runs/${id}/mark-paid`, {});
-      toast.success("Pay run marked as paid");
+      toast.success(t("web.provider.pages.team/payroll/[id].payRunMarkedAsPaid"));
       loadPayRun();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to mark as paid");
+      toast.error(err instanceof Error ? err.message : t("web.provider.pages.team/payroll/[id].failedToMarkAsPaid"));
     } finally {
       setIsMarkingPaid(false);
     }
@@ -157,10 +161,10 @@ export default function PayrollDetailPage() {
         notes: lineEdits[i.id]?.notes ?? "",
       }));
       await fetcher.patch(`/api/provider/pay-runs/${id}`, { items });
-      toast.success("Draft line items saved");
+      toast.success(t("web.provider.pages.team/payroll/[id].draftLineItemsSaved"));
       await loadPayRun();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to save line items");
+      toast.error(err instanceof Error ? err.message : t("web.provider.pages.team/payroll/[id].failedToSaveLineItems"));
     } finally {
       setIsSavingDraft(false);
     }
@@ -186,17 +190,17 @@ export default function PayrollDetailPage() {
   const handleExportCSV = () => {
     if (!payRun) return;
     const headers = [
-      "Staff",
-      "Gross Pay",
-      "Commission",
-      "Hourly",
-      "Salary",
-      "Tips",
-      "Manual Deductions",
-      "Tax",
-      "UIF",
-      "Net Pay",
-      "Notes",
+      t("web.provider.pages.team/payroll/[id].csvStaff"),
+      t("web.provider.pages.team/payroll/[id].csvGrossPay"),
+      t("web.provider.pages.team/payroll/[id].csvCommission"),
+      t("web.provider.pages.team/payroll/[id].csvHourly"),
+      t("web.provider.pages.team/payroll/[id].csvSalary"),
+      t("web.provider.pages.team/payroll/[id].csvTips"),
+      t("web.provider.pages.team/payroll/[id].csvManualDeductions"),
+      t("web.provider.pages.team/payroll/[id].csvTax"),
+      t("web.provider.pages.team/payroll/[id].csvUif"),
+      t("web.provider.pages.team/payroll/[id].csvNetPay"),
+      t("web.provider.pages.team/payroll/[id].csvNotes"),
     ];
     const rows = (payRun.items || []).map((i) => [
       i.staff_name,
@@ -224,7 +228,7 @@ export default function PayrollDetailPage() {
   if (isLoading || !payRun) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Pay Run" />
+        <PageHeader title={t("web.provider.pages.team/payroll/[id].payRun")} />
         <SectionCard>
           <Skeleton className="h-64 w-full" />
         </SectionCard>
@@ -235,55 +239,55 @@ export default function PayrollDetailPage() {
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6">
       <PageHeader
-        title={`Pay Run: ${format(new Date(payRun.pay_period_start), "MMM d")} – ${format(new Date(payRun.pay_period_end), "MMM d, yyyy")}`}
+        title={t("web.provider.pages.team/payroll/[id].payRunTitle", { range: `${format(new Date(payRun.pay_period_start), "MMM d")} – ${format(new Date(payRun.pay_period_end), "MMM d, yyyy")}` })}
         subtitle={
           isOwner
-            ? `Status: ${payRun.status}`
-            : `Status: ${payRun.status} · View only — only the business owner can edit drafts, approve, or mark paid`
+            ? t("web.provider.pages.team/payroll/[id].statusLabel", { status: payRun.status })
+            : t("web.provider.pages.team/payroll/[id].statusViewOnly", { status: payRun.status })
         }
         breadcrumbs={[
-          { label: "Team", href: "/provider/team/members" },
-          { label: "Payroll", href: "/provider/team/payroll" },
-          { label: "Pay Run" },
+          { label: t("web.provider.sidebar.sections.team"), href: "/provider/team/members" },
+          { label: t("web.provider.sidebar.items.payroll"), href: "/provider/team/payroll" },
+          { label: t("web.provider.pages.team/payroll/[id].payRun") },
         ]}
       />
 
       <div className="flex flex-wrap gap-2 items-center">
         <Button variant="outline" onClick={() => router.push("/provider/team/payroll")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
+          <ArrowLeft className="w-4 h-4 me-2" />
+          {t("common.back")}
         </Button>
         <Badge className={statusColor(payRun.status)}>{payRun.status}</Badge>
         {payRun.status === "draft" && isOwner && (
           <Button onClick={handleApprove} disabled={isApproving} className="bg-blue-600 hover:bg-blue-700">
-            {isApproving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
-            Approve
+            {isApproving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Check className="w-4 h-4 me-2" />}
+            {t("web.provider.pages.team/payroll/[id].approve")}
           </Button>
         )}
         {payRun.status === "approved" && isOwner && (
           <Button onClick={handleMarkPaid} disabled={isMarkingPaid} className="bg-green-600 hover:bg-green-700">
-            {isMarkingPaid ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-            Mark as Paid
+            {isMarkingPaid ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <DollarSign className="w-4 h-4 me-2" />}
+            {t("web.provider.pages.team/payroll/[id].markAsPaid")}
           </Button>
         )}
         {canEditDraft && (
           <Button variant="secondary" onClick={handleSaveDraftLines} disabled={isSavingDraft}>
-            {isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-            Save draft line items
+            {isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Save className="w-4 h-4 me-2" />}
+            {t("web.provider.pages.team/payroll/[id].saveDraftLineItems")}
           </Button>
         )}
         <Button variant="outline" onClick={handleExportCSV}>
-          <Download className="w-4 h-4 mr-2" />
-          Export CSV
+          <Download className="w-4 h-4 me-2" />
+          {t("web.provider.common.exportCsv")}
         </Button>
       </div>
 
       <SectionCard>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
-          <h3 className="font-semibold">Pay run items</h3>
+          <h3 className="font-semibold">{t("web.provider.pages.team/payroll/[id].payRunItems")}</h3>
           <p className="text-sm text-gray-600 max-w-xl">
-            VAT / PAYE and UIF are shown for reference and stay at R0 until automation ships.
-            <ManualEntryHint /> Use <strong>Manual deductions</strong> for other withholdings while this run is in draft.
+            {t("web.provider.pages.team/payroll/[id].vatPayeHint")}
+            <ManualEntryHint /> {t("web.provider.pages.team/payroll/[id].useManualDeductionsPrefix")} <strong>{t("web.provider.pages.team/payroll/[id].manualDeductions")}</strong> {t("web.provider.pages.team/payroll/[id].forOtherWithholdings")}
           </p>
         </div>
 
@@ -301,30 +305,30 @@ export default function PayrollDetailPage() {
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <span className="text-xs text-gray-500">Commission</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].commission")}</span>
                     <p className="text-gray-900">{fmt(Number(item.commission_amount || 0))}</p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500">Hourly</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].hourly")}</span>
                     <p className="text-gray-900">{fmt(Number(item.hourly_amount || 0))}</p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500">Salary</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].salary")}</span>
                     <p className="text-gray-900">{fmt(Number(item.salary_amount || 0))}</p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500">Tips</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].tips")}</span>
                     <p className="text-gray-900">{fmt(Number(item.tips_amount || 0))}</p>
                   </div>
                 </div>
 
                 <div className="space-y-2 pt-2 border-t text-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-gray-500">Manual deductions</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].manualDeductions")}</span>
                     {canEditDraft ? (
                       <Input
                         inputMode="decimal"
-                        className="h-9 w-28 text-right"
+                        className="h-9 w-28 text-end"
                         value={manualStr}
                         onChange={(e) =>
                           setLineEdits((prev) => ({
@@ -343,14 +347,14 @@ export default function PayrollDetailPage() {
                   <div className="flex flex-wrap gap-4">
                     <div>
                       <span className="text-xs text-gray-500">
-                        Tax (VAT/PAYE)
+                        {t("web.provider.pages.team/payroll/[id].taxVatPaye")}
                         <ManualEntryHint />
                       </span>
                       <p className="text-gray-700">{fmt(tax)}</p>
                     </div>
                     <div>
                       <span className="text-xs text-gray-500">
-                        UIF
+                        {t("web.provider.pages.team/payroll/[id].uif")}
                         <ManualEntryHint />
                       </span>
                       <p className="text-gray-700">{fmt(uif)}</p>
@@ -358,7 +362,7 @@ export default function PayrollDetailPage() {
                   </div>
                   {canEditDraft && (
                     <div>
-                      <span className="text-xs text-gray-500 block mb-1">Notes</span>
+                      <span className="text-xs text-gray-500 block mb-1">{t("web.provider.pages.team/payroll/[id].notes")}</span>
                       <Textarea
                         rows={2}
                         className="text-sm"
@@ -377,7 +381,7 @@ export default function PayrollDetailPage() {
                   )}
                   {!canEditDraft && item.notes ? (
                     <div>
-                      <span className="text-xs text-gray-500">Notes</span>
+                      <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].notes")}</span>
                       <p className="text-gray-800 text-sm">{item.notes}</p>
                     </div>
                   ) : null}
@@ -385,11 +389,11 @@ export default function PayrollDetailPage() {
 
                 <div className="flex items-center justify-between pt-2 border-t text-sm">
                   <div>
-                    <span className="text-xs text-gray-500">Total deductions</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].totalDeductions")}</span>
                     <p className="text-red-600">−{fmt(deductionsTotal)}</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs text-gray-500">Net pay</span>
+                  <div className="text-end">
+                    <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].netPay")}</span>
                     <p className="font-semibold text-gray-900">{fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}</p>
                   </div>
                 </div>
@@ -403,22 +407,22 @@ export default function PayrollDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Staff</TableHead>
-                <TableHead className="text-right">Commission</TableHead>
-                <TableHead className="text-right">Hourly</TableHead>
-                <TableHead className="text-right">Salary</TableHead>
-                <TableHead className="text-right">Tips</TableHead>
-                <TableHead className="text-right">Manual ded.</TableHead>
-                <TableHead className="text-right whitespace-nowrap">
-                  Tax (VAT/PAYE)
+                <TableHead>{t("web.provider.pages.team/payroll/[id].staff")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].commission")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].hourly")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].salary")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].tips")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].manualDed")}</TableHead>
+                <TableHead className="text-end whitespace-nowrap">
+                  {t("web.provider.pages.team/payroll/[id].taxVatPaye")}
                   <ManualEntryHint />
                 </TableHead>
-                <TableHead className="text-right whitespace-nowrap">
-                  UIF
+                <TableHead className="text-end whitespace-nowrap">
+                  {t("web.provider.pages.team/payroll/[id].uif")}
                   <ManualEntryHint />
                 </TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead className="text-right">Net pay</TableHead>
+                <TableHead>{t("web.provider.pages.team/payroll/[id].notes")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.pages.team/payroll/[id].netPay")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -428,15 +432,15 @@ export default function PayrollDetailPage() {
                 return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.staff_name}</TableCell>
-                    <TableCell className="text-right">{fmt(Number(item.commission_amount || 0))}</TableCell>
-                    <TableCell className="text-right">{fmt(Number(item.hourly_amount || 0))}</TableCell>
-                    <TableCell className="text-right">{fmt(Number(item.salary_amount || 0))}</TableCell>
-                    <TableCell className="text-right">{fmt(Number(item.tips_amount || 0))}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">{fmt(Number(item.commission_amount || 0))}</TableCell>
+                    <TableCell className="text-end">{fmt(Number(item.hourly_amount || 0))}</TableCell>
+                    <TableCell className="text-end">{fmt(Number(item.salary_amount || 0))}</TableCell>
+                    <TableCell className="text-end">{fmt(Number(item.tips_amount || 0))}</TableCell>
+                    <TableCell className="text-end">
                       {canEditDraft ? (
                         <Input
                           inputMode="decimal"
-                          className="h-8 w-24 ml-auto text-right"
+                          className="h-8 w-24 ms-auto text-end"
                           value={manualStr}
                           onChange={(e) =>
                             setLineEdits((prev) => ({
@@ -452,8 +456,8 @@ export default function PayrollDetailPage() {
                         fmt(parseMoney(manualStr))
                       )}
                     </TableCell>
-                    <TableCell className="text-right text-gray-700">{fmt(Number(item.tax_deduction || 0))}</TableCell>
-                    <TableCell className="text-right text-gray-700">{fmt(Number(item.uif_contribution || 0))}</TableCell>
+                    <TableCell className="text-end text-gray-700">{fmt(Number(item.tax_deduction || 0))}</TableCell>
+                    <TableCell className="text-end text-gray-700">{fmt(Number(item.uif_contribution || 0))}</TableCell>
                     <TableCell className="min-w-[140px] max-w-[220px]">
                       {canEditDraft ? (
                         <Textarea
@@ -471,10 +475,10 @@ export default function PayrollDetailPage() {
                           }
                         />
                       ) : (
-                        <span className="text-sm text-gray-800">{item.notes || "—"}</span>
+                        <span className="text-sm text-gray-800">{item.notes || t("web.provider.common.emDash")}</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-semibold">
+                    <TableCell className="text-end font-semibold">
                       {fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}
                     </TableCell>
                   </TableRow>
@@ -484,9 +488,9 @@ export default function PayrollDetailPage() {
           </Table>
         </div>
         <div className="mt-4 pt-4 border-t flex justify-end">
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Total gross: {fmt(totalGross)}</p>
-            <p className="font-semibold">Total net: {fmt(totalNet)}</p>
+          <div className="text-end">
+<p className="text-sm text-gray-600">{t("web.provider.pages.team/payroll/[id].totalGross", { amount: fmt(totalGross) })}</p>
+            <p className="font-semibold">{t("web.provider.pages.team/payroll/[id].totalNet", { amount: fmt(totalNet) })}</p>
           </div>
         </div>
       </SectionCard>

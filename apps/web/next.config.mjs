@@ -16,6 +16,53 @@ const analyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
 
+/**
+ * Clickjacking is enforced with CSP `frame-ancestors`, not `X-Frame-Options`.
+ * XFO only supports DENY/SAMEORIGIN and Safari has historically honoured XFO
+ * over CSP when both are present — so a global SAMEORIGIN header made the
+ * advertised salon iframe widget unloadable on third-party sites.
+ */
+function permissionsPolicyValue(payment = 'payment=(self)') {
+  return [
+    'camera=(self "https://verify.didit.me")',
+    'microphone=(self "https://verify.didit.me")',
+    'geolocation=(self)',
+    payment,
+    'usb=()',
+    'magnetometer=()',
+    'gyroscope=()',
+    'accelerometer=()',
+  ].join(', ');
+}
+
+function contentSecurityPolicy(frameAncestors = "'self'") {
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com https://vercel.live",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com https://vercel.live https://*.vercel.live",
+    "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com https://vercel.com https://*.vercel.com https://vercel.live https://*.vercel.live",
+    "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com https://vercel.live https://*.vercel.live wss://*.pusher.com wss://ws-us3.pusher.com wss://ws-us2.pusher.com wss://ws-eu.pusher.com",
+    "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://verify.didit.me https://*.didit.me https://vercel.live",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+    `frame-ancestors ${frameAncestors}`,
+  ].join('; ');
+}
+
+const EMBEDDABLE_BOOKING_HEADERS = [
+  { key: 'Content-Security-Policy', value: contentSecurityPolicy('*') },
+  {
+    key: 'Permissions-Policy',
+    value: permissionsPolicyValue(
+      'payment=(self "https://checkout.paystack.com" "https://js.paystack.co")',
+    ),
+  },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Expose Sentry DSN to client (NEXT_PUBLIC_* from .env.local also work; this ensures it's available)
@@ -272,7 +319,6 @@ const nextConfig = {
         source: '/:path*',
         headers: [
           { key: 'X-DNS-Prefetch-Control', value: 'on' },
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           // HSTS: enforce HTTPS for 1 year, include subdomains
@@ -280,49 +326,38 @@ const nextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains; preload',
           },
-          // Restrict browser feature access
           {
             key: 'Permissions-Policy',
-            value: [
-              'camera=(self "https://verify.didit.me")',
-              'microphone=(self "https://verify.didit.me")',
-              'geolocation=(self)',
-              'payment=(self)',
-              'usb=()',
-              'magnetometer=()',
-              'gyroscope=()',
-              'accelerometer=()',
-            ].join(', '),
+            value: permissionsPolicyValue(),
           },
-          // Content Security Policy
           // Next.js requires 'unsafe-inline' for runtime styles. 'unsafe-eval' is
           // required by Mapbox GL JS and some analytics SDKs.
           // TODO: Migrate to nonce-based CSP when Next.js stable nonce support lands.
           {
             key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              // Scripts: self + inline (Next hydration) + CDN SDKs
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com https://vercel.live",
-              // Styles: self + inline (Tailwind runtime)
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              // Fonts — include Vercel Live (geist fonts used by preview toolbar)
-              "font-src 'self' data: https://fonts.gstatic.com https://vercel.live https://*.vercel.live",
-              // Images: supabase storage + maps + data URIs
-              "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com https://vercel.com https://*.vercel.com https://vercel.live https://*.vercel.live",
-              // XHR/fetch/WebSocket — Pusher is used by the Vercel Live
-              // preview comments toolbar (only loaded on preview/dev builds).
-              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com https://vercel.live https://*.vercel.live wss://*.pusher.com wss://ws-us3.pusher.com wss://ws-us2.pusher.com wss://ws-eu.pusher.com",
-              // Iframes: Paystack popup; Didit verification modal; Vercel preview toolbar
-              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://verify.didit.me https://*.didit.me https://vercel.live",
-              // Workers (Next.js, service workers)
-              "worker-src 'self' blob:",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "upgrade-insecure-requests",
-            ].join('; '),
+            value: contentSecurityPolicy("'self'"),
           },
+        ],
+      },
+      // Later matches override the same header keys. These public booking
+      // surfaces must be frameable on third-party salon sites.
+      {
+        source: '/book/:path*',
+        headers: EMBEDDABLE_BOOKING_HEADERS,
+      },
+      {
+        source: '/checkout/success',
+        headers: EMBEDDABLE_BOOKING_HEADERS,
+      },
+      {
+        source: '/auth/callback',
+        headers: EMBEDDABLE_BOOKING_HEADERS,
+      },
+      {
+        source: '/embed/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+          { key: 'Access-Control-Allow-Origin', value: '*' },
         ],
       },
       // Do not set Cache-Control on `/_next/static/*` — Next.js applies hashed-filename caching;

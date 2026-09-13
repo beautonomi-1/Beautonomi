@@ -24,6 +24,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import * as Haptics from "expo-haptics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 // ---------------------------------------------------------------------------
 // Types (aligned with API: custom_requests with offers[])
@@ -113,7 +114,7 @@ function parseValidDate(value: unknown): Date | null {
 function formatDate(iso: string): string {
   const parsed = parseValidDate(iso);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", {
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -123,7 +124,7 @@ function formatDate(iso: string): string {
 function formatDateTime(iso: string): string {
   const parsed = parseValidDate(iso);
   if (!parsed) return "—";
-  return parsed.toLocaleString("en-US", {
+  return parsed.toLocaleString(getTenantLocaleTag(), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -136,20 +137,26 @@ function truncate(str: string, max: number): string {
   return str.slice(0, max).trimEnd() + "…";
 }
 
-function formatLocationLabel(type?: LocationType | null): string | null {
+function formatLocationLabel(
+  type: LocationType | null | undefined,
+  crl: (key: string) => string,
+): string | null {
   if (!type) return null;
-  return type === "at_home" ? "At Home" : "At Salon";
+  return type === "at_home" ? crl("atHome") : crl("atSalon");
 }
 
 function formatBudget(
-  min?: number | null,
-  max?: number | null,
-  currency = getTenantDefaultCurrency()
+  min: number | null | undefined,
+  max: number | null | undefined,
+  crl: (key: string, options?: Record<string, string | number>) => string,
+  currency = getTenantDefaultCurrency(),
 ): string | null {
   if (min == null && max == null) return null;
-  if (min != null && max != null) return `${currency} ${min} – ${max}`;
-  if (min != null) return `From ${currency} ${min}`;
-  return `Up to ${currency} ${max}`;
+  if (min != null && max != null) {
+    return crl("budgetRange", { currency, min: String(min), max: String(max) });
+  }
+  if (min != null) return crl("budgetFrom", { currency, min: String(min) });
+  return crl("budgetUpTo", { currency, max: String(max) });
 }
 
 function canAcceptOffer(offer: CustomRequestOffer): boolean {
@@ -213,8 +220,16 @@ function RequestCard({
   cancellingRequestId: string | null;
   decliningOfferId: string | null;
 }) {
-  const locationLabel = formatLocationLabel(item.location_type);
-  const budget = formatBudget(item.budget_min, item.budget_max);
+  const { t } = useTranslation();
+  const crl = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.customRequestsList.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const locationLabel = formatLocationLabel(item.location_type, crl);
+  const budget = formatBudget(item.budget_min, item.budget_max, crl);
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
   const actionsAllowed = requestAllowsOfferActions(item);
   const hasPendingOffer = actionsAllowed && item.offers?.some(canAcceptOffer);
@@ -223,16 +238,16 @@ function RequestCard({
   const isCancelled = item.status === "cancelled";
   const isDeclined = item.status === "declined";
   const statusLabel = isCancelled
-    ? "Cancelled"
+    ? crl("statusCancelled")
     : isDeclined
-      ? "Declined"
+      ? crl("statusDeclined")
     : hasPaidOffer
-      ? "Paid"
+      ? crl("statusPaid")
       : hasPendingPayment
-        ? "Payment pending"
+        ? crl("paymentPendingLabel")
         : hasPendingOffer
-          ? "Offer to accept"
-          : item.status ?? "Pending";
+          ? crl("offerToAcceptLabel")
+          : item.status ?? crl("statusPending");
 
   const statusBg = isCancelled
     ? "#FEE2E2"
@@ -262,24 +277,24 @@ function RequestCard({
   return (
     <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <TouchableOpacity onPress={onPressProvider} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 12 }}>
+        <TouchableOpacity onPress={onPressProvider} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", flex: 1, marginEnd: 12 }}>
           {item.provider?.avatar_url ? (
-            <Image source={{ uri: item.provider.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
+            <Image source={{ uri: item.provider.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18, marginEnd: 10 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
           ) : (
-            <View style={{ alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryLight, marginRight: 10, width: 36, height: 36, borderRadius: 18 }}>
+            <View style={{ alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryLight, marginEnd: 10, width: 36, height: 36, borderRadius: 18 }}>
               <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 14 }}>{(item.provider?.business_name ?? "P").charAt(0).toUpperCase()}</Text>
             </View>
           )}
-          <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1 }} numberOfLines={1}>{item.provider?.business_name ?? "Provider"}</Text>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1 }} numberOfLines={1}>{item.provider?.business_name ?? crl("providerFallback")}</Text>
         </TouchableOpacity>
         <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: statusBg }}>
           <Text style={{ fontSize: 12, fontWeight: "600", color: statusText }}>{statusLabel}</Text>
         </View>
       </View>
-      <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
+      <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || crl("noDescription"), 120)}</Text>
       {isDeclined && item.declined_reason ? (
         <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-          <Text style={{ fontSize: 13, color: "#B91C1C" }}>Declined: {item.declined_reason}</Text>
+          <Text style={{ fontSize: 13, color: "#B91C1C" }}>{crl("declinedPrefix", { reason: item.declined_reason })}</Text>
         </View>
       ) : null}
       {item.attachments && item.attachments.length > 0 ? (
@@ -296,24 +311,26 @@ function RequestCard({
         </View>
       ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
-        {budget && <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{budget}</Text>}
+        {budget && <Text style={{ fontSize: 12, color: Colors.gray[500], marginEnd: 12 }}>{budget}</Text>}
         {locationLabel && (
-          <View style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}>
-            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginRight: 8 }} />
+          <View style={{ flexDirection: "row", alignItems: "center", marginEnd: 12 }}>
+            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginEnd: 8 }} />
             <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{locationLabel}</Text>
           </View>
         )}
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginRight: 8 }} />
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginEnd: 8 }} />
           <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(item.created_at)}</Text>
         </View>
       </View>
       {item.preferred_start_at && (
-        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Preferred: {formatDateTime(item.preferred_start_at)}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>{crl("preferredLabel", { datetime: formatDateTime(item.preferred_start_at) })}</Text>
       )}
       {item.location_type === "at_home" && item.address_line1 && (
         <Text style={{ fontSize: 12, color: Colors.gray[400], marginBottom: 4 }}>
-          Address: {[item.address_line1, item.address_city, item.address_country].filter(Boolean).join(", ")}
+          {crl("addressLabel", {
+            address: [item.address_line1, item.address_city, item.address_country].filter(Boolean).join(", "),
+          })}
         </Text>
       )}
       {showCancel && (
@@ -325,7 +342,7 @@ function RequestCard({
           {isCancelling ? (
             <ActivityIndicator size="small" color="#B91C1C" />
           ) : (
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#B91C1C" }}>Cancel request</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#B91C1C" }}>{crl("cancelRequestCta")}</Text>
           )}
         </TouchableOpacity>
       )}
@@ -339,7 +356,7 @@ function RequestCard({
           {allInactive && isOpenRequest ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: "#EFF6FF", marginBottom: 8 }}>
               <Text style={{ fontSize: 13, color: "#1D4ED8", flex: 1 }}>
-                All offers have been withdrawn or expired. Your request is still open — a new offer may arrive.
+                {crl("allOffersExpiredBody")}
               </Text>
             </View>
           ) : null}
@@ -362,36 +379,53 @@ function RequestCard({
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <View style={{ marginRight: 8, flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{o.currency} {o.price?.toFixed(2)} · {o.duration_minutes} min</Text>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Expires {formatDateTime(o.expiration_at)}{o.travel_fee != null && o.travel_fee > 0 ? ` · Travel ${o.currency} ${o.travel_fee}` : ""}</Text>
+                  <View style={{ marginEnd: 8, flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                      {crl("offerPriceDuration", {
+                        currency: o.currency,
+                        price: o.price?.toFixed(2) ?? "0.00",
+                        minutes: String(o.duration_minutes),
+                      })}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                      {crl("expiresLabel", { datetime: formatDateTime(o.expiration_at) })}
+                      {o.travel_fee != null && o.travel_fee > 0
+                        ? ` · ${crl("travelFeeLabel", { currency: o.currency, amount: String(o.travel_fee) })}`
+                        : ""}
+                    </Text>
                     {(o.location?.name || o.staff?.name) && (
                       <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-                        {o.location?.name ? `Venue: ${o.location.name}` : ""}{o.location?.name && o.staff?.name ? " · " : ""}{o.staff?.name ? `Staff: ${o.staff.name}` : ""}
+                        {o.location?.name ? crl("venueLabel", { name: o.location.name }) : ""}
+                        {o.location?.name && o.staff?.name ? " · " : ""}
+                        {o.staff?.name ? crl("staffLabel", { name: o.staff.name }) : ""}
                       </Text>
                     )}
                     {(o.scheduled_at || item.preferred_start_at) && (
-                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Scheduled: {formatDateTime(o.scheduled_at || item.preferred_start_at!)}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                        {crl("scheduledLabel", {
+                          datetime: formatDateTime(o.scheduled_at || item.preferred_start_at!),
+                        })}
+                      </Text>
                     )}
                   </View>
                   {o.status === "paid" ? (
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>Paid</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>{crl("statusPaid")}</Text>
                   ) : expired ? (
-                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Expired</Text>
+                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{crl("statusExpired")}</Text>
                   ) : o.status === "withdrawn" ? (
-                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>{crl("statusWithdrawn")}</Text>
                   ) : o.status === "declined" ? (
-                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Declined</Text>
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>{crl("statusDeclined")}</Text>
                   ) : o.status === "changes_requested" ? (
-                    <Text style={{ fontSize: 14, color: "#1D4ED8", fontWeight: "600" }}>Changes requested</Text>
+                    <Text style={{ fontSize: 14, color: "#1D4ED8", fontWeight: "600" }}>{crl("statusChangesRequested")}</Text>
                   ) : o.status === "finalize_failed" ? (
-                    <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>Needs support</Text>
+                    <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>{crl("statusNeedsSupport")}</Text>
                   ) : canPayContinue ? (
                     <TouchableOpacity
                       onPress={() => onPayOffer(o.id)}
                       style={{ backgroundColor: "#1D4ED8", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>{crl("continuePayment")}</Text>
                     </TouchableOpacity>
                   ) : canAccept ? (
                     <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -400,7 +434,7 @@ function RequestCard({
                           onPress={() => onRequestChanges(o.id)}
                           style={{ borderWidth: 1, borderColor: "#BFDBFE", backgroundColor: "#EFF6FF", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 }}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#1D4ED8" }}>Request changes</Text>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#1D4ED8" }}>{crl("requestChangesCta")}</Text>
                         </TouchableOpacity>
                       ) : null}
                       <TouchableOpacity
@@ -409,15 +443,15 @@ function RequestCard({
                         style={{ borderWidth: 1, borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, opacity: decliningOfferId === o.id ? 0.6 : 1 }}
                       >
                         <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-                          {decliningOfferId === o.id ? "…" : "Decline"}
+                          {decliningOfferId === o.id ? "…" : crl("declineCtaShort")}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => onPayOffer(o.id)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>{crl("acceptAndPay")}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : !actionsAllowed && o.status !== "paid" ? (
-                    <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[500] }}>Closed</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[500] }}>{crl("statusClosed")}</Text>
                   ) : null}
                 </View>
                 {o.notes ? <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 8 }}>{o.notes}</Text> : null}
@@ -440,7 +474,10 @@ export default function CustomRequestsScreen() {
   const { t } = useTranslation();
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const crl = useCallback(
-    (key: string) => t(`customer.mobile.screens.customRequestsList.${key}`) as string,
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.customRequestsList.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
     [t],
   );
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -466,7 +503,7 @@ export default function CustomRequestsScreen() {
     try {
       const res = await api.get<CustomRequest[] | { data?: CustomRequest[] }>("/api/me/custom-requests");
       if (res.error) {
-        setError(res.error.message || "Failed to load custom requests");
+        setError(res.error.message || crl("loadFailed"));
         setData([]);
       } else {
         const raw = res.data;
@@ -479,13 +516,13 @@ export default function CustomRequestsScreen() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load custom requests");
+      setError(e instanceof Error ? e.message : crl("loadFailed"));
       setData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [crl]);
 
   useEffect(() => {
     load();
@@ -533,24 +570,24 @@ export default function CustomRequestsScreen() {
 
   const handleDeclineOffer = useCallback(
     (offerId: string) => {
-      Alert.alert("Decline offer?", "The provider will be notified that you declined this custom offer.", [
-        { text: "Keep offer", style: "cancel" },
+      Alert.alert(crl("declineOfferTitle"), crl("declineOfferBody"), [
+        { text: crl("keepOfferCta"), style: "cancel" },
         {
-          text: "Decline",
+          text: crl("declineCta"),
           style: "destructive",
           onPress: async () => {
             setDecliningOfferId(offerId);
             try {
               const res = await api.post(`/api/me/custom-offers/${offerId}/decline`, {});
               if (res.error) {
-                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? "Failed to decline offer");
+                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("declineOfferFailed"));
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setOfferDetailVisible(false);
               await load(true);
             } catch (e) {
-              Alert.alert(errTitle, e instanceof Error ? e.message : "Failed to decline offer");
+              Alert.alert(errTitle, e instanceof Error ? e.message : crl("declineOfferFailed"));
             } finally {
               setDecliningOfferId(null);
             }
@@ -558,7 +595,7 @@ export default function CustomRequestsScreen() {
         },
       ]);
     },
-    [errTitle, load],
+    [crl, errTitle, load],
   );
 
   const handleRequestChanges = useCallback(
@@ -571,7 +608,7 @@ export default function CustomRequestsScreen() {
 
   const submitRequestChanges = useCallback(async () => {
     if (!requestChangesOfferId || !requestChangesNote.trim()) {
-      Alert.alert(errTitle, "Please describe what you'd like changed");
+      Alert.alert(errTitle, crl("describeChangesRequired"));
       return;
     }
     setRequestingChanges(true);
@@ -580,7 +617,7 @@ export default function CustomRequestsScreen() {
         note: requestChangesNote.trim(),
       });
       if (res.error) {
-        Alert.alert(errTitle, (res.error as { message?: string })?.message ?? "Failed to request changes");
+        Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("requestChangesFailed"));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -589,11 +626,11 @@ export default function CustomRequestsScreen() {
       setOfferDetailVisible(false);
       await load(true);
     } catch (e) {
-      Alert.alert(errTitle, e instanceof Error ? e.message : "Failed to request changes");
+      Alert.alert(errTitle, e instanceof Error ? e.message : crl("requestChangesFailed"));
     } finally {
       setRequestingChanges(false);
     }
-  }, [errTitle, load, requestChangesNote, requestChangesOfferId]);
+  }, [crl, errTitle, load, requestChangesNote, requestChangesOfferId]);
 
   const handleCancelRequest = useCallback(
     (requestId: string) => {
@@ -631,7 +668,7 @@ export default function CustomRequestsScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>{crl("loading")}</Text>
       </View>
     );
   }
@@ -641,7 +678,7 @@ export default function CustomRequestsScreen() {
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
         <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{crl("retry")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -670,8 +707,8 @@ export default function CustomRequestsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
         ListEmptyComponent={
           <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 64 }}>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No custom requests</Text>
-            <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 32 }}>Create a custom service request from any provider profile</Text>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{crl("emptyTitle")}</Text>
+            <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 32 }}>{crl("emptyBody")}</Text>
           </View>
         }
       />
@@ -700,7 +737,7 @@ export default function CustomRequestsScreen() {
           >
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.gray[200], alignSelf: "center", marginBottom: 14 }} />
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
-              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>Offer details</Text>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>{crl("offerDetailsTitle")}</Text>
               <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
                 <Text style={{ fontSize: 22, color: Colors.gray[400] }}>×</Text>
               </TouchableOpacity>
@@ -711,7 +748,7 @@ export default function CustomRequestsScreen() {
               </View>
             ) : !offerDetailData ? (
               <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
-                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>Could not load offer details.</Text>
+                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>{crl("couldNotLoadOfferDetails")}</Text>
               </View>
             ) : (() => {
               const d = offerDetailData;
@@ -732,20 +769,24 @@ export default function CustomRequestsScreen() {
               };
 
               const statusBadge = isFinalizeFailed
-                ? { label: "Needs support", bg: "#FEE2E2", text: "#B91C1C" }
+                ? { label: crl("statusNeedsSupport"), bg: "#FEE2E2", text: "#B91C1C" }
                 : isDeclined
-                  ? { label: "Declined", bg: "#F3F4F6", text: "#6B7280" }
+                  ? { label: crl("statusDeclined"), bg: "#F3F4F6", text: "#6B7280" }
                   : isWithdrawn
-                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                ? { label: crl("statusWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
                 : isExpired
-                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                ? { label: crl("statusExpired"), bg: "#F3F4F6", text: "#6B7280" }
                 : isPaid
-                ? { label: "Booked ✓", bg: "#DCFCE7", text: "#166534" }
+                ? { label: crl("statusBooked"), bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"
-                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
-                : { label: "Pending acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+                ? { label: crl("statusPaymentInProgress"), bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: crl("statusPendingAcceptance"), bg: "#EFF6FF", text: "#1E40AF" };
 
-              const locLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const locLabel = req?.location_type === "at_home"
+                ? crl("atHomeLower")
+                : req?.location_type === "at_salon"
+                  ? crl("atSalonLower")
+                  : req?.location_type ?? "—";
               const addrParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
 
               return (
@@ -759,7 +800,7 @@ export default function CustomRequestsScreen() {
                   <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
                     {d.currency || ""} {typeof d.price === "number" ? d.price.toFixed(2) : "—"}
                     {typeof d.travel_fee === "number" && d.travel_fee > 0
-                      ? `  + ${d.currency} ${d.travel_fee.toFixed(2)} travel`
+                      ? `  ${crl("travelSuffix", { currency: d.currency || "", amount: d.travel_fee.toFixed(2) })}`
                       : ""}
                   </Text>
                   {req?.description ? (
@@ -767,19 +808,19 @@ export default function CustomRequestsScreen() {
                   ) : null}
                   <View style={{ gap: 10 }}>
                     {d.duration_minutes ? (
-                      <Text style={{ color: Colors.gray[700], fontSize: 14 }}>⏱ {d.duration_minutes} min</Text>
+                      <Text style={{ color: Colors.gray[700], fontSize: 14 }}>⏱ {crl("durationMin", { minutes: String(d.duration_minutes) })}</Text>
                     ) : null}
                     {req?.preferred_start_at ? (
                       <Text style={{ color: Colors.gray[700], fontSize: 14 }}>📅 {fmtDate(req.preferred_start_at)}</Text>
                     ) : null}
                     {d.expiration_at ? (
-                      <Text style={{ color: isExpired ? "#B45309" : Colors.gray[700], fontSize: 14 }}>⏳ Offer expires: {fmtDate(d.expiration_at)}</Text>
+                      <Text style={{ color: isExpired ? "#B45309" : Colors.gray[700], fontSize: 14 }}>⏳ {crl("offerExpiresLabel", { datetime: fmtDate(d.expiration_at) })}</Text>
                     ) : null}
                     {req?.location_type ? (
                       <View>
                         <Text style={{ color: Colors.gray[700], fontSize: 14 }}>📍 {locLabel}</Text>
                         {addrParts.length > 0 ? (
-                          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2, marginLeft: 20 }}>{addrParts.join(", ")}</Text>
+                          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2, marginStart: 20 }}>{addrParts.join(", ")}</Text>
                         ) : null}
                       </View>
                     ) : null}
@@ -789,8 +830,11 @@ export default function CustomRequestsScreen() {
                   </View>
                   {isFinalizeFailed ? (
                     <Text style={{ marginTop: 16, color: "#B91C1C", fontSize: 14, lineHeight: 20 }}>
-                      Payment was received but booking setup failed. Please contact support
-                      {d.payment_reference ? ` and quote reference ${d.payment_reference}` : ""}.
+                      {crl("finalizeFailedBody", {
+                        refSuffix: d.payment_reference
+                          ? crl("finalizeFailedRefSuffix", { reference: d.payment_reference })
+                          : "",
+                      })}
                     </Text>
                   ) : null}
                   {isPending && d.id ? (
@@ -802,7 +846,7 @@ export default function CustomRequestsScreen() {
                         }}
                         style={{ borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", paddingVertical: 14 }}
                       >
-                        <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
+                        <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{crl("acceptAndPay")}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
@@ -811,7 +855,7 @@ export default function CustomRequestsScreen() {
                         }}
                         style={{ borderRadius: 12, borderWidth: 1, borderColor: "#BFDBFE", backgroundColor: "#EFF6FF", alignItems: "center", paddingVertical: 14 }}
                       >
-                        <Text style={{ color: "#1D4ED8", fontSize: 15, fontWeight: "600" }}>Request changes</Text>
+                        <Text style={{ color: "#1D4ED8", fontSize: 15, fontWeight: "600" }}>{crl("requestChangesCta")}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleDeclineOffer(d.id)}
@@ -819,7 +863,7 @@ export default function CustomRequestsScreen() {
                         style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], alignItems: "center", paddingVertical: 14, opacity: decliningOfferId === d.id ? 0.6 : 1 }}
                       >
                         <Text style={{ color: Colors.gray[700], fontSize: 15, fontWeight: "600" }}>
-                          {decliningOfferId === d.id ? "Declining…" : "Decline offer"}
+                          {decliningOfferId === d.id ? crl("declining") : crl("declineOfferCta")}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -831,7 +875,7 @@ export default function CustomRequestsScreen() {
                       }}
                       style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#1D4ED8", alignItems: "center", paddingVertical: 14 }}
                     >
-                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Continue payment</Text>
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{crl("continuePayment")}</Text>
                     </TouchableOpacity>
                   ) : isPaid && d.booking_id ? (
                     <TouchableOpacity
@@ -841,7 +885,7 @@ export default function CustomRequestsScreen() {
                       }}
                       style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#166534", alignItems: "center", paddingVertical: 14 }}
                     >
-                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>View Booking</Text>
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{crl("viewBooking")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </ScrollView>
@@ -854,21 +898,21 @@ export default function CustomRequestsScreen() {
       <Modal visible={!!requestChangesOfferId} transparent animationType="fade" onRequestClose={() => setRequestChangesOfferId(null)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }} onPress={() => setRequestChangesOfferId(null)}>
           <Pressable style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20 }} onPress={(e) => e.stopPropagation()}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Request changes</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>Tell the provider what you would like adjusted.</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{crl("requestChangesTitle")}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>{crl("requestChangesBody")}</Text>
             <TextInput
               value={requestChangesNote}
               onChangeText={setRequestChangesNote}
-              placeholder="e.g. lower price or different time"
+              placeholder={crl("requestChangesPlaceholder")}
               multiline
               style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, padding: 12, minHeight: 100, textAlignVertical: "top", marginBottom: 16 }}
             />
             <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity onPress={() => setRequestChangesOfferId(null)} style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{crl("cancelModal")}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => void submitRequestChanges()} disabled={requestingChanges} style={{ flex: 1, borderRadius: 12, backgroundColor: "#1D4ED8", paddingVertical: 12, alignItems: "center", opacity: requestingChanges ? 0.6 : 1 }}>
-                <Text style={{ fontWeight: "700", color: Colors.white }}>{requestingChanges ? "Sending…" : "Send"}</Text>
+                <Text style={{ fontWeight: "700", color: Colors.white }}>{requestingChanges ? crl("sending") : crl("send")}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
@@ -30,6 +32,7 @@ export function BookingCompletionSuccessDialog({
   onRateClient,
   canRate = true,
 }: BookingCompletionSuccessDialogProps) {
+  const { t } = useTranslation();
   const dismiss = () => {
     try {
       localStorage.setItem(`${STORAGE_PREFIX}${bookingId}`, "1");
@@ -46,20 +49,22 @@ export function BookingCompletionSuccessDialog({
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100 mb-2">
             <CheckCircle2 className="h-7 w-7 text-green-700" />
           </div>
-          <DialogTitle>Service completed</DialogTitle>
+          <DialogTitle>{t("web.completionSuccess.title")}</DialogTitle>
           <DialogDescription>
-            {clientName ? `${clientName}'s` : "This"} appointment is marked complete.
-            {canRate ? " You can rate your client below." : ""}
+            {clientName
+              ? t("web.completionSuccess.bodyNamed", { name: clientName })
+              : t("web.completionSuccess.bodyGeneric")}
+            {canRate ? t("web.completionSuccess.rateHint") : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2 pt-2">
           {canRate && onRateClient ? (
             <BookingActionButton onClick={() => { dismiss(); onRateClient(); }}>
-              Rate client
+              {t("web.completionSuccess.rateClient")}
             </BookingActionButton>
           ) : null}
           <BookingActionButton variant="outline" onClick={dismiss}>
-            Done
+            {t("common.done")}
           </BookingActionButton>
         </div>
       </DialogContent>

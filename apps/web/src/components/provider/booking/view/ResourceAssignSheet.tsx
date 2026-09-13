@@ -18,6 +18,7 @@ import {
   BookingSectionCard,
   BookingSectionLabel,
 } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ResourceOption {
   id: string;
@@ -37,6 +38,7 @@ export function ResourceAssignSheet({
   bookingId,
   onSuccess,
 }: ResourceAssignSheetProps) {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<ResourceOption[]>([]);
   const [resourceId, setResourceId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,11 +70,11 @@ export function ResourceAssignSheet({
       await fetcher.post(`/api/provider/bookings/${bookingId}/resources`, {
         resource_id: resourceId,
       });
-      toast.success("Resource assigned");
+      toast.success(t("web.provider.bookings.resourceAssign.assigned"));
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
-      toast.error(formatApiErrorMessage(error, "Failed to assign resource"));
+      toast.error(formatApiErrorMessage(error, t("web.provider.bookings.resourceAssign.assignFailed")));
     } finally {
       setSaving(false);
     }
@@ -82,17 +84,17 @@ export function ResourceAssignSheet({
     <BookingActionButton disabled={saving || !resourceId} onClick={handleAssign}>
       {saving ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Assigning…
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+          {t("web.provider.bookings.resourceAssign.assigning")}
         </>
       ) : (
-        "Assign resource"
+        t("web.provider.bookings.resourceAssign.assignResource")
       )}
     </BookingActionButton>
   );
 
   return (
-    <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="edit" title="Assign resource" footer={footer}>
+    <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="edit" title={t("web.provider.bookings.resourceAssign.title")} footer={footer}>
       <BookingSectionCard>
         {loading ? (
           <div className="flex justify-center py-6">
@@ -100,10 +102,10 @@ export function ResourceAssignSheet({
           </div>
         ) : (
           <>
-            <BookingSectionLabel className="mb-2">Resource</BookingSectionLabel>
+            <BookingSectionLabel className="mb-2">{t("web.provider.bookings.resourceAssign.resource")}</BookingSectionLabel>
             <Select value={resourceId} onValueChange={setResourceId}>
               <SelectTrigger className="rounded-xl min-h-[44px]">
-                <SelectValue placeholder="Select resource" />
+                <SelectValue placeholder={t("web.provider.bookings.resourceAssign.selectResource")} />
               </SelectTrigger>
               <SelectContent>
                 {resources.map((r) => (

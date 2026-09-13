@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,63 +16,24 @@ import {
 import { cn } from "@/lib/utils";
 
 const providerNavItems = [
-  { 
-    name: "Dashboard", 
-    href: "/provider/dashboard", 
-    icon: BarChart3,
-    description: "Overview and analytics"
-  },
-  { 
-    name: "Bookings", 
-    href: "/provider/bookings", 
-    icon: Calendar,
-    description: "Manage appointments"
-  },
-  { 
-    name: "Packages", 
-    href: "/provider/packages", 
-    icon: Package,
-    description: "Service packages"
-  },
-  { 
-    name: "Reviews", 
-    href: "/provider/reviews", 
-    icon: Star,
-    description: "Customer reviews"
-  },
-  { 
-    name: "Waitlist", 
-    href: "/provider/waitlist", 
-    icon: ClipboardList,
-    description: "Waitlist management"
-  },
-  { 
-    name: "Analytics", 
-    href: "/provider/analytics", 
-    icon: BarChart3,
-    description: "Business insights"
-  },
-  { 
-    name: "Messages", 
-    href: "/provider/messages", 
-    icon: MessageSquare,
-    description: "Customer messages"
-  },
-  { 
-    name: "Settings", 
-    href: "/provider/settings", 
-    icon: Settings,
-    description: "Provider settings"
-  },
+  { nameKey: "web.provider.sidebar.items.dashboard", descriptionKey: "web.layout.providerNav.dashboardDesc", href: "/provider/dashboard", icon: BarChart3 },
+  { nameKey: "web.provider.sidebar.items.bookings", descriptionKey: "web.layout.providerNav.bookingsDesc", href: "/provider/bookings", icon: Calendar },
+  { nameKey: "web.provider.sidebar.items.packages", descriptionKey: "web.layout.providerNav.packagesDesc", href: "/provider/packages", icon: Package },
+  { nameKey: "web.provider.sidebar.items.reviews", descriptionKey: "web.layout.providerNav.reviewsDesc", href: "/provider/reviews", icon: Star },
+  { nameKey: "web.provider.sidebar.items.waitlist", descriptionKey: "web.layout.providerNav.waitlistDesc", href: "/provider/waitlist", icon: ClipboardList },
+  { nameKey: "web.provider.sidebar.items.analytics", descriptionKey: "web.layout.providerNav.analyticsDesc", href: "/provider/analytics", icon: BarChart3 },
+  { nameKey: "web.provider.sidebar.items.messages", descriptionKey: "web.layout.providerNav.messagesDesc", href: "/provider/messages", icon: MessageSquare },
+  { nameKey: "web.provider.sidebar.items.settings", descriptionKey: "web.layout.providerNav.settingsDesc", href: "/provider/settings", icon: Settings },
 ];
 
 export default function ProviderNav() {
+  const { t } = useTranslation();
   const pathname = usePathname();
 
   return (
-    <nav className="w-64 bg-white border-r border-gray-200 min-h-screen p-4">
+    <nav className="w-64 bg-white border-e border-gray-200 min-h-screen p-4">
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">Provider Portal</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{t("web.layout.providerNav.title")}</h2>
       </div>
       <ul className="space-y-1">
         {providerNavItems.map((item) => {
@@ -90,12 +53,12 @@ export default function ProviderNav() {
               >
                 <Icon className="w-5 h-5" />
                 <div className="flex-1">
-                  <div className="font-medium">{item.name}</div>
+                  <div className="font-medium">{t(item.nameKey)}</div>
                   <div className={cn(
                     "text-xs",
                     isActive ? "text-white/80" : "text-gray-500"
                   )}>
-                    {item.description}
+                    {t(item.descriptionKey)}
                   </div>
                 </div>
               </Link>

@@ -42,7 +42,7 @@ function ToggleRow({ label, description, value, disabled, locked, lockedNote, sa
         opacity: locked ? 0.72 : 1,
       }}
     >
-      <View style={{ flex: 1, marginRight: 12 }}>
+      <View style={{ flex: 1, marginEnd: 12 }}>
         <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{label}</Text>
         {description ? (
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{description}</Text>

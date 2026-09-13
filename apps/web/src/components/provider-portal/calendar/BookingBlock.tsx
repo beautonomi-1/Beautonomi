@@ -1,7 +1,9 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { memo } from "react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { mapStatus } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors } from "@/lib/scheduling/visualMapping";
 import { DraggableAppointment } from "@/components/provider-portal/DragDropCalendar";
@@ -41,7 +43,8 @@ function BookingBlockComponent({
   variant,
   formatPrice,
 }: BookingBlockProps) {
-  const fmtPrice = formatPrice ?? ((n: number) => `R${n.toFixed(0)}`);
+  const { t } = useTranslation();
+  const fmtPrice = formatPrice ?? ((n: number) => formatCurrency(n, "ZAR"));
   const isGroupBooking = !!(apt as any).is_group_booking;
   const { hour, minute: min } = parseScheduledTime(apt.scheduled_time);
   const top = (hour - startHour) * HOUR_HEIGHT + (min / 60) * HOUR_HEIGHT;
@@ -87,7 +90,7 @@ function BookingBlockComponent({
           })()}
           {isGroupBooking && (
             <span className="absolute top-0.5 left-0.5 text-[7px] font-bold px-0.5 rounded bg-purple-600 text-white leading-tight">
-              GRP
+              {t("web.calendarBlock.grp")}
             </span>
           )}
           <p
@@ -127,7 +130,7 @@ function BookingBlockComponent({
           <div className="absolute top-1 right-1 flex items-center gap-1 flex-wrap justify-end max-w-full">
             {isGroupBooking && (
               <span className="text-[8px] font-bold px-1 py-0 rounded shrink-0 bg-purple-600 text-white">
-                GROUP
+                {t("web.calendarBlock.group")}
               </span>
             )}
             {isNew && (
@@ -135,7 +138,7 @@ function BookingBlockComponent({
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
                 style={{ backgroundColor: colors.border, color: "#fff" }}
               >
-                NEW
+                {t("web.calendarBlock.new")}
               </span>
             )}
             {showNonBookedBadge && (() => {

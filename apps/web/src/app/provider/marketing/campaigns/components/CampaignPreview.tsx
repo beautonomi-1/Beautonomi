@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useMemo } from "react";
 import { Mail, MessageSquare, MessageCircle } from "lucide-react";
 import { substituteMergeTags, MERGE_TAG_PREVIEW_SAMPLE } from "@/lib/marketing/merge-tags";
@@ -24,6 +25,7 @@ export default function CampaignPreview({
   content,
   businessName,
 }: CampaignPreviewProps) {
+  const { t } = useTranslation();
   const sample = useMemo(
     () => ({ ...MERGE_TAG_PREVIEW_SAMPLE, business_name: businessName || MERGE_TAG_PREVIEW_SAMPLE.business_name }),
     [businessName],
@@ -41,7 +43,7 @@ export default function CampaignPreview({
   if (!content.trim()) {
     return (
       <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-400">
-        Start typing your message to see a live preview here.
+{t("web.provider.pages.marketing/campaigns.emptyPreview")}
       </div>
     );
   }
@@ -59,18 +61,18 @@ export default function CampaignPreview({
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2">
           <Mail className="h-4 w-4 text-blue-600" />
-          <span className="text-xs font-medium text-gray-500">Email preview</span>
+<span className="text-xs font-medium text-gray-500">{t("web.provider.pages.marketing/campaigns.emailPreview")}</span>
         </div>
         <div className="space-y-1 border-b border-gray-100 px-4 py-3">
           <p className="text-xs text-gray-400">
-            From: <span className="text-gray-700">{sample.business_name}</span>
+{t("web.provider.pages.marketing/campaigns.fromLabel")} <span className="text-gray-700">{sample.business_name}</span>
           </p>
           <p className="text-sm font-semibold text-gray-900">
-            {resolvedSubject || <span className="text-gray-400">(no subject)</span>}
+{resolvedSubject || <span className="text-gray-400">{t("web.provider.pages.marketing/campaigns.noSubject")}</span>}
           </p>
         </div>
         <iframe
-          title="Email preview"
+title={t("web.provider.pages.marketing/campaigns.emailPreview")}
           srcDoc={emailHtml}
           sandbox=""
           className="h-[280px] w-full bg-white"
@@ -88,7 +90,7 @@ export default function CampaignPreview({
       <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2">
         <ChannelIcon className={`h-4 w-4 ${isWhatsApp ? "text-green-600" : "text-green-500"}`} />
         <span className="text-xs font-medium text-gray-500">
-          {isWhatsApp ? "WhatsApp preview" : "SMS preview"}
+{isWhatsApp ? t("web.provider.pages.marketing/campaigns.whatsappPreview") : t("web.provider.pages.marketing/campaigns.smsPreview")}
         </span>
       </div>
       <div
@@ -102,13 +104,13 @@ export default function CampaignPreview({
           <div className="mb-2 text-center text-[11px] text-gray-500">{sample.business_name}</div>
           <div
             className={`relative rounded-2xl px-3 py-2 text-sm shadow ${bubbleColor} ${
-              isWhatsApp ? "rounded-tl-sm" : "ml-auto rounded-tr-sm"
+              isWhatsApp ? "rounded-tl-sm" : "ms-auto rounded-tr-sm"
             }`}
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
           >
             {resolvedContent}
             <div
-              className={`mt-1 text-right text-[10px] ${
+              className={`mt-1 text-end text-[10px] ${
                 isWhatsApp ? "text-gray-500" : "text-blue-100"
               }`}
             >
@@ -116,9 +118,9 @@ export default function CampaignPreview({
             </div>
           </div>
           <p className="mt-3 text-center text-[11px] text-gray-500">
-            {content.length} characters
+{t("web.provider.pages.marketing/campaigns.charCount", { count: content.length })}
             {(type === "sms" || type === "whatsapp") && content.length > 160
-              ? " · may split into multiple messages"
+              ? t("web.provider.pages.marketing/campaigns.maySplit")
               : ""}
           </p>
         </div>

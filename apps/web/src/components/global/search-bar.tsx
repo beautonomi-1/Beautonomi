@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import { Search, MapPin, Calendar, Clock, Home, Briefcase, History, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import { useRecentLocations, type RecentLocation } from "@/hooks/useRecentLocati
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 import Hair from "./../../../public/images/hairstylist_6672954.svg";
 import Nails from "./../../../public/images/nail-art.svg";
@@ -30,39 +31,7 @@ import Massage from "./../../../public/images/massage.svg";
 import Eyebrows from "./../../../public/images/mascara.svg";
 import Barbering from "./../../../public/images/barbershop.svg";
 
-const categories = [
-  {
-    name: "Hair & styling",
-    icon: Hair,
-    subcategories: ["Haircut", "Hair coloring", "Hair extensions"],
-  },
-  {
-    name: "Nails",
-    icon: Nails,
-    subcategories: ["Manicure", "Pedicure", "Nail art"],
-  },
-  {
-    name: "Eyebrows & eyelashes",
-    icon: Eyebrows,
-    subcategories: ["Eyebrow threading", "Eyelash extensions", "Microblading"],
-  },
-  {
-    name: "Massage",
-    icon: Massage,
-    subcategories: [
-      "Swedish massage",
-      "Deep tissue massage",
-      "Hot stone massage",
-    ],
-  },
-  {
-    name: "Barbering",
-    icon: Barbering,
-    subcategories: ["Men's haircut", "Beard trim", "Hot towel shave"],
-  },
-];
-
-const timeSlots = ["Any time", "Morning", "Afternoon", "Evening"];
+const SB = "web.global.searchBar";
 
 interface SearchBarProps {
   searchQuery: string;
@@ -81,12 +50,66 @@ const SearchBar: React.FC<SearchBarProps> = ({
   searchQuery,
   onSearchSubmit,
 }) => {
+  const { t } = useTranslation();
+  const categories = useMemo(
+    () => [
+      {
+        name: t(`${SB}.categories.hairStyling`),
+        icon: Hair,
+        subcategories: [
+          t(`${SB}.subcategories.haircut`),
+          t(`${SB}.subcategories.hairColoring`),
+          t(`${SB}.subcategories.hairExtensions`),
+        ],
+      },
+      {
+        name: t(`${SB}.categories.nails`),
+        icon: Nails,
+        subcategories: [
+          t(`${SB}.subcategories.manicure`),
+          t(`${SB}.subcategories.pedicure`),
+          t(`${SB}.subcategories.nailArt`),
+        ],
+      },
+      {
+        name: t(`${SB}.categories.eyebrowsEyelashes`),
+        icon: Eyebrows,
+        subcategories: [
+          t(`${SB}.subcategories.eyebrowThreading`),
+          t(`${SB}.subcategories.eyelashExtensions`),
+          t(`${SB}.subcategories.microblading`),
+        ],
+      },
+      {
+        name: t(`${SB}.categories.massage`),
+        icon: Massage,
+        subcategories: [
+          t(`${SB}.subcategories.swedishMassage`),
+          t(`${SB}.subcategories.deepTissueMassage`),
+          t(`${SB}.subcategories.hotStoneMassage`),
+        ],
+      },
+      {
+        name: t(`${SB}.categories.barbering`),
+        icon: Barbering,
+        subcategories: [
+          t(`${SB}.subcategories.mensHaircut`),
+          t(`${SB}.subcategories.beardTrim`),
+          t(`${SB}.subcategories.hotTowelShave`),
+        ],
+      },
+    ],
+    [t]
+  );
+
+  const timeSlotKeys = ["anyTime", "morning", "afternoon", "evening"] as const;
+
   const [inputValue, _setInputValue] = useState(searchQuery);
   const [treatment, setTreatment] = useState("");
   const [locationState, setLocationState] = useState<LocationState | null>(null);
   const [locationSearchQuery, setLocationSearchQuery] = useState("");
   const [date, setDate] = useState<Date | undefined>(undefined);
-  const [timeSlot, setTimeSlot] = useState("Any time");
+  const [timeSlotKey, setTimeSlotKey] = useState<(typeof timeSlotKeys)[number]>("anyTime");
   const [fromTime, setFromTime] = useState("");
   const [toTime, setToTime] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
@@ -96,7 +119,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const [_locationToLabel, setLocationToLabel] = useState<RecentLocation | null>(null);
   const [_newLabel, setNewLabel] = useState("");
 
-  // New state to control popover visibility
   const [isServicePopoverOpen, setIsServicePopoverOpen] = useState(false);
   const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
   const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false);
@@ -107,7 +129,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const { recentLocations, addLocation, updateLocationLabel } = useRecentLocations();
   const { availability, checkAvailability, reset: resetAvailability } = useServiceAvailability();
 
-  // Sync with header location
+  const timeSlotLabel = t(`${SB}.${timeSlotKey}`);
+
   useEffect(() => {
     if (userLocation) {
       queueMicrotask(() =>
@@ -120,7 +143,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [userLocation]);
 
-  // Check service availability when location changes
   useEffect(() => {
     if (locationState?.latitude && locationState?.longitude) {
       checkAvailability(locationState.latitude, locationState.longitude);
@@ -139,10 +161,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
@@ -157,7 +179,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   }, [selectedCategory, selectedSubcategory]);
 
   const handleSearch = () => {
-    console.log({ treatment, location: locationState, date, timeSlot, fromTime, toTime });
+    console.log({ treatment, location: locationState, date, timeSlot: timeSlotLabel, fromTime, toTime });
     onSearchSubmit(inputValue);
   };
 
@@ -179,7 +201,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":").map(Number);
-    const ampm = hours >= 12 ? "PM" : "AM";
+    const ampm = hours >= 12 ? t("time.pm") : t("time.am");
     const formattedHours = hours % 12 || 12;
     return `${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   };
@@ -211,7 +233,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
     place_name?: string;
   }) => {
     const addressString = address.place_name || `${address.address_line1}, ${address.city}, ${address.country}`;
-    
+
     setLocationState({
       address: addressString,
       latitude: address.latitude,
@@ -220,7 +242,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
       country: address.country,
     });
 
-    // Save to localStorage and dispatch event (sync with header)
     const locationData = {
       latitude: address.latitude,
       longitude: address.longitude,
@@ -229,7 +250,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
     localStorage.setItem("userLocation", JSON.stringify(locationData));
     window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
 
-    // Add to recent locations
     addLocation({
       address: addressString,
       latitude: address.latitude,
@@ -251,7 +271,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
       country: recentLoc.country,
     });
 
-    // Save to localStorage and dispatch event
     const locationData = {
       latitude: recentLoc.latitude,
       longitude: recentLoc.longitude,
@@ -265,14 +284,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
+      toast.error(t(`${SB}.toastGeolocationUnsupported`));
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        
+
         try {
           const response = await fetch("/api/mapbox/geocode", {
             method: "POST",
@@ -288,24 +307,24 @@ const SearchBar: React.FC<SearchBarProps> = ({
             const address = data.data[0].place_name;
             handleAddressSelect({
               address_line1: address.split(",")[0] || address,
-              city: data.data[0].context?.find((c: any) => c.id.startsWith("place."))?.text || "",
-              country: data.data[0].context?.find((c: any) => c.id.startsWith("country."))?.text || "",
+              city: data.data[0].context?.find((c: { id: string }) => c.id.startsWith("place."))?.text || "",
+              country: data.data[0].context?.find((c: { id: string }) => c.id.startsWith("country."))?.text || "",
               latitude,
               longitude,
               place_name: address,
             });
-            toast.success("Location updated");
+            toast.success(t(`${SB}.toastLocationUpdated`));
           } else {
-            toast.error("Could not find address for this location");
+            toast.error(t(`${SB}.toastAddressNotFound`));
           }
         } catch (error) {
           console.error("Error reverse geocoding:", error);
-          toast.error("Failed to get address");
+          toast.error(t(`${SB}.toastFailedGetAddress`));
         }
       },
       (error) => {
         console.error("Error getting location:", error);
-        toast.error("Unable to get your location. Please enable location permissions.");
+        toast.error(t(`${SB}.toastLocationPermissionDenied`));
       }
     );
   };
@@ -315,7 +334,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
     setShowLocationLabelDialog(false);
     setLocationToLabel(null);
     setNewLabel("");
-    toast.success(`Location saved as "${label}"`);
+    toast.success(t(`${SB}.toastLocationSavedAs`, { label }));
   };
 
   const homeLocation = recentLocations.find((loc) => loc.label === "Home");
@@ -329,37 +348,37 @@ const SearchBar: React.FC<SearchBarProps> = ({
       <Popover open={isServicePopoverOpen} onOpenChange={setIsServicePopoverOpen}>
         <PopoverTrigger
           asChild
-          className="border border-transparent hover:bg-[#F2F2F2] pl-4 rounded-l-full py-3 rounded-full ml-1 w-1/4"
+          className="border border-transparent hover:bg-[#F2F2F2] ps-4 rounded-s-full py-3 rounded-full ms-1 w-1/4"
         >
           <Button
             variant="outline"
-            className="w-full justify-start text-left font-light flex flex-col items-start"
+            className="w-full justify-start text-start font-light flex flex-col items-start"
           >
             <label
               htmlFor="service-needed"
-              className="text-xs text-muted font-bold ml-7"
+              className="text-xs text-muted font-bold ms-7"
             >
-              Service needed?
+              {t(`${SB}.serviceNeededLabel`)}
             </label>
             <div className="flex items-center w-32">
               <Search
-                className="h-4 w-4 text-[#161616] mr-3"
+                className="h-4 w-4 text-[#161616] me-3"
                 aria-hidden="true"
               />
               <span
                 id="service-needed"
                 className="text-[#767A7C] font-light truncate"
               >
-                {treatment || "Any treatment or venue"}
+                {treatment || t(`${SB}.anyTreatmentOrVenue`)}
               </span>
             </div>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[300px] rounded-3xl mt-1 ml-10">
+        <PopoverContent className="w-[300px] rounded-3xl mt-1 ms-10">
           <div className="space-y-4">
-            <h4 className="font-normal">Top categories</h4>
+            <h4 className="font-normal">{t(`${SB}.topCategories`)}</h4>
             <Input
-              placeholder="Search categories"
+              placeholder={t("web.layout.searchCategoriesPlaceholder")}
               value={categorySearch}
               onChange={(e) => setCategorySearch(e.target.value)}
               className="mb-2"
@@ -371,7 +390,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                     className="justify-start flex text-destructive"
                     onClick={() => setSelectedCategory("")}
                   >
-                    ← Back to categories
+                    {t(`${SB}.backToCategories`)}
                   </button>
                   {categories
                     .find((cat) => cat.name === selectedCategory)
@@ -428,75 +447,72 @@ const SearchBar: React.FC<SearchBarProps> = ({
       <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
         <PopoverTrigger
           asChild
-          className="border border-transparent hover:bg-[#F2F2F2] pl-4 rounded-full w-1/4"
+          className="border border-transparent hover:bg-[#F2F2F2] ps-4 rounded-full w-1/4"
         >
           <Button
             variant="outline"
-            className="w-full justify-start text-left font-light flex flex-col items-start"
+            className="w-full justify-start text-start font-light flex flex-col items-start"
           >
             <label
               htmlFor="service-needed"
-              className="text-xs text-muted font-bold ml-7"
+              className="text-xs text-muted font-bold ms-7"
             >
-              Where?
+              {t(`${SB}.whereLabel`)}
             </label>
             <div className="flex items-center w-full">
               <MapPin className="h-4 w-4 text-[#161616]" />
-              <span className="text-[#767A7C] font-light ml-3 truncate">
-                {locationState ? truncateLocation(locationState.address) : "Current location"}
+              <span className="text-[#767A7C] font-light ms-3 truncate">
+                {locationState ? truncateLocation(locationState.address) : t(`${SB}.currentLocation`)}
               </span>
             </div>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-96 rounded-3xl max-h-[600px] overflow-y-auto">
           <div className="space-y-4">
-            {/* Address Autocomplete */}
             <div>
               <AddressAutocomplete
                 value={locationSearchQuery}
                 onChange={handleAddressSelect}
-                placeholder="Search for an address..."
+                placeholder={t("web.layout.searchAddressPlaceholder")}
                 className="w-full"
               />
             </div>
 
-            {/* Service Availability Indicator */}
             {locationState && (
               <div className="px-2 py-2 rounded-lg border">
                 {availability.isLoading ? (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Checking service availability...</span>
+                    <span>{t(`${SB}.checkingAvailability`)}</span>
                   </div>
                 ) : availability.in_zone ? (
                   <div className="flex items-center gap-2 text-sm text-green-600">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Services available in your area</span>
+                    <span>{t(`${SB}.servicesAvailable`)}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-amber-600">
                     <AlertCircle className="h-4 w-4" />
-                    <span>Limited service availability</span>
+                    <span>{t(`${SB}.limitedAvailability`)}</span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Quick Shortcuts */}
             {(homeLocation || workLocation) && (
               <div>
                 <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Quick Access
+                  {t(`${SB}.quickAccess`)}
                 </div>
                 <div className="space-y-1">
                   {homeLocation && (
                     <button
                       onClick={() => handleSelectRecentLocation(homeLocation)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start"
                     >
                       <Home className="h-4 w-4 text-[#FF0077]" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900">Home</div>
+                        <div className="text-sm font-medium text-gray-900">{t(`${SB}.home`)}</div>
                         <div className="text-xs text-gray-500 truncate">{homeLocation.address}</div>
                       </div>
                     </button>
@@ -504,11 +520,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   {workLocation && (
                     <button
                       onClick={() => handleSelectRecentLocation(workLocation)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start"
                     >
                       <Briefcase className="h-4 w-4 text-[#FF0077]" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900">Work</div>
+                        <div className="text-sm font-medium text-gray-900">{t(`${SB}.work`)}</div>
                         <div className="text-xs text-gray-500 truncate">{workLocation.address}</div>
                       </div>
                     </button>
@@ -517,18 +533,17 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Recent Locations */}
             {otherRecentLocations.length > 0 && (
               <div>
                 <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Recent Locations
+                  {t(`${SB}.recentLocations`)}
                 </div>
                 <div className="space-y-1">
                   {otherRecentLocations.slice(0, 3).map((loc) => (
                     <button
                       key={loc.id}
                       onClick={() => handleSelectRecentLocation(loc)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start"
                     >
                       <History className="h-4 w-4 text-gray-400" />
                       <div className="flex-1 min-w-0">
@@ -543,14 +558,13 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Current Location Button */}
             <div className="border-t pt-2">
               <button
                 onClick={handleGetCurrentLocation}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start"
               >
                 <MapPin className="h-4 w-4 text-[#FF0077]" />
-                <span className="text-sm text-gray-900">Use current location</span>
+                <span className="text-sm text-gray-900">{t(`${SB}.useCurrentLocation`)}</span>
               </button>
             </div>
           </div>
@@ -562,22 +576,22 @@ const SearchBar: React.FC<SearchBarProps> = ({
       <Popover open={isDatePopoverOpen} onOpenChange={setIsDatePopoverOpen}>
         <PopoverTrigger
           asChild
-          className="border border-transparent hover:bg-[#F2F2F2] pl-4 rounded-full w-1/4"
+          className="border border-transparent hover:bg-[#F2F2F2] ps-4 rounded-full w-1/4"
         >
           <Button
             variant="outline"
-            className="w-full justify-start text-left font-light flex flex-col items-start"
+            className="w-full justify-start text-start font-light flex flex-col items-start"
           >
             <label
               htmlFor="service-needed"
-              className="text-xs text-muted font-bold ml-7"
+              className="text-xs text-muted font-bold ms-7"
             >
-              When?
+              {t(`${SB}.whenLabel`)}
             </label>
             <div className="flex items-center w-full">
               <Calendar className="h-4 w-4 text-[#161616]" />
-              <span className="text-[#767A7C] font-light ml-3">
-                {date ? format(date, "d MMM yyyy") : "Any date"}
+              <span className="text-[#767A7C] font-light ms-3">
+                {date ? format(date, "d MMM yyyy") : t(`${SB}.anyDate`)}
               </span>
             </div>
           </Button>
@@ -600,49 +614,49 @@ const SearchBar: React.FC<SearchBarProps> = ({
       <Popover open={isTimePopoverOpen} onOpenChange={setIsTimePopoverOpen}>
         <PopoverTrigger
           asChild
-          className="border border-transparent hover:bg-[#F2F2F2] pl-4 pr-20  rounded-r-full py-[20px] rounded-full mr-1 my-1"
+          className="border border-transparent hover:bg-[#F2F2F2] ps-4 pe-20  rounded-r-full py-[20px] rounded-full me-1 my-1"
         >
           <Button
             variant="outline"
-            className="w-full justify-start text-left font-light"
+            className="w-full justify-start text-start font-light"
           >
-            <Clock className="mr-2 h-4 w-4 text-[#161616]" />
-            <span className="text-[#767A7C] font-light ml-4 truncate">
+            <Clock className="me-2 h-4 w-4 text-[#161616]" />
+            <span className="text-[#767A7C] font-light ms-4 truncate">
               {fromTime && toTime
                 ? `${formatTime(fromTime)} - ${formatTime(toTime)}`
                 : fromTime
-                ? `From ${formatTime(fromTime)}`
+                ? t(`${SB}.fromTimeDisplay`, { time: formatTime(fromTime) })
                 : toTime
-                ? `To ${formatTime(toTime)}`
-                : timeSlot}
+                ? t(`${SB}.toTimeDisplay`, { time: formatTime(toTime) })
+                : timeSlotLabel}
             </span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] rounded-3xl mr-20 mt-1">
+        <PopoverContent className="w-[400px] rounded-3xl me-20 mt-1">
           <div className="flex flex-wrap gap-2 mb-4">
-            {timeSlots.map((slot) => (
+            {timeSlotKeys.map((slotKey) => (
               <Button
-                key={slot}
+                key={slotKey}
                 variant="outline"
                 size="sm"
                 className="px-3 font-light"
                 onClick={() => {
-                  setTimeSlot(slot);
+                  setTimeSlotKey(slotKey);
                   setFromTime("");
                   setToTime("");
                   setIsTimePopoverOpen(false);
                 }}
               >
-                {slot}
+                {t(`${SB}.${slotKey}`)}
               </Button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Select value={fromTime} onValueChange={handleFromTimeChange}>
               <SelectTrigger className="font-light">
-                <SelectValue placeholder="From" />
+                <SelectValue placeholder={t(`${SB}.fromPlaceholder`)} />
               </SelectTrigger>
-              <SelectContent className="bg-white font-light text-left">
+              <SelectContent className="bg-white font-light text-start">
                 {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
                   <SelectItem
                     key={hour}
@@ -656,11 +670,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
             <Select value={toTime} onValueChange={setToTime}>
               <SelectTrigger className="font-light">
-                <SelectValue placeholder="To">
-                  {toTime ? formatTime(toTime) : "Select To Time"}
+                <SelectValue placeholder={t(`${SB}.toPlaceholder`)}>
+                  {toTime ? formatTime(toTime) : t(`${SB}.selectToTime`)}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-white font-light text-left">
+              <SelectContent className="bg-white font-light text-start">
                 {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
                   <SelectItem
                     key={hour}

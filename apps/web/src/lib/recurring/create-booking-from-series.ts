@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
@@ -241,8 +240,7 @@ export async function createBookingFromRecurringSeries(
     }
   }
 
-  const portalStatus = await determineAppointmentStatusFromDB(admin, row.provider_id);
-  const dbStatus = mapPortalStatusToDb(portalStatus);
+  const dbStatus = "confirmed";
 
   let cursor = new Date(scheduledAtLocal);
   const pBookingServices: Record<string, unknown>[] = [];

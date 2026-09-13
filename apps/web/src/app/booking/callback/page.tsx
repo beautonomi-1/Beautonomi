@@ -6,8 +6,10 @@ import { motion } from "framer-motion";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function PaymentCallback() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -16,10 +18,10 @@ export default function PaymentCallback() {
   useEffect(() => {
     const verifyPayment = async () => {
       const reference = searchParams.get("reference") || searchParams.get("trxref");
-      
+
       if (!reference) {
         setStatus("error");
-        setMessage("Payment reference not found");
+        setMessage(t("web.booking.callback.referenceNotFound"));
         return;
       }
 
@@ -31,8 +33,8 @@ export default function PaymentCallback() {
 
         if (response.status === "success") {
           setStatus("success");
-          setMessage("Payment successful! Your booking is confirmed.");
-          
+          setMessage(t("web.booking.callback.paymentSuccessful"));
+
           // Redirect to booking confirmation after 3 seconds
           setTimeout(() => {
             if (response.data?.bookingId) {
@@ -45,7 +47,7 @@ export default function PaymentCallback() {
           }, 3000);
         } else if (response.status === "failed") {
           setStatus("error");
-          setMessage(response.errorMessage || "Payment verification failed");
+          setMessage(response.errorMessage || t("web.booking.callback.verificationFailed"));
           // Send the user to bookings so a hard failure does not leave them
           // stuck on a "Try Again" dead end without context.
           setTimeout(() => {
@@ -53,14 +55,14 @@ export default function PaymentCallback() {
           }, 5000);
         } else {
           setStatus("success");
-          setMessage("Payment received. We are finalizing your booking now.");
+          setMessage(t("web.booking.callback.paymentReceivedFinalizing"));
           setTimeout(() => {
             router.push(`/checkout/success?reference=${encodeURIComponent(reference)}`);
           }, 2500);
         }
       } catch (error: any) {
         setStatus("success");
-        setMessage(error.message || "Payment received. We are finalizing your booking now.");
+        setMessage(error.message || t("web.booking.callback.paymentReceivedFinalizing"));
         setTimeout(() => {
           router.push(`/checkout/success?reference=${encodeURIComponent(reference)}`);
         }, 2500);
@@ -68,7 +70,7 @@ export default function PaymentCallback() {
     };
 
     verifyPayment();
-  }, [searchParams, router]);
+  }, [searchParams, router, t]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -81,9 +83,9 @@ export default function PaymentCallback() {
           <>
             <Loader2 className="w-16 h-16 text-primary mx-auto mb-4 animate-spin" />
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Verifying Payment
+              {t("web.booking.callback.verifyingPayment")}
             </h2>
-            <p className="text-gray-600">Please wait...</p>
+            <p className="text-gray-600">{t("web.booking.callback.pleaseWait")}</p>
           </>
         )}
 
@@ -97,11 +99,11 @@ export default function PaymentCallback() {
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
             </motion.div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Payment Successful!
+              {t("web.booking.callback.paymentSuccessfulTitle")}
             </h2>
             <p className="text-gray-600 mb-6">{message}</p>
             <p className="text-sm text-gray-500">
-              Redirecting to confirmation...
+              {t("web.booking.callback.redirectingToConfirmation")}
             </p>
           </>
         )}
@@ -110,14 +112,14 @@ export default function PaymentCallback() {
           <>
             <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Payment Failed
+              {t("web.booking.callback.paymentFailed")}
             </h2>
             <p className="text-gray-600 mb-6">{message}</p>
             <Button
               onClick={() => router.push("/booking")}
               className="bg-primary hover:bg-primary-hover"
             >
-              Try Again
+              {t("web.booking.callback.tryAgain")}
             </Button>
           </>
         )}

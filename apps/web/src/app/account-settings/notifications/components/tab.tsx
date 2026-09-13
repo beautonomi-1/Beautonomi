@@ -11,80 +11,81 @@ import Breadcrumb from "../../components/breadcrumb";
 import BackButton from "../../components/back-button";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { NotificationPreferences } from "../notification-preferences-types";
 
 const tabs = [
-  { value: "offersUpdates", label: "Offers and updates" },
-  { value: "account", label: "Account" },
-];
+  { value: "offersUpdates", labelKey: "tabOffersUpdates" },
+  { value: "account", labelKey: "tabAccount" },
+] as const;
 
 /** Sections for the "Offers and updates" tab */
 const offersUpdatesSections = [
   {
     id: "inspiration_and_offers",
-    title: "Inspiration and offers",
-    description: "News, tips, and offers from Beautonomi.",
+    titleKey: "inspirationAndOffers",
+    descriptionKey: "inspirationAndOffersDesc",
     icon: Gift,
   },
   {
     id: "news_and_programs",
-    title: "News and programs",
-    description: "Stay in the know about brand new programs and announcements.",
+    titleKey: "newsAndPrograms",
+    descriptionKey: "newsAndProgramsDesc",
     icon: FileText,
   },
-];
+] as const;
 
 /** Sections for the "Beautonomi updates" sub-group inside the Offers tab */
 const beautonomiUpdatesSections = [
   {
     id: "feedback",
-    title: "Feedback",
-    description: "Help us improve Beautonomi.",
+    titleKey: "feedback",
+    descriptionKey: "feedbackDesc",
     icon: AlertCircle,
   },
   {
     id: "travel_regulations",
-    title: "Travel regulations",
-    description: "Stay up to date on travel requirements.",
+    titleKey: "travelRegulations",
+    descriptionKey: "travelRegulationsDesc",
     icon: FileText,
   },
-];
+] as const;
 
 /** Sections for the "Account" tab */
 const accountSections = [
   {
     id: "account_activity",
-    title: "Account activity",
-    description: "Confirm your account activity and learn about important Beautonomi policies.",
+    titleKey: "accountActivity",
+    descriptionKey: "accountActivityDesc",
     icon: Bell,
   },
   {
     id: "client_policies",
-    title: "Client policies",
-    description: "Learn about important Beautonomi policies.",
+    titleKey: "clientPolicies",
+    descriptionKey: "clientPoliciesDesc",
     icon: FileText,
   },
   {
     id: "reminders",
-    title: "Reminders",
-    description: "Get important reminders about your upcoming bookings.",
+    titleKey: "reminders",
+    descriptionKey: "remindersDesc",
     icon: Clock,
   },
   {
     id: "subscription_renewal",
-    title: "Subscription renewal reminders",
-    description: "Get notified before your subscription expires.",
+    titleKey: "subscriptionRenewal",
+    descriptionKey: "subscriptionRenewalDesc",
     icon: Clock,
   },
   {
     id: "messages",
-    title: "Messages",
-    description: "Keep in touch with your beauty partner or clients.",
+    titleKey: "messages",
+    descriptionKey: "messagesDesc",
     icon: MessageSquare,
   },
-];
+] as const;
 
 /** All sections combined — used only for rendering modals */
 const notificationSections = [
@@ -112,6 +113,7 @@ const NotificationModal = ({
   sectionId,
   onUpdate,
 }: NotificationModalProps) => {
+  const { t } = useTranslation();
   const [localPrefs, setLocalPrefs] = useState<{ email: boolean; sms: boolean; push: boolean; whatsapp: boolean }>(
     preferences
       ? {
@@ -139,10 +141,10 @@ const NotificationModal = ({
     setIsSaving(true);
     try {
       await onUpdate(sectionId, localPrefs);
-      toast.success("Notification preferences updated");
+      toast.success(t("web.accountSettings.notifications.prefsUpdated"));
       onClose();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to update preferences");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.notifications.updateFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -161,7 +163,7 @@ const NotificationModal = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-gray-500" />
-                <span className="font-medium">Email</span>
+                <span className="font-medium">{t("web.accountSettings.notifications.email")}</span>
               </div>
               <Switch
                 checked={localPrefs.email}
@@ -174,7 +176,7 @@ const NotificationModal = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-gray-500" />
-                <span className="font-medium">SMS</span>
+                <span className="font-medium">{t("web.accountSettings.notifications.sms")}</span>
               </div>
               <Switch
                 checked={localPrefs.sms}
@@ -187,7 +189,7 @@ const NotificationModal = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-emerald-600" />
-                <span className="font-medium">WhatsApp</span>
+                <span className="font-medium">{t("web.accountSettings.notifications.whatsapp")}</span>
               </div>
               <Switch
                 checked={localPrefs.whatsapp}
@@ -198,13 +200,13 @@ const NotificationModal = ({
               />
             </div>
             <p className="text-xs text-gray-500 font-light -mt-2">
-              Opt in to receive updates on WhatsApp. You can reply STOP to opt out anytime.
+              {t("web.accountSettings.notifications.whatsappHint")}
             </p>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">Browser notifications</span>
+                  <span className="font-medium">{t("web.accountSettings.notifications.browserNotifications")}</span>
                 </div>
                 <Switch
                   checked={localPrefs.push}
@@ -216,8 +218,8 @@ const NotificationModal = ({
               </div>
               <p className="text-sm text-gray-500 font-light">
                 {localPrefs.push
-                  ? "We will send push alerts for this category when your device allows notifications from Beautonomi."
-                  : "Turn this on to allow push alerts for this category. You may also need to allow notifications in your browser or device settings."}
+                  ? t("web.accountSettings.notifications.pushOnHint")
+                  : t("web.accountSettings.notifications.pushOffHint")}
               </p>
             </div>
           </div>
@@ -227,7 +229,7 @@ const NotificationModal = ({
               onClick={onClose}
               className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:text-gray-900 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors touch-manipulation"
             >
-              Cancel
+              {t("web.accountSettings.notifications.cancel")}
             </button>
             <button
               type="button"
@@ -235,7 +237,7 @@ const NotificationModal = ({
               disabled={isSaving}
               className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary rounded-full disabled:opacity-50 shadow-sm touch-manipulation"
             >
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? t("web.accountSettings.notifications.saving") : t("web.accountSettings.notifications.save")}
             </button>
           </div>
         </div>
@@ -245,6 +247,7 @@ const NotificationModal = ({
 };
 
 const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferences | null }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("offersUpdates");
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<NotificationPreferences>(() => initialPreferences ?? {});
@@ -276,10 +279,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.accountSettings.notifications.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load notification preferences";
+          : t("web.accountSettings.notifications.loadFailed");
       setError(errorMessage);
       console.error("Error loading notification preferences:", err);
     } finally {
@@ -308,10 +311,14 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
       await fetcher.patch("/api/me/notification-preferences", {
         unsubscribe_marketing: checked,
       });
-      toast.success(checked ? "Unsubscribed from marketing emails" : "Subscribed to marketing emails");
+      toast.success(
+        checked
+          ? t("web.accountSettings.notifications.unsubscribedToast")
+          : t("web.accountSettings.notifications.subscribedToast"),
+      );
     } catch (error: unknown) {
       setUnsubscribeMarketing(previousValue);
-      toast.error(error instanceof Error ? error.message : "Failed to update preference");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.notifications.updatePreferenceFailed"));
     }
   };
 
@@ -322,13 +329,15 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
       push?: boolean;
       whatsapp?: boolean;
     } | undefined;
-    if (!prefs) return "On: Email and SMS";
+    if (!prefs) return t("web.accountSettings.notifications.statusOnDefault");
     const channels = [];
-    if (prefs.email) channels.push("Email");
-    if (prefs.sms) channels.push("SMS");
-    if (prefs.whatsapp) channels.push("WhatsApp");
-    if (prefs.push) channels.push("Push");
-    return channels.length > 0 ? `On: ${channels.join(", ")}` : "Off";
+    if (prefs.email) channels.push(t("web.accountSettings.notifications.email"));
+    if (prefs.sms) channels.push(t("web.accountSettings.notifications.sms"));
+    if (prefs.whatsapp) channels.push(t("web.accountSettings.notifications.whatsapp"));
+    if (prefs.push) channels.push(t("web.accountSettings.notifications.channelPush"));
+    return channels.length > 0
+      ? t("web.accountSettings.notifications.statusOn", { channels: channels.join(", ") })
+      : t("web.accountSettings.notifications.statusOff");
   };
 
   const openModal = (id: string) => setActiveModal(id);
@@ -338,7 +347,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
     return (
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <LoadingTimeout loadingMessage="Loading notification preferences..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.notifications.loading")} />
         </div>
       </div>
     );
@@ -349,9 +358,9 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <EmptyState
-            title="Unable to load notification preferences"
+            title={t("web.accountSettings.unableLoadNotifications")}
             description={error}
-            action={{ label: "Try Again", onClick: () => loadPreferences() }}
+            action={{ label: t("web.accountSettings.notifications.tryAgain"), onClick: () => loadPreferences() }}
           />
         </div>
       </div>
@@ -367,17 +376,17 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
           <BackButton href="/account-settings" />
           <Breadcrumb
             items={[
-              { label: "Account", href: "/account-settings" },
-              { label: "Notifications" },
+              { label: t("web.accountSettings.account"), href: "/account-settings" },
+              { label: t("web.accountSettings.notifications.title") },
             ]}
           />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b border-gray-200/90 mb-6 pb-5 mt-4 md:mt-6">
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-gray-900">
-              Notifications
+              {t("web.accountSettings.notifications.title")}
             </h1>
             <Button asChild variant="outline" size="sm" className="w-full sm:w-auto rounded-full border-gray-200 shrink-0">
-              <Link href="/account-settings/notifications/inbox">View inbox</Link>
+              <Link href="/account-settings/notifications/inbox">{t("web.accountSettings.notifications.viewInbox")}</Link>
             </Button>
           </div>
 
@@ -389,7 +398,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                   value={tab.value}
                   className="text-sm md:text-base font-medium text-gray-700 min-h-[44px] rounded-xl data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-gray-100 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 transition-all duration-200 touch-manipulation"
                 >
-                  {tab.label}
+                  {t(`web.accountSettings.notifications.${tab.labelKey}`)}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -413,7 +422,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                             </div>
                             <div>
                               <h3 className="text-base font-semibold text-gray-900">
-                                {section.title}
+                                {t(`web.accountSettings.notifications.${section.titleKey}`)}
                               </h3>
                               <p className="text-sm font-light text-gray-600 mb-2">
                                 {getPreferenceStatus(section.id)}
@@ -426,7 +435,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                           onClick={() => openModal(section.id)}
                           className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                         >
-                          Edit
+                          {t("web.accountSettings.notifications.edit")}
                         </button>
                       </div>
                     </div>
@@ -435,11 +444,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
 
                 <div className="mt-8 pt-6 border-t border-gray-200">
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-4">
-                    Beautonomi updates
+                    {t("web.accountSettings.notifications.beautonomiUpdates")}
                   </h2>
                   <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                    Stay up to date on the latest news from Beautonomi, and let us know how we can
-                    improve.
+                    {t("web.accountSettings.notifications.beautonomiUpdatesDesc")}
                   </p>
 
                   {beautonomiUpdatesSections.map((section) => {
@@ -457,7 +465,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
-                                  {section.title}
+                                  {t(`web.accountSettings.notifications.${section.titleKey}`)}
                                 </h3>
                                 <p className="text-sm font-light text-gray-600 mb-2">
                                   {getPreferenceStatus(section.id)}
@@ -470,7 +478,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                             onClick={() => openModal(section.id)}
                             className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                           >
-                            Edit
+                            {t("web.accountSettings.notifications.edit")}
                           </button>
                         </div>
                       </div>
@@ -483,10 +491,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-base font-semibold text-gray-900 mb-1">
-                          Unsubscribe from all marketing emails
+                          {t("web.accountSettings.notifications.unsubscribeMarketing")}
                         </h3>
                         <p className="text-sm font-light text-gray-600">
-                          Stop receiving promotional emails from Beautonomi
+                          {t("web.accountSettings.notifications.unsubscribeMarketingDesc")}
                         </p>
                       </div>
                       <Switch
@@ -506,11 +514,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
               >
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                    Account activity and policies
+                    {t("web.accountSettings.notifications.accountActivityPolicies")}
                   </h2>
                   <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                    Confirm your booking and account activity, and learn about important Beautonomi
-                    policies.
+                    {t("web.accountSettings.notifications.accountActivityPoliciesDesc")}
                   </p>
 
                   {accountSections
@@ -530,7 +537,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                                 </div>
                                 <div>
                                   <h3 className="text-base font-semibold text-gray-900">
-                                    {section.title}
+                                    {t(`web.accountSettings.notifications.${section.titleKey}`)}
                                   </h3>
                                   <p className="text-sm font-light text-gray-600 mb-2">
                                     {getPreferenceStatus(section.id)}
@@ -543,7 +550,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                               onClick={() => openModal(section.id)}
                               className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                             >
-                              Edit
+                              {t("web.accountSettings.notifications.edit")}
                             </button>
                           </div>
                         </div>
@@ -552,11 +559,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
 
                   <div className="mt-8 pt-6 border-t border-gray-200">
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Reminders
+                      {t("web.accountSettings.notifications.reminders")}
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Get important reminders about your bookings, reservations, and account
-                      activity.
+                      {t("web.accountSettings.notifications.remindersSectionDesc")}
                     </p>
 
                     {accountSections
@@ -576,7 +582,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                                   </div>
                                   <div>
                                     <h3 className="text-base font-semibold text-gray-900">
-                                      {section.title}
+                                      {t(`web.accountSettings.notifications.${section.titleKey}`)}
                                     </h3>
                                     <p className="text-sm font-light text-gray-600 mb-2">
                                       {getPreferenceStatus(section.id)}
@@ -589,7 +595,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                                 onClick={() => openModal(section.id)}
                                 className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                               >
-                                Edit
+                                {t("web.accountSettings.notifications.edit")}
                               </button>
                             </div>
                           </div>
@@ -599,10 +605,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
 
                   <div className="mt-8 pt-6 border-t border-gray-200">
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Messages
+                      {t("web.accountSettings.notifications.messages")}
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Keep in touch with your Beauty Partner before and during your appointment.
+                      {t("web.accountSettings.notifications.messagesSectionDesc")}
                     </p>
 
                     {accountSections
@@ -622,7 +628,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                                   </div>
                                   <div>
                                     <h3 className="text-base font-semibold text-gray-900">
-                                      {section.title}
+                                      {t(`web.accountSettings.notifications.${section.titleKey}`)}
                                     </h3>
                                     <p className="text-sm font-light text-gray-600 mb-2">
                                       {getPreferenceStatus(section.id)}
@@ -635,7 +641,7 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                                 onClick={() => openModal(section.id)}
                                 className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                               >
-                                Edit
+                                {t("web.accountSettings.notifications.edit")}
                               </button>
                             </div>
                           </div>
@@ -653,15 +659,15 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
                       <HelpCircle className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-semibold text-gray-900 mb-2">Need help?</h3>
+                      <h3 className="text-base font-semibold text-gray-900 mb-2">{t("web.accountSettings.notifications.needHelp")}</h3>
                       <p className="text-sm font-light text-gray-600 mb-3">
-                        Get answers to questions about notifications in our Help Center.
+                        {t("web.accountSettings.notifications.helpBody")}
                       </p>
                       <a
                         href="/help"
                         className="inline-flex items-center rounded-full border border-primary/20 bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors touch-manipulation"
                       >
-                        Visit Help Centre
+                        {t("web.accountSettings.notifications.visitHelpCentre")}
                       </a>
                     </div>
                   </div>
@@ -675,8 +681,8 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
               key={section.id}
               isOpen={activeModal === section.id}
               onClose={closeModal}
-              title={section.title}
-              description={section.description}
+              title={t(`web.accountSettings.notifications.${section.titleKey}`)}
+              description={t(`web.accountSettings.notifications.${section.descriptionKey}`)}
               preferences={
                 preferences[section.id as keyof NotificationPreferences] as {
                   email: boolean;

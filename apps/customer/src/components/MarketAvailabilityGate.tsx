@@ -20,6 +20,7 @@ import {
   trackMarketSwitchDeclined,
 } from "@/lib/analytics";
 import { api } from "@/lib/api-client";
+import { useTranslation } from "@beautonomi/i18n";
 
 type AvailabilityStatus = "allowed" | "unsupported" | "restricted";
 type Panel = null | "restricted" | "za_suggest" | "unsupported_global" | "regional_foreign";
@@ -137,6 +138,9 @@ async function persistPreferredHomeTenant(tenantId: string | null | undefined): 
 
 export default function MarketAvailabilityGate() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const ma = (key: string, options?: Record<string, string>) =>
+    (options != null ? t(`customer.mobile.components.marketAvailability.${key}`, options as never) : t(`customer.mobile.components.marketAvailability.${key}`)) as string;
   const sessionDismiss = useRef({ za: false, unsupportedG: false, regional: false });
 
   const [panel, setPanel] = useState<Panel>(null);
@@ -340,9 +344,9 @@ export default function MarketAvailabilityGate() {
     dismissRegional();
   };
 
-  const restrictedTitle = "Access unavailable in your country";
+  const restrictedTitle = ma("restrictedTitle");
   const restrictedDetails =
-    reason || "Access is unavailable due to legal or regulatory restrictions.";
+    reason || ma("restrictedDetailsFallback");
 
   const topPad = Platform.OS === "ios" ? insets.top + 8 : insets.top + 4;
 
@@ -374,13 +378,13 @@ export default function MarketAvailabilityGate() {
               </Text>
               <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10 }}>
                 <Pressable onPress={() => setPanel(null)} style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
-                  <Text style={{ color: "#374151", fontWeight: "600" }}>Close</Text>
+                  <Text style={{ color: "#374151", fontWeight: "600" }}>{ma("close")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => void switchToDefaultMarket()}
                   style={{ backgroundColor: "#111827", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>Switch market</Text>
+                  <Text style={{ color: "#fff", fontWeight: "700" }}>{ma("switchMarket")}</Text>
                 </Pressable>
               </View>
             </View>
@@ -392,27 +396,26 @@ export default function MarketAvailabilityGate() {
         ? bannerModal(
             <View style={{ backgroundColor: "#1e1b4b", borderRadius: 14, padding: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff", marginBottom: 8 }}>
-                🇿🇦 South Africa detected
+                {ma("zaDetectedTitle")}
               </Text>
               <Text style={{ color: "#c7d2fe", marginBottom: 14, lineHeight: 20 }}>
-                For ZAR pricing and local checkout, open the South Africa storefront ({targetZaHost || defaultMarketHost}
-                ).
+                {ma("zaDetectedBody", { host: targetZaHost || defaultMarketHost })}
               </Text>
               <View style={{ gap: 10 }}>
                 <Pressable
                   onPress={() => void goToZaMarket()}
                   style={{ backgroundColor: "#fff", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
                 >
-                  <Text style={{ color: "#1e1b4b", fontWeight: "700" }}>Go to {targetZaHost || defaultMarketHost}</Text>
+                  <Text style={{ color: "#1e1b4b", fontWeight: "700" }}>{ma("goToHost", { host: targetZaHost || defaultMarketHost })}</Text>
                 </Pressable>
                 <Pressable onPress={() => void stayOnGlobalEntry()} style={{ paddingVertical: 10, alignItems: "center" }}>
-                  <Text style={{ color: "#e0e7ff", fontWeight: "600" }}>Stay on {globalEntryHost}</Text>
+                  <Text style={{ color: "#e0e7ff", fontWeight: "600" }}>{ma("stayOnHost", { host: globalEntryHost })}</Text>
                 </Pressable>
                 <Pressable onPress={dismissZaLater} style={{ paddingVertical: 10, alignItems: "center" }}>
-                  <Text style={{ color: "#a5b4fc", fontWeight: "600" }}>Later</Text>
+                  <Text style={{ color: "#a5b4fc", fontWeight: "600" }}>{ma("later")}</Text>
                 </Pressable>
                 <Pressable onPress={() => void dismissZaLong()} style={{ paddingVertical: 10, alignItems: "center" }}>
-                  <Text style={{ color: "#a5b4fc", fontWeight: "600" }}>Don&apos;t show again</Text>
+                  <Text style={{ color: "#a5b4fc", fontWeight: "600" }}>{ma("dontShowAgain")}</Text>
                 </Pressable>
               </View>
             </View>,
@@ -424,15 +427,15 @@ export default function MarketAvailabilityGate() {
         ? bannerModal(
             <View style={{ backgroundColor: "#78350f", borderRadius: 14, padding: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff", marginBottom: 8 }}>
-                Not available in your country yet
+                {ma("unsupportedTitle")}
               </Text>
               <Text style={{ color: "#fde68a", marginBottom: 8, lineHeight: 20 }}>
-                {reason || "Beautonomi is not available in your country yet."}
+                {reason || ma("unsupportedBodyFallback")}
                 {countryCode ? ` (${countryCode})` : ""}
               </Text>
               {supportedCountries.length > 0 ? (
                 <Text style={{ color: "#fcd34d", marginBottom: 14 }}>
-                  Available markets: {supportedCountries.join(", ")}
+                  {ma("availableMarkets", { markets: supportedCountries.join(", ") })}
                 </Text>
               ) : null}
               <View style={{ gap: 10 }}>
@@ -440,10 +443,10 @@ export default function MarketAvailabilityGate() {
                   onPress={() => void switchToDefaultMarket()}
                   style={{ backgroundColor: "#fff", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
                 >
-                  <Text style={{ color: "#78350f", fontWeight: "700" }}>Switch to ZA site</Text>
+                  <Text style={{ color: "#78350f", fontWeight: "700" }}>{ma("switchToZaSite")}</Text>
                 </Pressable>
                 <Pressable onPress={() => void stayOnGlobalEntry()} style={{ paddingVertical: 10, alignItems: "center" }}>
-                  <Text style={{ color: "#fef3c7", fontWeight: "600" }}>Continue browsing</Text>
+                  <Text style={{ color: "#fef3c7", fontWeight: "600" }}>{ma("continueBrowsing")}</Text>
                 </Pressable>
               </View>
             </View>,
@@ -455,23 +458,20 @@ export default function MarketAvailabilityGate() {
         ? bannerModal(
             <View style={{ backgroundColor: "#0c4a6e", borderRadius: 14, padding: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff", marginBottom: 8 }}>
-                South Africa storefront
+                {ma("regionalTitle")}
               </Text>
               <Text style={{ color: "#bae6fd", marginBottom: 14, lineHeight: 20 }}>
-                You&apos;re on {defaultMarketHost} (ZAR).{" "}
-                {countryCode
-                  ? `Your device region suggests ${countryCode} — we may not be live there yet.`
-                  : ""}
+                {ma("regionalBody", { host: defaultMarketHost, suffix: countryCode ? ma("regionalForeignSuffix", { country: countryCode }) : "" })}
               </Text>
               <View style={{ gap: 10 }}>
                 <Pressable
                   onPress={openInternationalSite}
                   style={{ backgroundColor: "#fff", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
                 >
-                  <Text style={{ color: "#0c4a6e", fontWeight: "700" }}>Open international site</Text>
+                  <Text style={{ color: "#0c4a6e", fontWeight: "700" }}>{ma("openInternationalSite")}</Text>
                 </Pressable>
                 <Pressable onPress={dismissRegional} style={{ paddingVertical: 10, alignItems: "center" }}>
-                  <Text style={{ color: "#e0f2fe", fontWeight: "600" }}>Continue here</Text>
+                  <Text style={{ color: "#e0f2fe", fontWeight: "600" }}>{ma("continueHere")}</Text>
                 </Pressable>
               </View>
             </View>,

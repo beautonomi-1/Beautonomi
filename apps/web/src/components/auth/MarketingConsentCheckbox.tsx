@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { Checkbox } from "@/components/ui/checkbox";
 
 const CHECKBOX_CLASS =
@@ -16,6 +18,7 @@ export function MarketingConsentCheckbox({
   onCheckedChange: (checked: boolean) => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={className ?? "mb-4 flex items-start gap-3"}>
       <Checkbox
@@ -26,7 +29,7 @@ export function MarketingConsentCheckbox({
         aria-describedby={`${id}-text`}
       />
       <label htmlFor={id} id={`${id}-text`} className="text-xs text-gray-600 cursor-pointer leading-relaxed">
-        Send me tips, offers, and product updates. You can unsubscribe anytime.
+        {t("auth.marketingConsent")}
       </label>
     </div>
   );

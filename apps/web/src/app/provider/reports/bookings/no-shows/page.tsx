@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -47,6 +48,7 @@ interface NoShowsData {
 export default function NoShowsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -106,10 +108,10 @@ export default function NoShowsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "No-Shows" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/no-shows.title") },
         ]}
       >
         <ReportSkeleton />
@@ -121,15 +123,15 @@ export default function NoShowsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "No-Shows" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/no-shows.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="No-Shows" />
-          <ReportSubscriptionRequired feature="No-Shows" />
+          <PageHeader title={t("web.provider.reports.pages.bookings/no-shows.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.bookings/no-shows.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -139,15 +141,15 @@ export default function NoShowsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "No-Shows" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/no-shows.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load no-shows data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.bookings/no-shows.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -156,21 +158,21 @@ export default function NoShowsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "No-Shows" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.bookings/no-shows.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="No-Shows"
-          subtitle="Track no-show bookings and identify patterns"
+          title={t("web.provider.reports.pages.bookings/no-shows.title")}
+          subtitle={t("web.provider.reports.pages.bookings/no-shows.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -185,7 +187,7 @@ export default function NoShowsReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total No-Shows</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.totalNoShows")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -197,7 +199,7 @@ export default function NoShowsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">No-Show Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.noShowRate")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -211,7 +213,7 @@ export default function NoShowsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Lost Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.lostRevenue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -225,7 +227,7 @@ export default function NoShowsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Bookings</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.totalBookings")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -240,7 +242,7 @@ export default function NoShowsReport() {
         {data.repeatOffenders.length > 0 && (
           <Card className="border-gray-200">
             <CardHeader>
-              <CardTitle>Repeat Offenders</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.bookings/no-shows.repeatOffenders")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -253,10 +255,10 @@ export default function NoShowsReport() {
                       <p className="font-medium text-gray-900">{client.name}</p>
                       <p className="text-sm text-gray-600">{client.email}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-red-600">{client.count} no-shows</p>
+                    <div className="text-end">
+                      <p className="font-semibold text-red-600">{t("web.provider.reports.pages.bookings/no-shows.noShowsCount", { count: client.count })}</p>
                       <p className="text-sm text-gray-600">
-                        {fmt(client.revenue)} lost
+                        {t("web.provider.reports.pages.bookings/no-shows.lostAmount", { amount: fmt(client.revenue) })}
                       </p>
                     </div>
                   </div>
@@ -270,7 +272,7 @@ export default function NoShowsReport() {
         {data.staffBreakdown.length > 0 && (
           <Card className="border-gray-200">
             <CardHeader>
-              <CardTitle>No-Shows by Staff</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.bookings/no-shows.byStaff")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -285,7 +287,7 @@ export default function NoShowsReport() {
                       </div>
                       <p className="font-medium text-gray-900">{staff.name}</p>
                     </div>
-                    <p className="font-semibold text-gray-900">{staff.count} no-shows</p>
+                    <p className="font-semibold text-gray-900">{t("web.provider.reports.pages.bookings/no-shows.noShowsCount", { count: staff.count })}</p>
                   </div>
                 ))}
               </div>
@@ -296,11 +298,11 @@ export default function NoShowsReport() {
         {/* Recent No-Shows */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Recent No-Shows</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.bookings/no-shows.recent")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.recentNoShows.length === 0 ? (
-              <EmptyReportState title="No no-shows" description="No no-shows in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.bookings/no-shows.emptyTitle")} description={t("web.provider.reports.pages.bookings/no-shows.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.recentNoShows.map((booking) => (
@@ -310,7 +312,7 @@ export default function NoShowsReport() {
                   >
                     <div>
                       <p className="font-medium text-gray-900">
-                        {booking.users?.full_name || "Unknown Client"}
+                        {booking.users?.full_name || t("web.provider.reports.pages.bookings/no-shows.unknownClient")}
                       </p>
                       <p className="text-sm text-gray-600">
                         {format(new Date(booking.scheduled_at), "MMM dd, yyyy 'at' h:mm a")}

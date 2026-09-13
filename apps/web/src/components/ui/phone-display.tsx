@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useMemo } from "react";
 import { Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,7 @@ function parsePhoneNumber(
 }
 
 export function PhoneDisplay({ phone, showIcon = true, className }: PhoneDisplayProps) {
+  const { t } = useTranslation();
   const [countries, setCountries] = useState<Country[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,7 +90,7 @@ export function PhoneDisplay({ phone, showIcon = true, className }: PhoneDisplay
     return (
       <div className={cn("flex items-center gap-2 text-gray-400", className)}>
         {showIcon && <Phone className="w-3 h-3" />}
-        <span className="text-sm">Not provided</span>
+        <span className="text-sm">{t("web.ui.phoneDisplay.notProvided")}</span>
       </div>
     );
   }

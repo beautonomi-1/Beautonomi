@@ -11,6 +11,7 @@ import {
 import { canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
 import { campaignChannelUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 const bodySchema = z.object({
   type: z.enum(["email", "sms", "whatsapp"]),
@@ -87,8 +88,9 @@ export async function POST(request: NextRequest) {
       const unitCost = await priceFor(supabase, type, category);
       const balance = await getMarketingBalance(supabase, providerId);
       if (balance.total_zar < unitCost) {
+        const { format: formatMoney } = await getTenantMoneyFormatter(tenantId);
         return errorResponse(
-          `Insufficient marketing credit for a test send. Need ~R${unitCost.toFixed(2)}, have R${balance.total_zar.toFixed(2)}.`,
+          `Insufficient marketing credit for a test send. Need ~${formatMoney(unitCost)}, have ${formatMoney(balance.total_zar)}.`,
           "INSUFFICIENT_CREDIT",
           402,
         );

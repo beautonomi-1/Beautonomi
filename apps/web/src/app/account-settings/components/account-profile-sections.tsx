@@ -14,6 +14,7 @@ import {
   getCompletionHref,
   isPersonalInfoFocusParam,
 } from "@/lib/profile/completion-deeplinks";
+import { useTranslation } from "@beautonomi/i18n";
 
 const CustomFieldsForm = dynamic(
   () =>
@@ -92,6 +93,7 @@ const SECTION_QUERY_TO_ID: Record<string, string> = {
 const PROFILE_STALE_MS = 30_000;
 
 export default function AccountProfileSections() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -265,7 +267,7 @@ export default function AccountProfileSections() {
   if (!user) {
     return (
       <div className="text-center py-8 rounded-xl border border-gray-100 bg-gray-50/50">
-        <p className="text-gray-600 text-sm">Unable to load your profile. Please refresh the page.</p>
+        <p className="text-gray-600 text-sm">{t("web.accountSettings.profileSections.unableLoad")}</p>
       </div>
     );
   }
@@ -314,9 +316,9 @@ export default function AccountProfileSections() {
         id="custom-fields-section"
         className="rounded-xl border border-gray-100 bg-white p-4 md:p-6 shadow-sm"
       >
-        <h3 className="text-base font-semibold text-gray-900 mb-1">Additional details</h3>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">{t("web.book.engine.additionalDetails")}</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Optional fields the platform may use (e.g. skin type, accessibility).
+          {t("web.accountSettings.profileSections.additionalDetailsHint")}
         </p>
         <CustomFieldsForm entityType="user" entityId={user.id} showSaveButton={true} />
       </div>

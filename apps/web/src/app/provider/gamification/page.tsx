@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -12,13 +13,13 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { handleError } from "@/lib/provider-portal/error-handler";
 
-const BREADCRUMBS = [
-  { label: "Home", href: "/" },
-  { label: "Provider", href: "/provider" },
-  { label: "Rewards" },
-];
-
 export default function ProviderGamificationPage() {
+  const { t } = useTranslation();
+  const breadcrumbs = [
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.gamificationPage.pageTitle") },
+  ];
   const [data, setData] = useState<ProviderGamificationData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function ProviderGamificationPage() {
         setData(response.data);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load rewards data";
+const errorMessage = err instanceof Error ? err.message : t("web.provider.gamificationPage.loadFailed");
       setError(errorMessage);
       handleError(err, {
         action: "loadGamification",
@@ -63,7 +64,7 @@ export default function ProviderGamificationPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleRecalculate = async () => {
     try {
@@ -86,20 +87,20 @@ export default function ProviderGamificationPage() {
 
   if (isLoading) {
     return (
-      <SettingsDetailLayout title="Rewards" breadcrumbs={BREADCRUMBS}>
-        <LoadingTimeout loadingMessage="Loading rewards…" timeoutMs={10000} />
+<SettingsDetailLayout title={t("web.provider.gamificationPage.pageTitle")} breadcrumbs={breadcrumbs}>
+        <LoadingTimeout loadingMessage={t("web.provider.gamificationPage.loading")} timeoutMs={10000} />
       </SettingsDetailLayout>
     );
   }
 
   if (error || !data) {
     return (
-      <SettingsDetailLayout title="Rewards" breadcrumbs={BREADCRUMBS}>
+<SettingsDetailLayout title={t("web.provider.gamificationPage.pageTitle")} breadcrumbs={breadcrumbs}>
         <EmptyState
-          title="Failed to load rewards"
-          description={error || "Unable to load your points and badges"}
+          title={t("web.provider.gamificationPage.loadFailedTitle")}
+          description={error || t("web.provider.gamificationPage.loadFailedDesc")}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: () => loadGamificationData(),
           }}
         />
@@ -108,10 +109,10 @@ export default function ProviderGamificationPage() {
   }
 
   return (
-    <SettingsDetailLayout title="Rewards" breadcrumbs={BREADCRUMBS}>
+<SettingsDetailLayout title={t("web.provider.gamificationPage.pageTitle")} breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Rewards & badges"
-        subtitle="Earn points, unlock levels, and grow your profile visibility"
+        title={t("web.provider.gamificationPage.title")}
+        subtitle={t("web.provider.gamificationPage.subtitle")}
       />
       <ProviderGamificationContent
         data={data}

@@ -6,12 +6,14 @@ import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type LocationItem = {
   id: string;
@@ -24,6 +26,12 @@ type LocationItem = {
 };
 
 export default function LocationsScreen() {
+  const { t } = useTranslation();
+  const ls = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.locations.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<LocationItem[]>(
@@ -50,7 +58,7 @@ export default function LocationsScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Locations" onBack={() => router.back()} />
+        <ScreenHeader title={ls("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -61,7 +69,7 @@ export default function LocationsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Locations" onBack={() => router.back()} />
+        <ScreenHeader title={ls("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -72,8 +80,8 @@ export default function LocationsScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Locations"
-        subtitle="Business addresses and service areas"
+        title={ls("title")}
+        subtitle={ls("subtitle")}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
@@ -82,7 +90,7 @@ export default function LocationsScreen() {
               router.push("/(app)/(tabs)/more/locations/add" as never);
             }}
             style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], padding: 8 }}
-            accessibilityLabel="Add location"
+            accessibilityLabel={ls("addLocationA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="add" size={22} color="#374151" />
@@ -104,34 +112,34 @@ export default function LocationsScreen() {
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 16, borderWidth: 1, borderColor: "#bae6fd", backgroundColor: "#f0f9ff", padding: 16, marginBottom: 16 }}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Set service radius and distance for house calls"
+            accessibilityLabel={ls("distanceA11y")}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#7dd3fc", marginRight: 12 }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#7dd3fc", marginEnd: 12 }}>
                 <Ionicons name="navigate-outline" size={20} color="#0369a1" />
               </View>
               <View>
-                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Distance & radius</Text>
-                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>How far you travel for house calls</Text>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{ls("distanceTitle")}</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{ls("distanceSubtitle")}</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#0ea5e9" />
+            <DirectionalIcon name="chevron-forward" size={20} color="#0ea5e9" />
           </TouchableOpacity>
           {locations.length === 0 ? (
             <View style={{ paddingVertical: 48, alignItems: "center" }}>
               <View style={{ width: 64, height: 64, alignItems: "center", justifyContent: "center", borderRadius: 32, backgroundColor: "#ccfbf1", marginBottom: 16 }}>
                 <Ionicons name="location-outline" size={32} color="#0d9488" />
               </View>
-              <Text style={{ textAlign: "center", color: Colors.gray[600] }}>No locations yet</Text>
+              <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{ls("emptyTitle")}</Text>
               <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], marginBottom: 24 }}>
-                Add your first business address so clients can find you.
+                {ls("emptyBody")}
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/locations/add" as never)}
                 style={{ borderRadius: 12, backgroundColor: "#0d9488", paddingHorizontal: 24, paddingVertical: 12 }}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontWeight: "600", color: Colors.white }}>Add location</Text>
+                <Text style={{ fontWeight: "600", color: Colors.white }}>{ls("addLocation")}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -146,20 +154,20 @@ export default function LocationsScreen() {
                   }}
                   activeOpacity={0.7}
                   accessibilityRole="button"
-                  accessibilityLabel={`${loc.name}, ${loc.city ?? ""} ${loc.country ?? ""}`}
+                  accessibilityLabel={ls("locationA11y", { name: loc.name, city: loc.city ?? "", country: loc.country ?? "" })}
                 >
                   <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginRight: 8 }}>{loc.name}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginEnd: 8 }}>{loc.name}</Text>
                         {loc.is_primary && (
                           <View style={{ borderRadius: 4, backgroundColor: "#ccfbf1", paddingHorizontal: 8, paddingVertical: 2 }}>
-                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#115e59" }}>Primary</Text>
+                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#115e59" }}>{ls("primary")}</Text>
                           </View>
                         )}
                         {loc.is_active === false && (
-                          <View style={{ borderRadius: 4, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2, marginLeft: 6 }}>
-                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>Inactive</Text>
+                          <View style={{ borderRadius: 4, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2, marginStart: 6 }}>
+                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>{ls("inactive")}</Text>
                           </View>
                         )}
                       </View>
@@ -169,7 +177,7 @@ export default function LocationsScreen() {
                         </Text>
                       )}
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                    <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -179,7 +187,7 @@ export default function LocationsScreen() {
                 activeOpacity={0.7}
               >
                 <Ionicons name="add-circle-outline" size={22} color="#0d9488" />
-                <Text style={{ marginLeft: 8, fontWeight: "500", color: "#0f766e" }}>Add another location</Text>
+                <Text style={{ marginStart: 8, fontWeight: "500", color: "#0f766e" }}>{ls("addAnother")}</Text>
               </TouchableOpacity>
             </View>
           )}

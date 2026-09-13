@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
@@ -68,14 +69,14 @@ function formatPreferredSlot(entry: WaitlistEntry): string | null {
   return dateStr;
 }
 
-function statusConfig(status: WaitlistStatus): { bg: string; text: string; label: string } {
+function statusConfig(status: WaitlistStatus, wl: (key: string) => string): { bg: string; text: string; label: string } {
   switch (status) {
     case "waiting":
-      return { bg: "#DBEAFE", text: "#1E40AF", label: "Waiting" };
+      return { bg: "#DBEAFE", text: "#1E40AF", label: wl("statusWaiting") };
     case "notified":
-      return { bg: "#DCFCE7", text: "#166534", label: "Notified" };
+      return { bg: "#DCFCE7", text: "#166534", label: wl("statusNotified") };
     case "expired":
-      return { bg: Colors.gray[100], text: Colors.gray[600], label: "Expired" };
+      return { bg: Colors.gray[100], text: Colors.gray[600], label: wl("statusExpired") };
     default:
       return { bg: Colors.gray[100], text: Colors.gray[600], label: String(status) };
   }
@@ -92,6 +93,11 @@ function normalizeEntries(data: unknown): WaitlistEntry[] {
 }
 
 export default function WaitlistScreen() {
+  const { t } = useTranslation();
+  const wl = useCallback(
+    (key: string) => t(`customer.mobile.screens.accountWaitlist.${key}`) as string,
+    [t],
+  );
   const router = useRouter();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
@@ -152,14 +158,14 @@ export default function WaitlistScreen() {
     (entry: WaitlistEntry) => {
       const isExpired = entry.status === "expired";
       Alert.alert(
-        isExpired ? "Remove from list" : "Leave Waitlist",
+        isExpired ? wl("removeFromListTitle") : wl("leaveWaitlistTitle"),
         isExpired
-          ? `Remove "${entry.service_name}" at ${entry.provider_name} from your list?`
-          : `Are you sure you want to leave the waitlist for "${entry.service_name}" at ${entry.provider_name}?`,
+          ? t("customer.mobile.screens.accountWaitlist.removeFromListBody", { serviceName: entry.service_name, providerName: entry.provider_name })
+          : t("customer.mobile.screens.accountWaitlist.leaveWaitlistBody", { serviceName: entry.service_name, providerName: entry.provider_name }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: isExpired ? "Remove" : "Leave",
+            text: isExpired ? wl("removeCta") : wl("leaveCta"),
             style: "destructive",
             onPress: async () => {
               setRemovingId(entry.id);
@@ -167,16 +173,16 @@ export default function WaitlistScreen() {
                 const res = await api.delete(`/api/me/waitlist?id=${encodeURIComponent(entry.id)}`);
                 if (res.error) {
                   Alert.alert(
-                    "Error",
-                    res.error.message || "Failed to leave waitlist",
+                    t("customer.mobile.screens.authLogin.errorTitle"),
+                    res.error.message || wl("leaveFailed"),
                   );
                 } else {
                   setEntries((prev) => prev.filter((e) => e.id !== entry.id));
                 }
               } catch {
                 Alert.alert(
-                  "Error",
-                  "Failed to leave waitlist. Please try again.",
+                  t("customer.mobile.screens.authLogin.errorTitle"),
+                  wl("leaveFailedRetry"),
                 );
               } finally {
                 setRemovingId(null);
@@ -198,7 +204,7 @@ export default function WaitlistScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: WaitlistEntry }) => {
-      const badge = statusConfig(item.status);
+      const badge = statusConfig(item.status, wl);
       const isRemoving = removingId === item.id;
       const preferredSlotStr = formatPreferredSlot(item);
       const canBookNow = item.status === "notified" && !item.slot_passed && item.provider_slug;
@@ -207,30 +213,30 @@ export default function WaitlistScreen() {
       return (
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: Colors.gray[100], shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 2 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-            <Text style={{ fontWeight: "600", fontSize: 16, color: Colors.gray[900], flex: 1, marginRight: 10 }} numberOfLines={1}>
-              {item.provider_name || "Provider"}
+            <Text style={{ fontWeight: "600", fontSize: 16, color: Colors.gray[900], flex: 1, marginEnd: 10 }} numberOfLines={1}>
+              {item.provider_name || wl("providerFallback")}
             </Text>
             <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 9999, backgroundColor: badge.bg }}>
               <Text style={{ fontSize: 12, fontWeight: "600", color: badge.text }}>{badge.label}</Text>
             </View>
           </View>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 10 }} numberOfLines={2}>{item.service_name || "Service"}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 10 }} numberOfLines={2}>{item.service_name || wl("serviceFallback")}</Text>
           {preferredSlotStr ? (
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-              <Ionicons name="calendar-outline" size={14} color={Colors.gray[500]} style={{ marginRight: 6 }} />
+              <Ionicons name="calendar-outline" size={14} color={Colors.gray[500]} style={{ marginEnd: 6 }} />
               <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{preferredSlotStr}</Text>
             </View>
           ) : null}
           {item.slot_passed && item.status === "expired" ? (
-            <Text style={{ fontSize: 12, color: Colors.gray[500], fontStyle: "italic", marginBottom: 10 }}>This slot has passed. You can book a new time below.</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], fontStyle: "italic", marginBottom: 10 }}>{wl("slotPassedHint")}</Text>
           ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
             <View>
-              <Text style={{ fontSize: 11, color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5 }}>Date added</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5 }}>{wl("dateAddedLabel")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.date_added)}</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ fontSize: 11, color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5 }}>Position</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5 }}>{wl("positionLabel")}</Text>
               <View style={{ backgroundColor: Colors.primaryLight, borderRadius: 9999, width: 36, height: 36, alignItems: "center", justifyContent: "center", marginTop: 2 }}>
                 <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.primary }}>{item.position}</Text>
               </View>
@@ -242,8 +248,8 @@ export default function WaitlistScreen() {
                 onPress={() => openBookWithProvider(item.provider_slug)}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 10, backgroundColor: Colors.primary }}
               >
-                <Ionicons name="calendar" size={18} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 15, fontWeight: "600", color: "#fff" }}>Book now</Text>
+                <Ionicons name="calendar" size={18} color="#fff" style={{ marginEnd: 8 }} />
+                <Text style={{ fontSize: 15, fontWeight: "600", color: "#fff" }}>{wl("bookNow")}</Text>
               </TouchableOpacity>
             )}
             {canBookAgain && !canBookNow && (
@@ -251,8 +257,8 @@ export default function WaitlistScreen() {
                 onPress={() => openBookWithProvider(item.provider_slug)}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: Colors.primary, backgroundColor: "transparent" }}
               >
-                <Ionicons name="calendar-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Book again with this provider</Text>
+                <Ionicons name="calendar-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{wl("bookAgain")}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -264,9 +270,9 @@ export default function WaitlistScreen() {
                 <ActivityIndicator size="small" color={Colors.error} />
               ) : (
                 <>
-                  <Ionicons name={item.status === "expired" ? "trash-outline" : "exit-outline"} size={18} color="#DC2626" style={{ marginRight: 8 }} />
+                  <Ionicons name={item.status === "expired" ? "trash-outline" : "exit-outline"} size={18} color="#DC2626" style={{ marginEnd: 8 }} />
                   <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>
-                    {item.status === "expired" ? "Remove from list" : "Leave waitlist"}
+                    {item.status === "expired" ? wl("removeFromListCta") : wl("leaveWaitlistCta")}
                   </Text>
                 </>
               )}
@@ -275,14 +281,14 @@ export default function WaitlistScreen() {
         </View>
       );
     },
-    [removingId, leaveWaitlist, openBookWithProvider],
+    [removingId, leaveWaitlist, openBookWithProvider, wl],
   );
 
   if (loading && entries.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading waitlist…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>{wl("loadingWaitlist")}</Text>
       </View>
     );
   }
@@ -293,7 +299,7 @@ export default function WaitlistScreen() {
         <Ionicons name="alert-circle-outline" size={48} color={Colors.gray[400]} style={{ marginBottom: 16 }} />
         <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 20 }}>{error}</Text>
         <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{wl("retry")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -305,8 +311,8 @@ export default function WaitlistScreen() {
         <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
           <Ionicons name="hourglass-outline" size={36} color={Colors.gray[400]} />
         </View>
-        <Text style={{ textAlign: "center", fontWeight: "600", fontSize: 18, color: Colors.gray[900], marginBottom: 8 }}>No waitlist entries</Text>
-        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 24 }}>When your preferred time isn’t available, you can join a waitlist on the provider’s booking page. We’ll notify you when a slot opens.</Text>
+        <Text style={{ textAlign: "center", fontWeight: "600", fontSize: 18, color: Colors.gray[900], marginBottom: 8 }}>{wl("noEntriesTitle")}</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 24 }}>{wl("noEntriesBody")}</Text>
       </View>
     );
   }

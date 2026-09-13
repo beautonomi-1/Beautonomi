@@ -140,10 +140,10 @@ export default function SubmitTicketPage() {
           <Button
             variant="ghost"
             asChild
-            className="-ml-2 mb-6 rounded-full text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            className="-ms-2 mb-6 rounded-full text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
           >
             <Link href={PLATFORM_CONTACT_HREF}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="me-2 h-4 w-4" />
               Back to Help centre
             </Link>
           </Button>
@@ -220,7 +220,7 @@ export default function SubmitTicketPage() {
                       align="start"
                       sideOffset={6}
                       avoidCollisions={false}
-                      className="max-h-[min(24rem,60vh)] overscroll-contain rounded-2xl border-zinc-200 bg-white shadow-lg [&_[data-radix-select-viewport]]:max-h-[min(24rem,60vh)] [&_[data-radix-select-viewport]]:overflow-y-auto [&_[data-radix-select-viewport]]:overscroll-contain [&_[data-radix-select-viewport]]:pr-1"
+                      className="max-h-[min(24rem,60vh)] overscroll-contain rounded-2xl border-zinc-200 bg-white shadow-lg [&_[data-radix-select-viewport]]:max-h-[min(24rem,60vh)] [&_[data-radix-select-viewport]]:overflow-y-auto [&_[data-radix-select-viewport]]:overscroll-contain [&_[data-radix-select-viewport]]:pe-1"
                     >
                       {SUPPORT_TICKET_CATEGORY_GROUPS.map((group, gi) => (
                         <Fragment key={group.label}>
@@ -233,7 +233,7 @@ export default function SubmitTicketPage() {
                               <SelectItem
                                 key={item.value}
                                 value={item.value}
-                                className="cursor-pointer rounded-lg py-2 pl-8 pr-2 text-[13px] leading-snug text-zinc-700 focus:bg-[#FF0077]/8"
+                                className="cursor-pointer rounded-lg py-2 ps-8 pe-2 text-[13px] leading-snug text-zinc-700 focus:bg-[#FF0077]/8"
                               >
                                 {item.label}
                               </SelectItem>
@@ -325,12 +325,12 @@ export default function SubmitTicketPage() {
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="me-2 h-4 w-4 animate-spin" />
                         Sending…
                       </>
                     ) : (
                       <>
-                        <Send className="mr-2 h-4 w-4" />
+                        <Send className="me-2 h-4 w-4" />
                         Submit ticket
                       </>
                     )}

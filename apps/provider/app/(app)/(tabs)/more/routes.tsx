@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -29,11 +30,11 @@ function segmentBooking(seg: Segment): BookingRef {
   return seg.booking ?? seg.to_booking ?? null;
 }
 
-function customerNameFromBooking(b: BookingRef): string {
-  if (!b?.customer) return "Stop";
+function customerNameFromBooking(b: BookingRef, fallback: string): string {
+  if (!b?.customer) return fallback;
   const c = b.customer;
-  if (Array.isArray(c)) return c[0]?.full_name ?? "Stop";
-  return c.full_name ?? "Stop";
+  if (Array.isArray(c)) return c[0]?.full_name ?? fallback;
+  return c.full_name ?? fallback;
 }
 
 type RoutesResponse = {
@@ -41,22 +42,25 @@ type RoutesResponse = {
   segments?: Segment[];
 };
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString();
 }
 
-function formatTimeSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatTimeSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleTimeString();
 }
 
 export default function RoutesScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const rt = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.routes.${key}`, opts) as string;
   const [refreshing, setRefreshing] = useState(false);
   const date = formatLocalYmd(new Date());
   const { data, loading, error, refresh } = useApi<RoutesResponse>(
@@ -76,7 +80,7 @@ export default function RoutesScreen() {
   const handleOptimize = useCallback(async () => {
     const { error: optimizeError } = await optimizeRoute("/api/provider/routes/optimize", { date });
     if (optimizeError) {
-      Alert.alert("Could not optimize", optimizeError);
+      Alert.alert(rt("optimizeFailed"), optimizeError);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -86,7 +90,7 @@ export default function RoutesScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Routes" onBack={() => router.back()} />
+        <ScreenHeader title={rt("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -97,7 +101,7 @@ export default function RoutesScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Routes" onBack={() => router.back()} />
+        <ScreenHeader title={rt("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -111,8 +115,8 @@ export default function RoutesScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Routes"
-        subtitle="Optimize at-home trips"
+        title={rt("title")}
+        subtitle={rt("subtitle")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -124,7 +128,7 @@ export default function RoutesScreen() {
         <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
-              Route for {formatDateSafe(date)}
+              {rt("routeFor", { date: formatDateSafe(date, rt("emptyValue")) })}
             </Text>
             <TouchableOpacity
               onPress={handleOptimize}
@@ -137,7 +141,7 @@ export default function RoutesScreen() {
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: "600", color: optimizing ? Colors.gray[600] : "#3730a3" }}>
-                {optimizing ? "Optimizing..." : "Optimize"}
+                {optimizing ? rt("optimizing") : rt("optimize")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -145,9 +149,9 @@ export default function RoutesScreen() {
         {segments.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="navigate-outline" size={48} color="#9ca3af" />
-            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No route for today</Text>
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>{rt("emptyTitle")}</Text>
             <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Tap Optimize to generate your best route for today.
+              {rt("emptyHint")}
             </Text>
           </View>
         ) : (
@@ -159,19 +163,19 @@ export default function RoutesScreen() {
                 key={seg.id}
                 style={{ marginBottom: 12, flexDirection: "row", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
-                <View style={{ marginRight: 12, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#e0e7ff" }}>
+                <View style={{ marginEnd: 12, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#e0e7ff" }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#3730a3" }}>{i + 1}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
-                    {customerNameFromBooking(b)}
+                    {customerNameFromBooking(b, rt("stopFallback"))}
                   </Text>
                   {b?.ref_number && (
                     <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{b.ref_number}</Text>
                   )}
                   {b?.scheduled_at && (
                     <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>
-                      {formatTimeSafe(b.scheduled_at)}
+                      {formatTimeSafe(b.scheduled_at, rt("emptyValue"))}
                     </Text>
                   )}
                 </View>

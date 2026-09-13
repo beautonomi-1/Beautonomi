@@ -18,7 +18,7 @@ const Cta = () => {
               className="rounded-l-xl"
             />
           </div>
-          <div className="mx-auto sm:mx-0 text-center sm:text-left max-w-md pr-6 py-6 md:pb-10 w-full sm:w-1/2">
+          <div className="mx-auto sm:mx-0 text-center sm:text-start max-w-md pe-6 py-6 md:pb-10 w-full sm:w-1/2">
             <h2 className="text-[26px] md:text-[40px] font-semibold text-secondary leading-10 mb-4">
               The super easy way to Beautonomi your place
             </h2>
@@ -27,7 +27,7 @@ const Cta = () => {
               hands-on help from a Superhost from your first question to your
               first guest.
             </p>
-            <div className="text-center sm:text-left">
+            <div className="text-center sm:text-start">
               <Button variant="secondary" className="gap-3">
                 <Image src={home} alt="" />
                 Beautonomi Setup

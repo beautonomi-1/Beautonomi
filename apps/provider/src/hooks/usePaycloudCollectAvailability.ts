@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import {
   usePayCloudSettings,
   type PayCloudReadinessBlocker,
@@ -18,7 +18,7 @@ export interface PaycloudCollectAvailability {
 }
 
 export function usePaycloudCollectAvailability(): PaycloudCollectAvailability {
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
   const { settings, loading } = usePayCloudSettings();
 
   return useMemo(() => {

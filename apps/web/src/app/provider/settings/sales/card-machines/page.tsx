@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -63,14 +64,14 @@ import {
 
 const SETUP_STEPS: Array<{
   code: PaycloudReadinessBlocker["code"];
-  label: string;
+  labelKey: string;
 }> = [
-  { code: "FLAG_OFF", label: "Card machines enabled for your market" },
-  { code: "PLAN_REQUIRED", label: "Plan includes card machines" },
-  { code: "NOT_ACCEPTED", label: "Accept in-person card payments" },
-  { code: "NO_TERMINALS", label: "Add a card machine" },
-  { code: "ALL_SUSPENDED", label: "At least one active machine" },
-  { code: "NO_MERCHANT", label: "Merchant setup complete" },
+  { code: "FLAG_OFF", labelKey: "cardMachinesEnabledForYourMarket" },
+  { code: "PLAN_REQUIRED", labelKey: "planIncludesCardMachines" },
+  { code: "NOT_ACCEPTED", labelKey: "acceptInPersonCardPayments" },
+  { code: "NO_TERMINALS", labelKey: "addACardMachine" },
+  { code: "ALL_SUSPENDED", labelKey: "atLeastOneActiveMachine" },
+  { code: "NO_MERCHANT", labelKey: "merchantSetupComplete" },
 ];
 
 const KNOWN_SETUP_CODES = new Set(SETUP_STEPS.map((s) => s.code));
@@ -91,6 +92,7 @@ type MerchantApplicationSummary = {
 };
 
 export default function CardMachinesPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const activationOrderId = parseHighlightedOrderId(searchParams);
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
@@ -167,7 +169,7 @@ export default function CardMachinesPage() {
           const order = res.data?.order;
           if (isPendingActivation(order)) {
             setPendingOrder(order!);
-            setActivationName(order!.terminal_products?.name ?? "Card machine");
+            setActivationName(order!.terminal_products?.name ?? t("web.provider.settings.pages.sales/card-machines.cardMachineFallback"));
             return;
           }
         }
@@ -178,7 +180,7 @@ export default function CardMachinesPage() {
         const pending = (listRes.data?.orders ?? []).find((o) => isPendingActivation(o));
         if (pending) {
           setPendingOrder(pending);
-          setActivationName(pending.terminal_products?.name ?? "Card machine");
+          setActivationName(pending.terminal_products?.name ?? t("web.provider.settings.pages.sales/card-machines.cardMachineFallback"));
         } else {
           setPendingOrder(null);
         }
@@ -217,7 +219,7 @@ export default function CardMachinesPage() {
       await Promise.all(tasks);
     } catch (e) {
       console.error(e);
-      toast.error("Failed to load card machines");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.failedToLoadCardMachines"));
     } finally {
       setLoading(false);
     }
@@ -240,14 +242,14 @@ export default function CardMachinesPage() {
       items.push({
         id: "in-flight",
         label: `${inFlight} payment${inFlight === 1 ? "" : "s"} waiting on card machine`,
-        detail: "Check status to sync with PayCloud",
+        detail: t("web.provider.settings.pages.sales/card-machines.checkStatusToSync"),
       });
     }
     if (reconcileExceptions > 0) {
       items.push({
         id: "exceptions",
         label: `${reconcileExceptions} amount mismatch${reconcileExceptions === 1 ? "" : "es"}`,
-        detail: "Review recent card machine payments below",
+        detail: t("web.provider.settings.pages.sales/card-machines.reviewRecentPayments"),
       });
     }
     for (const t of paycloudTerminals) {
@@ -263,7 +265,7 @@ export default function CardMachinesPage() {
 
   const handleAddTerminal = async () => {
     if (!form.terminal_sn.trim() || !form.display_name.trim()) {
-      toast.error("Serial number and name are required");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.serialNumberAndNameAreRequired"));
       return;
     }
     try {
@@ -272,12 +274,12 @@ export default function CardMachinesPage() {
         display_name: form.display_name.trim(),
         location_id: form.location_id || null,
       });
-      toast.success("Card machine added");
+      toast.success(t("web.provider.settings.pages.sales/card-machines.cardMachineAdded"));
       setDialogOpen(false);
       setForm({ terminal_sn: "", display_name: "", location_id: "" });
       await loadData();
     } catch (e: unknown) {
-      toastPlanGateError(e, "Failed to add card machine");
+      toastPlanGateError(e, t("web.provider.settings.pages.sales/card-machines.failedToAddCardMachine"));
     }
   };
 
@@ -292,7 +294,7 @@ export default function CardMachinesPage() {
 
   const handleEditTerminal = async () => {
     if (!editingTerminal || !editForm.display_name.trim()) {
-      toast.error("Display name is required");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.displayNameIsRequired"));
       return;
     }
     try {
@@ -300,12 +302,12 @@ export default function CardMachinesPage() {
         display_name: editForm.display_name.trim(),
         location_id: editForm.location_id || null,
       });
-      toast.success("Card machine updated");
+      toast.success(t("web.provider.settings.pages.sales/card-machines.cardMachineUpdated"));
       setEditDialogOpen(false);
       setEditingTerminal(null);
       await loadData();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to update card machine");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/card-machines.failedToUpdateCardMachineFallback"));
     }
   };
 
@@ -315,26 +317,26 @@ export default function CardMachinesPage() {
       setPaycloudTerminals((prev) =>
         prev.map((t) => (t.id === terminal.id ? { ...t, is_active: checked } : t)),
       );
-      toast.success(checked ? "Card machine is now active" : "Card machine hidden from checkout");
+      toast.success(checked ? t("web.provider.settings.pages.sales/card-machines.cardMachineNowActive") : t("web.provider.settings.pages.sales/card-machines.cardMachineHiddenFromCheckout"));
       await loadData();
     } catch {
-      toast.error("Failed to update card machine");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.failedToUpdateCardMachine"));
     }
   };
 
   const handleDeleteTerminal = async (terminal: PaycloudTerminal) => {
     try {
       await paycloudApi.deleteTerminal(terminal.id);
-      toast.success("Card machine removed");
+      toast.success(t("web.provider.settings.pages.sales/card-machines.cardMachineRemoved"));
       await loadData();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to remove card machine");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/card-machines.failedToRemoveCardMachine"));
     }
   };
 
   const handleActivateOrder = async () => {
     if (!activationSerial.trim()) {
-      toast.error("Enter the serial number from your device label");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.enterTheSerialNumberFromYour"));
       return;
     }
     setActivating(true);
@@ -343,15 +345,15 @@ export default function CardMachinesPage() {
         terminal_sn: activationSerial.trim(),
         display_name: activationName.trim() || `Card machine ${activationSerial.trim().slice(-4)}`,
       });
-      toast.success("Card machine activated");
+      toast.success(t("web.provider.settings.pages.sales/card-machines.cardMachineActivated"));
       setActivationSerial("");
       setPendingOrder(null);
       await loadData();
       if (!paycloudSettings?.accept_paycloud) {
-        toast.message("Turn on Accept in-person card payments to start collecting.");
+        toast.message(t("web.provider.settings.pages.sales/card-machines.turnOnAcceptInPerson"));
       }
     } catch (e: any) {
-      toast.error(e?.message || "Failed to activate card machine");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/card-machines.failedToActivateCardMachine"));
     } finally {
       setActivating(false);
     }
@@ -363,10 +365,10 @@ export default function CardMachinesPage() {
       setPaycloudSettings((prev) =>
         prev ? { ...prev, accept_paycloud: checked } : prev,
       );
-      toast.success(checked ? "In-person card payments enabled" : "In-person card payments disabled");
+      toast.success(checked ? t("web.provider.settings.pages.sales/card-machines.inPersonCardPaymentsEnabled") : t("web.provider.settings.pages.sales/card-machines.inPersonCardPaymentsDisabled"));
       await loadData();
     } catch {
-      toast.error("Failed to update settings");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.failedToUpdateSettings"));
     }
   };
 
@@ -376,9 +378,9 @@ export default function CardMachinesPage() {
       setPaycloudSettings((prev) =>
         prev ? { ...prev, qr_payments_enabled: checked } : prev,
       );
-      toast.success(checked ? "Wallet QR payments enabled" : "Wallet QR payments disabled");
+      toast.success(checked ? t("web.provider.settings.pages.sales/card-machines.walletQrPaymentsEnabled") : t("web.provider.settings.pages.sales/card-machines.walletQrPaymentsDisabled"));
     } catch {
-      toast.error("Failed to update settings");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.failedToUpdateSettings"));
     }
   };
 
@@ -388,9 +390,9 @@ export default function CardMachinesPage() {
       setPaycloudSettings((prev) =>
         prev ? { ...prev, cashback_enabled: checked } : prev,
       );
-      toast.success(checked ? "Cashback enabled" : "Cashback disabled");
+      toast.success(checked ? t("web.provider.settings.pages.sales/card-machines.cashbackEnabled") : t("web.provider.settings.pages.sales/card-machines.cashbackDisabled"));
     } catch {
-      toast.error("Failed to update settings");
+      toast.error(t("web.provider.settings.pages.sales/card-machines.failedToUpdateSettings"));
     }
   };
 
@@ -410,31 +412,31 @@ export default function CardMachinesPage() {
       );
       await loadData();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to check payment status");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/card-machines.failedToCheckPaymentStatus"));
     } finally {
       setReconcileLoading(false);
     }
   };
 
   if (loading) {
-    return <LoadingTimeout loadingMessage="Loading card machines..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.sales/card-machines.loadingCardMachines")} />;
   }
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Card machines" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.sales/card-machines.cardMachines") },
   ];
 
   const acceptPaycloud = paycloudSettings?.accept_paycloud ?? false;
   const activePaycloud = paycloudTerminals.filter((t) => t.is_active).length;
   const activeYoco = yocoDevices.filter((d) => d.is_active).length;
   const statusLabel = paycloudSettings?.ready
-    ? "Ready"
+    ? t("web.provider.settings.pages.sales/card-machines.ready")
     : !acceptPaycloud
-      ? "Not accepting"
-      : blockers[0]?.title ?? "Setup incomplete";
+      ? t("web.provider.settings.pages.sales/card-machines.notAccepting")
+      : blockers[0]?.title ?? t("web.provider.settings.pages.sales/card-machines.setupIncomplete");
   const recentPayments = reconcilePayments.slice(0, 10);
   const exceptionPayments = reconcilePayments.filter(
     (p) =>
@@ -445,8 +447,8 @@ export default function CardMachinesPage() {
 
   return (
     <SettingsDetailLayout
-      title="Card machines"
-      subtitle="Beautonomi in-person terminals — tap, insert, swipe, and QR wallets"
+      title={t("web.provider.settings.categories.sales.items.cardMachines.title")}
+      subtitle={t("web.provider.settings.categories.sales.items.cardMachines.description")}
       breadcrumbs={breadcrumbs}
     >
       <SectionCard className="mb-6 overflow-hidden border-pink-100 bg-gradient-to-br from-pink-50/70 via-white to-purple-50/50">
@@ -463,13 +465,13 @@ export default function CardMachinesPage() {
             </div>
             <p className="mt-1 text-sm text-gray-600">
               {paycloudSettings?.ready
-                ? "Ready for checkout at bookings and sales"
+                ? t("web.provider.settings.pages.sales/card-machines.readyForCheckout")
                 : acceptPaycloud
-                  ? "Finish setup below to start collecting"
-                  : "Turn on acceptance to show Card machine at checkout"}
+                  ? t("web.provider.settings.pages.sales/card-machines.finishSetupBelow")
+                  : t("web.provider.settings.pages.sales/card-machines.turnOnAcceptanceToShow")}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              {activePaycloud} active machine{activePaycloud === 1 ? "" : "s"}
+              {t("web.provider.settings.pages.sales/card-machines.activeMachineCount", { count: activePaycloud })}
               {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)
                 ? ` · ${paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}`
                 : ""}
@@ -477,8 +479,8 @@ export default function CardMachinesPage() {
           </div>
           {paycloudEnabled ? (
             <div className="flex flex-col items-end gap-1.5">
-              <div className="text-right">
-                <div className="text-xs text-gray-500">Setup</div>
+              <div className="text-end">
+<div className="text-xs text-gray-500">{t("web.provider.settings.pages.sales/card-machines.setup")}</div>
                 <div className="text-lg font-semibold text-gray-900">
                   {setupProgress.done}/{setupProgress.total}
                 </div>
@@ -499,7 +501,7 @@ export default function CardMachinesPage() {
                 href="/provider/settings/sales/yoco-devices"
                 className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70 hover:text-pink-700"
               >
-                Yoco devices: {activeYoco} active
+{t("web.provider.settings.pages.sales/card-machines.yocoDevicesActive", { count: activeYoco })}
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             ) : null}
@@ -508,7 +510,7 @@ export default function CardMachinesPage() {
                 href="/provider/settings/sales/paystack-terminal"
                 className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70 hover:text-pink-700"
               >
-                Paystack Terminal — QR &amp; link payments
+{t("web.provider.settings.pages.sales/card-machines.paystackTerminalQrLink")}
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             ) : null}
@@ -529,8 +531,8 @@ export default function CardMachinesPage() {
                 </div>
                 <Button asChild>
                   <Link href={planBlocker.href ?? "/provider/subscription"}>
-                    <ArrowUpRight className="mr-2 h-4 w-4" />
-                    View plans
+                    <ArrowUpRight className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.viewPlans")}
                   </Link>
                 </Button>
               </div>
@@ -545,18 +547,18 @@ export default function CardMachinesPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-medium text-indigo-950">
-                    Finish card machine application ({merchantApplication.application_no})
+{t("web.provider.settings.pages.sales/card-machines.finishCardMachineApplication", { number: merchantApplication.application_no })}
                   </div>
                   <div className="text-sm text-indigo-800">
                     {merchantApplication.status === "draft" || merchantApplication.status === "info_required"
-                      ? "Complete your details so we can ship your terminal."
-                      : "Track your application status."}
+                      ? t("web.provider.settings.pages.sales/card-machines.completeDetailsToShip")
+                      : t("web.provider.settings.pages.sales/card-machines.trackApplicationStatus")}
                   </div>
                 </div>
                 <Button asChild>
                   <Link href="/provider/settings/sales/terminal-merchant-application">
-                    Open application
-                    <ArrowUpRight className="ml-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.openApplication")}
+                    <ArrowUpRight className="ms-2 h-4 w-4" />
                   </Link>
                 </Button>
               </div>
@@ -566,43 +568,43 @@ export default function CardMachinesPage() {
           {pendingOrder ? (
             <SectionCard className="mb-6 border-pink-200 bg-pink-50/40">
               <PageHeader
-                title="Activate your new card machine"
+                title={t("web.provider.settings.pages.sales/card-machines.activateYourNewCardMachine")}
                 subtitle={
                   pendingOrder.terminal_products?.name
-                    ? `Order: ${pendingOrder.terminal_products.name}`
-                    : "Enter the serial number to finish setup"
+? t("web.provider.settings.pages.sales/card-machines.orderNamed", { name: pendingOrder.terminal_products.name })
+                    : t("web.provider.settings.pages.sales/card-machines.enterSerialToFinish")
                 }
               />
               <p className="mt-2 text-sm text-gray-600">
-                Find the serial number on the device label or in your activation email, then add it below.
+{t("web.provider.settings.pages.sales/card-machines.findSerialOnDevice")}
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div>
-                  <Label>Serial number</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.serialNumber")}</Label>
                   <Input
                     className="mt-1"
                     value={activationSerial}
                     onChange={(e) => setActivationSerial(e.target.value)}
-                    placeholder="From device label"
+                    placeholder={t("web.provider.settings.pages.sales/card-machines.fromDeviceLabel")}
                   />
                 </div>
                 <div>
-                  <Label>Display name</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.displayName")}</Label>
                   <Input
                     className="mt-1"
                     value={activationName}
                     onChange={(e) => setActivationName(e.target.value)}
-                    placeholder="Front desk, Portable, etc."
+                    placeholder={t("web.provider.settings.pages.sales/card-machines.frontDeskPortableEtc")}
                   />
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button onClick={() => void handleActivateOrder()} disabled={activating}>
-                  {activating ? "Activating…" : "Activate machine"}
+                  {activating ? t("web.provider.settings.pages.sales/card-machines.activating") : t("web.provider.settings.pages.sales/card-machines.activateMachine")}
                 </Button>
                 {!acceptPaycloud ? (
                   <Button variant="outline" onClick={() => void handleAcceptToggle(true)}>
-                    Enable acceptance
+{t("web.provider.settings.pages.sales/card-machines.enableAcceptance")}
                   </Button>
                 ) : null}
               </div>
@@ -611,8 +613,8 @@ export default function CardMachinesPage() {
 
           <SectionCard className="mb-6">
             <PageHeader
-              title="Setup checklist"
-              subtitle={`${setupProgress.done} of ${setupProgress.total} done`}
+              title={t("web.provider.settings.pages.sales/card-machines.setupChecklist")}
+              subtitle={t("web.provider.settings.pages.sales/card-machines.setupProgressDone", { done: setupProgress.done, total: setupProgress.total })}
             />
             <div className="mt-4 space-y-2">
               {SETUP_STEPS.map((step) => {
@@ -630,7 +632,7 @@ export default function CardMachinesPage() {
                         <Circle className="h-4 w-4 text-gray-300" />
                       )}
                       <span className={done ? "text-sm text-gray-700" : "text-sm font-medium text-gray-900"}>
-                        {blocker?.title && !done ? blocker.title : step.label}
+                        {blocker?.title && !done ? blocker.title : t(`web.provider.settings.pages.sales/card-machines.${step.labelKey}`)}
                       </span>
                     </div>
                     {!done && blocker?.href ? (
@@ -672,8 +674,8 @@ export default function CardMachinesPage() {
           {needsAttention.length > 0 ? (
             <SectionCard className="mb-6 border-amber-200">
               <PageHeader
-                title="Needs attention"
-                subtitle="Payments or machines that may need a look"
+                title={t("web.provider.settings.pages.sales/card-machines.needsAttention")}
+                subtitle={t("web.provider.settings.pages.sales/card-machines.paymentsOrMachinesThatMayNeed")}
                 actions={
                   <Button
                     variant="outline"
@@ -681,8 +683,8 @@ export default function CardMachinesPage() {
                     onClick={() => void handleReconcile()}
                     disabled={reconcileLoading}
                   >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${reconcileLoading ? "animate-spin" : ""}`} />
-                    Check payment status
+                    <RefreshCw className={`me-2 h-4 w-4 ${reconcileLoading ? "animate-spin" : ""}`} />
+{t("web.provider.settings.pages.sales/card-machines.checkPaymentStatus")}
                   </Button>
                 }
               />
@@ -701,19 +703,19 @@ export default function CardMachinesPage() {
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b text-left text-gray-500">
-                        <th className="py-2 pr-2">Order</th>
-                        <th className="py-2 pr-2">Status</th>
-                        <th className="py-2 pr-2">Amount</th>
-                        <th className="py-2">Match</th>
+                      <tr className="border-b text-start text-gray-500">
+<th className="py-2 pe-2">{t("web.provider.settings.pages.sales/card-machines.order")}</th>
+<th className="py-2 pe-2">{t("web.provider.common.statusLabel")}</th>
+<th className="py-2 pe-2">{t("web.provider.common.amount")}</th>
+<th className="py-2">{t("web.provider.settings.pages.sales/card-machines.match")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {exceptionPayments.slice(0, 5).map((p) => (
                         <tr key={p.id} className="border-b border-gray-100">
-                          <td className="py-2 pr-2 font-mono">{p.merchant_order_no}</td>
-                          <td className="py-2 pr-2">{p.status}</td>
-                          <td className="py-2 pr-2">
+                          <td className="py-2 pe-2 font-mono">{p.merchant_order_no}</td>
+                          <td className="py-2 pe-2">{p.status}</td>
+                          <td className="py-2 pe-2">
                             {p.currency} {Number(p.amount).toFixed(2)}
                           </td>
                           <td className="py-2 text-amber-700">{p.amount_match_status}</td>
@@ -734,16 +736,16 @@ export default function CardMachinesPage() {
                     <Smartphone className="h-6 w-6 text-pink-500" />
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-900">Get your first Beautonomi card machine</div>
+<div className="font-semibold text-gray-900">{t("web.provider.settings.pages.sales/card-machines.getFirstCardMachine")}</div>
                     <p className="mt-0.5 text-sm text-gray-600">
-                      Order from the catalog — some plans include a machine at no extra cost.
+{t("web.provider.settings.pages.sales/card-machines.orderFromCatalog")}
                     </p>
                   </div>
                 </div>
                 <Button asChild>
                   <Link href="/provider/settings/sales/terminal-shop">
-                    <ShoppingBag className="mr-2 h-4 w-4" />
-                    Browse machines
+                    <ShoppingBag className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.browseMachines")}
                   </Link>
                 </Button>
               </div>
@@ -752,40 +754,40 @@ export default function CardMachinesPage() {
 
           <SectionCard className="mb-6">
             <PageHeader
-              title="Beautonomi card machines"
-              subtitle="Add, name, and assign machines for checkout and house calls"
+              title={t("web.provider.settings.pages.sales/card-machines.beautonomiCardMachines")}
+              subtitle={t("web.provider.settings.pages.sales/card-machines.addNameAndAssignMachinesFor")}
               actions={
                 <div className="flex flex-wrap gap-2">
                   <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                     <DialogTrigger asChild>
                       <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add machine
+                        <Plus className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.addMachine")}
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Add card machine</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.sales/card-machines.addCardMachine")}</DialogTitle>
                       </DialogHeader>
                       <div className="space-y-3 py-2">
                         <div>
-                          <Label>Serial number</Label>
+        <Label>{t("web.provider.settings.pages.sales/card-machines.serialNumber")}</Label>
                           <Input
                             value={form.terminal_sn}
                             onChange={(e) => setForm((f) => ({ ...f, terminal_sn: e.target.value }))}
-                            placeholder="From device label or activation email"
+                            placeholder={t("web.provider.settings.pages.sales/card-machines.fromDeviceLabelOrActivationEmail")}
                           />
                         </div>
                         <div>
-                          <Label>Display name</Label>
+        <Label>{t("web.provider.settings.pages.sales/card-machines.displayName")}</Label>
                           <Input
                             value={form.display_name}
                             onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
-                            placeholder="Front desk, Portable, etc."
+                            placeholder={t("web.provider.settings.pages.sales/card-machines.frontDeskPortableEtc")}
                           />
                         </div>
                         <div>
-                          <Label>Location</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.location")}</Label>
                           <Select
                             value={form.location_id || "portable"}
                             onValueChange={(v) => setForm((f) => ({ ...f, location_id: v === "portable" ? "" : v }))}
@@ -794,7 +796,7 @@ export default function CardMachinesPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="portable">Portable (all locations)</SelectItem>
+<SelectItem value="portable">{t("web.provider.settings.pages.sales/card-machines.portableAllLocations")}</SelectItem>
                               {salons.map((s) => (
                                 <SelectItem key={s.id} value={s.id}>
                                   {s.name}
@@ -805,7 +807,7 @@ export default function CardMachinesPage() {
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button onClick={handleAddTerminal}>Save</Button>
+<Button onClick={handleAddTerminal}>{t("web.provider.common.save")}</Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
@@ -816,8 +818,8 @@ export default function CardMachinesPage() {
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
-                  <div className="font-medium">Accept in-person card payments</div>
-                  <div className="text-sm text-gray-600">Show Beautonomi card machine at checkout when terminals are active</div>
+                  <div className="font-medium">{t("web.provider.settings.pages.sales/card-machines.acceptInPersonCardPayments")}</div>
+<div className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/card-machines.showCardMachineAtCheckout")}</div>
                 </div>
                 <Switch checked={acceptPaycloud} onCheckedChange={handleAcceptToggle} />
               </div>
@@ -825,8 +827,8 @@ export default function CardMachinesPage() {
               {qrFlagEnabled ? (
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <div className="font-medium">Wallet QR payments</div>
-                    <div className="text-sm text-gray-600">Let customers pay with mobile wallet QR on the device</div>
+<div className="font-medium">{t("web.provider.settings.pages.sales/card-machines.walletQrPayments")}</div>
+<div className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/card-machines.walletQrPaymentsHint")}</div>
                   </div>
                   <Switch
                     checked={paycloudSettings?.qr_payments_enabled ?? false}
@@ -838,8 +840,8 @@ export default function CardMachinesPage() {
               {cashbackFlagEnabled ? (
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <div className="font-medium">Cashback</div>
-                    <div className="text-sm text-gray-600">Offer cashback when charging on the card machine</div>
+<div className="font-medium">{t("web.provider.settings.pages.sales/card-machines.cashback")}</div>
+<div className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/card-machines.cashbackHint")}</div>
                   </div>
                   <Switch
                     checked={paycloudSettings?.cashback_enabled ?? false}
@@ -853,71 +855,71 @@ export default function CardMachinesPage() {
               {paycloudTerminals.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-600">
                   <Smartphone className="mx-auto mb-2 h-8 w-8 text-gray-400" />
-                  <p>Add a machine you already have, or order one from the terminal shop.</p>
+<p>{t("web.provider.settings.pages.sales/card-machines.addExistingOrOrder")}</p>
                   <div className="mt-4 flex flex-wrap justify-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add existing machine
+                      <Plus className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.addExistingMachine")}
                     </Button>
                     {terminalShopEnabled ? (
                       <Button size="sm" asChild>
                         <Link href="/provider/settings/sales/terminal-shop">
-                          <ShoppingBag className="mr-2 h-4 w-4" />
-                          Order from shop
+                          <ShoppingBag className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.orderFromShop")}
                         </Link>
                       </Button>
                     ) : null}
                   </div>
                 </div>
               ) : (
-                paycloudTerminals.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between rounded-lg border p-4">
+                paycloudTerminals.map((terminal) => (
+                  <div key={terminal.id} className="flex items-center justify-between rounded-lg border p-4">
                     <div className="flex items-start gap-3">
                       <CreditCard className="mt-0.5 h-5 w-5 text-gray-500" />
                       <div>
-                        <div className="font-medium">{t.display_name}</div>
-                        <div className="text-xs text-gray-500">Serial {t.terminal_sn}</div>
+                        <div className="font-medium">{terminal.display_name}</div>
+                        <div className="text-xs text-gray-500">{t("web.provider.settings.pages.sales/card-machines.serialLabel", { sn: terminal.terminal_sn })}</div>
                         <div className="text-xs text-gray-500">
-                          {t.location_name ?? "Portable"} · {t.total_transactions ?? 0} payments
+                          {terminal.location_name ?? t("web.provider.settings.pages.sales/card-machines.portable")} · {t("web.provider.settings.pages.sales/card-machines.paymentsCount", { count: terminal.total_transactions ?? 0 })}
                         </div>
-                        {t.merchant ? (
+                        {terminal.merchant ? (
                           <div className="text-xs text-gray-400">
-                            Merchant {t.merchant.merchant_no} · Store {t.merchant.store_no}
-                            {t.merchant.label ? ` (${t.merchant.label})` : ""}
+                            {t("web.provider.settings.pages.sales/card-machines.merchantStore", { merchant: terminal.merchant.merchant_no, store: terminal.merchant.store_no })}
+                            {terminal.merchant.label ? ` (${terminal.merchant.label})` : ""}
                           </div>
                         ) : (
-                          <div className="text-xs text-amber-600">Merchant setup pending</div>
+                          <div className="text-xs text-amber-600">{t("web.provider.settings.pages.sales/card-machines.merchantSetupPending")}</div>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Active</span>
+                        <span className="text-xs text-gray-500">{t("web.provider.common.active")}</span>
                         <Switch
-                          checked={t.is_active}
-                          onCheckedChange={(checked) => void handleToggleActive(t, checked)}
+                          checked={terminal.is_active}
+                          onCheckedChange={(checked) => void handleToggleActive(terminal, checked)}
                         />
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(t)} aria-label="Edit card machine">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(terminal)} aria-label={t("web.provider.settings.pages.sales/card-machines.editCardMachineAria")}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="Remove card machine">
+                          <Button variant="ghost" size="icon" aria-label={t("web.provider.settings.pages.sales/card-machines.removeCardMachineAria")}>
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Remove card machine?</AlertDialogTitle>
+                            <AlertDialogTitle>{t("web.provider.settings.pages.sales/card-machines.removeCardMachineTitle")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Remove &quot;{t.display_name}&quot; from your account. You can add it again later with the same serial number.
+                              {t("web.provider.settings.pages.sales/card-machines.removeCardMachineBody", { name: terminal.display_name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => void handleDeleteTerminal(t)}>
-                              Remove
+                            <AlertDialogCancel>{t("web.provider.common.cancel")}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => void handleDeleteTerminal(terminal)}>
+                              {t("web.provider.settings.pages.sales/card-machines.remove")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -931,8 +933,8 @@ export default function CardMachinesPage() {
 
           <SectionCard className="mb-6">
             <PageHeader
-              title="Recent card payments"
-              subtitle="Latest charges sent to your card machines"
+              title={t("web.provider.settings.pages.sales/card-machines.recentCardPayments")}
+              subtitle={t("web.provider.settings.pages.sales/card-machines.latestChargesSentToYourCard")}
               actions={
                 <Button
                   variant="outline"
@@ -940,39 +942,39 @@ export default function CardMachinesPage() {
                   onClick={() => void handleReconcile()}
                   disabled={reconcileLoading}
                 >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${reconcileLoading ? "animate-spin" : ""}`} />
-                  Check payment status
+                  <RefreshCw className={`me-2 h-4 w-4 ${reconcileLoading ? "animate-spin" : ""}`} />
+                  {t("web.provider.settings.pages.sales/card-machines.checkPaymentStatus")}
                 </Button>
               }
             />
             {recentPayments.length === 0 ? (
               <p className="mt-4 text-sm text-gray-500">
-                No card machine payments yet. Collect at a booking or sale to see them here.
+{t("web.provider.settings.pages.sales/card-machines.noCardPaymentsYet")}
               </p>
             ) : (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-left text-xs text-gray-500">
-                      <th className="py-2 pr-2">Time</th>
-                      <th className="py-2 pr-2">Order</th>
-                      <th className="py-2 pr-2">Amount</th>
-                      <th className="py-2 pr-2">Status</th>
-                      <th className="py-2">Match</th>
+                    <tr className="border-b text-start text-xs text-gray-500">
+<th className="py-2 pe-2">{t("web.provider.settings.pages.sales/card-machines.time")}</th>
+<th className="py-2 pe-2">{t("web.provider.settings.pages.sales/card-machines.order")}</th>
+<th className="py-2 pe-2">{t("web.provider.common.amount")}</th>
+<th className="py-2 pe-2">{t("web.provider.common.statusLabel")}</th>
+<th className="py-2">{t("web.provider.settings.pages.sales/card-machines.match")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recentPayments.map((p) => (
                       <tr key={p.id} className="border-b border-gray-100">
-                        <td className="py-2 pr-2 text-xs text-gray-500">
+                        <td className="py-2 pe-2 text-xs text-gray-500">
                           {new Date(p.created_at).toLocaleString()}
                         </td>
-                        <td className="py-2 pr-2 font-mono text-xs">{p.merchant_order_no}</td>
-                        <td className="py-2 pr-2">
+                        <td className="py-2 pe-2 font-mono text-xs">{p.merchant_order_no}</td>
+                        <td className="py-2 pe-2">
                           {p.currency} {Number(p.amount).toFixed(2)}
                         </td>
-                        <td className="py-2 pr-2 capitalize">{p.status.replace(/_/g, " ")}</td>
-                        <td className="py-2 text-xs text-gray-600">{p.amount_match_status ?? "—"}</td>
+                        <td className="py-2 pe-2 capitalize">{p.status.replace(/_/g, " ")}</td>
+                        <td className="py-2 text-xs text-gray-600">{p.amount_match_status ?? t("web.provider.common.emDash")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -985,15 +987,15 @@ export default function CardMachinesPage() {
             <SectionCard className="mb-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-medium text-gray-900">Need another machine?</div>
+<div className="font-medium text-gray-900">{t("web.provider.settings.pages.sales/card-machines.needAnotherMachine")}</div>
                   <p className="text-sm text-gray-600">
-                    Order from the Beautonomi catalog, then activate with the serial number here.
+{t("web.provider.settings.pages.sales/card-machines.orderThenActivate")}
                   </p>
                 </div>
                 <Button variant="outline" asChild>
                   <Link href="/provider/settings/sales/terminal-shop">
-                    <ShoppingBag className="mr-2 h-4 w-4" />
-                    Open terminal shop
+                    <ShoppingBag className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.openTerminalShop")}
                   </Link>
                 </Button>
               </div>
@@ -1002,16 +1004,16 @@ export default function CardMachinesPage() {
 
           <SectionCard className="mb-6">
             <details className="group">
-              <summary className="cursor-pointer list-none text-sm font-medium text-gray-700">
-                Account
+<summary className="cursor-pointer list-none text-sm font-medium text-gray-700">
+                {t("web.provider.settings.pages.sales/card-machines.account")}
                 {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment) ? (
-                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                  <span className="ms-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
                     {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}
                   </span>
                 ) : null}
               </summary>
               <p className="mt-2 text-xs text-gray-500">
-                Read-only. Beautonomi configures test or live card machine accounts — you cannot switch here.
+{t("web.provider.settings.pages.sales/card-machines.accountReadOnly")}
               </p>
             </details>
           </SectionCard>
@@ -1019,22 +1021,22 @@ export default function CardMachinesPage() {
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Edit card machine</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.sales/card-machines.editCardMachine")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div>
-                  <Label>Serial number</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.serialNumber")}</Label>
                   <Input value={editingTerminal?.terminal_sn ?? ""} disabled className="bg-gray-50" />
                 </div>
                 <div>
-                  <Label>Display name</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.displayName")}</Label>
                   <Input
                     value={editForm.display_name}
                     onChange={(e) => setEditForm((f) => ({ ...f, display_name: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <Label>Location</Label>
+<Label>{t("web.provider.settings.pages.sales/card-machines.location")}</Label>
                   <Select
                     value={editForm.location_id || "portable"}
                     onValueChange={(v) => setEditForm((f) => ({ ...f, location_id: v === "portable" ? "" : v }))}
@@ -1043,7 +1045,7 @@ export default function CardMachinesPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="portable">Portable (all locations)</SelectItem>
+<SelectItem value="portable">{t("web.provider.settings.pages.sales/card-machines.portableAllLocations")}</SelectItem>
                       {salons.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
@@ -1054,19 +1056,19 @@ export default function CardMachinesPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button onClick={handleEditTerminal}>Save changes</Button>
+<Button onClick={handleEditTerminal}>{t("web.provider.settings.pages.sales/card-machines.saveChanges")}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </>
       ) : (
         <SectionCard>
-          <p className="text-sm text-gray-600">Beautonomi card machines are not available in your market yet.</p>
+<p className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/card-machines.notAvailableInMarket")}</p>
           {terminalShopEnabled ? (
             <Button asChild className="mt-4" variant="outline">
               <Link href="/provider/settings/sales/terminal-shop">
-                <ShoppingBag className="mr-2 h-4 w-4" />
-                Order from Terminal Shop
+                <ShoppingBag className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.sales/card-machines.orderFromTerminalShop")}
               </Link>
             </Button>
           ) : null}
@@ -1075,23 +1077,23 @@ export default function CardMachinesPage() {
 
       {yocoEnabled ? (
         <SectionCard className="mt-6">
-          <PageHeader title="Yoco" subtitle="Separate Yoco Web POS integration" />
+          <PageHeader title={t("web.provider.settings.pages.sales/card-machines.yoco")} subtitle={t("web.provider.settings.pages.sales/card-machines.separateYocoWebPosIntegration")} />
           <Button variant="outline" asChild className="mt-3">
-            <Link href="/provider/settings/sales/yoco-integration">Open Yoco settings</Link>
+<Link href="/provider/settings/sales/yoco-integration">{t("web.provider.settings.pages.sales/card-machines.openYocoSettings")}</Link>
           </Button>
         </SectionCard>
       ) : null}
       <SectionCard className="mt-8 border-dashed bg-slate-50 p-4">
-        <h3 className="font-semibold text-gray-900">Setup guide</h3>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600">
-          <li>Turn on <strong>Accept in-person card payments</strong> above.</li>
-          <li>Add your machine serial or order one from the terminal shop.</li>
-          <li>On the device, open settings and turn on <strong>Cloud Mode</strong> so Beautonomi can send charges.</li>
-          <li>At checkout, choose <strong>Card machine</strong> — customer taps, inserts, swipes, or scans QR.</li>
-          <li>Refunds are done on the physical machine, then recorded in Beautonomi.</li>
+<h3 className="font-semibold text-gray-900">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.setupGuide")}</h3>
+        <ul className="mt-2 list-disc space-y-1 ps-5 text-sm text-gray-600">
+<li>{t("web.provider.settings.pages.sales/card-machines.setupGuideTurnOn")} <strong>{t("web.provider.settings.pages.sales/card-machines.acceptInPersonCardPayments")}</strong> {t("web.provider.settings.pages.sales/card-machines.setupGuideAbove")}</li>
+<li>{t("web.provider.settings.pages.sales/card-machines.setupGuideAddSerial")}</li>
+<li>{t("web.provider.settings.pages.sales/card-machines.setupGuideCloudMode")} <strong>{t("web.provider.settings.pages.sales/card-machines.cloudMode")}</strong> {t("web.provider.settings.pages.sales/card-machines.setupGuideCloudModeRest")}</li>
+<li>{t("web.provider.settings.pages.sales/card-machines.setupGuideCheckout")} <strong>{t("web.provider.settings.pages.sales/card-machines.cardMachine")}</strong> {t("web.provider.settings.pages.sales/card-machines.setupGuideCheckoutRest")}</li>
+<li>{t("web.provider.settings.pages.sales/card-machines.setupGuideRefunds")}</li>
         </ul>
         <p className="mt-3 text-xs text-gray-500">
-          Card machine payments stay in your merchant account — not Beautonomi online payouts.
+{t("web.provider.settings.pages.sales/card-machines.cardMachinePayoutsNote")}
         </p>
       </SectionCard>
     </SettingsDetailLayout>

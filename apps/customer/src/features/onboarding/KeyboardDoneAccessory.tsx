@@ -1,4 +1,5 @@
 import { InputAccessoryView, View, Button, Platform, Keyboard } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 
 type KeyboardDoneAccessoryProps = {
   nativeID: string;
@@ -7,6 +8,7 @@ type KeyboardDoneAccessoryProps = {
 };
 
 export function KeyboardDoneAccessory({ nativeID, onNext, onDone }: KeyboardDoneAccessoryProps) {
+  const { t } = useTranslation();
   if (Platform.OS !== "ios") return null;
   return (
     <InputAccessoryView nativeID={nativeID}>
@@ -20,9 +22,9 @@ export function KeyboardDoneAccessory({ nativeID, onNext, onDone }: KeyboardDone
           paddingVertical: 6,
         }}
       >
-        {onNext ? <Button title="Next" onPress={onNext} /> : null}
+        {onNext ? <Button title={t("common.next")} onPress={onNext} /> : null}
         <Button
-          title="Done"
+          title={t("common.done")}
           onPress={() => {
             onDone?.();
             Keyboard.dismiss();

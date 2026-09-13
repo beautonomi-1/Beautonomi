@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import { SEO_MARKETS } from "@/lib/seo/location-hub-config";
 import { LocationHubHero } from "./LocationHubView";
 
@@ -10,29 +12,34 @@ export const revalidate = 600;
 export async function generateMetadata(): Promise<Metadata> {
   const origin = await getPublicSiteOriginFromHeaders();
   const path = "/locations";
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
+  const title = t("web.seo.locationsTitle") as string;
+  const description = t("web.seo.locationsDescription") as string;
   return {
-    title: "Beauty services by location | Beautonomi",
-    description:
-      "Browse verified beauty freelancers and salons by country. Find hair, nails, spa, and more on Beautonomi.",
+    title,
+    description,
     alternates: {
       canonical: `${origin}${path}`,
-      languages: getHreflangAlternateUrls(path),
+      languages: await hreflangForPath(path),
     },
     openGraph: {
-      title: "Beauty services by location | Beautonomi",
-      description: "Browse beauty professionals by country on Beautonomi.",
+      title,
+      description,
       url: `${origin}${path}`,
       type: "website",
     },
   };
 }
 
-export default function LocationsIndexPage() {
+export default async function LocationsIndexPage() {
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
   return (
     <>
       <LocationHubHero
-        title="Find beauty freelancers & salons near you"
-        description="Choose a country to explore cities with verified salons and mobile beauty professionals. Book hair, nails, makeup, spa services, and more on Beautonomi."
+        title={t("web.seo.locationsHubTitle") as string}
+        description={t("web.seo.locationsHubDescription") as string}
       />
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20 py-8 md:py-12">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Browse by country</h2>

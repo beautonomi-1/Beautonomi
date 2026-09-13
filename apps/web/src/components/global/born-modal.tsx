@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BornModalProps {
   isOpen: boolean;
@@ -11,7 +12,10 @@ interface BornModalProps {
   onSave?: (decade: string, showDecade: boolean) => void;
 }
 
+const DECADE_VALUES = ["1940s", "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"] as const;
+
 export default function BornModal({ isOpen, onClose, defaultValue = "", defaultShowDecade = true, onSave }: BornModalProps) {
+  const { t } = useTranslation();
   const [showDecade, setShowDecade] = useState(defaultShowDecade);
   const [selectedDecade, setSelectedDecade] = useState<string>(defaultValue);
 
@@ -42,41 +46,37 @@ export default function BornModal({ isOpen, onClose, defaultValue = "", defaultS
         <X className="h-5 w-5 mb-7 cursor-pointer" onClick={onClose} />
         <div className="flex justify-between items-center">
           <h2 className="text-[26px] font-medium text-secondary">
-            Decade you were born
+            {t("web.global.bornModal.title")}
           </h2>
         </div>
         <p className="text-base text-destructive font-light mb-7">
-          {"Don't"} worry, other people {"won't"} be able to see your exact birthday.
+          {t("web.global.bornModal.privacyHint")}
         </p>
         <div className="mb-6">
           <label className="text-base font-medium text-secondary mb-2 block">
-            Select decade:
+            {t("web.global.bornModal.selectDecade")}
           </label>
           <select
             value={selectedDecade}
             onChange={(e) => setSelectedDecade(e.target.value)}
             className="w-full border rounded-md p-2 mb-4"
           >
-            <option value="">Select a decade</option>
-            <option value="1940s">1940s</option>
-            <option value="1950s">1950s</option>
-            <option value="1960s">1960s</option>
-            <option value="1970s">1970s</option>
-            <option value="1980s">1980s</option>
-            <option value="1990s">1990s</option>
-            <option value="2000s">2000s</option>
-            <option value="2010s">2010s</option>
-            <option value="2020s">2020s</option>
+            <option value="">{t("web.global.bornModal.selectADecade")}</option>
+            {DECADE_VALUES.map((decade) => (
+              <option key={decade} value={decade}>
+                {t(`web.global.bornModal.decade${decade}`)}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex justify-between items-center mb-6">
           <div>
             <p className="font-light text-base text-secondary">
-              Show the decade I was born
+              {t("web.global.bornModal.showDecade")}
             </p>
             {selectedDecade && (
               <p className="text-sm font-light text-destructive">
-                Born in the {selectedDecade}
+                {t("web.global.bornModal.bornIn", { decade: selectedDecade })}
               </p>
             )}
           </div>
@@ -88,7 +88,7 @@ export default function BornModal({ isOpen, onClose, defaultValue = "", defaultS
               onSave(selectedDecade, showDecade);
             }
             onClose();
-          }}>Save</Button>
+          }}>{t("common.save")}</Button>
         </div>
       </div>
     </div>

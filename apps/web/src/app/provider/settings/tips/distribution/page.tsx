@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ interface TipDistributionSettings {
 }
 
 export default function TipDistributionPage() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<TipDistributionSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -37,10 +39,10 @@ export default function TipDistributionPage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load tip distribution settings";
+: t("web.provider.settings.pages.tips/distribution.failedToLoadTipDistributionSettings");
       setError(errorMessage);
       console.error("Error loading tip distribution settings:", err);
     } finally {
@@ -54,9 +56,9 @@ export default function TipDistributionPage() {
     try {
       setIsSaving(true);
       await fetcher.patch("/api/provider/tips/distribution", settings);
-      toast.success("Tip distribution settings saved successfully");
+      toast.success(t("web.provider.settings.pages.tips/distribution.tipDistributionSettingsSavedSuccessfully"));
     } catch (error) {
-      toast.error("Failed to save tip distribution settings");
+      toast.error(t("web.provider.settings.pages.tips/distribution.failedToSaveTipDistributionSettings"));
       console.error("Error saving settings:", error);
     } finally {
       setIsSaving(false);
@@ -78,7 +80,7 @@ export default function TipDistributionPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading tip distribution settings..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.tips/distribution.loadingTipDistributionSettings")} />
       </div>
     );
   }
@@ -87,10 +89,10 @@ export default function TipDistributionPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Failed to load tip distribution settings"
-          description={error || "Unable to load tip distribution settings"}
+          title={t("web.provider.settings.categories.sales.items.tipsDistribution.title")}
+description={error || t("web.provider.settings.pages.tips/distribution.unableToLoad")}
           action={{
-            label: "Retry",
+label: t("web.provider.common.retry"),
             onClick: loadSettings,
           }}
         />
@@ -101,13 +103,13 @@ export default function TipDistributionPage() {
   return (
     <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-4xl">
       <PageHeader
-        title="Tip Distribution"
-        subtitle="Choose how tips are distributed between you and your staff"
+        title={t("web.provider.settings.pages.tips/distribution.tipDistribution")}
+        subtitle={t("web.provider.settings.categories.sales.items.tipsDistribution.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Tip Distribution" }
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.tips/distribution.tipDistribution") }
         ]}
       />
 
@@ -116,10 +118,10 @@ export default function TipDistributionPage() {
           <div className="flex items-start justify-between border-b pb-4">
             <div className="flex-1">
               <Label htmlFor="keep_all_tips" className="text-sm sm:text-base font-semibold">
-                Keep All Tips
+{t("web.provider.settings.pages.tips/distribution.keepAllTips")}
               </Label>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                All tips will be kept by the business owner. Staff will not receive any portion of tips.
+{t("web.provider.settings.pages.tips/distribution.keepAllTipsHint")}
               </p>
             </div>
             <input
@@ -135,11 +137,10 @@ export default function TipDistributionPage() {
           <div className="flex items-start justify-between border-b pb-4">
             <div className="flex-1">
               <Label htmlFor="distribute_to_staff" className="text-sm sm:text-base font-semibold">
-                Distribute Tips to Staff
+{t("web.provider.settings.pages.tips/distribution.distributeToStaff")}
               </Label>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Tips will be distributed to the staff members who provided the service. 
-                Distribution is based on which staff member was assigned to the booking.
+{t("web.provider.settings.pages.tips/distribution.distributeToStaffHint")}
               </p>
             </div>
             <input
@@ -155,9 +156,7 @@ export default function TipDistributionPage() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-xs sm:text-sm text-blue-800">
-            <strong>Note:</strong> When "Distribute Tips to Staff" is enabled, tips will be automatically 
-            allocated to the staff member who was assigned to each booking. You can change this setting 
-            at any time, but it will only affect future bookings.
+<strong>{t("web.provider.settings.pages.tips/distribution.noteLabel")}</strong> {t("web.provider.settings.pages.tips/distribution.noteBody")}
           </p>
         </div>
       </div>
@@ -168,8 +167,8 @@ export default function TipDistributionPage() {
           disabled={isSaving}
           className="w-full sm:w-auto touch-target"
         >
-          <Save className="w-4 h-4 mr-2" />
-          {isSaving ? "Saving..." : "Save Settings"}
+          <Save className="w-4 h-4 me-2" />
+{isSaving ? t("web.provider.settings.common.saving") : t("web.provider.common.saveSettings")}
         </Button>
       </div>
     </div>

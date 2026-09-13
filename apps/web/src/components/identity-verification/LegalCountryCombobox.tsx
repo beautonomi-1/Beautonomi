@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterVerificationCountries,
@@ -26,6 +28,7 @@ export function LegalCountryCombobox({
   error,
   id = "legal-country",
 }: Props) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const [countries, setCountries] = useState<VerificationCountryOption[]>(STATIC_VERIFICATION_COUNTRIES);
   const [loading, setLoading] = useState(true);
@@ -82,7 +85,7 @@ export function LegalCountryCombobox({
   return (
     <div className="space-y-1.5" ref={containerRef}>
       <Label htmlFor={id}>
-        Country that issued your document{" "}
+        {t("web.identity.legalCountry.issuedCountry")}{" "}
         <span aria-hidden="true" className="text-destructive">*</span>
       </Label>
       <div className="relative">
@@ -95,12 +98,12 @@ export function LegalCountryCombobox({
           aria-expanded={open}
           aria-required="true"
           aria-describedby={error ? `${id}-err` : undefined}
-          className={`flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm text-left ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+          className={`flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm text-start ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
             error ? "border-destructive" : "border-input"
           }`}
         >
           <span className={selected ? "text-foreground" : "text-muted-foreground"}>
-            {loading ? "Loading countries…" : selected?.name ?? "Select country…"}
+            {loading ? t("web.identity.legalCountry.loadingCountries") : selected?.name ?? t("web.identity.legalCountry.selectCountryEllipsis")}
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
         </button>
@@ -109,22 +112,22 @@ export function LegalCountryCombobox({
           <div
             className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md"
             role="listbox"
-            aria-label="Select country"
+            aria-label={t("web.identity.legalCountry.selectCountryA11y")}
           >
             <div className="flex items-center gap-2 border-b px-3 py-2">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search country…"
+                placeholder={t("web.identity.legalCountry.searchPlaceholder")}
                 className="h-8 border-0 px-0 shadow-none focus-visible:ring-0"
                 autoFocus
-                aria-label="Search countries"
+                aria-label={t("web.global.phoneInput.searchA11y")}
               />
             </div>
             <ul className="max-h-56 overflow-y-auto py-1">
               {filtered.length === 0 ? (
-                <li className="px-3 py-2 text-sm text-muted-foreground">No countries found</li>
+                <li className="px-3 py-2 text-sm text-muted-foreground">{t("web.identity.legalCountry.noCountries")}</li>
               ) : (
                 filtered.map((country) => (
                   <li key={country.code}>

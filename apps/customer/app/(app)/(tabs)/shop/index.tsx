@@ -19,6 +19,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { useLocation } from "@/hooks/useLocation";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
 
@@ -66,6 +67,13 @@ export default function ShopScreen() {
   const { t } = useTranslation();
   const ts = useCallback(
     (key: string) => t(`customer.mobile.tabs.shop.${key}`),
+    [t],
+  );
+  const ss = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.shop.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
     [t],
   );
   const router = useRouter();
@@ -337,7 +345,7 @@ export default function ShopScreen() {
                   shadowRadius: 4,
                   elevation: 2,
                 }}
-                accessibilityLabel="Share product"
+                accessibilityLabel={ss("shareProductA11y")}
               >
                 <Ionicons name="share-outline" size={18} color="#111827" />
               </TouchableOpacity>
@@ -349,10 +357,10 @@ export default function ShopScreen() {
                       borderRadius: 6,
                       paddingHorizontal: 6,
                       paddingVertical: 2,
-                      marginRight: 6,
+                      marginEnd: 6,
                     }}
                   >
-                    <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>Sold out</Text>
+                    <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{ss("soldOut")}</Text>
                   </View>
                 ) : null}
                 <TouchableOpacity
@@ -371,7 +379,7 @@ export default function ShopScreen() {
                     elevation: 2,
                     opacity: wishlistBusyId === p.id ? 0.5 : 1,
                   }}
-                  accessibilityLabel={saved ? "Remove from wishlist" : "Save to wishlist"}
+                  accessibilityLabel={saved ? ss("removeFromWishlistA11y") : ss("saveToWishlistA11y")}
                 >
                   <Ionicons name={saved ? "heart" : "heart-outline"} size={18} color={saved ? PRIMARY : "#111827"} />
                 </TouchableOpacity>
@@ -393,7 +401,7 @@ export default function ShopScreen() {
                   justifyContent: "center",
                   opacity: addingToCartId === p.id ? 0.7 : 1,
                 }}
-                accessibilityLabel="Add to cart"
+                accessibilityLabel={ss("addToCartA11y")}
               >
                 {addingToCartId === p.id ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -416,7 +424,7 @@ export default function ShopScreen() {
               <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }} numberOfLines={1}>
                 {p.provider.business_name}
                 {typeof p.distance_km === "number" && Number.isFinite(p.distance_km)
-                  ? ` · ${p.distance_km.toFixed(1)} km`
+                  ? ss("distanceKm", { km: p.distance_km.toFixed(1) })
                   : ""}
               </Text>
             ) : null}
@@ -437,6 +445,7 @@ export default function ShopScreen() {
       wishlistBusyId,
       quickAddToCart,
       addingToCartId,
+      ss,
     ],
   );
 
@@ -446,20 +455,20 @@ export default function ShopScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
         <TouchableOpacity
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)/home" as any))}
-          style={{ marginRight: 12 }}
+          style={{ marginEnd: 12 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <DirectionalIcon name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>{ts("shopTitle")}</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/cart" as any)}
           style={{ position: "relative", padding: 4 }}
-          accessibilityLabel={`Cart${cart.itemCount > 0 ? `, ${cart.itemCount} items` : ""}`}
+          accessibilityLabel={cart.itemCount > 0 ? ss("cartWithItemsA11y", { count: cart.itemCount }) : ss("cartA11y")}
         >
           <Ionicons name="bag-outline" size={24} color="#111827" />
           {cart.itemCount > 0 && (
             <View style={{ position: "absolute", top: -2, right: -2, backgroundColor: PRIMARY, borderRadius: 10, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
-              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{cart.itemCount > 99 ? "99+" : cart.itemCount}</Text>
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{cart.itemCount > 99 ? ss("badgeOverflow") : cart.itemCount}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -469,7 +478,7 @@ export default function ShopScreen() {
         {/* Search bar */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, paddingVertical: 10, backgroundColor: "#fff", gap: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Ionicons name="search-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+            <Ionicons name="search-outline" size={18} color="#9CA3AF" style={{ marginEnd: 8 }} />
             <TextInput
               value={query}
               onChangeText={setQuery}

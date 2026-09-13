@@ -139,6 +139,14 @@ export function deriveProviderPortalNotificationUrl(
       }
 
       if (pathname.startsWith("/provider/")) {
+        if (pathname === "/provider/bookings") {
+          const q = new URLSearchParams(searchParams);
+          if (q.get("filter") === "close_out" && !q.get("status")) {
+            q.set("status", "close_out");
+            q.delete("filter");
+          }
+          return pathWithQuery(pathname, q);
+        }
         return pathWithQuery(pathname, searchParams);
       }
 

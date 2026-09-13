@@ -3,6 +3,7 @@ import { View, Text, TextInput, Switch, TouchableOpacity } from "react-native";
 import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { Ionicons } from "@expo/vector-icons";
 import { roundCurrency } from "@beautonomi/utils";
+import { i18n, useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import type { OnboardingTravelFees, OnboardingTravelFeeTier } from "@/features/provider-onboarding/types";
@@ -41,33 +42,42 @@ function numStr(n: number | null | undefined): string {
 }
 
 function toNum(s: string): number | null {
-  const t = s.trim();
-  if (!t) return null;
-  const n = Number(t);
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
+}
+
+function tft(key: string, opts?: Record<string, unknown>, fallback?: string): string {
+  return i18n.t(`provider.mobile.screens.travelFeesEditor.${key}`, {
+    ...(opts ?? {}),
+    defaultValue: fallback ?? "",
+  }) as string;
 }
 
 export function formatTravelFeesSummary(
   tf: OnboardingTravelFees | undefined,
   currency: string,
 ): string {
-  if (!tf || tf.enabled === false) return "Disabled";
-  if (tf.use_platform_default !== false) return "Platform defaults";
+  if (!tf || tf.enabled === false) return tft("summaryDisabled", undefined, "Disabled");
+  if (tf.use_platform_default !== false) return tft("summaryPlatformDefaults", undefined, "Platform defaults");
   const model = tf.pricing_model === "tiered" ? "tiered" : "per_km";
   if (model === "tiered") {
     const count = tf.tiers?.length ?? 0;
-    return count > 0 ? `${count} distance tier${count === 1 ? "" : "s"}` : "Custom tiers (incomplete)";
+    return count > 0
+      ? tft("summaryTierCount", { count }, count === 1 ? `${count} distance tier` : `${count} distance tiers`)
+      : tft("summaryTiersIncomplete", undefined, "Custom tiers (incomplete)");
   }
   const rate = tf.rate_per_km;
   const min = tf.minimum_fee;
   const parts: string[] = [];
-  if (rate != null) parts.push(`${formatCurrency(rate, currency)}/km`);
-  if (min != null) parts.push(`min ${formatCurrency(min, currency)}`);
+  if (rate != null) parts.push(tft("summaryRateKm", { amount: formatCurrency(rate, currency) }, `${formatCurrency(rate, currency)}/km`));
+  if (min != null) parts.push(tft("summaryMin", { amount: formatCurrency(min, currency) }, `min ${formatCurrency(min, currency)}`));
   if (tf.free_within_km != null && tf.free_within_km > 0) {
-    parts.push(`free ≤ ${tf.free_within_km} km`);
+    parts.push(tft("summaryFreeLe", { km: tf.free_within_km }, `free ≤ ${tf.free_within_km} km`));
   }
-  if (tf.maximum_fee != null) parts.push(`max ${formatCurrency(tf.maximum_fee, currency)}`);
-  return parts.length > 0 ? parts.join(" · ") : "Custom per-km (incomplete)";
+  if (tf.maximum_fee != null) parts.push(tft("summaryMax", { amount: formatCurrency(tf.maximum_fee, currency) }, `max ${formatCurrency(tf.maximum_fee, currency)}`));
+  return parts.length > 0 ? parts.join(" · ") : tft("summaryPerKmIncomplete", undefined, "Custom per-km (incomplete)");
 }
 
 export function formatPlatformTravelDefaultsSummary(
@@ -78,19 +88,19 @@ export function formatPlatformTravelDefaultsSummary(
   const cur = limits.default_currency?.trim() || currency;
   const parts: string[] = [];
   if (limits.default_rate_per_km != null && Number.isFinite(limits.default_rate_per_km)) {
-    parts.push(`${formatCurrency(limits.default_rate_per_km, cur)}/km`);
+    parts.push(tft("summaryRateKm", { amount: formatCurrency(limits.default_rate_per_km, cur) }, `${formatCurrency(limits.default_rate_per_km, cur)}/km`));
   }
   if (limits.default_minimum_fee != null && Number.isFinite(limits.default_minimum_fee)) {
-    parts.push(`min ${formatCurrency(limits.default_minimum_fee, cur)}`);
+    parts.push(tft("summaryMin", { amount: formatCurrency(limits.default_minimum_fee, cur) }, `min ${formatCurrency(limits.default_minimum_fee, cur)}`));
   }
   const freeKm = limits.default_free_within_km;
   if (freeKm != null && freeKm > 0) {
-    parts.push(`free within ${freeKm} km`);
+    parts.push(tft("summaryFreeWithin", { km: freeKm }, `free within ${freeKm} km`));
   } else if (freeKm === 0) {
-    parts.push("charged from first km");
+    parts.push(tft("summaryChargedFromFirst", undefined, "charged from first km"));
   }
   if (limits.default_maximum_fee != null && Number.isFinite(limits.default_maximum_fee)) {
-    parts.push(`max ${formatCurrency(limits.default_maximum_fee, cur)}`);
+    parts.push(tft("summaryMax", { amount: formatCurrency(limits.default_maximum_fee, cur) }, `max ${formatCurrency(limits.default_maximum_fee, cur)}`));
   }
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -112,6 +122,17 @@ export function TravelFeesEditor({
   providerCustomizationAllowed = true,
   onFieldFocus,
 }: TravelFeesEditorProps) {
+  const { t } = useTranslation();
+  const tf = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.travelFeesEditor.${key}`, {
+      defaultValue:
+        key === "perKmA11y"
+          ? "Per km travel pricing"
+          : key === "tieredA11y"
+            ? "Tiered distance pricing"
+            : undefined,
+      ...(opts ?? {}),
+    }) as string;
   const [previewKm, setPreviewKm] = useState("10");
   const freeKmRef = useRef<TextInput>(null);
   const rateRef = useRef<TextInput>(null);
@@ -155,31 +176,31 @@ export function TravelFeesEditor({
   const rateHint = useMemo(() => {
     if (usePlatformDefault || pricingModel !== "per_km" || !platformLimits) return null;
     if (rate < platformLimits.provider_min_rate_per_km) {
-      return `Min ${platformLimits.provider_min_rate_per_km} per km`;
+      return tf("rateMin", { amount: platformLimits.provider_min_rate_per_km });
     }
     if (rate > platformLimits.provider_max_rate_per_km) {
-      return `Max ${platformLimits.provider_max_rate_per_km} per km`;
+      return tf("rateMax", { amount: platformLimits.provider_max_rate_per_km });
     }
     return null;
-  }, [usePlatformDefault, pricingModel, platformLimits, rate]);
+  }, [usePlatformDefault, pricingModel, platformLimits, rate, tf]);
 
   const minFeeHint = useMemo(() => {
     if (usePlatformDefault || pricingModel !== "per_km" || !platformLimits) return null;
     if (minFee < platformLimits.provider_min_minimum_fee) {
-      return `Min fee from ${platformLimits.provider_min_minimum_fee}`;
+      return tf("minFeeFrom", { amount: platformLimits.provider_min_minimum_fee });
     }
     if (minFee > platformLimits.provider_max_minimum_fee) {
-      return `Max fee ${platformLimits.provider_max_minimum_fee}`;
+      return tf("maxFee", { amount: platformLimits.provider_max_minimum_fee });
     }
     return null;
-  }, [usePlatformDefault, pricingModel, platformLimits, minFee]);
+  }, [usePlatformDefault, pricingModel, platformLimits, minFee, tf]);
 
   const previewFee = useMemo(() => {
     if (usePlatformDefault) return null;
     const km = parseFloat(previewKm) || 0;
     if (pricingModel === "tiered") {
       const sorted = [...tiers].sort((a, b) => a.max_km - b.max_km);
-      const tier = sorted.find((t) => km <= t.max_km);
+      const tier = sorted.find((item) => km <= item.max_km);
       return tier ? tier.fee : null;
     }
     const r = value.rate_per_km;
@@ -206,8 +227,7 @@ export function TravelFeesEditor({
       {mode === "onboarding" && (
         <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
           <Text style={twStyle("text-[15px] leading-relaxed text-indigo-900")}>
-            Set how you charge customers for travelling to at-home appointments. Keep the platform
-            default to start earning instantly — you can fine-tune this any time from Settings.
+            {tf("onboardingIntro")}
           </Text>
         </View>
       )}
@@ -215,19 +235,18 @@ export function TravelFeesEditor({
       {allowCustomization === false && (
         <View style={twStyle("mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-3")}>
           <Text style={twStyle("text-sm text-amber-900")}>
-            Travel rates are set by your platform. You can turn travel fees on or off; per-km and
-            tier customization is disabled.
+            {tf("platformLocked")}
           </Text>
         </View>
       )}
 
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-          <View style={twStyle("flex-1 pr-3")}>
+          <View style={twStyle("flex-1 pe-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              {mode === "onboarding" ? "Enable travel fees" : "Enable Travel Fees"}
+              {mode === "onboarding" ? tf("enableOnboarding") : tf("enableSettings")}
             </Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Charge for at-home service travel</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{tf("enableHint")}</Text>
           </View>
           <Switch
             value={enabled}
@@ -241,11 +260,11 @@ export function TravelFeesEditor({
           <>
             <View style={twStyle("my-2 border-t border-gray-100")} />
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-              <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("flex-1 pe-3")}>
                 <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                  {mode === "onboarding" ? "Use platform defaults" : "Use Platform Defaults"}
+                  {mode === "onboarding" ? tf("useDefaultsOnboarding") : tf("useDefaultsSettings")}
                 </Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Use standard platform rates</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tf("useDefaultsHint")}</Text>
               </View>
               <Switch
                 value={usePlatformDefault}
@@ -266,14 +285,14 @@ export function TravelFeesEditor({
                 )}
               >
                 <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-700")}>
-                  Platform standard
+                  {tf("platformStandard")}
                 </Text>
                 <Text style={twStyle("mt-1 text-sm text-gray-800")}>
                   {formatPlatformTravelDefaultsSummary(platformLimits, currency) ??
-                    "Loading platform rates…"}
+                    tf("loadingRates")}
                 </Text>
                 <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                  You can customize travel fees later in Settings.
+                  {tf("customizeLater")}
                 </Text>
               </View>
             ) : null}
@@ -281,7 +300,7 @@ export function TravelFeesEditor({
             {!usePlatformDefault && allowCustomization && (
               <>
                 <View style={twStyle("my-2 border-t border-gray-100")} />
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pricing model</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{tf("pricingModel")}</Text>
                 <View style={twStyle("mb-3 flex-row gap-3")}>
                   <TouchableOpacity
                     style={[
@@ -292,10 +311,10 @@ export function TravelFeesEditor({
                     ]}
                     onPress={() => set({ pricing_model: "per_km" })}
                     accessibilityRole="button"
-                    accessibilityLabel="Per km travel pricing"
+                    accessibilityLabel={tf("perKmA11y")}
                     accessibilityState={{ selected: pricingModel === "per_km" }}
                   >
-                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Per km</Text>
+                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>{tf("perKm")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -314,17 +333,17 @@ export function TravelFeesEditor({
                       });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Tiered distance pricing"
+                    accessibilityLabel={tf("tieredA11y")}
                     accessibilityState={{ selected: pricingModel === "tiered", disabled: !allowTiered }}
                   >
-                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Tiers</Text>
+                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>{tf("tiers")}</Text>
                   </TouchableOpacity>
                 </View>
 
                 {pricingModel === "per_km" && (
                   <>
                     <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                      {mode === "onboarding" ? "Free within (km)" : "Free Within (km)"}
+                      {mode === "onboarding" ? tf("freeWithinOnboarding") : tf("freeWithinSettings")}
                     </Text>
                     <TextInput
                       ref={freeKmRef}
@@ -332,15 +351,15 @@ export function TravelFeesEditor({
                         "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
                       value={numStr(value.free_within_km)}
-                      onChangeText={(t) => set({ free_within_km: toNum(t) })}
-                      placeholder="0 (charge from first km)"
+                      onChangeText={(text) => set({ free_within_km: toNum(text) })}
+                      placeholder={tf("freeWithinPlaceholder")}
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
                       {...focusProps(freeKmRef, TRAVEL_FEES_ACCESSORY.freeKm)}
                     />
                     <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.freeKm} />
                     <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                      {`Rate per km (${currency})`}
+                      {tf("ratePerKm", { currency })}
                     </Text>
                     <TextInput
                       ref={rateRef}
@@ -348,8 +367,8 @@ export function TravelFeesEditor({
                         "mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
                       value={numStr(value.rate_per_km)}
-                      onChangeText={(t) => set({ rate_per_km: toNum(t) })}
-                      placeholder="0.00"
+                      onChangeText={(text) => set({ rate_per_km: toNum(text) })}
+                      placeholder={tf("moneyPlaceholder")}
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
                       {...focusProps(rateRef, TRAVEL_FEES_ACCESSORY.rate)}
@@ -361,7 +380,7 @@ export function TravelFeesEditor({
                       <View style={twStyle("mb-3")} />
                     )}
                     <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                      {`Minimum fee (${currency})`}
+                      {tf("minimumFee", { currency })}
                     </Text>
                     <TextInput
                       ref={minFeeRef}
@@ -369,8 +388,8 @@ export function TravelFeesEditor({
                         "mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
                       value={numStr(value.minimum_fee)}
-                      onChangeText={(t) => set({ minimum_fee: toNum(t) })}
-                      placeholder="0.00"
+                      onChangeText={(text) => set({ minimum_fee: toNum(text) })}
+                      placeholder={tf("moneyPlaceholder")}
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
                       {...focusProps(minFeeRef, TRAVEL_FEES_ACCESSORY.minFee)}
@@ -382,7 +401,7 @@ export function TravelFeesEditor({
                       <View style={twStyle("mb-3")} />
                     )}
                     <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                      {`Maximum fee (${currency}, optional)`}
+                      {tf("maximumFee", { currency })}
                     </Text>
                     <TextInput
                       ref={maxFeeRef}
@@ -390,8 +409,8 @@ export function TravelFeesEditor({
                         "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
                       value={numStr(value.maximum_fee)}
-                      onChangeText={(t) => set({ maximum_fee: toNum(t) })}
-                      placeholder="No maximum"
+                      onChangeText={(text) => set({ maximum_fee: toNum(text) })}
+                      placeholder={tf("noMaximum")}
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
                       {...focusProps(maxFeeRef, TRAVEL_FEES_ACCESSORY.maxFee)}
@@ -416,7 +435,7 @@ export function TravelFeesEditor({
 
       {showCalculator && (
         <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>Fee Calculator</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>{tf("feeCalculator")}</Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
               ref={previewKmRef}
@@ -424,25 +443,25 @@ export function TravelFeesEditor({
                 twStyle(
                   "flex-1 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-base text-gray-900",
                 ),
-                { marginRight: 8 },
+                { marginEnd: 8 },
               ]}
               value={previewKm}
               onChangeText={setPreviewKm}
               keyboardType="decimal-pad"
-              placeholder="Distance (km)"
+              placeholder={tf("distancePlaceholder")}
               placeholderTextColor="#9ca3af"
               {...focusProps(previewKmRef, TRAVEL_FEES_ACCESSORY.previewKm)}
             />
             <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.previewKm} />
             <View style={twStyle("items-center rounded-xl bg-indigo-600 px-4 py-2.5")}>
               <Text style={twStyle("text-base font-bold text-white")}>
-                {previewFee !== null ? formatCurrency(previewFee, currency) : "—"}
+                {previewFee !== null ? formatCurrency(previewFee, currency) : tf("emptyValue")}
               </Text>
             </View>
           </View>
           {value.free_within_km != null && value.free_within_km > 0 && pricingModel === "per_km" && (
             <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
-              First {value.free_within_km} km free
+              {tf("firstKmFree", { km: value.free_within_km })}
             </Text>
           )}
         </View>
@@ -462,13 +481,16 @@ function TierEditor({
   onChange: (tiers: OnboardingTravelFeeTier[]) => void;
   onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }) {
+  const { t } = useTranslation();
+  const tf = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.travelFeesEditor.${key}`, opts) as string;
   const tierKmRefs = useRef<Map<number, TextInput | null>>(new Map());
   const tierFeeRefs = useRef<Map<number, TextInput | null>>(new Map());
 
   return (
     <View style={twStyle("mb-3")}>
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-        {`Distance tiers (up to X km → fee in ${currency})`}
+        {tf("distanceTiers", { currency })}
       </Text>
       {tiers.map((tier, i) => {
         const kmAccessory = `provider-travel-tier-km-${i}`;
@@ -486,11 +508,11 @@ function TierEditor({
               { minWidth: 60 },
             ]}
             value={String(tier.max_km)}
-            onChangeText={(t) => {
-              const n = parseInt(t, 10) || 0;
+            onChangeText={(text) => {
+              const n = parseInt(text, 10) || 0;
               onChange(tiers.map((x, j) => (j === i ? { ...x, max_km: n } : x)));
             }}
-            placeholder="km"
+            placeholder={tf("kmPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
             onFocus={() => {
@@ -500,7 +522,7 @@ function TierEditor({
             inputAccessoryViewID={kmAccessory}
           />
           <KeyboardDoneAccessory nativeID={kmAccessory} />
-          <Text style={twStyle("text-sm text-gray-500")}>km =</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>{tf("kmEquals")}</Text>
           <TextInput
             ref={(r) => {
               tierFeeRefs.current.set(i, r);
@@ -512,8 +534,8 @@ function TierEditor({
               { minWidth: 60 },
             ]}
             value={String(tier.fee)}
-            onChangeText={(t) => {
-              const n = parseFloat(t) || 0;
+            onChangeText={(text) => {
+              const n = parseFloat(text) || 0;
               onChange(tiers.map((x, j) => (j === i ? { ...x, fee: n } : x)));
             }}
             placeholder={currency}
@@ -529,7 +551,7 @@ function TierEditor({
           <TouchableOpacity
             onPress={() => onChange(tiers.filter((_, j) => j !== i))}
             style={twStyle("rounded-full bg-gray-200 p-2")}
-            accessibilityLabel="Remove tier"
+            accessibilityLabel={tf("removeTierA11y")}
           >
             <Ionicons name="trash-outline" size={18} color="#6b7280" />
           </TouchableOpacity>
@@ -549,9 +571,9 @@ function TierEditor({
           name="add-circle-outline"
           size={20}
           color="#6366f1"
-          style={{ marginLeft: 12, marginRight: 6 }}
+          style={{ marginStart: 12, marginEnd: 6 }}
         />
-        <Text style={twStyle("text-sm font-medium text-indigo-600")}>Add tier</Text>
+        <Text style={twStyle("text-sm font-medium text-indigo-600")}>{tf("addTier")}</Text>
       </TouchableOpacity>
     </View>
   );

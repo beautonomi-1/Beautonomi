@@ -36,6 +36,7 @@ export default function StepYourInfo({
   );
   const { t } = useTranslation();
   const [cancellationSummary, setCancellationSummary] = useState<string | null>(null);
+  const yourInfo = "web.booking.steps.yourInfo";
 
   useEffect(() => {
     const loadPolicy = async () => {
@@ -77,23 +78,23 @@ export default function StepYourInfo({
     const newErrors: typeof errors = {};
 
     if (!clientInfo.firstName.trim()) {
-      newErrors.firstName = "First name is required";
+      newErrors.firstName = t(`${yourInfo}.firstNameRequired`);
     }
 
     if (!clientInfo.lastName.trim()) {
-      newErrors.lastName = "Last name is required";
+      newErrors.lastName = t(`${yourInfo}.lastNameRequired`);
     }
 
     if (!clientInfo.email.trim()) {
-      newErrors.email = "Email is required";
+      newErrors.email = t(`${yourInfo}.emailRequired`);
     } else if (!EMAIL_REGEX.test(clientInfo.email)) {
-      newErrors.email = "Please enter a valid email address";
+      newErrors.email = t(`${yourInfo}.invalidEmail`);
     }
 
     if (!clientInfo.phone.trim()) {
-      newErrors.phone = "Phone number is required";
+      newErrors.phone = t(`${yourInfo}.phoneRequired`);
     } else if (!isCompleteE164(clientInfo.phone)) {
-      newErrors.phone = "Please enter a valid phone number with country code";
+      newErrors.phone = t(`${yourInfo}.invalidPhone`);
     }
 
     setErrors(newErrors);
@@ -111,10 +112,10 @@ export default function StepYourInfo({
     <div className="px-4 py-6 space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-          {t("booking.yourInfo")}
+          {t(`${yourInfo}.title`)}
         </h2>
         <p className="text-gray-600">
-          We'll use this to confirm your booking and send reminders
+          {t(`${yourInfo}.confirmHint`)}
         </p>
       </div>
 
@@ -122,15 +123,15 @@ export default function StepYourInfo({
         <div
           className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950"
           role="region"
-          aria-label="Cancellation policy"
+          aria-label={t(`${yourInfo}.cancellationPolicy`)}
         >
           <div className="flex gap-2">
             <Info className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" aria-hidden />
             <div>
-              <p className="font-semibold text-amber-950 mb-1">Cancellation policy</p>
+              <p className="font-semibold text-amber-950 mb-1">{t(`${yourInfo}.cancellationPolicy`)}</p>
               <p className="text-amber-900/95 leading-relaxed">{cancellationSummary}</p>
               <p className="text-xs text-amber-800/90 mt-2">
-                You’ll confirm acceptance again at payment.
+                {t(`${yourInfo}.cancellationConfirmAgain`)}
               </p>
             </div>
           </div>
@@ -142,7 +143,7 @@ export default function StepYourInfo({
         <div>
           <Label htmlFor="firstName" className="flex items-center gap-2">
             <User className="w-4 h-4" />
-            First Name *
+            {t(`${yourInfo}.firstNameLabel`)}
           </Label>
           <Input
             id="firstName"
@@ -154,7 +155,7 @@ export default function StepYourInfo({
               }
             }}
             className={`mt-1 touch-target ${errors.firstName ? "border-red-500" : ""}`}
-            placeholder="John"
+            placeholder={t("web.booking.steps.firstNamePlaceholder")}
             required
           />
           {errors.firstName && (
@@ -166,7 +167,7 @@ export default function StepYourInfo({
         <div>
           <Label htmlFor="lastName" className="flex items-center gap-2">
             <User className="w-4 h-4" />
-            Last Name *
+            {t(`${yourInfo}.lastNameLabel`)}
           </Label>
           <Input
             id="lastName"
@@ -178,7 +179,7 @@ export default function StepYourInfo({
               }
             }}
             className={`mt-1 touch-target ${errors.lastName ? "border-red-500" : ""}`}
-            placeholder="Doe"
+            placeholder={t("web.booking.steps.lastNamePlaceholder")}
             required
           />
           {errors.lastName && (
@@ -190,7 +191,7 @@ export default function StepYourInfo({
         <div>
           <Label htmlFor="email" className="flex items-center gap-2">
             <Mail className="w-4 h-4" />
-            {t("auth.email")} *
+            {t(`${yourInfo}.emailLabel`)}
           </Label>
           <Input
             id="email"
@@ -203,7 +204,7 @@ export default function StepYourInfo({
               }
             }}
             className={`mt-1 touch-target ${errors.email ? "border-red-500" : ""}`}
-            placeholder="john.doe@example.com"
+            placeholder={t(`${yourInfo}.emailPlaceholder`)}
             required
           />
           {errors.email && (
@@ -215,7 +216,7 @@ export default function StepYourInfo({
         <div>
           <PhoneInput
             inputId="booking-step-your-info-phone"
-            label={`${t("auth.phone")} *`}
+            label={t(`${yourInfo}.phoneLabel`)}
             value={clientInfo.phone}
             onChange={(e164) => {
               setClientInfo({ ...clientInfo, phone: e164 });
@@ -224,7 +225,7 @@ export default function StepYourInfo({
               }
             }}
             className={errors.phone ? "[&_input]:border-red-500" : ""}
-            placeholder="Phone number"
+            placeholder={t(`${yourInfo}.phonePlaceholder`)}
             required
           />
           {errors.phone && (
@@ -236,7 +237,7 @@ export default function StepYourInfo({
         <div>
           <Label htmlFor="specialRequests" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            {t("booking.specialRequests")} ({t("common.optional")})
+            {t(`${yourInfo}.specialRequests`)}
           </Label>
           <Textarea
             id="specialRequests"
@@ -246,7 +247,7 @@ export default function StepYourInfo({
             }
             rows={3}
             className="mt-1 touch-target"
-            placeholder="Any allergies, preferences, or special instructions..."
+            placeholder={t("web.booking.steps.specialRequestsPlaceholder")}
           />
         </div>
 
@@ -255,7 +256,7 @@ export default function StepYourInfo({
           <div>
             <Label htmlFor="houseCallInstructions" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
-              House Call Instructions (Optional)
+              {t(`${yourInfo}.houseCallInstructions`)}
             </Label>
             <Textarea
               id="houseCallInstructions"
@@ -265,10 +266,10 @@ export default function StepYourInfo({
               }
               rows={3}
               className="mt-1 touch-target"
-              placeholder="Equipment needed, accessibility requirements, pet information, or other house call specific instructions..."
+              placeholder={t("web.booking.steps.houseCallInstructionsPlaceholder")}
             />
             <p className="text-xs text-gray-500 mt-1">
-              This information helps your provider prepare for the visit
+              {t(`${yourInfo}.houseCallHint`)}
             </p>
           </div>
         )}
@@ -277,10 +278,10 @@ export default function StepYourInfo({
       {/* Continue as Guest Option */}
       <div className="pt-4 border-t">
         <p className="text-sm text-gray-600 text-center">
-          You can continue this booking as a guest. We only ask you to sign in at payment to secure your booking.
+          {t(`${yourInfo}.guestContinue`)}
         </p>
         <p className="text-xs text-center text-gray-500 mt-2">
-          Want to sign in now?{" "}
+          {t(`${yourInfo}.wantToSignIn`)}{" "}
           <button
             onClick={() => {
               const redirect =
@@ -291,7 +292,7 @@ export default function StepYourInfo({
             }}
             className="text-primary underline font-medium"
           >
-            Sign in
+            {t(`${yourInfo}.signIn`)}
           </button>
         </p>
       </div>

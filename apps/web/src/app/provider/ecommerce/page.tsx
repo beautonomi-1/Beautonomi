@@ -1,28 +1,29 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Store, Truck, ShoppingBag, Undo2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { label: "Orders", href: "/provider/ecommerce/orders", icon: ShoppingBag, description: "View and manage product orders" },
-  { label: "Returns", href: "/provider/ecommerce/returns", icon: Undo2, description: "Process returns and refunds" },
-  { label: "Products", href: "/provider/ecommerce/products", icon: Store, description: "Manage your product catalogue and inventory" },
-  { label: "Shipping & Collection", href: "/provider/ecommerce/shipping", icon: Truck, description: "Shipping options and collection settings" },
-  { label: "Walk-in Sale", href: "/provider/ecommerce/walk-in", icon: Store, description: "Quick in-store sales" },
-];
-
 export default function EcommerceHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    { label: t("web.provider.sidebar.items.orders"), href: "/provider/ecommerce/orders", icon: ShoppingBag, description: t("web.provider.pages.ecommerce.ordersDesc") },
+    { label: t("web.provider.sidebar.items.returns"), href: "/provider/ecommerce/returns", icon: Undo2, description: t("web.provider.pages.ecommerce.returnsDesc") },
+    { label: t("web.provider.sidebar.items.products"), href: "/provider/ecommerce/products", icon: Store, description: t("web.provider.pages.ecommerce.productsDesc") },
+    { label: t("web.provider.pages.ecommerce/shipping.title"), href: "/provider/ecommerce/shipping", icon: Truck, description: t("web.provider.pages.ecommerce.shippingDesc") },
+    { label: t("web.provider.sidebar.items.walkInSale"), href: "/provider/ecommerce/walk-in", icon: Store, description: t("web.provider.pages.ecommerce.walkInDesc") },
+  ];
   return (
     <div>
       <PageHeader
-        title="E-Commerce"
-        subtitle="Orders, products, shipping, and walk-in sales"
+title={t("web.provider.pages.ecommerce.title")}
+subtitle={t("web.provider.pages.ecommerce.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "E-Commerce" },
+{ label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+{ label: t("web.provider.pages.ecommerce.title") },
         ]}
       />
 

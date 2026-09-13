@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -27,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 
 export default function ProviderAutomations() {
+  const { t } = useTranslation();
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("reminders");
@@ -110,14 +112,14 @@ export default function ProviderAutomations() {
         // Format trigger display
         const formatTrigger = (triggerType: string, triggerConfig: any): string => {
           if (triggerConfig?.hours_before) {
-            return `${triggerConfig.hours_before}h before`;
+            return t("web.provider.pages.marketing/automations.hoursBefore", { hours: triggerConfig.hours_before });
           }
           if (triggerConfig?.minutes_before) {
             const hours = Math.floor(triggerConfig.minutes_before / 60);
             const minutes = triggerConfig.minutes_before % 60;
-            if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m before`;
-            if (hours > 0) return `${hours}h before`;
-            return `${minutes}m before`;
+            if (hours > 0 && minutes > 0) return t("web.provider.pages.marketing/automations.hoursMinutesBefore", { hours, minutes });
+            if (hours > 0) return t("web.provider.pages.marketing/automations.hoursBefore", { hours });
+            return t("web.provider.pages.marketing/automations.minutesBefore", { minutes });
           }
           return triggerType || "";
         };
@@ -128,7 +130,7 @@ export default function ProviderAutomations() {
           type: mapType(auto.trigger_type),
           trigger: formatTrigger(auto.trigger_type, auto.trigger_config),
           is_active: isTemplate ? false : (auto.is_active ?? true),
-          description: auto.description || "Automated message",
+          description: auto.description || t("web.provider.pages.marketing/automations.automatedMessage"),
           is_template: isTemplate,
           // Store raw data for template activation
           _raw: auto,
@@ -144,7 +146,7 @@ export default function ProviderAutomations() {
         return;
       }
       console.error("Failed to load automations:", error);
-      toastPlanGateError(error, "Failed to load automations");
+      toastPlanGateError(error, t("web.provider.pages.marketing/automations.failedToLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +158,7 @@ export default function ProviderAutomations() {
       const automation = automations.find((a) => a.id === id);
       
       if (!automation) {
-        toast.error("Automation not found");
+        toast.error(t("web.provider.pages.marketing/automations.notFound"));
         return;
       }
       
@@ -167,7 +169,7 @@ export default function ProviderAutomations() {
       if (isTemplate && !isActive) {
         // Create the automation from template using raw database data
         if (!automation._raw) {
-          toast.error("Template data not available");
+          toast.error(t("web.provider.pages.marketing/automations.templateUnavailable"));
           return;
         }
         
@@ -182,18 +184,18 @@ export default function ProviderAutomations() {
           is_active: true,
           description: raw.description,
         });
-        toast.success("Automation enabled");
+        toast.success(t("web.provider.pages.marketing/automations.enabled"));
       } else {
         // Update existing automation
         await fetcher.patch(`/api/provider/automations/${id}`, {
           is_active: !isActive,
         });
-        toast.success(`Automation ${!isActive ? "enabled" : "disabled"}`);
+        toast.success(!isActive ? t("web.provider.pages.marketing/automations.enabled") : t("web.provider.pages.marketing/automations.disabled"));
       }
       loadAutomations();
     } catch (error: unknown) {
       console.error("Failed to toggle automation:", error);
-      toastPlanGateError(error, "Failed to update automation");
+      toastPlanGateError(error, t("web.provider.pages.marketing/automations.failedToUpdate"));
     }
   };
 
@@ -204,7 +206,7 @@ export default function ProviderAutomations() {
       setExecutionHistory(response?.data ?? []);
     } catch (error) {
       console.error("Failed to load execution history:", error);
-      toast.error("Failed to load execution history");
+      toast.error(t("web.provider.pages.marketing/automations.failedToLoadHistory"));
     } finally {
       setIsLoadingHistory(false);
     }
@@ -221,15 +223,15 @@ export default function ProviderAutomations() {
   return (
     <div>
       <PageHeader
-        title="Automations"
-        subtitle="Set up automated messages and reminders"
+        title={t("web.provider.pages.marketing/automations.title")}
+        subtitle={t("web.provider.pages.marketing/automations.subtitle")}
       />
 
       {/* Subscription Gate */}
       {subscriptionRequired && (
         <div className="mb-6">
           <SubscriptionGate
-            feature="Marketing automations"
+            feature={t("web.provider.pages.marketing/automations.feature")}
             message={getUpgradeMessage("marketing.automations")}
           />
         </div>
@@ -243,16 +245,16 @@ export default function ProviderAutomations() {
         <SectionCard className="w-full md:w-auto">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm text-gray-600">Text messages remaining</p>
+              <p className="text-sm text-gray-600">{t("web.provider.pages.marketing/automations.smsRemaining")}</p>
               {isLoadingBalance ? (
                 <p className="text-2xl font-semibold animate-pulse">...</p>
               ) : smsBalance !== null ? (
                 <p className="text-2xl font-semibold">{smsBalance.toLocaleString()}</p>
               ) : (
-                <p className="text-2xl font-semibold text-gray-400">N/A</p>
+                <p className="text-2xl font-semibold text-gray-400">{t("web.provider.pages.marketing/automations.na")}</p>
               )}
               <p className="text-xs text-gray-500 mt-1 max-w-[220px]">
-                SMS is included with your platform subscription; volume follows your plan limits.
+                {t("web.provider.pages.marketing/automations.smsHint")}
               </p>
             </div>
             <Button 
@@ -261,7 +263,7 @@ export default function ProviderAutomations() {
               onClick={loadSmsBalance}
               disabled={isLoadingBalance}
             >
-              {isLoadingBalance ? "Loading..." : "View Balance"}
+              {isLoadingBalance ? t("web.provider.reports.hub.loading") : t("web.provider.pages.marketing/automations.viewBalance")}
             </Button>
           </div>
         </SectionCard>
@@ -271,13 +273,13 @@ export default function ProviderAutomations() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <LinkIcon className="w-4 h-4 text-blue-600" />
-                <p className="text-sm font-medium text-gray-700">Express Booking Links</p>
+                <p className="text-sm font-medium text-gray-700">{t("web.provider.pages.marketing/automations.expressLinks")}</p>
               </div>
-              <p className="text-xs text-gray-600">Create quick booking links for clients</p>
+              <p className="text-xs text-gray-600">{t("web.provider.pages.marketing/automations.expressLinksHint")}</p>
             </div>
             <NextLink href="/provider/express-booking">
               <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                Manage Links
+                {t("web.provider.pages.marketing/automations.manageLinks")}
               </Button>
             </NextLink>
           </div>
@@ -288,13 +290,13 @@ export default function ProviderAutomations() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <Info className="w-4 h-4 text-purple-600" />
-                <p className="text-sm font-medium text-gray-700">Marketing Campaigns</p>
+                <p className="text-sm font-medium text-gray-700">{t("web.provider.pages.marketing/automations.campaigns")}</p>
               </div>
-              <p className="text-xs text-gray-600">Create email and SMS campaigns</p>
+              <p className="text-xs text-gray-600">{t("web.provider.pages.marketing/automations.campaignsHint")}</p>
             </div>
             <NextLink href="/provider/marketing/campaigns">
               <Button size="sm" className="bg-purple-600 hover:bg-purple-700">
-                Manage Campaigns
+                {t("web.provider.pages.marketing/automations.manageCampaigns")}
               </Button>
             </NextLink>
           </div>
@@ -304,10 +306,10 @@ export default function ProviderAutomations() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="reminders">Reminders</TabsTrigger>
-          <TabsTrigger value="updates">Appointment updates</TabsTrigger>
-          <TabsTrigger value="bookings">Increase bookings</TabsTrigger>
-          <TabsTrigger value="milestones">Celebrate milestones</TabsTrigger>
+          <TabsTrigger value="reminders">{t("web.provider.pages.marketing/automations.reminders")}</TabsTrigger>
+          <TabsTrigger value="updates">{t("web.provider.pages.marketing/automations.updates")}</TabsTrigger>
+          <TabsTrigger value="bookings">{t("web.provider.pages.marketing/automations.increaseBookings")}</TabsTrigger>
+          <TabsTrigger value="milestones">{t("web.provider.pages.marketing/automations.milestones")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-6">
@@ -332,10 +334,9 @@ export default function ProviderAutomations() {
                      transient failure without reloading the whole app.
                   2. Jump to Marketing Campaigns for a real one-off send.
               */}
-              <p className="text-gray-600 mb-2">No {activeTab} automations yet</p>
+              <p className="text-gray-600 mb-2">{t("web.provider.pages.marketing/automations.noTabYet", { tab: activeTab })}</p>
               <p className="text-sm text-gray-500 mb-6">
-                Templates normally appear here automatically. If this looks empty, reload the list
-                or start a one-off Marketing Campaign instead.
+                {t("web.provider.pages.marketing/automations.emptyHint")}
               </p>
               <div className="flex items-center justify-center gap-2">
                 <Button
@@ -343,11 +344,11 @@ export default function ProviderAutomations() {
                   onClick={() => loadAutomations()}
                   disabled={isLoading}
                 >
-                  Reload automations
+                  {t("web.provider.pages.marketing/automations.reload")}
                 </Button>
                 <NextLink href="/provider/marketing/campaigns">
                   <Button className="bg-primary hover:bg-primary-hover">
-                    Create a campaign
+                    {t("web.provider.pages.marketing/automations.createCampaign")}
                   </Button>
                 </NextLink>
               </div>
@@ -379,8 +380,8 @@ export default function ProviderAutomations() {
                         setPreviewDialogOpen(true);
                       }}
                     >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit Message
+                      <Edit className="w-4 h-4 me-2" />
+                      {t("web.provider.pages.marketing/automations.editMessage")}
                     </Button>
                     {!automation.is_template && (
                       <Button
@@ -431,7 +432,7 @@ export default function ProviderAutomations() {
                 ...(subject && { subject }),
               },
             });
-            toast.success("Message template updated");
+            toast.success(t("web.provider.pages.marketing/automations.templateUpdated"));
             loadAutomations();
           }}
         />
@@ -441,22 +442,22 @@ export default function ProviderAutomations() {
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Execution History: {selectedAutomation?.name}</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.marketing/automations.historyTitle", { name: selectedAutomation?.name ?? "" })}</DialogTitle>
           </DialogHeader>
           {isLoadingHistory ? (
-            <div className="py-8 text-center">Loading history...</div>
+            <div className="py-8 text-center">{t("web.provider.pages.marketing/automations.loadingHistory")}</div>
           ) : executionHistory.length === 0 ? (
             <div className="py-8 text-center text-gray-500">
-              No executions yet. This automation hasn't been triggered.
+              {t("web.provider.pages.marketing/automations.noExecutions")}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Message ID</TableHead>
+                  <TableHead>{t("web.provider.common.date")}</TableHead>
+                  <TableHead>{t("web.provider.common.customer")}</TableHead>
+                  <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                  <TableHead>{t("web.provider.pages.marketing/automations.messageId")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -466,15 +467,15 @@ export default function ProviderAutomations() {
                       {format(new Date(execution.executed_at), "MMM d, yyyy h:mm a")}
                     </TableCell>
                     <TableCell>
-                      {execution.customer?.full_name || execution.customer?.email || "Unknown"}
+                      {execution.customer?.full_name || execution.customer?.email || t("web.provider.pages.marketing/automations.unknown")}
                     </TableCell>
                     <TableCell>
                       <Badge variant={execution.message_id ? "default" : "secondary"}>
-                        {execution.message_id ? "Sent" : "Pending"}
+                        {execution.message_id ? t("web.provider.pages.marketing/automations.sent") : t("web.provider.pages.marketing/automations.pending")}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {execution.message_id || "N/A"}
+                      {execution.message_id || t("web.provider.pages.marketing/automations.na")}
                     </TableCell>
                   </TableRow>
                 ))}

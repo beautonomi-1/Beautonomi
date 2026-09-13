@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import {
   Search,
@@ -40,44 +40,15 @@ import Eyebrows from "./../../../public/images/mascara.svg";
 import Barbering from "./../../../public/images/barbershop.svg";
 import { EssentialsButtons } from "@/app/category/components/amenties";
 import Link from "next/link";
-import LanguageModal from "../global/langauges-modal";
 import Filter from "./../../../public/images/filters.svg";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useRecentLocations, type RecentLocation } from "@/hooks/useRecentLocations";
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { toast } from "sonner";
-const categories = [
-  {
-    name: "Hair & styling",
-    icon: Hair,
-    subcategories: ["Haircut", "Hair coloring", "Hair extensions"],
-  },
-  {
-    name: "Nails",
-    icon: Nails,
-    subcategories: ["Manicure", "Pedicure", "Nail art"],
-  },
-  {
-    name: "Eyebrows & eyelashes",
-    icon: Eyebrows,
-    subcategories: ["Eyebrow threading", "Eyelash extensions", "Microblading"],
-  },
-  {
-    name: "Massage",
-    icon: Massage,
-    subcategories: [
-      "Swedish massage",
-      "Deep tissue massage",
-      "Hot stone massage",
-    ],
-  },
-  {
-    name: "Barbering",
-    icon: Barbering,
-    subcategories: ["Men's haircut", "Beard trim", "Hot towel shave"],
-  },
-];
+import { useTranslation } from "@beautonomi/i18n";
+
+const MS = "web.layout.mobileSearch";
 
 interface LocationState {
   address: string;
@@ -88,10 +59,62 @@ interface LocationState {
 }
 
 const MobileSearchBar: React.FC = () => {
+  const { t } = useTranslation();
+  const categories = useMemo(
+    () => [
+      {
+        name: t(`${MS}.categories.hairStyling`),
+        icon: Hair,
+        subcategories: [
+          t(`${MS}.subcategories.haircut`),
+          t(`${MS}.subcategories.hairColoring`),
+          t(`${MS}.subcategories.hairExtensions`),
+        ],
+      },
+      {
+        name: t(`${MS}.categories.nails`),
+        icon: Nails,
+        subcategories: [
+          t(`${MS}.subcategories.manicure`),
+          t(`${MS}.subcategories.pedicure`),
+          t(`${MS}.subcategories.nailArt`),
+        ],
+      },
+      {
+        name: t(`${MS}.categories.eyebrowsEyelashes`),
+        icon: Eyebrows,
+        subcategories: [
+          t(`${MS}.subcategories.eyebrowThreading`),
+          t(`${MS}.subcategories.eyelashExtensions`),
+          t(`${MS}.subcategories.microblading`),
+        ],
+      },
+      {
+        name: t(`${MS}.categories.massage`),
+        icon: Massage,
+        subcategories: [
+          t(`${MS}.subcategories.swedishMassage`),
+          t(`${MS}.subcategories.deepTissueMassage`),
+          t(`${MS}.subcategories.hotStoneMassage`),
+        ],
+      },
+      {
+        name: t(`${MS}.categories.barbering`),
+        icon: Barbering,
+        subcategories: [
+          t(`${MS}.subcategories.mensHaircut`),
+          t(`${MS}.subcategories.beardTrim`),
+          t(`${MS}.subcategories.hotTowelShave`),
+        ],
+      },
+    ],
+    [t]
+  );
+  const timeSlotKeys = ["anyTimeSlot", "morning", "afternoon", "evening"] as const;
   const [treatment, setTreatment] = useState<string>("");
   const [locationState, setLocationState] = useState<LocationState | null>(null);
   const [date, setDate] = useState<Date | undefined>(undefined);
-  const [timeSlot, setTimeSlot] = useState<string>("Any time");
+  const [timeSlotKey, setTimeSlotKey] = useState<(typeof timeSlotKeys)[number]>("anyTimeSlot");
   const [fromTime, setFromTime] = useState<string>("");
   const [toTime, setToTime] = useState<string>("");
   const [openSection, setOpenSection] = useState<string>("treatment");
@@ -101,7 +124,6 @@ const MobileSearchBar: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState(["wifi", "kitchen"]);
   const [_isSideMenuOpen, setIsSideMenuOpen] = useState(false);
-  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
 
   const { location: userLocation } = useUserLocation();
   const { recentLocations, addLocation } = useRecentLocations();
@@ -127,13 +149,15 @@ const MobileSearchBar: React.FC = () => {
     }
   }, [locationState, checkAvailability]);
 
-  const _handleOpenLanguageModal = () => {
-    setIsLanguageModalOpen(true);
-    setIsSideMenuOpen(false);
-  };
-
   const handleSearch = () => {
-    console.log({ treatment, location: locationState, date, timeSlot, fromTime, toTime });
+    console.log({
+      treatment,
+      location: locationState,
+      date,
+      timeSlot: t(`${MS}.${timeSlotKey}`),
+      fromTime,
+      toTime,
+    });
   };
 
   const handleAddressSelect = (address: {
@@ -199,7 +223,7 @@ const MobileSearchBar: React.FC = () => {
 
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
+      toast.error(t(`${MS}.toastGeolocationUnsupported`));
       return;
     }
 
@@ -228,18 +252,18 @@ const MobileSearchBar: React.FC = () => {
               longitude,
               place_name: address,
             });
-            toast.success("Location updated");
+            toast.success(t(`${MS}.toastLocationUpdated`));
           } else {
-            toast.error("Could not find address for this location");
+            toast.error(t(`${MS}.toastAddressNotFound`));
           }
         } catch (error) {
           console.error("Error reverse geocoding:", error);
-          toast.error("Failed to get address");
+          toast.error(t(`${MS}.toastFailedGetAddress`));
         }
       },
       (error) => {
         console.error("Error getting location:", error);
-        toast.error("Unable to get your location. Please enable location permissions.");
+        toast.error(t(`${MS}.toastLocationPermissionDenied`));
       }
     );
   };
@@ -249,8 +273,6 @@ const MobileSearchBar: React.FC = () => {
   const otherRecentLocations = recentLocations.filter(
     (loc) => loc.label !== "Home" && loc.label !== "Work"
   );
-
-  const timeSlots = ["Any time", "Morning", "Afternoon", "Evening"];
 
   const sections = ["treatment", "location", "date", "time"];
 
@@ -287,7 +309,7 @@ const MobileSearchBar: React.FC = () => {
 
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(":").map(Number);
-    const period = hours >= 12 ? "PM" : "AM";
+    const period = hours >= 12 ? t("time.pm") : t("time.am");
     const formattedHours = hours % 12 || 12;
     return `${formattedHours}:${minutes.toString().padStart(2, "0")} ${period}`;
   };
@@ -324,7 +346,7 @@ const MobileSearchBar: React.FC = () => {
     return (
       <div className="border border-gray-200 p-4 rounded-xl">
         <button
-          className="flex justify-between items-center w-full text-left"
+          className="flex justify-between items-center w-full text-start"
           onClick={() => toggleSection(section)}
         >
           <h4 className="text-sm font-normal text-secondary">
@@ -346,8 +368,8 @@ const MobileSearchBar: React.FC = () => {
                 {fromTime && toTime
                   ? `${formatTime(fromTime)} - ${formatTime(toTime)}`
                   : fromTime
-                  ? `From ${formatTime(fromTime)}`
-                  : `To ${formatTime(toTime)}`}
+                  ? t(`${MS}.fromTimeDisplay`, { time: formatTime(fromTime) })
+                  : t(`${MS}.toTimeDisplay`, { time: formatTime(toTime) })}
               </span>
             ) : section === "location" && locationState?.address && !isOpen ? (
               <span>{locationState.address}</span>
@@ -381,19 +403,19 @@ const MobileSearchBar: React.FC = () => {
           <Sheet>
             <SheetTrigger asChild>
               <div className="bg-white transition-all hover:shadow-lg cursor-pointer rounded-full searchShadow border border-[#DDDDDD] flex items-center justify-between">
-                <span className="text-secondary text-[10px] sm:text-sm font-medium pl-4  py-1 sm:py-4">
-                  Anywhere
+                <span className="text-secondary text-[10px] sm:text-sm font-medium ps-4  py-1 sm:py-4">
+                  {t(`${MS}.anywhere`)}
                 </span>
                 <div className="h-4 w-px bg-gray-300 mx-2" />
                 <span className="text-secondary text-[10px] sm:text-sm font-medium py-1 sm:py-4 px-0 sm:px-3">
-                  Any Time
+                  {t(`${MS}.anyTime`)}
                 </span>
                 <div className="h-4 w-px bg-gray-300 mx-2" />
                 <span className="text-[#767A7C] text-[10px] sm:text-sm font-light py-1 sm:py-4 px-0 sm:px-3">
-                  Add Booking
+                  {t(`${MS}.addBooking`)}
                 </span>
                 <Link href="/search">
-                  <Button className="w-7 sm:w-10 h-7 sm:h-10 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 mt-1 sm:mt-auto mr-2 rounded-full">
+                  <Button className="w-7 sm:w-10 h-7 sm:h-10 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 mt-1 sm:mt-auto me-2 rounded-full">
                     <Search className="text-white w-6 h-6" />
                   </Button>
                 </Link>
@@ -401,14 +423,14 @@ const MobileSearchBar: React.FC = () => {
             </SheetTrigger>
             <SheetContent side="top" className="overflow-y-auto max-h-[80vh] bg-white">
               <SheetHeader>
-                <SheetTitle>Search Options</SheetTitle>
+                <SheetTitle>{t(`${MS}.searchOptions`)}</SheetTitle>
               </SheetHeader>
               <div className="space-y-4 mt-4">
                 {renderSection(
-                  "Top categories",
+                  t(`${MS}.topCategories`),
                   <>
                     <Input
-                      placeholder="Search categories"
+                      placeholder={t("web.layout.searchCategoriesPlaceholder")}
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
                       className="mb-2"
@@ -421,7 +443,7 @@ const MobileSearchBar: React.FC = () => {
                             className="w-full justify-start text-destructive"
                             onClick={() => setSelectedCategory("")}
                           >
-                            ← Back to categories
+                            {t(`${MS}.backToCategories`)}
                           </Button>
                           {categories
                             .find((cat) => cat.name === selectedCategory)
@@ -478,11 +500,11 @@ const MobileSearchBar: React.FC = () => {
                 )}
 
                 {renderSection(
-                  "Location",
+                  t(`${MS}.location`),
                   <>
                     <AddressAutocomplete
                       onChange={handleAddressSelect}
-                      placeholder="Search for an address..."
+                      placeholder={t("web.layout.searchAddressPlaceholder")}
                       className="w-full"
                     />
                     
@@ -492,17 +514,17 @@ const MobileSearchBar: React.FC = () => {
                         {availability.isLoading ? (
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Checking availability...</span>
+                            <span>{t(`${MS}.checkingAvailability`)}</span>
                           </div>
                         ) : availability.in_zone ? (
                           <div className="flex items-center gap-2 text-sm text-green-600">
                             <CheckCircle2 className="h-4 w-4" />
-                            <span>Services available</span>
+                            <span>{t(`${MS}.servicesAvailable`)}</span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 text-sm text-amber-600">
                             <AlertCircle className="h-4 w-4" />
-                            <span>Limited availability</span>
+                            <span>{t(`${MS}.limitedAvailability`)}</span>
                           </div>
                         )}
                       </div>
@@ -512,17 +534,17 @@ const MobileSearchBar: React.FC = () => {
                     {(homeLocation || workLocation) && (
                       <div className="mt-3">
                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                          Quick Access
+                          {t(`${MS}.quickAccess`)}
                         </div>
                         <div className="space-y-2">
                           {homeLocation && (
                             <button
                               onClick={() => handleSelectRecentLocation(homeLocation)}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200"
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start border border-gray-200"
                             >
                               <Home className="h-4 w-4 text-[#FF0077]" />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900">Home</div>
+                                <div className="text-sm font-medium text-gray-900">{t(`${MS}.home`)}</div>
                                 <div className="text-xs text-gray-500 truncate">{homeLocation.address}</div>
                               </div>
                             </button>
@@ -530,11 +552,11 @@ const MobileSearchBar: React.FC = () => {
                           {workLocation && (
                             <button
                               onClick={() => handleSelectRecentLocation(workLocation)}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200"
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start border border-gray-200"
                             >
                               <Briefcase className="h-4 w-4 text-[#FF0077]" />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900">Work</div>
+                                <div className="text-sm font-medium text-gray-900">{t(`${MS}.work`)}</div>
                                 <div className="text-xs text-gray-500 truncate">{workLocation.address}</div>
                               </div>
                             </button>
@@ -547,14 +569,14 @@ const MobileSearchBar: React.FC = () => {
                     {otherRecentLocations.length > 0 && (
                       <div className="mt-3">
                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                          Recent Locations
+                          {t(`${MS}.recentLocations`)}
                         </div>
                         <div className="space-y-2">
                           {otherRecentLocations.slice(0, 3).map((loc) => (
                             <button
                               key={loc.id}
                               onClick={() => handleSelectRecentLocation(loc)}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200"
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start border border-gray-200"
                             >
                               <History className="h-4 w-4 text-gray-400" />
                               <div className="flex-1 min-w-0">
@@ -573,10 +595,10 @@ const MobileSearchBar: React.FC = () => {
                     <div className="mt-3 border-t pt-3">
                       <button
                         onClick={handleGetCurrentLocation}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-start border border-gray-200"
                       >
                         <MapPin className="h-4 w-4 text-[#FF0077]" />
-                        <span className="text-sm text-gray-900">Use current location</span>
+                        <span className="text-sm text-gray-900">{t(`${MS}.useCurrentLocation`)}</span>
                       </button>
                     </div>
                   </>,
@@ -584,16 +606,16 @@ const MobileSearchBar: React.FC = () => {
                 )}
 
                 {renderSection(
-                  "Date",
+                  t(`${MS}.date`),
                   <>
                     <Button
                       variant="outline"
-                      className="w-full justify-start text-left font-light rounded-full py-3 pl-4 hover:bg-gray-100"
+                      className="w-full justify-start text-start font-light rounded-full py-3 ps-4 hover:bg-gray-100"
                       onClick={() => setOpenSection("date")}
                     >
-                      <Calendar className="mr-2 h-4 w-4 text-secondary" />
-                      <span className="text-destructive font-light ml-4">
-                        {date ? format(date, "PPP") : "Any date"}
+                      <Calendar className="me-2 h-4 w-4 text-secondary" />
+                      <span className="text-destructive font-light ms-4">
+                        {date ? format(date, "PPP") : t(`${MS}.anyDate`)}
                       </span>
                     </Button>
                     <CalendarComponent
@@ -611,23 +633,23 @@ const MobileSearchBar: React.FC = () => {
                 )}
 
                 {renderSection(
-                  "Time",
+                  t(`${MS}.time`),
                   <>
                     <div className="flex flex-wrap gap-2 mb-4">
-                      {timeSlots.map((slot) => (
+                      {timeSlotKeys.map((slotKey) => (
                         <Button
-                          key={slot}
+                          key={slotKey}
                           variant="outline"
                           size="sm"
                           className="px-3 font-light"
                           onClick={() => {
-                            setTimeSlot(slot);
+                            setTimeSlotKey(slotKey);
                             setFromTime("");
                             setToTime("");
                             setOpenSection("");
                           }}
                         >
-                          {slot}
+                          {t(`${MS}.${slotKey}`)}
                         </Button>
                       ))}
                     </div>
@@ -637,7 +659,7 @@ const MobileSearchBar: React.FC = () => {
                         onValueChange={handleFromTimeChange}
                       >
                         <SelectTrigger className="font-light">
-                          <SelectValue placeholder="From" />
+                          <SelectValue placeholder={t(`${MS}.fromPlaceholder`)} />
                         </SelectTrigger>
                         <SelectContent className="bg-white font-light">
                           {Array.from({ length: 24 }, (_, i) => (
@@ -660,8 +682,8 @@ const MobileSearchBar: React.FC = () => {
                         }}
                       >
                         <SelectTrigger className="font-light">
-                          <SelectValue placeholder="To">
-                            {toTime ? formatTime(toTime) : "Select To Time"}
+                          <SelectValue placeholder={t(`${MS}.toPlaceholder`)}>
+                            {toTime ? formatTime(toTime) : t(`${MS}.selectToTime`)}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="font-light bg-white">
@@ -690,7 +712,7 @@ const MobileSearchBar: React.FC = () => {
                       setTreatment("");
                       setLocationState(null);
                       setDate(undefined);
-                      setTimeSlot("Any time");
+                      setTimeSlotKey("anyTimeSlot");
                       setFromTime("");
                       setToTime("");
                       setOpenSection("treatment");
@@ -699,12 +721,12 @@ const MobileSearchBar: React.FC = () => {
                       setCategorySearch("");
                     }}
                   >
-                    Clear all
+                    {t(`${MS}.clearAll`)}
                   </Button>
                   <Link href="/search">
                     <Button onClick={handleSearch} variant="secondary">
-                      <Search className="mr-2 h-4 w-4" />
-                      Search
+                      <Search className="me-2 h-4 w-4" />
+                      {t(`${MS}.search`)}
                     </Button>
                   </Link>
                 </div>
@@ -720,7 +742,7 @@ const MobileSearchBar: React.FC = () => {
           >
             <Image
               src={Filter}
-              alt="Filters"
+              alt={t(`${MS}.filtersAlt`)}
               className="h-4 sm:h-5 w-4 sm:w-5 group-hover:scale-110 transition-transform duration-200"
             />
           </Button>
@@ -734,10 +756,6 @@ const MobileSearchBar: React.FC = () => {
           />
         </div>
       </div>
-      <LanguageModal
-        open={isLanguageModalOpen}
-        onOpenChange={setIsLanguageModalOpen}
-      />
     </div>
   );
 };

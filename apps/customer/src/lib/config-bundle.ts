@@ -26,6 +26,7 @@ export interface ConfigBundleMeta {
     default_language: string;
     timezone: string;
     phone_country_code: string;
+    supported_languages?: string[];
     region_id?: string;
     /** Primary online payment gateway for the region ("paystack" | "stripe" | ...). */
     payment_gateway?: string;
@@ -235,6 +236,12 @@ export function getTenantDefaultCurrency(): string {
   const fromBundle = getCachedConfigBundle()?.meta?.tenant_region?.default_currency?.trim();
   if (fromBundle) return fromBundle;
   return DEFAULT_REGION_CURRENCY;
+}
+
+export function getTenantRegionCode(): string {
+  const fromBundle = getCachedConfigBundle()?.meta?.tenant_region?.code?.trim();
+  if (fromBundle) return fromBundle.toUpperCase();
+  return "ZA";
 }
 
 export function clearConfigBundleCache(): void {

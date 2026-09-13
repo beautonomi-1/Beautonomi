@@ -1,6 +1,7 @@
 import { useAuth } from "@/providers/AuthProvider";
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTranslation } from "@beautonomi/i18n";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { SavedTabContent } from "@/components/SavedTabContent";
@@ -12,6 +13,8 @@ import { pushCustomerLogin } from "@/lib/guest-browse-policy";
  * When authenticated, shows tabbed content; when not, shows sign-in message.
  */
 export default function SavedScreen() {
+  const { t } = useTranslation();
+  const st = (key: string) => t(`customer.mobile.screens.savedTab.${key}`) as string;
   const { user, loading } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
@@ -26,11 +29,11 @@ export default function SavedScreen() {
         <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
         <View style={[tabletConstraint, { flex: 1, backgroundColor: Colors.white, paddingBottom: tabScrollPaddingBottom }]}>
           <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8 }}>
-            <Text style={styles.screenTitle}>Saved</Text>
+            <Text style={styles.screenTitle}>{st("screenTitle")}</Text>
           </View>
           <View style={[styles.center, { paddingHorizontal: contentPadding, flex: 1 }]}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loading}>Loading...</Text>
+            <Text style={styles.loading}>{st("loading")}</Text>
           </View>
         </View>
       </View>
@@ -43,12 +46,12 @@ export default function SavedScreen() {
         <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
         <View style={[tabletConstraint, { flex: 1, backgroundColor: Colors.white, paddingBottom: tabScrollPaddingBottom }]}>
           <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8 }}>
-            <Text style={styles.screenTitle}>Saved</Text>
+            <Text style={styles.screenTitle}>{st("screenTitle")}</Text>
           </View>
           <View style={[styles.center, { paddingHorizontal: contentPadding, flex: 1 }]}>
-            <Text style={styles.emptyTitle}>Nothing saved yet</Text>
+            <Text style={styles.emptyTitle}>{st("emptyTitle")}</Text>
             <Text style={styles.emptySubtitle}>
-              Sign in to see your saved providers, products and posts
+              {st("emptySubtitle")}
             </Text>
             <TouchableOpacity
               onPress={() => pushCustomerLogin("/(app)/(tabs)/saved")}
@@ -61,7 +64,7 @@ export default function SavedScreen() {
               }}
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>{st("logIn")}</Text>
             </TouchableOpacity>
           </View>
         </View>

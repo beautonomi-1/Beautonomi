@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   rowActionText: {
-    marginLeft: 5,
+    marginStart: 5,
     fontSize: 12,
     fontWeight: "700",
     color: Colors.primary,

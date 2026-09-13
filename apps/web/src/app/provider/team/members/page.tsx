@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -36,6 +37,7 @@ type TeamAccessPayload = {
 };
 
 export default function ProviderTeamMembers() {
+  const { t } = useTranslation();
   const { provider, isLoading: isLoadingProvider, selectedLocationId } = useProviderPortal();
   const isFreelancer = provider?.business_type === "freelancer";
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -115,7 +117,7 @@ export default function ProviderTeamMembers() {
       console.error("Failed to load team members:", error);
       // Only show error if we don't have any data to display
       if (members.length === 0) {
-        toast.error("Failed to load team members");
+        toast.error(t("web.provider.teamMembers.failedToLoad"));
       }
       // Don't clear existing members on error - keep showing cached data
     } finally {
@@ -148,14 +150,14 @@ export default function ProviderTeamMembers() {
     setTimeout(() => {
       loadMembers();
     }, 500);
-    toast.success(wasUpdate ? "Team member updated" : "Team member created");
+    toast.success(wasUpdate ? t("web.provider.teamMembers.updated") : t("web.provider.teamMembers.created"));
   };
 
   const handleDelete = async (member: TeamMember, reassignTo?: string) => {
     if (!canManageTeam) return;
     if (
       !reassignTo &&
-      !confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)
+      !confirm(t("web.provider.teamMembers.deleteConfirm", { name: member.name }))
     ) {
       return;
     }
@@ -163,13 +165,13 @@ export default function ProviderTeamMembers() {
       const { fetcher } = await import("@/lib/http/fetcher");
       const qs = reassignTo ? `?reassign_to=${encodeURIComponent(reassignTo)}` : "";
       await fetcher.delete(`/api/provider/staff/${member.id}${qs}`);
-      toast.success(`${member.name} has been deleted`);
+      toast.success(t("web.provider.teamMembers.deleted", { name: member.name }));
       loadMembers();
     } catch (error) {
       const fetchErr = error as FetchError;
       if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
         const proceed = confirm(
-          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and delete?`,
+          t("web.provider.teamMembers.reassignConfirm", { name: member.name }),
         );
         if (proceed) {
           await handleDelete(member, "any");
@@ -177,40 +179,40 @@ export default function ProviderTeamMembers() {
         }
       }
       console.error("Failed to delete member:", error);
-      toast.error(fetchErr?.message || "Failed to delete member");
+      toast.error(fetchErr?.message || t("web.provider.teamMembers.failedToDelete"));
     }
   };
 
   const handleRevokeInvite = async (member: TeamMember) => {
     if (!canManageTeam) return;
-    if (!confirm(`Revoke the pending invite for ${member.name}?`)) return;
+    if (!confirm(t("web.provider.teamMembers.revokeConfirm", { name: member.name }))) return;
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.post(`/api/provider/staff/${member.id}/invite/revoke`, {});
-      toast.success(`Invite revoked for ${member.name}`);
+      toast.success(t("web.provider.teamMembers.inviteRevoked", { name: member.name }));
       loadMembers();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to revoke invite");
+      toast.error(error instanceof Error ? error.message : t("web.provider.teamMembers.failedToRevoke"));
     }
   };
 
   const handleResetPassword = async (member: TeamMember) => {
     if (!canManageTeam) return;
-    if (!confirm(`Send password reset email to ${member.name}?`)) return;
+    if (!confirm(t("web.provider.teamMembers.resetConfirm", { name: member.name }))) return;
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.post(`/api/provider/staff/${member.id}/reset-password`, {});
-      toast.success(`Password reset email sent to ${member.email}`);
+      toast.success(t("web.provider.teamMembers.resetSent", { email: member.email }));
     } catch (error: any) {
       console.error("Failed to send password reset:", error);
-      toast.error(error?.message || "Failed to send password reset email");
+      toast.error(error?.message || t("web.provider.teamMembers.failedToReset"));
     }
   };
 
   const handleResendInvite = async (member: TeamMember) => {
     if (!canManageTeam) return;
     if (!member.email) {
-      toast.error("This team member has no email address");
+      toast.error(t("web.provider.teamMembers.noEmail"));
       return;
     }
     try {
@@ -222,43 +224,43 @@ export default function ProviderTeamMembers() {
       });
       const joinUrl = res.data?.join_url;
       if (joinUrl && !res.data?.channels?.email) {
-        toast.success("Invite link ready — copy and share if email did not send", {
+        toast.success(t("web.provider.teamMembers.inviteLinkReady"), {
           description: joinUrl,
           duration: 8000,
         });
       } else {
-        toast.success(`Invitation sent to ${member.email}`);
+        toast.success(t("web.provider.teamMembers.invitationSent", { email: member.email }));
       }
     } catch (error: any) {
       console.error("Failed to send invitation:", error);
       const joinUrl = error?.details?.join_url;
       if (joinUrl) {
-        toast.error(error?.message || "Email not configured", {
-          description: `Share this link: ${joinUrl}`,
+        toast.error(error?.message || t("web.provider.teamMembers.emailNotConfigured"), {
+          description: t("web.provider.teamMembers.shareThisLink", { url: joinUrl }),
           duration: 10000,
         });
       } else {
-        toast.error(error?.message || "Failed to send invitation");
+        toast.error(error?.message || t("web.provider.teamMembers.failedToInvite"));
       }
     }
   };
 
   // Show loading while provider is loading
   if (isLoadingProvider) {
-    return <LoadingTimeout loadingMessage="Loading provider data..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.teamMembers.loadingProvider")} />;
   }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 box-border">
       <PageHeader
-        title="Team Members"
-        subtitle={isFreelancer ? "Your profile and service settings" : "Manage your team members and their settings"}
+        title={t("web.provider.teamMembers.title")}
+        subtitle={isFreelancer ? t("web.provider.teamMembers.subtitleFreelancer") : t("web.provider.teamMembers.subtitleSalon")}
         primaryAction={
           !isFreelancer && canManageTeam
             ? {
-                label: "Add Staff Member",
+                label: t("web.provider.teamMembers.addStaff"),
                 onClick: handleCreate,
-                icon: <Plus className="w-4 h-4 mr-2" />,
+                icon: <Plus className="w-4 h-4 me-2" />,
               }
             : undefined
         }
@@ -270,24 +272,24 @@ export default function ProviderTeamMembers() {
         <Alert className="border-amber-200 bg-amber-50">
           <Info className="w-4 h-4 text-amber-700" />
           <AlertDescription className="text-amber-900">
-            Your plan is over the staff cap. Some team members were deactivated and stay in a grace window
-            until {members
-              .map((m) => m.over_cap_grace_until)
-              .filter((v): v is string => !!v)
-              .map((v) => new Date(v).getTime())
-              .filter((t) => t > Date.now())
-              .sort((a, b) => a - b)[0]
-              ? new Date(
-                  Math.min(
-                    ...members
-                      .map((m) => m.over_cap_grace_until)
-                      .filter((v): v is string => !!v)
-                      .map((v) => new Date(v).getTime())
-                      .filter((t) => t > Date.now()),
-                  ),
-                ).toLocaleDateString()
-              : "the grace period ends"}
-            . Upgrade or keep the roster at the new limit to reactivate them.
+            {t("web.provider.teamMembers.overCap", {
+              date: members
+                .map((m) => m.over_cap_grace_until)
+                .filter((v): v is string => !!v)
+                .map((v) => new Date(v).getTime())
+                .filter((ts) => ts > Date.now())
+                .sort((a, b) => a - b)[0]
+                ? new Date(
+                    Math.min(
+                      ...members
+                        .map((m) => m.over_cap_grace_until)
+                        .filter((v): v is string => !!v)
+                        .map((v) => new Date(v).getTime())
+                        .filter((ts) => ts > Date.now()),
+                    ),
+                  ).toLocaleDateString()
+                : t("web.provider.teamMembers.graceUntil"),
+            })}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -295,7 +297,7 @@ export default function ProviderTeamMembers() {
         <Alert className="border-amber-200 bg-amber-50">
           <Info className="w-4 h-4 text-amber-700" />
           <AlertDescription className="text-amber-900">
-            You have read-only team access. Ask an owner or manager with Manage team to add or edit members.
+            {t("web.provider.teamMembers.readOnly")}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -307,17 +309,17 @@ export default function ProviderTeamMembers() {
           <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex-1">
               <p className="text-sm text-gray-700">
-                <span className="font-medium text-primary">You're set up as a freelancer.</span>{" "}
-                You are automatically added as a staff member for calendar bookings. To add team members and unlock advanced features,{" "}
+                <span className="font-medium text-primary">{t("web.provider.teamMembers.freelancerLead")}</span>{" "}
+                {t("web.provider.teamMembers.freelancerBody")}{" "}
                 <Link href="/provider/settings/upgrade-to-salon" className="text-primary hover:underline font-medium">
-                  upgrade to a salon
+                  {t("web.provider.teamMembers.upgradeToSalonLink")}
                 </Link>
                 .
               </p>
             </div>
             <Link href="/provider/settings/upgrade-to-salon">
               <button className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-md text-sm font-medium transition-colors whitespace-nowrap min-h-[44px] touch-manipulation">
-                Upgrade to Salon
+                {t("web.provider.settings.categories.appointmentActivity.items.upgradeToSalon.title")}
               </button>
             </Link>
           </AlertDescription>
@@ -332,7 +334,7 @@ export default function ProviderTeamMembers() {
               <User className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Total</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.total")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {members.length}
               </div>
@@ -345,7 +347,7 @@ export default function ProviderTeamMembers() {
               <User className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Active</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.active")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {members.filter(m => m.is_active).length}
               </div>
@@ -358,7 +360,7 @@ export default function ProviderTeamMembers() {
               <User className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Service Providers</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.serviceProviders")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {members.filter(m => m.role === "employee" || m.role === "manager").length}
               </div>
@@ -371,7 +373,7 @@ export default function ProviderTeamMembers() {
               <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">On Shift</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.onShift")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {members.filter(m => m.is_active).length}
               </div>
@@ -385,10 +387,10 @@ export default function ProviderTeamMembers() {
         <div className="relative w-full max-w-full">
           <input
             type="text"
-            placeholder="Search team members by name or email..."
+            placeholder={t("web.provider.teamMembers.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full max-w-full pl-10 pr-4 py-2.5 sm:py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/35 min-h-[44px] touch-manipulation box-border provider-input"
+            className="w-full max-w-full ps-10 pe-4 py-2.5 sm:py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/35 min-h-[44px] touch-manipulation box-border provider-input"
           />
           <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 flex-shrink-0" />
         </div>
@@ -406,16 +408,16 @@ export default function ProviderTeamMembers() {
       ) : filteredMembers.length === 0 ? (
         <SectionCard className="p-8 sm:p-12">
           <EmptyState
-            title={selectedLocationId ? "No staff at this location" : "No team members"}
+            title={selectedLocationId ? t("web.provider.teamMembers.noStaffAtLocation") : t("web.provider.teamMembers.noTeamMembers")}
             description={
               selectedLocationId
-                ? "No one is assigned to this branch yet. Assign existing team members to this location, or add someone new."
-                : "Add your first team member to get started. They'll be able to manage appointments, services, and more."
+                ? t("web.provider.teamMembers.noStaffAtLocationBody")
+                : t("web.provider.teamMembers.noTeamMembersBody")
             }
             action={
               canManageTeam
                 ? {
-                    label: "Add Staff Member",
+                    label: t("web.provider.teamMembers.addStaff"),
                     onClick: handleCreate,
                   }
                 : undefined
@@ -433,13 +435,13 @@ export default function ProviderTeamMembers() {
                     <TableHead className="w-12 px-4 py-3">
                       <GripVertical className="w-4 h-4 text-gray-400" />
                     </TableHead>
-                    <TableHead className="px-4 py-3">Name</TableHead>
-                    <TableHead className="px-4 py-3">Email</TableHead>
-                    <TableHead className="px-4 py-3">Mobile</TableHead>
-                    <TableHead className="px-4 py-3">Role</TableHead>
-                    <TableHead className="px-4 py-3">Status</TableHead>
-                    <TableHead className="px-4 py-3">Rating</TableHead>
-                    <TableHead className="text-right px-4 py-3">Actions</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.common.name")}</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.common.email")}</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.teamMembers.mobile")}</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.teamMembers.role")}</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.settings.pages.addons.status")}</TableHead>
+                    <TableHead className="px-4 py-3">{t("web.provider.reports.pages.staff/performance.rating")}</TableHead>
+                    <TableHead className="text-end px-4 py-3">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -475,7 +477,7 @@ export default function ProviderTeamMembers() {
                       </TableCell>
                       <TableCell className="px-6 py-4">
                         <Badge className={member.is_active ? "bg-green-100 text-green-800 border-green-200" : "bg-gray-100 text-gray-800 border-gray-200"}>
-                          {member.is_active ? "Active" : "Inactive"}
+                          {member.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                         </Badge>
                       </TableCell>
                       <TableCell className="px-6 py-4">
@@ -488,7 +490,7 @@ export default function ProviderTeamMembers() {
                           <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right px-6 py-4">
+                      <TableCell className="text-end px-6 py-4">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -500,31 +502,31 @@ export default function ProviderTeamMembers() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem onClick={() => handleEdit(member)} className="cursor-pointer">
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
+                              <Eye className="w-4 h-4 me-2" />
+                              {t("web.provider.teamMembers.viewDetails")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleEdit(member)} className="cursor-pointer">
-                              <Settings className="w-4 h-4 mr-2" />
-                              Edit
+                              <Settings className="w-4 h-4 me-2" />
+                              {t("web.provider.common.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleResendInvite(member)} className="cursor-pointer">
-                              <Mail className="w-4 h-4 mr-2" />
-                              Resend invite
+                              <Mail className="w-4 h-4 me-2" />
+                              {t("web.provider.teamMembers.resendInvite")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => void handleRevokeInvite(member)} className="cursor-pointer">
-                              <Mail className="w-4 h-4 mr-2" />
-                              Revoke invite
+                              <Mail className="w-4 h-4 me-2" />
+                              {t("web.provider.teamMembers.revokeInvite")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleResetPassword(member)} className="cursor-pointer">
-                              <KeyRound className="w-4 h-4 mr-2" />
-                              Reset Password
+                              <KeyRound className="w-4 h-4 me-2" />
+                              {t("web.provider.teamMembers.resetPassword")}
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => handleDelete(member)} 
                               className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                             >
-                              <Archive className="w-4 h-4 mr-2" />
-                              Delete
+                              <Archive className="w-4 h-4 me-2" />
+                              {t("web.provider.common.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -559,7 +561,7 @@ export default function ProviderTeamMembers() {
                             {member.role}
                           </Badge>
                           <Badge className={member.is_active ? "bg-green-100 text-green-800 text-xs" : "bg-gray-100 text-gray-800 text-xs"}>
-                            {member.is_active ? "Active" : "Inactive"}
+                            {member.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                           </Badge>
                         </div>
                       </div>
@@ -575,28 +577,28 @@ export default function ProviderTeamMembers() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleEdit(member)}>
-                          <User className="w-4 h-4 mr-2" />
-                          View Details
+                          <User className="w-4 h-4 me-2" />
+                          {t("web.provider.teamMembers.viewDetails")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEdit(member)}>
-                          <Settings className="w-4 h-4 mr-2" />
-                          Edit
+                          <Settings className="w-4 h-4 me-2" />
+                          {t("web.provider.common.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleResendInvite(member)}>
-                          <Mail className="w-4 h-4 mr-2" />
-                          Resend invite
+                          <Mail className="w-4 h-4 me-2" />
+                          {t("web.provider.teamMembers.resendInvite")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => void handleRevokeInvite(member)}>
-                          <Mail className="w-4 h-4 mr-2" />
-                          Revoke invite
+                          <Mail className="w-4 h-4 me-2" />
+                          {t("web.provider.teamMembers.revokeInvite")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleResetPassword(member)}>
-                          <KeyRound className="w-4 h-4 mr-2" />
-                          Reset Password
+                          <KeyRound className="w-4 h-4 me-2" />
+                          {t("web.provider.teamMembers.resetPassword")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleDelete(member)} className="text-red-600">
-                          <Archive className="w-4 h-4 mr-2" />
-                          Delete
+                          <Archive className="w-4 h-4 me-2" />
+                          {t("web.provider.common.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -614,7 +616,7 @@ export default function ProviderTeamMembers() {
                     </div>
                     {member.rating && (
                       <div className="flex items-center gap-2">
-                        <span className="text-gray-600">Rating:</span>
+                        <span className="text-gray-600">{t("web.provider.teamMembers.ratingLabel")}</span>
                         <span className="flex items-center gap-1 font-medium">
                           {member.rating.toFixed(1)}
                           <span className="text-yellow-500">★</span>
@@ -632,8 +634,8 @@ export default function ProviderTeamMembers() {
                       disabled={!canManageTeam}
                       className="flex-1 min-h-[44px] touch-manipulation"
                     >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Manage
+                      <Settings className="w-4 h-4 me-2" />
+                      {t("web.provider.teamMembers.manage")}
                     </Button>
                     <Button
                       variant="outline"
@@ -642,8 +644,8 @@ export default function ProviderTeamMembers() {
                       disabled={!canManageTeam}
                       className="flex-1 min-h-[44px] touch-manipulation"
                     >
-                      <Mail className="w-4 h-4 mr-2" />
-                      Resend invite
+                      <Mail className="w-4 h-4 me-2" />
+                      {t("web.provider.teamMembers.resendInvite")}
                     </Button>
                     <Button
                       variant="outline"
@@ -652,8 +654,8 @@ export default function ProviderTeamMembers() {
                       disabled={!canManageTeam}
                       className="flex-1 min-h-[44px] touch-manipulation"
                     >
-                      <KeyRound className="w-4 h-4 mr-2" />
-                      Reset Password
+                      <KeyRound className="w-4 h-4 me-2" />
+                      {t("web.provider.teamMembers.resetPassword")}
                     </Button>
                   </div>
                 </div>

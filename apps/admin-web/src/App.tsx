@@ -153,6 +153,7 @@ export default function App() {
           <Route path="reconciliation-exceptions" element={<P.ReconciliationExceptionsPage />} />
           <Route path="ledger-repair" element={<P.LedgerRepairPage />} />
           <Route path="ledger-health" element={<P.LedgerHealthPage />} />
+          <Route path="fx-rates" element={<P.FxRatesPage />} />
           <Route path="paystack-terminal" element={<P.PaystackTerminalOperationsPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
           <Route path="pricing-plans" element={<Navigate to="../plans" replace />} />
@@ -249,7 +250,8 @@ export default function App() {
             <Route path="integrations/didit" element={<P.CpIntegrationDiditPage />} />
             <Route path="integrations/stripe" element={<P.CpIntegrationStripePage />} />
             <Route path="country-launch-checklist" element={<P.CpCountryLaunchChecklistPage />} />
-            <Route path="integrations/gemini" element={<P.CpIntegrationGeminiPage />} />
+            <Route path="integrations/ai" element={<P.CpIntegrationAiPage />} />
+            <Route path="integrations/gemini" element={<Navigate to="../ai" replace />} />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
             <Route path="integrations/wasender" element={<P.CpIntegrationWasenderPage />} />
             <Route path="modules/distance" element={<P.CpModuleDistancePage />} />

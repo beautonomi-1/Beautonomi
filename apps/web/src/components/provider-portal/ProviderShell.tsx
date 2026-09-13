@@ -16,7 +16,7 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
         className={cn(
           // Use left padding (not margin) to reserve space for the fixed sidebar and avoid right overflow.
           "transition-all duration-300 w-full max-w-full min-w-0 overflow-x-hidden box-border",
-          sidebarCollapsed ? "md:pl-16" : "md:pl-64"
+          sidebarCollapsed ? "md:ps-16" : "md:ps-64"
         )}
       >
         <ProviderTopbar />

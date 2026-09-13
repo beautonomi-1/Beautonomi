@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useEffect, useMemo, useState } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -47,6 +49,7 @@ function toDateTimeLocal(date: string, time: string): string {
 }
 
 export default function ProviderCustomRequestsPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const { selectedLocationId } = useProviderPortal();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -84,7 +87,7 @@ export default function ProviderCustomRequestsPage() {
       const res = await fetcher.get<{ data: Record<string, any> }>(`/api/provider/custom-offers/${offerId}`);
       setOfferDetailData(res.data);
     } catch {
-      toast.error("Failed to load offer details");
+      toast.error(t("web.provider.pages.custom-requests.failedToLoadOfferDetails"));
       setOfferDetailOpen(false);
     } finally {
       setOfferDetailLoading(false);
@@ -101,10 +104,10 @@ export default function ProviderCustomRequestsPage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load custom requests";
+          : t("web.provider.pages.custom-requests.failedToLoad");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -165,16 +168,16 @@ export default function ProviderCustomRequestsPage() {
   };
 
   const declineRequest = async (requestId: string) => {
-    const reason = window.prompt("Optional reason for declining this request:");
+    const reason = window.prompt(t("web.provider.pages.custom-requests.optionalDeclineReason"));
     if (reason === null) return;
     try {
       await fetcher.post(`/api/provider/custom-requests/${requestId}/decline`, {
         reason: reason.trim() || null,
       });
-      toast.success("Request declined");
+      toast.success(t("web.provider.pages.custom-requests.requestDeclined"));
       await load();
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Failed to decline request");
+      toast.error(e instanceof FetchError ? e.message : t("web.provider.pages.custom-requests.failedToDecline"));
     }
   };
 
@@ -230,19 +233,19 @@ export default function ProviderCustomRequestsPage() {
 
   const offerValidationHint = useMemo(() => {
     if (price.trim() === "" || Number.isNaN(Number(price)) || Number(price) < 0) {
-      return "Enter a valid price (0 or more).";
+      return t("web.provider.pages.custom-requests.enterValidPrice");
     }
     const dm = Number(durationMinutes);
     if (!Number.isFinite(dm) || dm < 15 || dm > 480) {
-      return "Duration must be between 15 and 480 minutes.";
+      return t("web.provider.pages.custom-requests.durationRange");
     }
-    if (!expirationAt.trim()) return "Select when this offer expires.";
+    if (!expirationAt.trim()) return t("web.provider.pages.custom-requests.selectWhenExpires");
     const exp = new Date(expirationAt);
     if (!Number.isFinite(exp.getTime()) || exp.getTime() <= Date.now()) {
-      return "Expiration must be in the future.";
+      return t("web.provider.pages.custom-requests.expirationInFuture");
     }
     return null;
-  }, [price, durationMinutes, expirationAt]);
+  }, [price, durationMinutes, expirationAt, t]);
 
   const canSubmitOffer = offerValidationHint === null;
 
@@ -266,16 +269,16 @@ export default function ProviderCustomRequestsPage() {
       }
       if (editingOfferId) {
         await fetcher.patch(`/api/provider/custom-offers/${editingOfferId}`, payload);
-        toast.success("Offer updated");
+        toast.success(t("web.provider.pages.custom-requests.offerUpdated"));
       } else {
         await fetcher.post(`/api/provider/custom-requests/${selected.id}/offers`, payload);
-        toast.success("Offer sent");
+        toast.success(t("web.provider.pages.custom-requests.offerSent"));
       }
       setOfferOpen(false);
       setEditingOfferId(null);
       await load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to send offer");
+      toast.error(e instanceof Error ? e.message : t("web.provider.pages.custom-requests.failedToSendOffer"));
     } finally {
       setIsSubmitting(false);
     }
@@ -285,16 +288,16 @@ export default function ProviderCustomRequestsPage() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-semibold mb-2">Custom Requests</h1>
-          <p className="text-gray-600">Respond with tailored offers and convert them into bookings.</p>
+          <h1 className="text-3xl font-semibold mb-2">{t("web.provider.pages.custom-requests.title")}</h1>
+          <p className="text-gray-600">{t("web.provider.pages.custom-requests.subtitle")}</p>
         </div>
 
         {isLoading ? (
-          <LoadingTimeout loadingMessage="Loading custom requests..." />
+          <LoadingTimeout loadingMessage={t("web.provider.pages.custom-requests.loading")} />
         ) : error ? (
-          <EmptyState title="Failed to load" description={error} action={{ label: "Retry", onClick: load }} />
+          <EmptyState title={t("web.provider.pages.custom-requests.failedToLoadTitle")} description={error} action={{ label: t("web.provider.common.retry"), onClick: load }} />
         ) : items.length === 0 ? (
-          <EmptyState title="No custom requests yet" description="Customer custom requests will appear here." />
+          <EmptyState title={t("web.provider.pages.custom-requests.noRequestsYet")} description={t("web.provider.pages.custom-requests.noRequestsHint")} />
         ) : (
           <div className="space-y-4">
             {items.map((r) => (
@@ -302,29 +305,29 @@ export default function ProviderCustomRequestsPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-sm text-gray-600">
-                      {r.customer?.full_name || r.customer?.email || "Customer"} •{" "}
+                      {r.customer?.full_name || r.customer?.email || t("web.provider.common.customer")} •{" "}
                       <span className="capitalize">{r.status}</span>
                     </div>
                     <div className="font-medium mt-1 break-words">{r.description}</div>
                     {r.status === "declined" && r.declined_reason ? (
                       <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
-                        Declined: {r.declined_reason}
+{t("web.provider.pages.custom-requests.declined", { reason: r.declined_reason })}
                       </div>
                     ) : null}
                     <div className="text-sm text-gray-600 mt-2">
-                      {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
+                      {r.preferred_start_at ? t("web.provider.pages.custom-requests.preferred", { value: new Date(r.preferred_start_at).toLocaleString() }) : t("web.provider.pages.custom-requests.preferredNotSet")} •{" "}
                       {r.location_type || "at_salon"}
-                      {r.budget_min != null || r.budget_max != null ? ` • Budget: ${tenantCurrency} ${r.budget_min ?? "0"} – ${tenantCurrency} ${r.budget_max ?? "∞"}` : ""}
+                      {r.budget_min != null || r.budget_max != null ? ` • ${t("web.provider.pages.custom-requests.budget", { currency: tenantCurrency, min: r.budget_min ?? "0", max: r.budget_max ?? "∞" })}` : ""}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     {["pending", "offered"].includes(r.status) && (
                       <>
                         <Button variant="outline" onClick={() => openOffer(r)}>
-                          Send Offer
+                          {t("web.provider.pages.custom-requests.sendOffer")}
                         </Button>
                         <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => void declineRequest(r.id)}>
-                          Decline
+                          {t("web.provider.pages.custom-requests.decline")}
                         </Button>
                       </>
                     )}
@@ -348,7 +351,7 @@ export default function ProviderCustomRequestsPage() {
                             : isChangesRequested
                               ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
                             : "bg-blue-50 text-blue-700 border border-blue-200";
-                      const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isChangesRequested ? "Changes requested" : "Pending";
+                      const badgeLabel = isPaid ? t("web.provider.pages.custom-requests.booked") : isWithdrawn ? t("web.provider.pages.custom-requests.withdrawn") : isExpired ? t("web.provider.pages.custom-requests.expired") : isChangesRequested ? t("web.provider.pages.custom-requests.changesRequested") : t("web.provider.common.status.pending");
                       return (
                         <div
                           key={o.id}
@@ -363,7 +366,7 @@ export default function ProviderCustomRequestsPage() {
                             {isChangesRequested && o.change_request_note ? (
                               <div className="text-xs text-indigo-700 mt-1 bg-indigo-50 rounded px-2 py-1">{o.change_request_note}</div>
                             ) : null}
-                            <div className="text-[11px] text-gray-400 mt-0.5">Tap for details</div>
+<div className="text-[11px] text-gray-400 mt-0.5">{t("web.provider.pages.custom-requests.tapForDetails")}</div>
                           </div>
                         </div>
                       );
@@ -373,7 +376,7 @@ export default function ProviderCustomRequestsPage() {
                       ["pending", "offered"].includes(r.status) && (
                         <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
                           <span className="mt-0.5 shrink-0">ℹ</span>
-                          <span>All your offers have been withdrawn or expired. You can send a new offer above.</span>
+<span>{t("web.provider.pages.custom-requests.allOffersWithdrawn")}</span>
                         </div>
                       )}
                   </div>
@@ -386,26 +389,26 @@ export default function ProviderCustomRequestsPage() {
         <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Send Custom Offer</DialogTitle>
+              <DialogTitle>{t("web.provider.pages.custom-requests.sendCustomOffer")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Price ({tenantCurrency})</Label>
+                <Label>{t("web.provider.pages.custom-requests.price", { currency: tenantCurrency })}</Label>
                 <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Duration (minutes)</Label>
+                  <Label>{t("web.provider.pages.custom-requests.durationMinutes")}</Label>
                   <Input type="number" min={15} step={15} value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Expiration</Label>
+                  <Label>{t("web.provider.pages.custom-requests.expiration")}</Label>
                   <Input type="datetime-local" value={expirationAt} onChange={(e) => setExpirationAt(e.target.value)} />
                 </div>
               </div>
               {selected?.location_type === "at_home" && (
                 <div className="space-y-2">
-                  <Label>Travel fee ({tenantCurrency}, optional)</Label>
+                  <Label>{t("web.provider.pages.custom-requests.travelFeeOptional", { currency: tenantCurrency })}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -418,7 +421,7 @@ export default function ProviderCustomRequestsPage() {
               )}
               {selected?.location_type !== "at_home" && locations.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Venue (optional)</Label>
+                  <Label>{t("web.provider.pages.custom-requests.venueOptional")}</Label>
                   <div className="flex flex-wrap gap-2">
                     {locations.map((loc) => {
                       const active = locationId === loc.id;
@@ -440,7 +443,7 @@ export default function ProviderCustomRequestsPage() {
               )}
               {staffMembers.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Staff (optional)</Label>
+                  <Label>{t("web.provider.pages.custom-requests.staffOptional")}</Label>
                   <div className="flex flex-wrap gap-2">
                     {staffMembers.map((staff) => {
                       const active = staffId === staff.id;
@@ -461,9 +464,9 @@ export default function ProviderCustomRequestsPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Appointment slot</Label>
+                <Label>{t("web.provider.pages.custom-requests.appointmentSlot")}</Label>
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                  <p className="mb-2 text-xs text-gray-500">Choose from availability-engine slots so the accepted offer can convert cleanly to a booking.</p>
+                  <p className="mb-2 text-xs text-gray-500">{t("web.provider.pages.custom-requests.slotHint")}</p>
                   <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                     {dateOptions.map((d) => {
                       const key = toDateKey(d);
@@ -484,9 +487,9 @@ export default function ProviderCustomRequestsPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {loadingSlots ? (
-                      <p className="text-xs text-gray-500">Loading available times...</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.pages.custom-requests.loadingTimes")}</p>
                     ) : availableSlots.length === 0 ? (
-                      <p className="text-xs text-amber-700">No available slots for this date. Try another day, staff member, or duration.</p>
+                      <p className="text-xs text-amber-700">{t("web.provider.pages.custom-requests.noSlots")}</p>
                     ) : (
                       availableSlots.slice(0, 32).map((slot) => {
                         const time = slot.time.slice(0, 5);
@@ -515,7 +518,7 @@ export default function ProviderCustomRequestsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Notes (optional)</Label>
+                <Label>{t("web.provider.pages.custom-requests.notesOptional")}</Label>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -524,10 +527,10 @@ export default function ProviderCustomRequestsPage() {
                 ) : null}
                 <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setOfferOpen(false)} disabled={isSubmitting}>
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
                 <Button onClick={sendOffer} disabled={isSubmitting || !canSubmitOffer}>
-                  {isSubmitting ? "Sending..." : editingOfferId ? "Update Offer" : "Send Offer"}
+                  {isSubmitting ? t("web.provider.pages.custom-requests.sending") : editingOfferId ? t("web.provider.pages.custom-requests.updateOffer") : t("web.provider.pages.custom-requests.sendOffer")}
                 </Button>
                 </div>
               </div>
@@ -539,7 +542,7 @@ export default function ProviderCustomRequestsPage() {
         <Dialog open={offerDetailOpen} onOpenChange={setOfferDetailOpen}>
           <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Custom Offer Details</DialogTitle>
+              <DialogTitle>{t("web.provider.pages.custom-requests.customOfferDetails")}</DialogTitle>
             </DialogHeader>
             {offerDetailLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -553,7 +556,7 @@ export default function ProviderCustomRequestsPage() {
               const isWithdrawn = rawStatus === "withdrawn";
               const isExpired = rawStatus === "expired";
               const isChangesRequested = rawStatus === "changes_requested";
-              const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isChangesRequested ? "Changes requested" : "Pending";
+              const statusLabel = isPaid ? t("web.provider.pages.custom-requests.booked") : isWithdrawn ? t("web.provider.pages.custom-requests.withdrawn") : isExpired ? t("web.provider.pages.custom-requests.expired") : isChangesRequested ? t("web.provider.pages.custom-requests.changesRequested") : t("web.provider.common.status.pending");
               const statusClass = isPaid ? "bg-emerald-100 text-emerald-700" : isWithdrawn ? "bg-slate-100 text-slate-600" : isExpired ? "bg-amber-100 text-amber-700" : isChangesRequested ? "bg-indigo-100 text-indigo-700" : "bg-blue-50 text-blue-700";
               return (
                 <div className="space-y-4 pb-2">
@@ -562,60 +565,60 @@ export default function ProviderCustomRequestsPage() {
                   </div>
                   {(req.service_name || req.description) && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Service</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.common.service")}</div>
                       <div className="font-semibold text-gray-900">{req.service_name || req.description}</div>
                     </div>
                   )}
                   <div className="flex gap-6">
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Price</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.pages.custom-requests.priceLabel")}</div>
                       <div className="font-bold text-lg text-gray-900">{d.currency} {d.price}</div>
-                      {d.travel_fee ? <div className="text-xs text-gray-500">+ {d.currency} {d.travel_fee} travel fee</div> : null}
+                      {d.travel_fee ? <div className="text-xs text-gray-500">{t("web.provider.pages.custom-requests.plusTravelFee", { currency: d.currency, fee: d.travel_fee })}</div> : null}
                     </div>
                     {d.duration_minutes && (
                       <div>
-                        <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Duration</div>
-                        <div className="font-semibold text-gray-900">{d.duration_minutes} mins</div>
+                        <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.pages.custom-requests.duration")}</div>
+                        <div className="font-semibold text-gray-900">{t("web.provider.pages.custom-requests.durationMins", { minutes: d.duration_minutes })}</div>
                       </div>
                     )}
                   </div>
                   {(d.scheduled_at ?? req.preferred_start_at) && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Preferred Time</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.pages.custom-requests.preferredTime")}</div>
                       <div className="text-sm text-gray-800">{new Date(d.scheduled_at ?? req.preferred_start_at).toLocaleString()}</div>
                     </div>
                   )}
                   {(req.location_type || d.location?.name) && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Location</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.common.location")}</div>
                       <div className="text-sm text-gray-800 capitalize">
-                        {d.location?.name || (req.location_type === "at_home" ? "At customer's home" : req.location_type === "at_salon" ? "At the salon" : req.location_type || "–")}
+                        {d.location?.name || (req.location_type === "at_home" ? t("web.provider.pages.custom-requests.atCustomersHome") : req.location_type === "at_salon" ? t("web.provider.pages.custom-requests.atTheSalon") : req.location_type || "–")}
                       </div>
                     </div>
                   )}
                   {d.expiration_at && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Offer Expires</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.pages.custom-requests.offerExpires")}</div>
                       <div className={`text-sm ${isExpired ? "text-amber-600 font-medium" : "text-gray-800"}`}>
-                        {new Date(d.expiration_at).toLocaleString()}{isExpired ? " (expired)" : ""}
+                        {new Date(d.expiration_at).toLocaleString()}{isExpired ? t("web.provider.pages.custom-requests.expiredSuffix") : ""}
                       </div>
                     </div>
                   )}
                   {d.notes && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Notes</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.provider.common.notes")}</div>
                       <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
                     </div>
                   )}
                   {isChangesRequested && d.change_request_note && (
                     <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-                      <span className="font-semibold">Customer requested changes: </span>
+                      <span className="font-semibold">{t("web.provider.pages.custom-requests.customerRequestedChanges")} </span>
                       {d.change_request_note}
                     </div>
                   )}
                   {isPaid && d.booking_id && (
                     <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      Booking created. Reference: {d.booking_id}
+{t("web.provider.pages.custom-requests.bookingCreated", { id: d.booking_id })}
                     </div>
                   )}
                   <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
@@ -628,7 +631,7 @@ export default function ProviderCustomRequestsPage() {
                           if (parentReq) openOffer(parentReq, d.id);
                         }}
                       >
-                        Edit offer
+                        {t("web.provider.pages.custom-requests.editOffer")}
                       </Button>
                     )}
                     {!isPaid && !isWithdrawn && !isExpired && d.id && (
@@ -636,25 +639,25 @@ export default function ProviderCustomRequestsPage() {
                         variant="outline"
                         className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
                         onClick={async () => {
-                          if (!confirm("Are you sure you want to withdraw this offer?")) return;
+                          if (!confirm(t("web.provider.pages.custom-requests.confirmWithdraw"))) return;
                           try {
                             await fetcher.post(`/api/provider/custom-offers/${d.id}/retract`, {});
-                            toast.success("Offer withdrawn");
+                            toast.success(t("web.provider.pages.custom-requests.offerWithdrawn"));
                             setOfferDetailOpen(false);
                             load();
                           } catch {
-                            toast.error("Failed to withdraw offer");
+                            toast.error(t("web.provider.pages.custom-requests.failedToWithdraw"));
                           }
                         }}
                       >
-                        Withdraw Offer
+                        {t("web.provider.pages.custom-requests.withdrawOffer")}
                       </Button>
                     )}
                   </div>
                 </div>
               );
             })() : (
-              <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
+              <div className="text-sm text-gray-500 py-4 text-center">{t("web.provider.pages.custom-requests.couldNotLoadDetails")}</div>
             )}
           </DialogContent>
         </Dialog>

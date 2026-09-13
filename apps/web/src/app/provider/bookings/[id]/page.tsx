@@ -96,24 +96,25 @@ import {
 } from "@/lib/provider-booking/action-policy";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
 /** Aligned with provider mobile + POST /mark-paid */
 const PAYMENT_METHODS_MAIN_BASE = [
-  { label: "Cash", value: "cash" as const },
+  { label: "Cash", labelKey: "cash" as const, value: "cash" as const },
   { label: manualCardCollectOptionLabel(), value: "card" as const, helper: MANUAL_CARD_METHOD_HELPER },
-  { label: "EFT", value: "bank_transfer" as const },
-  { label: "Other", value: "other" as const },
+  { label: "EFT", labelKey: "eft" as const, value: "bank_transfer" as const },
+  { label: "Other", labelKey: "other" as const, value: "other" as const },
 ];
 
 /** Aligned with POST .../additional-charges/[chargeId]/mark-paid */
 const PAYMENT_METHODS_CHARGE_BASE = [
-  { label: "Cash", value: "cash" as const },
+  { label: "Cash", labelKey: "cash" as const, value: "cash" as const },
   { label: manualCardCollectOptionLabel(), value: "card" as const, helper: MANUAL_CARD_METHOD_HELPER },
-  { label: "Mobile", value: "mobile" as const },
-  { label: "EFT", value: "bank_transfer" as const },
-  { label: "Other", value: "other" as const },
+  { label: "Mobile", labelKey: "mobile" as const, value: "mobile" as const },
+  { label: "EFT", labelKey: "eft" as const, value: "bank_transfer" as const },
+  { label: "Other", labelKey: "other" as const, value: "other" as const },
 ];
 
 type PaymentMethodMain =
@@ -125,14 +126,15 @@ type PaymentMethodCharge =
   | "paycloud_terminal";
 
 const SEND_LINK_OPTIONS = [
-  { label: "Email", value: "email" as const },
-  { label: "SMS", value: "sms" as const },
-  { label: "Email & SMS", value: "both" as const },
+  { label: "Email", value: "email" as const, labelKey: "email" as const },
+  { label: "SMS", value: "sms" as const, labelKey: "sms" as const },
+  { label: "Email & SMS", value: "both" as const, labelKey: "both" as const },
 ];
 
 type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 
 export default function ProviderBookingDetail() {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
@@ -155,6 +157,7 @@ export default function ProviderBookingDetail() {
   const paycloudCollectEnabled =
     paycloudReady || (paycloudTerminals?.inFlight ?? 0) > 0;
   const postCreateCollectHandledRef = useRef(false);
+  const pushConfirmHandledRef = useRef(false);
 
   const [booking, setBooking] = useState<ProviderBookingDetail | null>(null);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
@@ -277,10 +280,10 @@ export default function ProviderBookingDetail() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load booking";
+          : t("web.provider.bookings.detail.loadFailed");
       setError(errorMessage);
       console.error("Error loading booking:", err);
     } finally {
@@ -432,7 +435,7 @@ export default function ProviderBookingDetail() {
       if (newStatus === "started") {
         const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/start-service`, {});
         setBooking({ ...booking, status: "in_progress" as Booking["status"], ...res.booking });
-        toast.success("Service started");
+        toast.success(t("web.provider.bookings.detail.toast.serviceStarted"));
         loadBooking();
         return;
       }
@@ -440,7 +443,7 @@ export default function ProviderBookingDetail() {
       if (newStatus === "completed") {
         const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/complete-service`, {});
         setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
-        toast.success("Service completed");
+        toast.success(t("web.provider.bookings.detail.toast.serviceCompleted"));
         loadBooking();
         setShowProviderCompletionModal(true);
         return;
@@ -465,26 +468,46 @@ export default function ProviderBookingDetail() {
       );
       
       if (response.conflict) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
         return;
       }
       
       setBooking({ ...booking, status: newStatus as Booking["status"], ...response.booking });
-      toast.success("Booking status updated");
+      toast.success(t("web.provider.bookings.detail.toast.statusUpdated"));
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
       } else {
-        const msg = error instanceof Error ? error.message : "Failed to update booking status";
+        const msg = error instanceof Error ? error.message : t("web.provider.bookings.detail.toast.statusUpdateFailed");
         toast.error(msg);
       }
     } finally {
       setIsUpdating(false);
     }
   };
+
+  useEffect(() => {
+    if (pushConfirmHandledRef.current) return;
+    if (searchParams.get("action") !== "confirm") return;
+    if (!booking || isLoading) return;
+    const status = String(
+      (booking as { db_status?: string }).db_status ?? booking.status ?? "",
+    ).toLowerCase();
+    pushConfirmHandledRef.current = true;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("action");
+    const qs = nextParams.toString();
+    router.replace(
+      qs ? `/provider/bookings/${bookingId}?${qs}` : `/provider/bookings/${bookingId}`,
+      { scroll: false },
+    );
+    if (status === "pending" || status === "pending_payment") {
+      void handleStatusChange("confirmed");
+    }
+  }, [booking, bookingId, handleStatusChange, isLoading, router, searchParams]);
 
   const handleConfirmNoShow = async () => {
     if (!booking) return;
@@ -499,20 +522,20 @@ export default function ProviderBookingDetail() {
         }
       );
       if (response.conflict) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
         return;
       }
       setBooking({ ...booking, status: "no_show" as Booking["status"], ...response.booking });
-      toast.success("Booking marked as no-show");
+      toast.success(t("web.provider.bookings.detail.toast.markedNoShow"));
       setShowNoShowDialog(false);
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
       } else {
-        const msg = error instanceof Error ? error.message : "Failed to mark no-show";
+        const msg = error instanceof Error ? error.message : t("web.provider.bookings.detail.toast.noShowFailed");
         toast.error(msg);
       }
     } finally {
@@ -538,26 +561,26 @@ export default function ProviderBookingDetail() {
         `/api/provider/bookings/${bookingId}`,
         {
           status: "cancelled",
-          cancellation_reason: cancellationReason || "No reason provided",
+          cancellation_reason: cancellationReason || t("web.provider.bookings.detail.toast.noReasonProvided"),
           version: booking.version,
         }
       );
       if (response.conflict) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
         return;
       }
       setBooking({ ...booking, status: "cancelled" as Booking["status"], ...response.booking });
-      toast.success("Booking cancelled");
+      toast.success(t("web.provider.bookings.detail.toast.cancelled"));
       setShowCancelDialog(false);
       setCancellationReason("");
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
       } else {
-        const msg = error instanceof Error ? error.message : "Failed to cancel booking";
+        const msg = error instanceof Error ? error.message : t("web.provider.bookings.detail.toast.cancelFailed");
         toast.error(msg);
       }
     } finally {
@@ -567,12 +590,12 @@ export default function ProviderBookingDetail() {
 
   const handleRequestAdditionalCharge = async () => {
     if (!chargeDescription.trim()) {
-      toast.error("Please enter a description");
+      toast.error(t("web.provider.bookings.detail.toast.enterDescription"));
       return;
     }
     const amountNum = Number(chargeAmount);
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      toast.error("Please enter a valid amount");
+      toast.error(t("web.provider.bookings.detail.toast.enterValidAmount"));
       return;
     }
 
@@ -582,12 +605,12 @@ export default function ProviderBookingDetail() {
         description: chargeDescription.trim(),
         amount: amountNum,
       });
-      toast.success("Additional charge sent — customer notified");
+      toast.success(t("web.provider.bookings.detail.toast.chargeSent"));
       setChargeDescription("");
       setChargeAmount("");
       loadAdditionalCharges();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to send additional charge");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.chargeSendFailed"));
     } finally {
       setIsRequestingCharge(false);
     }
@@ -600,9 +623,9 @@ export default function ProviderBookingDetail() {
         `/api/provider/bookings/${bookingId}/additional-charges/${chargeId}/notify`,
         {}
       );
-      toast.success("Payment reminder sent to customer");
+      toast.success(t("web.provider.bookings.detail.toast.reminderSent"));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to send reminder");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.reminderFailed"));
     } finally {
       setSendingChargeNotify(null);
     }
@@ -611,7 +634,7 @@ export default function ProviderBookingDetail() {
   const handleReschedule = async () => {
     if (!booking) return;
     if (!rescheduleDate || !rescheduleTime) {
-      toast.error("Please select both date and time");
+      toast.error(t("web.provider.bookings.detail.toast.selectDateTime"));
       return;
     }
     try {
@@ -621,15 +644,15 @@ export default function ProviderBookingDetail() {
         version: booking.version,
         notify_customer: notifyCustomerOnReschedule,
       });
-      toast.success("Booking rescheduled");
+      toast.success(t("web.provider.bookings.detail.toast.rescheduled"));
       setShowReschedule(false);
       loadBooking();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
       } else {
-        toast.error("Failed to reschedule");
+        toast.error(t("web.provider.bookings.detail.toast.rescheduleFailed"));
       }
     } finally {
       setIsRescheduling(false);
@@ -657,8 +680,8 @@ export default function ProviderBookingDetail() {
     if (paymentAmount <= 0) {
       toast.error(
         outstandingAmt < 0
-          ? "This booking has no remaining balance to collect (it may be overpaid). Refresh if you just recorded a payment elsewhere."
-          : "There is no remaining balance on this booking."
+          ? t("web.provider.bookings.detail.toast.noBalanceOverpaid")
+          : t("web.provider.bookings.detail.toast.noBalance")
       );
       return;
     }
@@ -669,11 +692,11 @@ export default function ProviderBookingDetail() {
         amount: paymentAmount,
         settle_additional_charges: true,
       });
-      toast.success("Booking marked as paid");
+      toast.success(t("web.provider.bookings.detail.toast.markedPaid"));
       setShowMarkPaid(false);
       await Promise.all([loadBooking(), loadAdditionalCharges()]);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.markPaidFailed"));
     } finally {
       setIsMarkingPaid(false);
     }
@@ -685,14 +708,14 @@ export default function ProviderBookingDetail() {
       (sendPaymentLinkMethod === "email" || sendPaymentLinkMethod === "both") &&
       !booking.customer_email
     ) {
-      toast.error("Customer email is required for email delivery");
+      toast.error(t("web.provider.bookings.detail.toast.emailRequired"));
       return;
     }
     if (
       (sendPaymentLinkMethod === "sms" || sendPaymentLinkMethod === "both") &&
       !booking.customer_phone
     ) {
-      toast.error("Customer phone number is required for SMS delivery");
+      toast.error(t("web.provider.bookings.detail.toast.phoneRequired"));
       return;
     }
     try {
@@ -702,13 +725,13 @@ export default function ProviderBookingDetail() {
       });
       toast.success(
         sendPaymentLinkMethod === "both"
-          ? "Payment link sent via email and SMS"
-          : `Payment link sent via ${sendPaymentLinkMethod === "email" ? "email" : "SMS"}`
+          ? t("web.provider.bookings.detail.sendLink.sentBoth")
+          : t("web.provider.bookings.detail.sendLink.sentVia", { method: sendPaymentLinkMethod === "email" ? t("web.provider.bookings.detail.sendLink.email").toLowerCase() : t("web.provider.bookings.detail.sendLink.sms") })
       );
       setShowSendPaymentLink(false);
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to send payment link");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.chargeSendFailed"));
     } finally {
       setSendingPaymentLink(false);
     }
@@ -732,11 +755,11 @@ export default function ProviderBookingDetail() {
           notes: `Marked as paid by provider via ${chargeMarkPaidMethod}`,
         }
       );
-      toast.success("Charge marked as paid");
+      toast.success(t("web.provider.bookings.detail.toast.chargeMarkedPaid"));
       setChargeMarkPaidId(null);
       await Promise.all([loadAdditionalCharges(), loadBooking()]);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.markPaidFailed"));
     } finally {
       setMarkingChargePaid(false);
     }
@@ -749,16 +772,16 @@ export default function ProviderBookingDetail() {
     const maxRefundable = Math.max(0, tp - tr);
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("Please enter a valid refund amount");
+      toast.error(t("web.provider.bookings.detail.toast.enterValidAmount"));
       return;
     }
     if (amount > maxRefundable + 0.0001) {
-      toast.error(`Refund cannot exceed ${formatMoney(maxRefundable)}`);
+      toast.error(t("web.provider.bookings.detail.toast.refundExceeds", { amount: formatMoney(maxRefundable) }));
       return;
     }
     const reason = refundReason.trim();
     if (!reason) {
-      toast.error("Please enter a refund reason");
+      toast.error(t("web.provider.bookings.detail.toast.enterRefundReason"));
       return;
     }
     try {
@@ -769,14 +792,14 @@ export default function ProviderBookingDetail() {
         refund_method: refundMethod,
       });
       toast.success(
-        refundMethod === "cash" ? "Refund recorded (returned in person)" : "Refund added to wallet",
+        refundMethod === "cash" ? t("web.provider.bookings.detail.toast.refundCash") : t("web.provider.bookings.detail.toast.refundWallet"),
       );
       setShowRefund(false);
       setRefundAmount("");
       setRefundReason("");
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to process refund");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.refundFailed"));
     } finally {
       setIsRefunding(false);
     }
@@ -800,11 +823,11 @@ export default function ProviderBookingDetail() {
     const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
 
     if (chargeAmount <= 0) {
-      toast.error("There is no remaining balance on this booking.");
+      toast.error(t("web.provider.bookings.detail.toast.noBalance"));
       return;
     }
     if (!canMarkPaidLocal) {
-      toast.error("Start or complete the booking before recording a card payment.");
+      toast.error(t("web.provider.bookings.detail.toast.startBeforeCard"));
       return;
     }
 
@@ -825,7 +848,7 @@ export default function ProviderBookingDetail() {
     if (!saleId) {
       const builtItems = buildSaleItemsFromBookingDetail(b);
       if (builtItems.length === 0) {
-        toast.error("Could not build sale lines for this booking.");
+        toast.error(t("web.provider.bookings.detail.toast.cannotCharge"));
         return;
       }
       let items = builtItems;
@@ -844,7 +867,7 @@ export default function ProviderBookingDetail() {
             item_id: null,
             product_variant_id: null,
             type: "service",
-            name: "Booking balance due",
+            name: t("web.provider.bookings.detail.paymentMethods.bookingBalanceDue"),
             quantity: 1,
             unit_price: chargeAmount,
           },
@@ -884,7 +907,7 @@ export default function ProviderBookingDetail() {
         });
         const newId = res.data?.id;
         if (!newId) {
-          toast.error("Could not prepare card payment.");
+          toast.error(t("web.provider.bookings.detail.toast.cardPaymentFailed"));
           return;
         }
         saleId = newId;
@@ -892,7 +915,7 @@ export default function ProviderBookingDetail() {
         setYocoBookingSaleId(saleId);
         yocoPendingSaleOutstandingSnapshotRef.current = chargeAmount;
       } catch (err) {
-        toast.error(err instanceof FetchError ? err.message : "Could not prepare card payment.");
+        toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.cardPaymentFailed"));
         return;
       } finally {
         setPreparingYocoSale(false);
@@ -930,7 +953,7 @@ export default function ProviderBookingDetail() {
     });
     const rounded = Number(chargeAmount.toFixed(2));
     if (rounded <= 0) {
-      toast.error("There is no remaining balance to collect.");
+      toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
       return;
     }
     setPaycloudEntityType("booking");
@@ -942,7 +965,7 @@ export default function ProviderBookingDetail() {
   const openPaycloudAdditionalCharge = useCallback(
     (chargeId: string, chargeAmount: number) => {
       if (chargeAmount <= 0) {
-        toast.error("There is no remaining balance to collect.");
+        toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
         return;
       }
       setPaycloudEntityType("additional_charge");
@@ -1054,7 +1077,7 @@ export default function ProviderBookingDetail() {
     });
     const expectedAmount = Number(outstandingLocal.toFixed(2));
     if (expectedAmount <= 0) {
-      toast.error("There is no remaining balance to collect.");
+      toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
       return;
     }
 
@@ -1079,7 +1102,7 @@ export default function ProviderBookingDetail() {
       });
       const code = response.data?.terminal?.terminal_code;
       if (!code) {
-        toast.error("No Paystack Terminal is ready for this booking.");
+        toast.error(t("web.provider.bookings.detail.toast.noPaystackTerminal"));
         return;
       }
       setPaystackTerminalCode(code);
@@ -1092,7 +1115,7 @@ export default function ProviderBookingDetail() {
       setPaystackTerminalQr(response.data?.terminal?.qr_url ?? null);
       setShowPaystackTerminal(true);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to prepare Paystack Terminal payment.");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.paystackPrepareFailed"));
     } finally {
       setPreparingPaystackTerminal(false);
     }
@@ -1102,12 +1125,12 @@ export default function ProviderBookingDetail() {
     async (payment: YocoPayment) => {
       const reference = payment.yoco_payment_id;
       if (!reference) {
-        toast.error("Missing payment reference");
+        toast.error(t("web.provider.bookings.detail.toast.missingReference"));
         return;
       }
       const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
       if (!saleId) {
-        toast.error("Missing sale record. Try again.");
+        toast.error(t("web.provider.bookings.detail.toast.missingSaleRecord"));
         return;
       }
       const b = booking;
@@ -1131,7 +1154,7 @@ export default function ProviderBookingDetail() {
         });
       } catch {
         toast.error(
-          "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry."
+          t("web.provider.bookings.detail.toast.terminalFinalizeFailed")
         );
         return;
       }
@@ -1154,8 +1177,8 @@ export default function ProviderBookingDetail() {
       } catch (err) {
         toast.error(
           err instanceof FetchError
-            ? `The sale was saved, but updating the booking failed: ${err.message}`
-            : "The sale was saved, but updating the booking failed."
+            ? t("web.provider.bookings.detail.leftoverCopy.saleSavedBookingFailedError", { error: err.message })
+            : t("web.provider.bookings.detail.toast.saleSavedBookingFailed")
         );
         await loadBooking();
         return;
@@ -1166,7 +1189,7 @@ export default function ProviderBookingDetail() {
       yocoPendingChargeAmountRef.current = null;
       yocoPendingSaleOutstandingSnapshotRef.current = null;
       setShowYocoPayment(false);
-      toast.success("Booking payment recorded");
+      toast.success(t("web.provider.bookings.detail.toast.paymentRecorded"));
       await Promise.all([loadBooking(), loadAdditionalCharges()]);
     },
     [booking, bookingId, loadBooking, yocoBookingSaleId]
@@ -1180,11 +1203,11 @@ export default function ProviderBookingDetail() {
         special_requests: notesText,
         version: booking.version,
       });
-      toast.success("Notes saved");
+      toast.success(t("web.provider.bookings.detail.toast.notesSaved"));
       setEditingNotes(false);
       loadBooking();
     } catch {
-      toast.error("Failed to save notes");
+      toast.error(t("web.provider.bookings.detail.toast.notesSaveFailed"));
     } finally {
       setIsSavingNotes(false);
     }
@@ -1198,12 +1221,12 @@ export default function ProviderBookingDetail() {
       await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
       toast.success(
         etaMinutes != null && etaMinutes > 0
-          ? `Journey started. ETA ${etaMinutes} min.`
-          : "Journey started.",
+          ? t("web.provider.bookings.detail.leftoverCopy.journeyStartedEta", { minutes: etaMinutes })
+          : t("web.provider.bookings.detail.toast.journeyStarted"),
       );
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to start journey");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.journeyFailed"));
     } finally {
       setIsStartingJourney(false);
     }
@@ -1211,7 +1234,7 @@ export default function ProviderBookingDetail() {
 
   const handleUpdateEta = async (etaMinutes: number | null) => {
     if (etaMinutes == null || etaMinutes < 1) {
-      toast.error("Choose an ETA between 1 and 240 minutes");
+      toast.error(t("web.provider.bookings.detail.toast.etaRange"));
       return;
     }
     try {
@@ -1219,10 +1242,10 @@ export default function ProviderBookingDetail() {
       await fetcher.patch(`/api/provider/bookings/${bookingId}/eta`, {
         eta_minutes: etaMinutes,
       });
-      toast.success(`ETA updated to ${etaMinutes} min`);
+      toast.success(t("web.provider.bookings.detail.toast.etaUpdated", { minutes: etaMinutes }));
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update ETA");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.etaFailed"));
     } finally {
       setIsUpdatingEta(false);
     }
@@ -1253,10 +1276,10 @@ export default function ProviderBookingDetail() {
       );
       const qr = arriveRes.data?.qr_code;
       setBackupArrivalQr(qr && typeof qr === "object" && "verification_code" in qr ? qr : null);
-      toast.success("Marked as arrived.");
+      toast.success(t("web.provider.bookings.detail.toast.markedArrived"));
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to mark arrived");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.markArrivedFailed"));
     } finally {
       setIsMarkingArrived(false);
     }
@@ -1271,11 +1294,11 @@ export default function ProviderBookingDetail() {
     setIsVerifyingArrival(true);
     try {
       await fetcher.post(`/api/provider/bookings/${bookingId}/verify-arrival`, { otp: code });
-      toast.success("Verified. You can start the service.");
+      toast.success(t("web.provider.bookings.detail.toast.verifiedCanStart"));
       setArrivalPinInput("");
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to verify");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.verifyFailed"));
     } finally {
       setIsVerifyingArrival(false);
     }
@@ -1285,10 +1308,10 @@ export default function ProviderBookingDetail() {
     setIsResendingArrivalOtp(true);
     try {
       await fetcher.post(`/api/provider/bookings/${bookingId}/resend-arrival-otp`, {});
-      toast.success("New code sent to customer.");
+      toast.success(t("web.provider.bookings.detail.toast.codeSent"));
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to resend");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.resendFailed"));
     } finally {
       setIsResendingArrivalOtp(false);
     }
@@ -1296,7 +1319,7 @@ export default function ProviderBookingDetail() {
 
   const handleOverrideArrivalVerification = async () => {
     const reasonText = prompt(
-      "Customer can't verify — briefly describe why (required for audit):",
+      t("web.provider.bookings.detail.toast.overridePrompt"),
     );
     if (!reasonText?.trim()) return;
     setIsOverridingArrival(true);
@@ -1305,10 +1328,10 @@ export default function ProviderBookingDetail() {
         reason_code: "other",
         reason_text: reasonText.trim(),
       });
-      toast.success("Arrival verified manually. You can start the service.");
+      toast.success(t("web.provider.bookings.detail.toast.overrideSuccess"));
       loadBooking();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to override verification");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.overrideFailed"));
     } finally {
       setIsOverridingArrival(false);
     }
@@ -1332,17 +1355,17 @@ export default function ProviderBookingDetail() {
       if (r.sent) {
         toast.success(
           type === "confirmation"
-            ? "Confirmation re-sent to customer."
-            : "Reminder sent to customer.",
+            ? t("web.provider.bookings.detail.toast.confirmationResent")
+            : t("web.provider.bookings.detail.toast.reminderSentCustomer"),
         );
       } else {
-        toast.error(r.error || "Notification could not be sent.");
+        toast.error(r.error || t("web.provider.bookings.detail.toast.notificationFailed"));
       }
     } catch (err) {
       toast.error(
         err instanceof FetchError
           ? err.message
-          : "Failed to send notification",
+          : t("web.provider.bookings.detail.toast.notificationSendFailed"),
       );
     } finally {
       setIsNotifying(false);
@@ -1363,15 +1386,15 @@ export default function ProviderBookingDetail() {
       );
       const r = (res ?? {}) as { sent?: boolean; error?: string };
       if (r.sent) {
-        toast.success("Cancellation notice sent to customer.");
+        toast.success(t("web.provider.bookings.detail.toast.cancellationNoticeSent"));
       } else {
-        toast.error(r.error || "Cancellation notice could not be sent.");
+        toast.error(r.error || t("web.provider.bookings.detail.toast.cancellationNoticeFailed"));
       }
     } catch (err) {
       toast.error(
         err instanceof FetchError
           ? err.message
-          : "Failed to send cancellation notice",
+          : t("web.provider.bookings.detail.toast.cancellationNoticeSendFailed"),
       );
     } finally {
       setIsNotifying(false);
@@ -1385,13 +1408,13 @@ export default function ProviderBookingDetail() {
     setIsVerifyingQrArrival(true);
     try {
       await fetcher.post(`/api/provider/bookings/${bookingId}/verify-qr`, body);
-      toast.success("Verified. You can start the service.");
+      toast.success(t("web.provider.bookings.detail.toast.verifiedCanStart"));
       setQrArrivalCodeInput("");
       setQrPasteJson("");
       loadBooking();
       return true;
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to verify QR");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.verifyQrFailed"));
       return false;
     } finally {
       setIsVerifyingQrArrival(false);
@@ -1408,7 +1431,7 @@ export default function ProviderBookingDetail() {
       body.verification_code = code;
     } else {
       toast.error(
-        "Enter the 8-character code from the customer’s QR, paste the full scanned JSON, or use Scan with camera."
+        t("web.provider.bookings.detail.toast.verifyQrHint")
       );
       return;
     }
@@ -1418,7 +1441,7 @@ export default function ProviderBookingDetail() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading booking details..." />
+        <LoadingTimeout loadingMessage={t("web.provider.bookings.detail.loading")} />
       </div>
     );
   }
@@ -1427,10 +1450,10 @@ export default function ProviderBookingDetail() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Booking not found"
-          description={error || "The booking you're looking for doesn't exist"}
+          title={t("web.provider.bookings.detail.notFoundTitle")}
+          description={error || t("web.provider.bookings.detail.notFoundDescription")}
           action={{
-            label: "Go Back",
+            label: t("web.provider.bookings.detail.goBack"),
             onClick: () => router.push("/provider/bookings"),
           }}
         />
@@ -1474,7 +1497,7 @@ export default function ProviderBookingDetail() {
   const qrArrivalPending = b.qr_arrival_pending === true;
   /**
    * Mirrors `filterInProgressWhenAtHomeVerificationPending` in the provider app so we do not
-   * offer Start Service while PIN/QR is still pending (POST start-service would reject with
+   * offer {t("web.provider.bookings.detail.atHome.startService")} while PIN/QR is still pending (POST start-service would reject with
    * VERIFICATION_NOT_COMPLETE when a verification method exists).
    */
   const atHomeHouseCallReadyForServiceStart =
@@ -1537,9 +1560,14 @@ export default function ProviderBookingDetail() {
   });
   const markPaidPaymentMethods = useMemo(() => {
     const methods: { label: string; value: PaymentMethodMain; helper?: string }[] =
-      PAYMENT_METHODS_MAIN_BASE.filter((m) => m.value !== "card" || manualCardEnabled);
+      PAYMENT_METHODS_MAIN_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
+        ...m,
+        label: "labelKey" in m && m.labelKey
+          ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
+          : m.label,
+      }));
     if (paystackTerminalReady) {
-      methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
+      methods.splice(2, 0, { label: t("web.provider.bookings.detail.paymentActions.paystackTerminal"), value: "paystack_terminal" });
     }
     if (paycloudEnabled && paycloudCollectEnabled) {
       methods.splice(2, 0, {
@@ -1559,16 +1587,22 @@ export default function ProviderBookingDetail() {
     paycloudCollectEnabled,
     paycloudEnabled,
     paystackTerminalReady,
+    t,
   ]);
   const chargePaymentMethods = useMemo(
     () =>
       [
-        ...PAYMENT_METHODS_CHARGE_BASE.filter((m) => m.value !== "card" || manualCardEnabled),
+        ...PAYMENT_METHODS_CHARGE_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
+          ...m,
+          label: "labelKey" in m && m.labelKey
+            ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
+            : m.label,
+        })),
         ...(paycloudEnabled && paycloudCollectEnabled
-          ? [{ label: "Card machine", value: "paycloud_terminal" as const }]
+          ? [{ label: t("web.provider.bookings.detail.paymentMethods.cardMachine"), value: "paycloud_terminal" as const }]
           : []),
       ],
-    [manualCardEnabled, paycloudCollectEnabled, paycloudEnabled],
+    [manualCardEnabled, paycloudCollectEnabled, paycloudEnabled, t],
   );
   const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
   const actionModel = useMemo(
@@ -1615,7 +1649,7 @@ export default function ProviderBookingDetail() {
 
   const runBookingAction = (action: ProviderBookingAction) => {
     if (!actionAllowedByPermission(action)) {
-      toast.error("You do not have permission for this action");
+      toast.error(t("web.provider.bookings.detail.toast.noPermission"));
       return;
     }
     if (action.id === "start_journey") return void handleStartJourney(journeyEtaMinutes);
@@ -1636,7 +1670,7 @@ export default function ProviderBookingDetail() {
             href="/provider/bookings"
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            ← Back to Bookings
+            {t("web.provider.bookings.detail.backToBookings")}
           </Link>
           <div className="flex items-center gap-2">
             <SafetyPanicButton bookingId={bookingId} variant="outline" size="sm" />
@@ -1659,7 +1693,7 @@ export default function ProviderBookingDetail() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-semibold mb-2">
-              {booking.booking_number ? `Booking #${booking.booking_number}` : "Booking"}
+              {booking.booking_number ? t("web.provider.bookings.detail.bookingNumber", { number: booking.booking_number }) : t("web.provider.bookings.detail.bookingTitle")}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -1680,29 +1714,29 @@ export default function ProviderBookingDetail() {
                 }`}
               >
                 {booking.status === "booked"
-                  ? "Confirmed"
+                  ? t("web.provider.common.status.confirmed")
                   : booking.status === "started"
-                  ? "In Progress"
+                  ? t("web.provider.common.status.inProgress")
                   : booking.status === "in_progress"
-                  ? "In Progress"
+                  ? t("web.provider.common.status.inProgress")
                   : booking.status === "no_show"
-                  ? "No Show"
+                  ? t("web.provider.common.status.noShow")
                   : booking.status.charAt(0).toUpperCase() + booking.status.slice(1).replace(/_/g, " ")}
               </span>
               {(booking as any).booking_source === "walk_in" && (
-                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Walk-in</span>
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{t("web.provider.bookings.detail.badges.walkIn")}</span>
               )}
               {(booking as any).group_booking_ref && (
-                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">Group</span>
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">{t("web.provider.bookings.detail.badges.group")}</span>
               )}
               {(booking as { custom_offer_id?: string | null }).custom_offer_id ? (
                 <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
-                  Custom offer
+                  {t("web.provider.bookings.detail.badges.customOffer")}
                 </span>
               ) : null}
               {(booking as { referral_source_name?: string | null }).referral_source_name ? (
                 <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                  Found you via {(booking as { referral_source_name?: string | null }).referral_source_name}
+                  {t("web.provider.bookings.detail.badges.foundVia", { source: (booking as { referral_source_name?: string | null }).referral_source_name })}
                 </span>
               ) : null}
             </div>
@@ -1715,7 +1749,7 @@ export default function ProviderBookingDetail() {
               rel="noopener noreferrer"
               className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
             >
-              View Receipt PDF
+              {t("web.provider.bookings.detail.viewReceiptPdf")}
             </a>
           </div>
         </div>
@@ -1732,10 +1766,10 @@ export default function ProviderBookingDetail() {
 
         {booking.status === "cancelled" && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-            <h3 className="text-sm font-semibold text-red-800 mb-1">Booking Cancelled</h3>
+            <h3 className="text-sm font-semibold text-red-800 mb-1">{t("web.provider.bookings.detail.cancelledBanner.title")}</h3>
             {(booking as any).cancellation_reason && (
               <p className="text-sm text-red-700">
-                <span className="font-medium">Reason:</span> {(booking as any).cancellation_reason}
+                <span className="font-medium">{t("web.provider.bookings.detail.cancelledBanner.reason")}</span> {(booking as any).cancellation_reason}
               </p>
             )}
             {(booking as any).cancelled_at && (
@@ -1749,12 +1783,12 @@ export default function ProviderBookingDetail() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Customer Info */}
           <div className="bg-white border rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Customer Information</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.customer.title")}</h2>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-600">Name</p>
+                <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.customer.name")}</p>
                 <p className="font-medium flex items-center gap-2">
-                  <span>{booking.customer_name || booking.customers?.full_name || "Guest"}</span>
+                  <span>{booking.customer_name || booking.customers?.full_name || t("web.provider.bookings.detail.customer.guest")}</span>
                   {(booking.customers as { identity_verified?: boolean | null } | null)
                     ?.identity_verified ? (
                     <VerifiedBadge verified />
@@ -1768,7 +1802,7 @@ export default function ProviderBookingDetail() {
                     {Number(booking.customers?.rating_average).toFixed(1)}
                   </span>
                   <span className="text-sm text-gray-500">
-                    ({Number(booking.customers?.review_count ?? 0)} {booking.customers?.review_count === 1 ? "review" : "reviews"})
+                    ({Number(booking.customers?.review_count ?? 0)} {booking.customers?.review_count === 1 ? t("web.provider.bookings.detail.customer.review") : t("web.provider.bookings.detail.customer.reviews")})
                   </span>
                 </div>
               )}
@@ -1799,7 +1833,7 @@ export default function ProviderBookingDetail() {
                   <CustomerRatingButton
                     bookingId={String(bookingId)}
                     customerId={booking.customer_id ?? ""}
-                    customerName={typeof booking.customer_name === "string" ? booking.customer_name : typeof booking.customers?.full_name === "string" ? booking.customers.full_name : "Guest"}
+                    customerName={typeof booking.customer_name === "string" ? booking.customer_name : typeof booking.customers?.full_name === "string" ? booking.customers.full_name : t("web.provider.bookings.detail.customer.guest")}
                     bookingStatus={booking.status}
                     onRatingSubmitted={() => loadBooking()}
                   />
@@ -1810,12 +1844,12 @@ export default function ProviderBookingDetail() {
 
           {/* Booking Details */}
           <div className="bg-white border rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Booking Details</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.bookingInfo.title")}</h2>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
-                  <p className="text-sm text-gray-600">Date</p>
+                  <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.date")}</p>
                   <p className="font-medium">
                     {formatBookingDateInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
@@ -1824,7 +1858,7 @@ export default function ProviderBookingDetail() {
               <div className="flex items-start gap-3">
                 <Clock className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
-                  <p className="text-sm text-gray-600">Time</p>
+                  <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.time")}</p>
                   <p className="font-medium">
                     {formatBookingTimeInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
@@ -1833,10 +1867,10 @@ export default function ProviderBookingDetail() {
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm text-gray-600">Location</p>
+                  <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.location")}</p>
                   {booking.location_type === "at_salon" ? (
                     <p className="font-medium">
-                      {booking.location_name || "At Salon"}
+                      {booking.location_name || t("web.provider.bookings.detail.bookingInfo.atSalon")}
                     </p>
                   ) : booking.address ? (
                     <div className="space-y-1">
@@ -1845,13 +1879,13 @@ export default function ProviderBookingDetail() {
                         {booking.address.line2 && `, ${booking.address.line2}`}
                       </p>
                       {booking.address.apartment_unit && (
-                        <p className="text-sm text-gray-600">Unit: {booking.address.apartment_unit}</p>
+                        <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.unit", { value: booking.address.apartment_unit })}</p>
                       )}
                       {booking.address.building_name && (
-                        <p className="text-sm text-gray-600">Building: {booking.address.building_name}</p>
+                        <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.building", { value: booking.address.building_name })}</p>
                       )}
                       {booking.address.floor_number && (
-                        <p className="text-sm text-gray-600">Floor: {booking.address.floor_number}</p>
+                        <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.floor", { value: booking.address.floor_number })}</p>
                       )}
                       <p className="text-sm text-gray-600">
                         {booking.address.city}
@@ -1861,17 +1895,17 @@ export default function ProviderBookingDetail() {
                       <p className="text-sm text-gray-600">{booking.address.country}</p>
                       {booking.address.access_codes && (
                         <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
-                          <p className="text-xs font-medium text-gray-700">Access Codes:</p>
+                          <p className="text-xs font-medium text-gray-700">{t("web.provider.bookings.detail.bookingInfo.accessCodes")}</p>
                           {typeof booking.address.access_codes === 'object' && (
                             <>
                               {booking.address.access_codes.gate && (
-                                <p className="text-xs text-gray-600">Gate: {booking.address.access_codes.gate}</p>
+                                <p className="text-xs text-gray-600">{t("web.provider.bookings.detail.bookingInfo.gate", { value: booking.address.access_codes.gate })}</p>
                               )}
                               {booking.address.access_codes.buzzer && (
-                                <p className="text-xs text-gray-600">Buzzer: {booking.address.access_codes.buzzer}</p>
+                                <p className="text-xs text-gray-600">{t("web.provider.bookings.detail.bookingInfo.buzzer", { value: booking.address.access_codes.buzzer })}</p>
                               )}
                               {booking.address.access_codes.door && (
-                                <p className="text-xs text-gray-600">Door: {booking.address.access_codes.door}</p>
+                                <p className="text-xs text-gray-600">{t("web.provider.bookings.detail.bookingInfo.door", { value: booking.address.access_codes.door })}</p>
                               )}
                             </>
                           )}
@@ -1879,13 +1913,13 @@ export default function ProviderBookingDetail() {
                       )}
                       {booking.address.parking_instructions && (
                         <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs font-medium text-gray-700">Parking:</p>
+                          <p className="text-xs font-medium text-gray-700">{t("web.provider.bookings.detail.bookingInfo.parking")}</p>
                           <p className="text-xs text-gray-600">{booking.address.parking_instructions}</p>
                         </div>
                       )}
                       {booking.address.location_landmarks && (
                         <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs font-medium text-gray-700">Landmarks:</p>
+                          <p className="text-xs font-medium text-gray-700">{t("web.provider.bookings.detail.bookingInfo.landmarks")}</p>
                           <p className="text-xs text-gray-600">{booking.address.location_landmarks}</p>
                         </div>
                       )}
@@ -1896,12 +1930,12 @@ export default function ProviderBookingDetail() {
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 hover:underline mt-1 inline-block"
                         >
-                          View on map →
+                          {t("web.provider.bookings.detail.bookingInfo.viewOnMap")}
                         </a>
                       )}
                     </div>
                   ) : (
-                    <p className="font-medium">At customer location</p>
+                    <p className="font-medium">{t("web.provider.bookings.detail.bookingInfo.atCustomerLocation")}</p>
                   )}
                 </div>
               </div>
@@ -1909,7 +1943,7 @@ export default function ProviderBookingDetail() {
                 <div className="flex items-start gap-3">
                   <User className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-gray-600">Assigned Staff</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.bookingInfo.assignedStaff")}</p>
                     <p className="font-medium">{booking.staff_name}</p>
                   </div>
                 </div>
@@ -1921,13 +1955,13 @@ export default function ProviderBookingDetail() {
         {/* At-home visit: Start journey, Mark arrived, location tracker */}
         {isAtHome && (
           <div className="bg-white border rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">At-home visit</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.atHome.title")}</h2>
             <HouseCallExcellenceNote />
             <div className="space-y-4">
               {canStartJourney && (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">
-                    Notify the customer you&apos;re on the way. Pick an ETA or choose Not sure.
+                    {t("web.provider.bookings.detail.atHome.startJourneyHint")}
                   </p>
                   <EtaPicker
                     value={journeyEtaMinutes}
@@ -1939,12 +1973,12 @@ export default function ProviderBookingDetail() {
                     disabled={isStartingJourney}
                     className="min-h-[44px] bg-primary hover:bg-primary-hover"
                   >
-                    <Navigation className="w-4 h-4 mr-2" />
+                    <Navigation className="w-4 h-4 me-2" />
                     {isStartingJourney
-                      ? "Starting…"
+                      ? t("web.provider.bookings.detail.atHome.starting")
                       : journeyEtaMinutes == null
-                        ? "Start journey (no ETA)"
-                        : `Start journey · ${journeyEtaMinutes} min`}
+                        ? t("web.provider.bookings.detail.atHome.startJourneyNoEta")
+                        : t("web.provider.bookings.detail.leftoverCopy.startJourneyMin", { minutes: journeyEtaMinutes })}
                   </Button>
                 </div>
               )}
@@ -1963,7 +1997,7 @@ export default function ProviderBookingDetail() {
                       })}
                     </p>
                   ) : (
-                    <p className="text-sm text-gray-600">En route. Add an ETA if you have one.</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.atHome.enRouteAddEta")}</p>
                   )}
                   <EtaPicker
                     value={updateEtaMinutes}
@@ -1977,7 +2011,7 @@ export default function ProviderBookingDetail() {
                     disabled={isUpdatingEta || updateEtaMinutes == null}
                     className="min-h-[44px]"
                   >
-                    {isUpdatingEta ? "Updating ETA…" : "Update ETA"}
+                    {isUpdatingEta ? t("web.provider.bookings.detail.atHome.updatingEta") : t("web.provider.bookings.detail.atHome.updateEta")}
                   </Button>
                 </div>
               )}
@@ -1988,8 +2022,8 @@ export default function ProviderBookingDetail() {
                     disabled={isMarkingArrived}
                     className="min-h-[44px] bg-green-600 hover:bg-green-700"
                   >
-                    <MapPin className="w-4 h-4 mr-2" />
-                    {isMarkingArrived ? "Marking arrived…" : "Mark arrived"}
+                    <MapPin className="w-4 h-4 me-2" />
+                    {isMarkingArrived ? t("web.provider.bookings.detail.atHome.markingArrived") : t("web.provider.bookings.detail.atHome.markArrived")}
                   </Button>
                 </div>
               )}
@@ -2003,8 +2037,8 @@ export default function ProviderBookingDetail() {
                     }`}
                   >
                     {arrivalVerified
-                      ? "Customer verified – you can start the service."
-                      : "Provider arrived — complete PIN or QR verification when shown below, or start service if none is required."}
+                      ? t("web.provider.bookings.detail.atHome.verifiedCanStart")
+                      : t("web.provider.bookings.detail.atHome.arrivedVerifyHint")}
                   </p>
                   {canStartServiceInJourney && (
                     <div className="space-y-2">
@@ -2014,11 +2048,10 @@ export default function ProviderBookingDetail() {
                         disabled={isUpdating}
                         className="min-h-[44px] bg-blue-600 hover:bg-blue-700"
                       >
-                        Start service
+                        {t("web.provider.bookings.detail.atHome.startService")}
                       </Button>
                       <p className="text-xs text-gray-500">
-                        Same action as <span className="font-medium">Start Service</span> in status actions below.
-                        Cancel and no-show stay there.
+                        {t("web.provider.bookings.detail.leftoverCopy.sameActionPrefix")} <span className="font-medium">{t("web.provider.bookings.detail.atHome.startService")}</span> {t("web.provider.bookings.detail.leftoverCopy.sameActionSuffix")}
                       </p>
                     </div>
                   )}
@@ -2048,7 +2081,7 @@ export default function ProviderBookingDetail() {
                               }
                               className="min-h-[44px]"
                             >
-                              {isVerifyingArrival ? "Verifying…" : "Verify"}
+                              {isVerifyingArrival ? t("web.provider.bookings.detail.atHome.verifying") : t("web.provider.bookings.detail.atHome.verify")}
                             </Button>
                             <Button
                               variant="outline"
@@ -2056,7 +2089,7 @@ export default function ProviderBookingDetail() {
                               disabled={isResendingArrivalOtp}
                               className="min-h-[44px]"
                             >
-                              {isResendingArrivalOtp ? "Sending…" : "Resend code & QR"}
+                              {isResendingArrivalOtp ? t("web.provider.bookings.detail.atHome.sending") : t("web.provider.bookings.detail.atHome.resendCodeQr")}
                             </Button>
                             <Button
                               variant="ghost"
@@ -2064,19 +2097,18 @@ export default function ProviderBookingDetail() {
                               disabled={isOverridingArrival}
                               className="min-h-[44px] text-amber-800"
                             >
-                              {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
+                              {isOverridingArrival ? t("web.provider.bookings.detail.atHome.saving") : t("web.provider.bookings.detail.leftoverCopy.customerCantVerify")}
                             </Button>
                           </div>
                         </div>
                       )}
                       {qrArrivalPending && (
                         <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 space-y-3">
-                          <p className="text-sm font-medium text-violet-950">Scan the customer&apos;s QR or enter their code</p>
+                          <p className="text-sm font-medium text-violet-950">{t("web.provider.bookings.detail.atHome.scanQrTitle")}</p>
                           <p className="text-xs text-violet-800">
-                            They open this booking on their phone to show the arrival QR, or read the 8-character code aloud.
                             {arrivalOtpPending
-                              ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
-                              : " If it expired, use Resend below — the customer gets a fresh code and QR."}
+                              ? t("web.provider.bookings.detail.atHome.scanQrHintWithPin")
+                              : t("web.provider.bookings.detail.atHome.scanQrHintNoPin")}
                           </p>
                           {!arrivalOtpPending && (
                             <Button
@@ -2086,7 +2118,7 @@ export default function ProviderBookingDetail() {
                               disabled={isResendingArrivalOtp}
                               className="min-h-[44px] w-full border-violet-300 text-violet-900"
                             >
-                              {isResendingArrivalOtp ? "Sending…" : "Resend QR & code to customer"}
+                              {isResendingArrivalOtp ? t("web.provider.bookings.detail.atHome.sending") : t("web.provider.bookings.detail.atHome.resendQrCode")}
                             </Button>
                           )}
                           <input
@@ -2097,21 +2129,21 @@ export default function ProviderBookingDetail() {
                                 e.target.value.replace(/\s/g, "").toUpperCase().slice(0, 12)
                               )
                             }
-                            placeholder="e.g. AB12CD34"
+                            placeholder={t("web.provider.bookings.detail.leftoverCopy.qrPlaceholder")}
                             autoCapitalize="characters"
                             autoCorrect="off"
                             spellCheck={false}
                             className="w-full max-w-xs border border-gray-300 rounded-lg px-3 py-2 font-mono text-base"
-                            aria-label="QR verification code from customer"
+                            aria-label={t("web.provider.bookings.detail.atHome.qrCodeAria")}
                           />
-                          <label className="block text-xs font-medium text-violet-900">Or paste raw scan (JSON)</label>
+                          <label className="block text-xs font-medium text-violet-900">{t("web.provider.bookings.detail.atHome.pasteJsonLabel")}</label>
                           <textarea
                             value={qrPasteJson}
                             onChange={(e) => setQrPasteJson(e.target.value)}
                             placeholder='{"booking_id":"…"'
                             rows={3}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
-                            aria-label="Pasted QR JSON"
+                            aria-label={t("web.provider.bookings.detail.atHome.pasteJsonAria")}
                           />
                           <Button
                             type="button"
@@ -2120,7 +2152,7 @@ export default function ProviderBookingDetail() {
                             disabled={isVerifyingQrArrival}
                             className="min-h-[44px] w-full border-violet-600 text-violet-900 mb-2"
                           >
-                            Scan with camera
+                            {t("web.provider.bookings.detail.atHome.scanWithCamera")}
                           </Button>
                           <Button
                             type="button"
@@ -2132,20 +2164,20 @@ export default function ProviderBookingDetail() {
                             }
                             className="min-h-[44px] bg-violet-700 hover:bg-violet-800"
                           >
-                            {isVerifyingQrArrival ? "Verifying…" : "Verify QR"}
+                            {isVerifyingQrArrival ? t("web.provider.bookings.detail.atHome.verifying") : t("web.provider.bookings.detail.atHome.verifyQr")}
                           </Button>
                         </div>
                       )}
                       {backupArrivalQr && (
                         <div className="rounded-lg border border-dashed border-gray-300 p-3 bg-gray-50/80">
                           <p className="text-xs text-gray-600 mb-2">
-                            Backup: same QR the customer sees (e.g. if they can&apos;t open the app).
+                            {t("web.provider.bookings.detail.atHome.backupQrHint")}
                           </p>
                           <QRCodeDisplay
                             qrData={backupArrivalQr}
                             onRefresh={() => loadBooking()}
-                            title="Customer arrival QR (backup)"
-                            description="Prefer the customer’s app when possible."
+                            title={t("web.provider.bookings.detail.atHome.backupQrTitle")}
+                            description={t("web.provider.bookings.detail.atHome.backupQrDescription")}
                           />
                         </div>
                       )}
@@ -2173,7 +2205,7 @@ export default function ProviderBookingDetail() {
 
         {/* Services */}
         <div className="bg-white border rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Services</h2>
+          <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.services.title")}</h2>
           <div className="space-y-3">
             {booking.services?.map((service, index) => (
               <div
@@ -2194,7 +2226,7 @@ export default function ProviderBookingDetail() {
               </div>
             ))}
             {(!booking.services || booking.services.length === 0) && (
-              <p className="text-sm text-gray-500">No services</p>
+              <p className="text-sm text-gray-500">{t("web.provider.bookings.detail.services.empty")}</p>
             )}
           </div>
           {(booking as ProviderBookingDetail & { custom_offer?: { notes?: string | null; request?: { description?: string | null } | null } | null }).custom_offer &&
@@ -2205,13 +2237,13 @@ export default function ProviderBookingDetail() {
               </p>
               {(booking as any).custom_offer?.request?.description ? (
                 <div className="mb-2">
-                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">Client's request</p>
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">{t("web.provider.bookings.detail.services.clientRequest")}</p>
                   <p className="text-sm text-violet-900 leading-relaxed">{(booking as any).custom_offer.request.description}</p>
                 </div>
               ) : null}
               {(booking as any).custom_offer?.notes ? (
                 <div>
-                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">Your notes</p>
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">{t("web.provider.bookings.detail.services.yourNotes")}</p>
                   <p className="text-sm text-violet-900 leading-relaxed">{(booking as any).custom_offer.notes}</p>
                 </div>
               ) : null}
@@ -2222,7 +2254,7 @@ export default function ProviderBookingDetail() {
         {/* Products */}
         {booking.products && booking.products.length > 0 && (
           <div className="bg-white border rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Products</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.products.title")}</h2>
             <div className="space-y-3">
               {booking.products.map((product, index: number) => (
                 <div
@@ -2230,8 +2262,8 @@ export default function ProviderBookingDetail() {
                   className="flex justify-between items-center py-3 border-b last:border-0"
                 >
                   <div>
-                    <p className="font-medium">{product.product_name || "Product"}</p>
-                    <p className="text-sm text-gray-600">Quantity: {product.quantity}</p>
+                    <p className="font-medium">{product.product_name || t("web.provider.bookings.detail.products.fallback")}</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.products.quantity", { count: product.quantity })}</p>
                   </div>
                   <p className="font-medium">
                     {booking.currency} {product.total_price.toFixed(2)}
@@ -2245,17 +2277,17 @@ export default function ProviderBookingDetail() {
         {/* Special Requests & House Call Instructions */}
         {(booking.special_requests || booking.house_call_instructions) && (
           <div className="bg-white border rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Special Instructions</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.specialInstructions.title")}</h2>
             <div className="space-y-4">
               {booking.special_requests && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">General Requests</p>
+                  <p className="text-sm font-medium text-gray-700 mb-1">{t("web.provider.bookings.detail.specialInstructions.generalRequests")}</p>
                   <p className="text-sm text-gray-600 whitespace-pre-wrap">{booking.special_requests}</p>
                 </div>
               )}
               {booking.house_call_instructions && (
                 <div className="pt-3 border-t border-gray-200">
-                  <p className="text-sm font-medium text-gray-700 mb-1">House Call Instructions</p>
+                  <p className="text-sm font-medium text-gray-700 mb-1">{t("web.provider.bookings.detail.specialInstructions.houseCallInstructions")}</p>
                   <p className="text-sm text-gray-600 whitespace-pre-wrap">{booking.house_call_instructions}</p>
                 </div>
               )}
@@ -2266,11 +2298,11 @@ export default function ProviderBookingDetail() {
         {/* Provider form responses (intake/consent/waiver filled at checkout) */}
         {booking.provider_form_responses && Object.keys(booking.provider_form_responses).length > 0 && (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Form responses</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.forms.title")}</h2>
             <div className="space-y-4">
               {Object.entries(booking.provider_form_responses).map(([formId, fields]) => {
                 const formMeta = providerForms.find((f) => f.id === formId);
-                const formTitle = formMeta?.title ?? `Form ${formId.slice(0, 8)}`;
+                const formTitle = formMeta?.title ?? t("web.provider.bookings.detail.forms.formFallback", { id: formId.slice(0, 8) });
                 const formType = formMeta?.form_type ?? "";
                 const isConsentOrWaiver = formType === "consent" || formType === "waiver";
                 const consentUrl = typeof fields === "object" && fields !== null && (fields as Record<string, unknown>)._consent_document_url as string | undefined;
@@ -2285,7 +2317,7 @@ export default function ProviderBookingDetail() {
                       {visibleEntries.map(([fieldKey, value]) => (
                         <div key={fieldKey} className="flex justify-between gap-2 text-sm">
                           <dt className="text-gray-600">{getFieldName(fieldKey)}</dt>
-                          <dd className="text-gray-900 font-medium text-right break-all">
+                          <dd className="text-gray-900 font-medium text-end break-all">
                             {value === null || value === undefined ? "—" : String(value)}
                           </dd>
                         </div>
@@ -2300,7 +2332,7 @@ export default function ProviderBookingDetail() {
                             rel="noopener noreferrer"
                             className="text-sm font-medium text-primary hover:underline"
                           >
-                            View consent document
+                            {t("web.provider.bookings.detail.forms.viewConsent")}
                           </a>
                         )}
                         <label className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900">
@@ -2318,19 +2350,19 @@ export default function ProviderBookingDetail() {
                                 body.set("form_id", formId);
                                 body.set("file", f);
                                 await fetcher.post(`/api/provider/bookings/${bookingId}/consent-document`, body);
-                                toast.success("Document uploaded");
+                                toast.success(t("web.provider.bookings.detail.toast.documentUploaded"));
                                 await loadBooking();
                               } catch (err) {
-                                toast.error(err instanceof Error ? err.message : "Upload failed");
+                                toast.error(err instanceof Error ? err.message : t("web.provider.bookings.detail.toast.uploadFailed"));
                               } finally {
                                 setUploadingConsentFormId(null);
                                 e.target.value = "";
                               }
                             }}
                           />
-                          {consentUrl ? "Replace document" : "Upload consent document"}
+                          {consentUrl ? t("web.provider.bookings.detail.forms.replaceDocument") : t("web.provider.bookings.detail.forms.uploadConsent")}
                         </label>
-                        {uploadingConsentFormId === formId && <span className="text-xs text-gray-500">Uploading…</span>}
+                        {uploadingConsentFormId === formId && <span className="text-xs text-gray-500">{t("web.provider.bookings.detail.forms.uploading")}</span>}
                       </div>
                     )}
                   </div>
@@ -2343,12 +2375,12 @@ export default function ProviderBookingDetail() {
         {/* Additional details (platform booking custom fields) */}
         {booking.custom_field_values && Object.keys(booking.custom_field_values).length > 0 && (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Additional details</h2>
+            <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.additionalDetails.title")}</h2>
             <dl className="space-y-2">
               {Object.entries(booking.custom_field_values).map(([name, value]) => (
                 <div key={name} className="flex justify-between gap-2 text-sm">
                   <dt className="text-gray-600">{name}</dt>
-                  <dd className="text-gray-900 font-medium text-right break-all">
+                  <dd className="text-gray-900 font-medium text-end break-all">
                     {value === null || value === undefined ? "—" : String(value)}
                   </dd>
                 </div>
@@ -2371,21 +2403,21 @@ export default function ProviderBookingDetail() {
 
         {/* Payment Summary */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+          <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.paymentSummary.title")}</h2>
           <OnPlatformPaymentNote
             bookingId={bookingId}
             show={outstanding > 0 && booking.status !== "cancelled"}
           />
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal</span>
+              <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.subtotal")}</span>
               <span className="font-medium">
                 {booking.currency} {(Number(booking.subtotal) || 0).toFixed(2)}
               </span>
             </div>
             {Number((booking as any).discount_amount ?? 0) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Discount</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.discount")}</span>
                 <span className="font-medium text-green-600">
                   −{booking.currency} {Number((booking as any).discount_amount).toFixed(2)}
                 </span>
@@ -2393,7 +2425,7 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).promotion_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Promotion</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.promotion")}</span>
                 <span className="font-medium text-green-600">
                   −{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}
                 </span>
@@ -2401,7 +2433,7 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).membership_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Membership</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.membership")}</span>
                 <span className="font-medium text-green-600">
                   −{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}
                 </span>
@@ -2409,7 +2441,7 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).loyalty_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Loyalty</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.loyalty")}</span>
                 <span className="font-medium text-green-600">
                   −{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}
                 </span>
@@ -2417,7 +2449,7 @@ export default function ProviderBookingDetail() {
             )}
             {booking.travel_fee != null && booking.travel_fee > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Travel Fee</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.travelFee")}</span>
                 <span className="font-medium">
                   {booking.currency} {booking.travel_fee.toFixed(2)}
                 </span>
@@ -2425,7 +2457,7 @@ export default function ProviderBookingDetail() {
             )}
             {booking.service_fee_amount != null && booking.service_fee_amount > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Platform Fee</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.platformFee")}</span>
                 <span className="font-medium">
                   {booking.currency} {booking.service_fee_amount.toFixed(2)}
                 </span>
@@ -2435,8 +2467,8 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="text-gray-600">
                   {booking.tax_rate != null && booking.tax_rate > 0
-                    ? `VAT (${(booking.tax_rate * 100).toFixed(1)}%)`
-                    : "Tax"}
+                    ? t("web.provider.bookings.detail.paymentSummary.vat", { rate: (booking.tax_rate * 100).toFixed(1) })
+                    : t("web.provider.bookings.detail.paymentSummary.tax")}
                 </span>
                 <span className="font-medium text-blue-600">
                   {booking.currency} {booking.tax_amount.toFixed(2)}
@@ -2445,7 +2477,7 @@ export default function ProviderBookingDetail() {
             )}
             {booking.tip_amount != null && booking.tip_amount > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Tip</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.tip")}</span>
                 <span className="font-medium">
                   {booking.currency} {booking.tip_amount.toFixed(2)}
                 </span>
@@ -2453,7 +2485,7 @@ export default function ProviderBookingDetail() {
             )}
             <div className="border-t pt-2 mt-2">
               <div className="flex justify-between">
-                <span className="font-semibold">Total</span>
+                <span className="font-semibold">{t("web.provider.bookings.detail.paymentSummary.total")}</span>
                 <span className="font-semibold text-lg">
                   {booking.currency} {(booking.total_amount?.toFixed(2)) ?? "0.00"}
                 </span>
@@ -2463,17 +2495,17 @@ export default function ProviderBookingDetail() {
               <div className="mt-2 pt-2 border-t">
                 <p className="text-xs text-gray-500">
                   {booking.tax_rate != null && booking.tax_rate > 0
-                    ? `VAT (${(booking.tax_rate * 100).toFixed(1)}%) amount: `
-                    : "Tax amount: "}
+                    ? t("web.provider.bookings.detail.paymentSummary.vatAmount", { rate: (booking.tax_rate * 100).toFixed(1) })
+                    : t("web.provider.bookings.detail.paymentSummary.taxAmount")}
                   {booking.currency} {booking.tax_amount.toFixed(2)}.
                   {booking.tax_rate != null && booking.tax_rate >= 0.15
-                    ? " This amount must be remitted to SARS by the provider."
+                    ? t("web.provider.bookings.detail.leftoverCopy.sarsRemit")
                     : ""}
                 </p>
               </div>
             )}
             <div className="flex justify-between text-sm text-gray-600 mt-2">
-              <span>Payment Status</span>
+              <span>{t("web.provider.bookings.detail.paymentSummary.paymentStatus")}</span>
               <span
                 className={`font-medium ${
                   paymentDisplay.tone === "success"
@@ -2494,25 +2526,25 @@ export default function ProviderBookingDetail() {
         {/* Additional Charges */}
         <div className="bg-white border rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Additional Charges</h2>
+            <h2 className="text-xl font-semibold">{t("web.provider.bookings.detail.charges.title")}</h2>
             <Button variant="outline" onClick={loadAdditionalCharges}>
-              Refresh
+              {t("common.refresh")}
             </Button>
           </div>
 
           {settlementPlan && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-              <span className="font-medium">Recommended: </span>
+              <span className="font-medium">{t("web.provider.bookings.detail.leftoverCopy.recommended")}</span>
               {settlementPlan.recommendedAction === "charge_card_on_file"
-                ? "Charge card on file (customer must approve first)"
+                ? t("web.provider.bookings.detail.charges.chargeCardOnFile")
                 : settlementPlan.recommendedAction === "customer_pay"
-                ? "Send to customer — they pay in-app or online"
-                : "Collect in person (cash, card, or Paystack Terminal)"}
+                ? t("web.provider.bookings.detail.charges.customerPay")
+                : t("web.provider.bookings.detail.charges.collectInPerson")}
             </div>
           )}
 
           {additionalCharges.length === 0 ? (
-            <p className="text-sm text-gray-600">No additional charges for this booking.</p>
+            <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.leftoverCopy.noAdditionalCharges")}</p>
           ) : (
             <div className="space-y-3">
               {additionalCharges.map((c) => (
@@ -2552,13 +2584,13 @@ export default function ProviderBookingDetail() {
                           : 'bg-gray-100 text-gray-800'
                       }`}
                     >
-                      {c.status === 'approved' ? 'approved (awaiting payment)' : c.status}
+                      {c.status === 'approved' ? t("web.provider.bookings.detail.charges.approvedAwaiting") : c.status}
                     </span>
                   </div>
                   {(c.status === 'pending' || c.status === 'approved') && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <p className="text-xs text-gray-600 mb-2">
-                        Send a reminder to the customer, or mark as paid if you received payment in person:
+                        {t("web.provider.bookings.detail.charges.reminderHint")}
                       </p>
                       <div className="flex gap-2 flex-wrap">
                         <Button
@@ -2567,7 +2599,7 @@ export default function ProviderBookingDetail() {
                           onClick={() => handleSendChargeToClient(c.id)}
                           disabled={sendingChargeNotify === c.id}
                         >
-                          {sendingChargeNotify === c.id ? "Sending…" : "Send to client"}
+                          {sendingChargeNotify === c.id ? t("web.provider.bookings.detail.charges.sending") : t("web.provider.bookings.detail.charges.sendToClient")}
                         </Button>
                         <Button
                           variant="outline"
@@ -2578,7 +2610,7 @@ export default function ProviderBookingDetail() {
                           }}
                           disabled={markingChargePaid}
                         >
-                          Mark as Paid (Walk-in/In-Salon)
+                          {t("web.provider.bookings.detail.charges.markPaidWalkIn")}
                         </Button>
                         {paycloudEnabled && (
                           <PaycloudCollectButton
@@ -2600,16 +2632,16 @@ export default function ProviderBookingDetail() {
 
           {["confirmed", "in_progress", "completed"].includes(booking.status) && (
             <div className="mt-6 border-t pt-4">
-              <h3 className="font-semibold mb-2">Send additional charge</h3>
+              <h3 className="font-semibold mb-2">{t("web.provider.bookings.detail.charges.sendCharge")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Input
-                  placeholder="Description"
+                  placeholder={t("web.provider.bookings.detail.charges.descriptionPlaceholder")}
                   value={chargeDescription}
                   onChange={(e) => setChargeDescription(e.target.value)}
                   className="md:col-span-2"
                 />
                 <Input
-                  placeholder="Amount"
+                  placeholder={t("web.provider.bookings.detail.charges.amountPlaceholder")}
                   inputMode="decimal"
                   value={chargeAmount}
                   onChange={(e) => setChargeAmount(e.target.value)}
@@ -2620,7 +2652,7 @@ export default function ProviderBookingDetail() {
                 onClick={handleRequestAdditionalCharge}
                 disabled={isRequestingCharge}
               >
-                {isRequestingCharge ? "Sending…" : "Send additional charge"}
+                {isRequestingCharge ? t("web.provider.bookings.detail.charges.sending") : t("web.provider.bookings.detail.charges.sendCharge")}
               </Button>
             </div>
           )}
@@ -2629,22 +2661,24 @@ export default function ProviderBookingDetail() {
         {/* Payment Summary */}
         {booking.status !== "pending" && (
           <div className="rounded-lg border p-4 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900">Payment Details</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.bookings.detail.paymentDetails.title")}</h3>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Total</span>
+              <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.total")}</span>
               <span className="font-medium">{formatMoney(totalAmount)}</span>
             </div>
             {Number((booking as any).discount_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">
-                  Discount{(booking as any).discount_code ? ` (${(booking as any).discount_code})` : ""}
+                  {(booking as any).discount_code
+                    ? t("web.provider.bookings.detail.paymentDetails.discountWithCode", { code: (booking as any).discount_code })
+                    : t("web.provider.bookings.detail.paymentSummary.discount")}
                 </span>
                 <span className="font-medium text-green-600">−{formatMoney(Number((booking as any).discount_amount))}</span>
               </div>
             )}
             {Number((booking as any).promotion_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Promotion</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.promotion")}</span>
                 <span className="font-medium text-green-600">
                   −{formatMoney(Number((booking as any).promotion_discount_amount))}
                 </span>
@@ -2652,7 +2686,7 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).membership_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Membership</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.membership")}</span>
                 <span className="font-medium text-green-600">
                   −{formatMoney(Number((booking as any).membership_discount_amount))}
                 </span>
@@ -2660,7 +2694,7 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).loyalty_discount_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Loyalty</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.loyalty")}</span>
                 <span className="font-medium text-green-600">
                   −{formatMoney(Number((booking as any).loyalty_discount_amount))}
                 </span>
@@ -2668,43 +2702,43 @@ export default function ProviderBookingDetail() {
             )}
             {Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Travel fee</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.travelFee")}</span>
                 <span className="font-medium">{formatMoney(Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0))}</span>
               </div>
             )}
             {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Deposit required</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.depositRequired")}</span>
                 <span className="font-medium">{formatMoney(Number((booking as any).deposit_amount ?? 0))}</span>
               </div>
             )}
             {walletAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Wallet applied</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.walletApplied")}</span>
                 <span className="font-medium text-gray-900">{formatMoney(walletAmountApplied)}</span>
               </div>
             )}
             {giftCardAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Gift card applied</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.giftCardApplied")}</span>
                 <span className="font-medium text-gray-900">{formatMoney(giftCardAmountApplied)}</span>
               </div>
             )}
             {totalPaid > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Payments recorded</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.paymentsRecorded")}</span>
                 <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
               </div>
             )}
             {totalRefunded > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Refunded</span>
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentDetails.refunded")}</span>
                 <span className="font-medium text-red-600">−{formatMoney(totalRefunded)}</span>
               </div>
             )}
             {outstanding > 0 && (
               <div className="flex justify-between text-sm border-t pt-2">
-                <span className="text-gray-700 font-medium">Outstanding</span>
+                <span className="text-gray-700 font-medium">{t("web.provider.bookings.detail.paymentDetails.outstanding")}</span>
                 <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
               </div>
             )}
@@ -2716,7 +2750,7 @@ export default function ProviderBookingDetail() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Next booking step
+                {t("web.provider.bookings.detail.statusFlow.nextStep")}
               </p>
               <h3 className="mt-1 text-lg font-semibold text-gray-900">
                 {actionModel.stepTitle}
@@ -2731,7 +2765,7 @@ export default function ProviderBookingDetail() {
                 disabled={isUpdating || isStartingJourney || isMarkingArrived}
                 className="min-h-[44px] shrink-0 bg-blue-600 hover:bg-blue-700"
               >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
+                <CheckCircle2 className="w-4 h-4 me-2" />
                 {permittedPrimaryAction.label}
               </Button>
             )}
@@ -2795,8 +2829,8 @@ export default function ProviderBookingDetail() {
                   : "flex-1 min-h-[44px]"
               }
             >
-              <DollarSign className="w-4 h-4 mr-2" />
-              Mark as Paid
+              <DollarSign className="w-4 h-4 me-2" />
+              {t("web.provider.bookings.detail.paymentActions.markAsPaid")}
             </Button>
           )}
           {showYocoPayButton && (
@@ -2807,8 +2841,8 @@ export default function ProviderBookingDetail() {
               disabled={isUpdating || preparingYocoSale}
               className="flex-1 min-h-[44px] border-violet-300 text-violet-900 hover:bg-violet-50"
             >
-              <CreditCard className="w-4 h-4 mr-2" />
-              {preparingYocoSale ? "Preparing…" : "Pay with Yoco (terminal)"}
+              <CreditCard className="w-4 h-4 me-2" />
+              {preparingYocoSale ? t("web.provider.bookings.detail.paymentActions.preparing") : t("web.provider.bookings.detail.paymentActions.payWithYoco")}
             </Button>
           )}
           {showPaycloudPayButton && (
@@ -2830,8 +2864,8 @@ export default function ProviderBookingDetail() {
               disabled={isUpdating || preparingPaystackTerminal}
               className="flex-1 min-h-[44px] border-emerald-300 text-emerald-900 hover:bg-emerald-50"
             >
-              <Link2 className="w-4 h-4 mr-2" />
-              {preparingPaystackTerminal ? "Preparing…" : "Show Paystack Terminal"}
+              <Link2 className="w-4 h-4 me-2" />
+              {preparingPaystackTerminal ? t("web.provider.bookings.detail.paymentActions.preparing") : t("web.provider.bookings.detail.paymentActions.showPaystackTerminal")}
             </Button>
           )}
           {canSendPaymentLink && (
@@ -2845,8 +2879,8 @@ export default function ProviderBookingDetail() {
               disabled={isUpdating || sendingPaymentLink}
               className="flex-1 min-h-[44px] border-primary text-primary hover:bg-primary/10"
             >
-              <Link2 className="w-4 h-4 mr-2" />
-              {sendingPaymentLink ? "Sending…" : "Send payment link"}
+              <Link2 className="w-4 h-4 me-2" />
+              {sendingPaymentLink ? t("web.provider.bookings.detail.paymentActions.sendingLink") : t("web.provider.bookings.detail.paymentActions.sendPaymentLink")}
             </Button>
           )}
           {canRefund && (
@@ -2865,7 +2899,7 @@ export default function ProviderBookingDetail() {
               disabled={isUpdating}
               className="flex-1 min-h-[44px]"
             >
-              Issue Refund
+              {t("web.provider.bookings.detail.paymentActions.issueRefund")}
             </Button>
           )}
         </div>
@@ -2888,8 +2922,8 @@ export default function ProviderBookingDetail() {
                   disabled={isUpdating}
                   className="flex-1 min-h-[44px]"
                 >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Reschedule
+                  <Calendar className="w-4 h-4 me-2" />
+                  {t("web.provider.bookings.detail.secondaryActions.reschedule")}
                 </Button>
               )}
               {canCancelAppointments && (
@@ -2899,7 +2933,7 @@ export default function ProviderBookingDetail() {
                   disabled={isUpdating}
                   className="flex-1 min-h-[44px] text-amber-700 border-amber-300 hover:bg-amber-50"
                 >
-                  No Show
+                  {t("web.provider.common.status.noShow")}
                 </Button>
               )}
               {canCancelAppointments && (
@@ -2909,8 +2943,8 @@ export default function ProviderBookingDetail() {
                   disabled={isUpdating}
                   className="flex-1 min-h-[44px]"
                 >
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Cancel
+                  <XCircle className="w-4 h-4 me-2" />
+                  {t("common.cancel")}
                 </Button>
               )}
             </>
@@ -2925,10 +2959,10 @@ export default function ProviderBookingDetail() {
           <div className="rounded-lg border p-4">
             <div className="mb-3">
               <h3 className="text-sm font-semibold text-gray-900">
-                Customer Notifications
+                {t("web.provider.bookings.detail.notifications.title")}
               </h3>
               <p className="text-xs text-gray-600 mt-1">
-                Manually send confirmation, reminder or cancellation emails / push to the customer.
+                {t("web.provider.bookings.detail.notifications.description")}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -2939,8 +2973,8 @@ export default function ProviderBookingDetail() {
                   onClick={() => handleResendNotification("confirmation")}
                   className="flex-1 min-h-[44px]"
                 >
-                  <Mail className="w-4 h-4 mr-2" />
-                  Resend Confirmation
+                  <Mail className="w-4 h-4 me-2" />
+                  {t("web.provider.bookings.detail.notifications.resendConfirmation")}
                 </Button>
               )}
               {isConfirmedOrLater && (
@@ -2950,8 +2984,8 @@ export default function ProviderBookingDetail() {
                   onClick={() => handleResendNotification("reminder")}
                   className="flex-1 min-h-[44px]"
                 >
-                  <Clock className="w-4 h-4 mr-2" />
-                  Send Reminder
+                  <Clock className="w-4 h-4 me-2" />
+                  {t("web.provider.bookings.detail.notifications.sendReminder")}
                 </Button>
               )}
               {(isCancelled || isNoShow) && (
@@ -2961,8 +2995,8 @@ export default function ProviderBookingDetail() {
                   onClick={() => handleSendCancellationNotice()}
                   className="flex-1 min-h-[44px]"
                 >
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Cancellation Notice
+                  <XCircle className="w-4 h-4 me-2" />
+                  {t("web.provider.bookings.detail.notifications.cancellationNotice")}
                 </Button>
               )}
             </div>
@@ -2972,7 +3006,7 @@ export default function ProviderBookingDetail() {
         {/* Notes */}
         <div className="rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-gray-900">Notes / Special Requests</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.bookings.detail.notes.title")}</h3>
             {!editingNotes && (
               <Button
                 variant="ghost"
@@ -2982,7 +3016,7 @@ export default function ProviderBookingDetail() {
                   setEditingNotes(true);
                 }}
               >
-                Edit
+                {t("common.edit")}
               </Button>
             )}
           </div>
@@ -2995,16 +3029,16 @@ export default function ProviderBookingDetail() {
               />
               <div className="flex gap-2 mt-2">
                 <Button size="sm" onClick={handleSaveNotes} disabled={isSavingNotes}>
-                  {isSavingNotes ? "Saving..." : "Save"}
+                  {isSavingNotes ? t("web.provider.bookings.detail.notes.saving") : t("web.provider.bookings.detail.notes.save")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setEditingNotes(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               </div>
             </div>
           ) : (
             <p className="text-sm text-gray-600">
-              {booking.special_requests ?? "No notes"}
+              {booking.special_requests ?? t("web.provider.bookings.detail.notes.empty")}
             </p>
           )}
         </div>
@@ -3013,13 +3047,13 @@ export default function ProviderBookingDetail() {
         {showReschedule && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Reschedule Booking</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.dialogs.rescheduleTitle")}</h3>
               <div>
-                <label className="text-sm font-medium mb-1 block">Date</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.date")}</label>
                 <Input type="date" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Time</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.time")}</label>
                 <Input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -3028,14 +3062,14 @@ export default function ProviderBookingDetail() {
                   checked={notifyCustomerOnReschedule}
                   onChange={(e) => setNotifyCustomerOnReschedule(e.target.checked)}
                 />
-                Notify client
+                {t("web.provider.bookings.detail.dialogs.notifyClient")}
               </label>
               <div className="flex gap-3">
                 <Button onClick={handleReschedule} disabled={isRescheduling} className="flex-1">
-                  {isRescheduling ? "Rescheduling..." : "Confirm Reschedule"}
+                  {isRescheduling ? t("web.provider.bookings.detail.dialogs.rescheduling") : t("web.provider.bookings.detail.dialogs.confirmReschedule")}
                 </Button>
                 <Button variant="outline" onClick={() => setShowReschedule(false)} className="flex-1">
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
               </div>
             </div>
@@ -3046,10 +3080,10 @@ export default function ProviderBookingDetail() {
         {showMarkPaid && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Mark as Paid</h3>
-              <p className="text-sm text-gray-600">Outstanding: {formatMoney(outstanding)}</p>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.paymentActions.markAsPaid")}</h3>
+              <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.dialogs.outstanding", { amount: formatMoney(outstanding) })}</p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Payment method</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.paymentMethod")}</label>
                 <div className="flex flex-wrap gap-2">
                   {markPaidPaymentMethods.map((pm) => (
                     <Button
@@ -3072,13 +3106,13 @@ export default function ProviderBookingDetail() {
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {isMarkingPaid
-                    ? "Processing..."
+                    ? t("web.provider.bookings.detail.dialogs.processing")
                     : markPaidMethod === "paycloud_terminal"
-                      ? "Charge on card machine"
-                      : "Confirm Payment"}
+                      ? t("web.provider.bookings.detail.dialogs.chargeOnTerminal")
+                      : t("web.provider.bookings.detail.dialogs.confirmPayment")}
                 </Button>
                 <Button variant="outline" onClick={() => setShowMarkPaid(false)} className="flex-1">
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
               </div>
             </div>
@@ -3089,22 +3123,20 @@ export default function ProviderBookingDetail() {
         {showCancelDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold text-red-700">Cancel Booking</h3>
+              <h3 className="text-lg font-semibold text-red-700">{t("web.provider.bookings.detail.dialogs.cancelTitle")}</h3>
               <p className="text-sm text-gray-600">
-                This action cannot be undone. Please provide a reason for cancellation.
+                {t("web.provider.bookings.detail.dialogs.cancelBody")}
               </p>
               <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md p-3">
-                The client will receive a full refund to their Beautonomi wallet for amounts
-                already paid. Your cancellation policy does not apply to cancellations you
-                initiate.
+                {t("web.provider.bookings.detail.dialogs.cancelRefundNote")}
               </p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Cancellation reason</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.cancellationReason")}</label>
                 <textarea
                   className="w-full border rounded-md p-2 text-sm min-h-[80px]"
                   value={cancellationReason}
                   onChange={(e) => setCancellationReason(e.target.value)}
-                  placeholder="Enter the reason for cancellation..."
+                  placeholder={t("web.provider.bookings.detail.dialogs.cancellationPlaceholder")}
                 />
               </div>
               <div className="flex gap-3">
@@ -3114,10 +3146,10 @@ export default function ProviderBookingDetail() {
                   disabled={isUpdating}
                   className="flex-1"
                 >
-                  {isUpdating ? "Cancelling..." : "Confirm Cancellation"}
+                  {isUpdating ? t("web.provider.bookings.detail.dialogs.cancelling") : t("web.provider.bookings.detail.dialogs.confirmCancellation")}
                 </Button>
                 <Button variant="outline" onClick={() => { setShowCancelDialog(false); setCancellationReason(""); }} className="flex-1">
-                  Back
+                  {t("web.provider.bookings.detail.dialogs.back")}
                 </Button>
               </div>
             </div>
@@ -3128,20 +3160,17 @@ export default function ProviderBookingDetail() {
         {showNoShowDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold text-amber-700">Mark as no-show</h3>
+              <h3 className="text-lg font-semibold text-amber-700">{t("web.provider.bookings.detail.dialogs.noShowTitle")}</h3>
               <p className="text-sm text-gray-600">
-                Mark {booking?.customer_name || booking?.customers?.full_name || "this client"} as a
-                no-show?
+                {t("web.provider.bookings.detail.dialogs.noShowBody", { name: booking?.customer_name || booking?.customers?.full_name || t("web.provider.bookings.detail.dialogs.thisClient") })}
               </p>
               {noShowFeeEnabled && noShowPreviewFee > 0 ? (
                 <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3">
-                  A no-show fee of {formatMoney(noShowPreviewFee)} will be retained (capped to the
-                  amount paid). Any remainder is refunded to the client&apos;s Beautonomi wallet.
+                  {t("web.provider.bookings.detail.dialogs.noShowFeeNote", { amount: formatMoney(noShowPreviewFee) })}
                 </p>
               ) : (
                 <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded-md p-3">
-                  No no-show fee is configured — the client will be fully refunded for amounts
-                  already paid.
+                  {t("web.provider.bookings.detail.dialogs.noShowNoFeeNote")}
                 </p>
               )}
               <div className="flex gap-3">
@@ -3150,14 +3179,14 @@ export default function ProviderBookingDetail() {
                   disabled={isUpdating}
                   className="flex-1 bg-amber-600 hover:bg-amber-700"
                 >
-                  {isUpdating ? "Saving..." : "Confirm no-show"}
+                  {isUpdating ? t("web.provider.common.saving") : t("web.provider.bookings.detail.dialogs.confirmNoShow")}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setShowNoShowDialog(false)}
                   className="flex-1"
                 >
-                  Back
+                  {t("web.provider.bookings.detail.dialogs.back")}
                 </Button>
               </div>
             </div>
@@ -3168,12 +3197,12 @@ export default function ProviderBookingDetail() {
         {showSendPaymentLink && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Send payment link</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.dialogs.sendLinkTitle")}</h3>
               <p className="text-sm text-gray-600">
-                Send a link so the customer can pay online. Outstanding: {formatMoney(outstanding)}
+                {t("web.provider.bookings.detail.dialogs.sendLinkBody", { amount: formatMoney(outstanding) })}
               </p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Send via</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.sendVia")}</label>
                 <div className="flex flex-wrap gap-2">
                   {SEND_LINK_OPTIONS.map((opt) => {
                     const disabled =
@@ -3187,18 +3216,18 @@ export default function ProviderBookingDetail() {
                         variant={sendPaymentLinkMethod === opt.value ? "default" : "outline"}
                         size="sm"
                         disabled={disabled}
-                        title={disabled ? "Add customer email/phone on the customer profile" : undefined}
+                        title={disabled ? t("web.provider.bookings.detail.dialogs.addContactHint") : undefined}
                         onClick={() => setSendPaymentLinkMethod(opt.value)}
                         className="flex-1 min-w-[5rem]"
                       >
-                        {opt.label}
+                        {t(`web.provider.bookings.detail.sendLink.${opt.value}`)}
                       </Button>
                     );
                   })}
                 </div>
                 {(!booking.customer_email || !booking.customer_phone) && (
                   <p className="text-xs text-amber-700 mt-2">
-                    Email and SMS options require the customer&apos;s contact details on file.
+                    {t("web.provider.bookings.detail.dialogs.contactRequiredHint")}
                   </p>
                 )}
               </div>
@@ -3208,10 +3237,10 @@ export default function ProviderBookingDetail() {
                   disabled={sendingPaymentLink}
                   className="flex-1 bg-primary hover:bg-primary/90"
                 >
-                  {sendingPaymentLink ? "Sending…" : "Send link"}
+                  {sendingPaymentLink ? t("web.provider.bookings.detail.paymentActions.sendingLink") : t("web.provider.bookings.detail.dialogs.sendLink")}
                 </Button>
                 <Button variant="outline" onClick={() => setShowSendPaymentLink(false)} className="flex-1">
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
               </div>
             </div>
@@ -3222,40 +3251,40 @@ export default function ProviderBookingDetail() {
         {showPaystackTerminal && paystackTerminalCode && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Paystack Terminal</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.dialogs.paystackTerminalTitle")}</h3>
               <p className="text-sm text-gray-600">
-                Ask the customer to pay the outstanding amount using this Paystack terminal. Paystack generates the transaction reference; once the webhook arrives, allocate the payment from the terminal inbox.
+                {t("web.provider.bookings.detail.dialogs.paystackTerminalBody")}
               </p>
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
-                <p className="text-xs uppercase tracking-wide text-emerald-700">Terminal code</p>
+                <p className="text-xs uppercase tracking-wide text-emerald-700">{t("web.provider.bookings.detail.dialogs.terminalCode")}</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-emerald-950">
                   {paystackTerminalCode}
                 </p>
-                <p className="mt-2 text-sm text-emerald-800">Expected: {formatMoney(outstanding)}</p>
+                <p className="mt-2 text-sm text-emerald-800">{t("web.provider.bookings.detail.dialogs.expected", { amount: formatMoney(outstanding) })}</p>
                 {(paystackTerminalQr || paystackTerminalLink) && (
                   <div className="mt-3 flex flex-col items-center gap-2">
                     {paystackTerminalQr ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={paystackTerminalQr}
-                        alt="Paystack Terminal QR code"
+                        alt={t("web.provider.bookings.detail.paystackCollect.qrAlt")}
                         className="h-40 w-40 rounded-md border border-emerald-200 bg-white object-contain p-1"
                       />
                     ) : paystackTerminalLink ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(paystackTerminalLink)}`}
-                        alt="Paystack Terminal QR code"
+                        alt={t("web.provider.bookings.detail.paystackCollect.qrAlt")}
                         className="h-40 w-40 rounded-md border border-emerald-200 bg-white object-contain p-1"
                       />
                     ) : null}
-                    <p className="text-xs text-emerald-700">Customer scans to pay</p>
+                    <p className="text-xs text-emerald-700">{t("web.provider.bookings.detail.dialogs.customerScans")}</p>
                   </div>
                 )}
               </div>
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  Tell the customer to enter reference
+                  {t("web.provider.bookings.detail.dialogs.enterReference")}
                 </p>
                 <p className="mt-1 font-mono text-base font-semibold text-amber-950">
                   {paystackTerminalReference}
@@ -3266,10 +3295,10 @@ export default function ProviderBookingDetail() {
                   onClick={async () => {
                     if (!paystackTerminalReference) return;
                     await navigator.clipboard.writeText(paystackTerminalReference);
-                    toast.success("Reference copied");
+                    toast.success(t("web.provider.bookings.detail.dialogs.referenceCopied"));
                   }}
                 >
-                  Copy reference
+                  {t("web.provider.bookings.detail.dialogs.copyReference")}
                 </button>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -3278,10 +3307,10 @@ export default function ProviderBookingDetail() {
                   className="flex-1"
                   onClick={async () => {
                     await navigator.clipboard.writeText(paystackTerminalCode);
-                    toast.success("Terminal code copied");
+                    toast.success(t("web.provider.bookings.detail.dialogs.codeCopied"));
                   }}
                 >
-                  Copy code
+                  {t("web.provider.bookings.detail.dialogs.copyCode")}
                 </Button>
                 {paystackTerminalLink && (
                   <Button
@@ -3290,10 +3319,10 @@ export default function ProviderBookingDetail() {
                     className="flex-1"
                     onClick={async () => {
                       await navigator.clipboard.writeText(paystackTerminalLink);
-                      toast.success("Payment link copied");
+                      toast.success(t("web.provider.bookings.detail.dialogs.linkCopied"));
                     }}
                   >
-                    Copy link
+                    {t("web.provider.bookings.detail.dialogs.copyLink")}
                   </Button>
                 )}
                 <Button
@@ -3302,7 +3331,7 @@ export default function ProviderBookingDetail() {
                   className="flex-1"
                   onClick={() => setShowPaystackTerminal(false)}
                 >
-                  Close
+                  {t("common.close")}
                 </Button>
               </div>
             </div>
@@ -3313,12 +3342,12 @@ export default function ProviderBookingDetail() {
         {chargeMarkPaidId && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Mark charge as paid</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.dialogs.chargeMarkPaidTitle")}</h3>
               {(() => {
                 const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
                 if (!c) {
                   return (
-                    <p className="text-sm text-gray-600">Charge not found.</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.leftoverCopy.chargeNotFound")}</p>
                   );
                 }
                 return (
@@ -3327,7 +3356,7 @@ export default function ProviderBookingDetail() {
                       {c.description} · {c.currency} {Number(c.amount).toFixed(2)}
                     </p>
                     <div>
-                      <label className="text-sm font-medium mb-1 block">Payment method</label>
+                      <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.paymentMethod")}</label>
                       <div className="flex flex-wrap gap-2">
                         {chargePaymentMethods.map((pm) => (
                           <Button
@@ -3353,13 +3382,13 @@ export default function ProviderBookingDetail() {
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {markingChargePaid
-                    ? "Processing…"
+                    ? t("web.provider.bookings.detail.leftoverCopy.processingEllipsis")
                     : chargeMarkPaidMethod === "paycloud_terminal"
-                      ? "Charge on card machine"
-                      : "Confirm"}
+                      ? t("web.provider.bookings.detail.dialogs.chargeOnTerminal")
+                      : t("common.confirm")}
                 </Button>
                 <Button variant="outline" onClick={() => setChargeMarkPaidId(null)} className="flex-1">
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
               </div>
             </div>
@@ -3370,13 +3399,12 @@ export default function ProviderBookingDetail() {
         {showRefund && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-              <h3 className="text-lg font-semibold">Issue Refund</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.paymentActions.issueRefund")}</h3>
               <p className="text-sm text-gray-600">
-                Net paid after refunds: {formatMoney(netPaidAfterRefunds)} · Max refundable:{" "}
-                {formatMoney(maxRefundable)}
+                {t("web.provider.bookings.detail.leftoverCopy.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(maxRefundable) })}
               </p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Refund amount</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.refundAmount")}</label>
                 <Input
                   type="number"
                   value={refundAmount}
@@ -3388,17 +3416,17 @@ export default function ProviderBookingDetail() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Reason (required)</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.leftoverCopy.reasonRequired")}</label>
                 <Textarea
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="e.g. Service issue, customer request"
+                  placeholder={t("web.provider.bookings.detail.leftoverCopy.refundReasonPlaceholder")}
                   rows={3}
                   className="resize-y min-h-[72px]"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Refund method</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.refundMethod")}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -3409,13 +3437,13 @@ export default function ProviderBookingDetail() {
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    In person (cash)
+                    {t("web.provider.bookings.detail.leftoverCopy.inPersonCash")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       if (!booking?.customer_id) {
-                        toast.error("This customer has no wallet. Refund in person instead.");
+                        toast.error(t("web.provider.bookings.detail.leftoverCopy.thisCustomerNoWallet"));
                         return;
                       }
                       setRefundMethod("store_credit");
@@ -3427,18 +3455,18 @@ export default function ProviderBookingDetail() {
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    Wallet credit
+                    {t("web.provider.bookings.detail.dialogs.walletCredit")}
                   </button>
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
                   {refundMethod === "cash"
-                    ? "Records the refund as returned to the customer in person. No wallet credit is issued."
-                    : "Adds store credit to the customer's wallet for use on a future booking."}
+                    ? t("web.provider.bookings.detail.leftoverCopy.refundInPersonHint")
+                    : t("web.provider.bookings.detail.leftoverCopy.walletCreditHint")}
                 </p>
               </div>
               <div className="flex gap-3">
                 <Button variant="destructive" onClick={handleRefund} disabled={isRefunding} className="flex-1">
-                  {isRefunding ? "Processing..." : "Confirm Refund"}
+                  {isRefunding ? t("web.provider.bookings.detail.dialogs.processingRefund") : t("web.provider.bookings.detail.dialogs.confirmRefund")}
                 </Button>
                 <Button
                   variant="outline"
@@ -3448,7 +3476,7 @@ export default function ProviderBookingDetail() {
                   }}
                   className="flex-1"
                 >
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
               </div>
             </div>
@@ -3460,9 +3488,9 @@ export default function ProviderBookingDetail() {
             open={showProviderCompletionModal}
             bookingId={String(bookingId)}
             providerPointsEarned={booking.provider_points_earned}
-            primaryServiceName={booking.services?.[0]?.offering_name || "Appointment"}
+            primaryServiceName={booking.services?.[0]?.offering_name || t("web.provider.bookings.detail.leftoverCopy.appointmentFallback")}
             primaryOfferingId={booking.services?.[0]?.offering_id}
-            customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : "Client"}
+            customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : t("web.provider.bookings.detail.leftoverCopy.clientFallback")}
             onDismiss={dismissProviderCompletionModal}
           />
         ) : null}
@@ -3491,8 +3519,8 @@ export default function ProviderBookingDetail() {
           onSuccess={async () => {
             toast.success(
               paycloudEntityType === "additional_charge"
-                ? "Additional charge payment recorded"
-                : "Booking payment recorded",
+                ? t("web.provider.bookings.detail.leftoverCopy.additionalChargePaymentRecorded")
+                : t("web.provider.bookings.detail.toast.paymentRecorded"),
             );
             await Promise.all([loadBooking(), loadAdditionalCharges()]);
           }}

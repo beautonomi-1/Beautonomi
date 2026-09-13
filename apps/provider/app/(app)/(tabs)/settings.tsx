@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -22,14 +23,16 @@ interface ProviderProfile {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const si = (key: string) => t(`provider.mobile.screens.settingsIndex.${key}`) as string;
   const { user, signOut } = useAuth();
   const { data: profile, loading, error, refresh } = useApi<ProviderProfile>("/api/provider/profile");
 
   const handleSignOut = () => {
-    Alert.alert("Sign out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(si("signOutTitle"), si("signOutBody"), [
+      { text: t("common.cancel") as string, style: "cancel" },
       {
-        text: "Sign out",
+        text: t("common.signOut") as string,
         style: "destructive",
         onPress: async () => {
           await signOut();
@@ -42,7 +45,7 @@ export default function SettingsScreen() {
   if (loading && !profile) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Settings" />
+        <ScreenHeader title={si("title")} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -53,7 +56,7 @@ export default function SettingsScreen() {
   if (error && !profile) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Settings" />
+        <ScreenHeader title={si("title")} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -68,13 +71,13 @@ export default function SettingsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Settings"
+        title={si("title")}
         rightAction={
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/settings-hub" as never)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={twStyle("text-sm font-medium text-indigo-600")}>More settings</Text>
+            <Text style={twStyle("text-sm font-medium text-indigo-600")}>{si("moreSettings")}</Text>
           </TouchableOpacity>
         }
       />
@@ -94,7 +97,7 @@ export default function SettingsScreen() {
             <Text style={twStyle("mt-0.5 text-gray-600")}>{email}</Text>
           )}
           {!businessName && !phone && !email && (
-            <Text style={twStyle("text-gray-500")}>Provider account</Text>
+            <Text style={twStyle("text-gray-500")}>{si("providerAccount")}</Text>
           )}
         </View>
 
@@ -103,7 +106,7 @@ export default function SettingsScreen() {
           onPress={handleSignOut}
           activeOpacity={0.7}
         >
-          <Text style={twStyle("text-center font-semibold text-gray-900")}>Sign out</Text>
+          <Text style={twStyle("text-center font-semibold text-gray-900")}>{t("common.signOut") as string}</Text>
         </TouchableOpacity>
       </ScrollView>
     </ScreenContainer>

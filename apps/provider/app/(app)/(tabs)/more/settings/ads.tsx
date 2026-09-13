@@ -30,6 +30,7 @@ import {
 } from "@/lib/payments/providerPaystackReturn";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -179,7 +180,7 @@ type CampaignPerformance = {
 };
 
 const formatCompactNumber = (value: number | null | undefined) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+  new Intl.NumberFormat(getDefaultMoneyLocale(), { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 // §Ads-mobile-audit 2026-05: surface CTR (clicks ÷ impressions) and a
 // bookings total alongside the existing reach + spend numbers. These metrics
@@ -193,11 +194,11 @@ const formatCtr = (impressions: number, clicks: number): string => {
 };
 
 type AdsDateRange = "today" | "7d" | "30d" | "all";
-const AD_RANGES: { value: AdsDateRange; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-  { value: "all", label: "All time" },
+const AD_RANGES: { value: AdsDateRange; key: string }[] = [
+  { value: "today", key: "rangeToday" },
+  { value: "7d", key: "range7d" },
+  { value: "30d", key: "range30d" },
+  { value: "all", key: "rangeAll" },
 ];
 
 function rangeToParams(range: AdsDateRange): string {
@@ -243,17 +244,17 @@ const PENDING_ORDER_FRESH_MS = 30 * 60 * 1000;
 
 const LIFECYCLE_BADGE: Record<
   CampaignLifecycle,
-  { label: string; color: string }
+  { labelKey: string; color: string }
 > = {
-  awaiting_payment: { label: "Awaiting payment", color: "#b45309" },
-  confirming: { label: "Confirming payment", color: "#1d4ed8" },
-  payment_failed: { label: "Payment failed", color: "#dc2626" },
-  active: { label: "Active", color: "#16a34a" },
-  paused: { label: "Paused", color: "#d97706" },
-  budget_exhausted: { label: "Budget exhausted", color: "#64748b" },
-  expired: { label: "Expired", color: "#64748b" },
-  delivered: { label: "Delivered", color: "#64748b" },
-  cancelled: { label: "Cancelled", color: "#64748b" },
+  awaiting_payment: { labelKey: "lifecycleAwaitingPayment", color: "#b45309" },
+  confirming: { labelKey: "lifecycleConfirming", color: "#1d4ed8" },
+  payment_failed: { labelKey: "lifecyclePaymentFailed", color: "#dc2626" },
+  active: { labelKey: "lifecycleActive", color: "#16a34a" },
+  paused: { labelKey: "lifecyclePaused", color: "#d97706" },
+  budget_exhausted: { labelKey: "lifecycleBudgetExhausted", color: "#64748b" },
+  expired: { labelKey: "lifecycleExpired", color: "#64748b" },
+  delivered: { labelKey: "lifecycleDelivered", color: "#64748b" },
+  cancelled: { labelKey: "lifecycleCancelled", color: "#64748b" },
 };
 
 function isFreshPendingOrder(order: LatestBudgetOrder | null | undefined): boolean {
@@ -282,36 +283,51 @@ const packCardShadow = Platform.select({
 
 const packCardElevation = Platform.OS === "android" ? { elevation: 5 } : {};
 
-function campaignModelLabel(campaign: Campaign): string {
-  if (isTimeBasedCampaign(campaign)) return "time boost";
-  if (isImpressionPackCampaign(campaign)) return "impression pack";
-  return "CPC budget";
+function campaignModelLabel(campaign: Campaign, tr: (key: string) => string): string {
+  if (isTimeBasedCampaign(campaign)) return tr("modelTimeBoost");
+  if (isImpressionPackCampaign(campaign)) return tr("modelImpressionPack");
+  return tr("modelCpcBudget");
 }
 
 function formatMoney(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(amount ?? 0));
+    return new Intl.NumberFormat(getDefaultMoneyLocale(), { style: "currency", currency }).format(Number(amount ?? 0));
   } catch {
     return `${currency} ${Number(amount ?? 0).toFixed(2)}`;
   }
 }
 
-function campaignSummaryLine(c: Campaign, currency: string): string {
+function campaignSummaryLine(
+  c: Campaign,
+  currency: string,
+  tr: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (c.billing_model === "time_based") {
     const d = c.duration_days;
-    const daysLabel = d == null ? "?" : d === 1 ? "1 day" : `${d} days`;
+    const daysLabel = d == null ? "?" : tr("day", { count: d });
     const paid = formatMoney(Number(c.budget), currency);
-    const end = c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : "";
-    return `${daysLabel} boost · ${paid} paid${end}`;
+    const end = c.end_at ? tr("summaryEnds", { date: new Date(c.end_at).toLocaleDateString() }) : "";
+    return tr("summaryTimeBoost", { days: daysLabel, paid, end });
   }
   if (c.pack_impressions != null) {
-    return `${c.pack_impressions} impressions · ${formatMoney(Number(c.budget), currency)} paid · ${formatMoney(Number(c.spent), currency)} spent`;
+    return tr("summaryPack", {
+      count: c.pack_impressions,
+      paid: formatMoney(Number(c.budget), currency),
+      spent: formatMoney(Number(c.spent), currency),
+    });
   }
   const daily =
-    c.daily_budget != null ? ` · Daily cap ${formatMoney(Number(c.daily_budget), currency)}` : "";
+    c.daily_budget != null ? tr("summaryDailyCap", { amount: formatMoney(Number(c.daily_budget), currency) }) : "";
   const bid =
-    c.bid_cpc != null && Number(c.bid_cpc) > 0 ? ` · Bid ${formatMoney(Number(c.bid_cpc), currency)}/click` : "";
-  return `Total budget ${formatMoney(Number(c.budget), currency)} · Spent ${formatMoney(Number(c.spent), currency)}${daily}${bid}`;
+    c.bid_cpc != null && Number(c.bid_cpc) > 0
+      ? tr("summaryBid", { amount: formatMoney(Number(c.bid_cpc), currency) })
+      : "";
+  return tr("summaryCpc", {
+    budget: formatMoney(Number(c.budget), currency),
+    spent: formatMoney(Number(c.spent), currency),
+    daily,
+    bid,
+  });
 }
 
 function effectiveCampaignStatus(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): string {
@@ -373,6 +389,9 @@ function AdsPaymentOutcomeCard({
   onManageBilling?: () => void;
   billingLabel?: string;
 }) {
+  const { t } = useTranslation();
+  const managePaymentFallback = t("provider.mobile.screens.adsCampaignFilters.managePaymentMethods") as string;
+  const dismissA11y = t("provider.mobile.screens.ads.dismissPaymentA11y") as string;
   if (outcome.phase === "idle") return null;
 
   const tone = (() => {
@@ -408,7 +427,7 @@ function AdsPaymentOutcomeCard({
 
   return (
     <View style={twStyle(`mb-4 flex-row items-start rounded-2xl border p-3 ${tone.wrap}`)}>
-      <View style={twStyle(`mr-3 rounded-full p-2 ${tone.iconWrap}`)}>
+      <View style={twStyle(`me-3 rounded-full p-2 ${tone.iconWrap}`)}>
         <Ionicons name={tone.icon} size={18} color={tone.iconColor} />
       </View>
       <View style={{ flex: 1 }}>
@@ -420,13 +439,13 @@ function AdsPaymentOutcomeCard({
             style={twStyle("mt-2 self-start rounded-lg bg-white/80 px-3 py-2 border border-amber-200")}
             accessibilityRole="button"
           >
-            <Text style={twStyle("text-xs font-semibold text-amber-900")}>{billingLabel ?? "Manage payment methods"}</Text>
+            <Text style={twStyle("text-xs font-semibold text-amber-900")}>{billingLabel ?? managePaymentFallback}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
       <TouchableOpacity
         onPress={onDismiss}
-        accessibilityLabel="Dismiss payment notification"
+        accessibilityLabel={dismissA11y}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Ionicons name="close" size={20} color={tone.iconColor} />
@@ -435,30 +454,41 @@ function AdsPaymentOutcomeCard({
   );
 }
 
-function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: string, nowMs: number): string {
+function remainingLine(
+  c: Campaign,
+  metrics: CampaignPerformance,
+  currency: string,
+  nowMs: number,
+  tr: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (c.billing_model === "time_based") {
-    if (!c.end_at) return "Starts after payment";
-    if (new Date(c.end_at).getTime() <= nowMs) return "Boost period ended";
+    if (!c.end_at) return tr("startsAfterPayment");
+    if (new Date(c.end_at).getTime() <= nowMs) return tr("boostPeriodEnded");
     const days = Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000));
-    return days === 1 ? "1 day remaining" : `${days} days remaining`;
+    return tr("daysRemaining", { count: days });
   }
   if (isImpressionPackCampaign(c) && c.pack_impressions != null) {
     if (Number(metrics.impressions ?? 0) >= Number(c.pack_impressions)) {
-      return "All impressions delivered";
+      return tr("allImpressionsDelivered");
     }
     const remaining = Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0));
-    return `${formatCompactNumber(remaining)} impressions remaining`;
+    return tr("impressionsRemaining", { count: formatCompactNumber(remaining) });
   }
   const budget = Number(c.budget || 0);
   if (budget > 0 && Number(c.spent ?? 0) >= budget) {
-    return "Budget fully used";
+    return tr("budgetFullyUsed");
   }
-  return `${formatMoney(Math.max(0, budget - Number(c.spent || 0)), currency)} budget remaining`;
+  return tr("budgetRemaining", { amount: formatMoney(Math.max(0, budget - Number(c.spent || 0)), currency) });
 }
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const ads = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.ads.${key}`, opts) as string,
+    [t],
+  );
   const localParams = useLocalSearchParams<{
     payment_success?: string;
     payment_failed?: string;
@@ -506,7 +536,7 @@ export default function AdsSettingsScreen() {
   // processing overlay covers the verify + provisioning poll so the flow never
   // looks frozen — matching the customer product-order checkout.
   const [processing, setProcessing] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState("Confirming your payment…");
+  const [processingMessage, setProcessingMessage] = useState(() => t("provider.mobile.screens.ads.confirmingPayment") as string);
   const [processingHint, setProcessingHint] = useState<string | null>(null);
   const [reviewState, setReviewState] = useState<AdsCheckoutReview | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -565,7 +595,7 @@ export default function AdsSettingsScreen() {
       ]);
       const anyError = campRes.error || perfRes.error || packsRes.error;
       if (anyError) {
-        Alert.alert("Error", "Some ads data could not be loaded. Pull to refresh.");
+        Alert.alert(ads("errorTitle"), ads("loadPartialError"));
       }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
@@ -586,13 +616,13 @@ export default function AdsSettingsScreen() {
       setCampaignPerformance({});
       setPacks([]);
       setGlobalCategories([]);
-      Alert.alert("Error", "Failed to load ads data. Please try again.");
+      Alert.alert(ads("errorTitle"), ads("loadFailed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
       setNowMs(Date.now());
     }
-  }, [enabled, perfRange]);
+  }, [enabled, perfRange, ads]);
 
   // §Ads-mobile-audit 2026-05: total bookings + CTR aren't in the API summary
   // — derive them from `by_campaign` so the dashboard can show the metric
@@ -627,7 +657,7 @@ export default function AdsSettingsScreen() {
     ) => {
       const returnUrl = getAdsPaystackReturnUrl();
       const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
-        title: "Ad payment",
+        title: ads("adPaymentTitle"),
         returnUrl,
         matchSuccess: (rawUrl) => matchesAdsPaystackReturnUrl(rawUrl, { success: true }),
         matchCancel: (rawUrl) => matchesAdsPaystackReturnUrl(rawUrl, { cancelled: true }),
@@ -640,7 +670,7 @@ export default function AdsSettingsScreen() {
       const productLabel = opts?.productLabel;
 
       if (result?.outcome === "cancel" || result?.outcome === "closed") {
-        const failed = adsFailedCopy("Payment wasn't completed.");
+        const failed = adsFailedCopy(ads("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", campaignId, ...failed });
         await loadAll();
         return;
@@ -652,8 +682,8 @@ export default function AdsSettingsScreen() {
       }
 
       setProcessing(true);
-      setProcessingMessage("Confirming your payment…");
-      setProcessingHint("We're verifying with Paystack — this usually takes a few seconds.");
+      setProcessingMessage(ads("confirmingPayment"));
+      setProcessingHint(ads("verifyingPaystackHint"));
       try {
         const reference = extractPaystackReferenceFromUrl(result.url);
         const verifyResult = reference ? await verifyPaystackWithRetry<{
@@ -676,8 +706,8 @@ export default function AdsSettingsScreen() {
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        setProcessingMessage("Activating your campaign…");
-        setProcessingHint("Funding your ad budget — almost there.");
+        setProcessingMessage(ads("activatingCampaign"));
+        setProcessingHint(ads("fundingHint"));
 
         const resolvedCampaignId = campaignId ?? verifyResult?.data?.campaignId ?? undefined;
 
@@ -723,11 +753,11 @@ export default function AdsSettingsScreen() {
         }, 1500);
       } finally {
         setProcessing(false);
-        setProcessingMessage("Confirming your payment…");
+        setProcessingMessage(ads("confirmingPayment"));
         setProcessingHint(null);
       }
     },
-    [adsPaystackCheckout, loadAll, router, tenantCurrency],
+    [adsPaystackCheckout, loadAll, router, tenantCurrency, ads],
   );
 
   useEffect(() => {
@@ -840,32 +870,32 @@ export default function AdsSettingsScreen() {
   const handleCreateCampaign = useCallback(async () => {
     const budgetNum = parseFloat(createForm.budget.replace(/,/g, "."));
     if (!Number.isFinite(budgetNum) || budgetNum < 0) {
-      Alert.alert("Invalid", `Enter a valid total budget (${tenantCurrency}).`);
+      Alert.alert(ads("invalidTitle"), ads("invalidBudget", { currency: tenantCurrency }));
       return;
     }
     if (budgetNum > 0) {
       const dailyCap = createForm.daily_budget ? parseFloat(createForm.daily_budget.replace(/,/g, ".")) : null;
       const bidCpc = createForm.bid_cpc ? parseFloat(createForm.bid_cpc.replace(/,/g, ".")) : 0;
-      const lineItems = [{ label: "Campaign budget", value: formatMoney(budgetNum, tenantCurrency) }];
+      const lineItems = [{ label: ads("campaignBudget"), value: formatMoney(budgetNum, tenantCurrency) }];
       if (dailyCap && Number.isFinite(dailyCap) && dailyCap > 0) {
-        lineItems.push({ label: "Daily cap", value: formatMoney(dailyCap, tenantCurrency) });
+        lineItems.push({ label: ads("dailyCap"), value: formatMoney(dailyCap, tenantCurrency) });
       }
       if (bidCpc && Number.isFinite(bidCpc) && bidCpc > 0) {
-        lineItems.push({ label: "Bid per click", value: `${formatMoney(bidCpc, tenantCurrency)}/click` });
+        lineItems.push({ label: ads("bidPerClick"), value: ads("bidPerClickValue", { amount: formatMoney(bidCpc, tenantCurrency) }) });
       }
-      lineItems.push({ label: "Total due", value: formatMoney(budgetNum, tenantCurrency) });
+      lineItems.push({ label: ads("totalDue"), value: formatMoney(budgetNum, tenantCurrency) });
       const confirmed = await requestAdsCheckout({
-        heading: "CPC budget",
-        title: `${formatMoney(budgetNum, tenantCurrency)} campaign budget`,
-        subtitle: "Pay-per-click campaign with full control over spend and bids.",
+        heading: ads("cpcBudget"),
+        title: ads("cpcCampaignTitle", { amount: formatMoney(budgetNum, tenantCurrency) }),
+        subtitle: ads("cpcSubtitle"),
         benefits: [
-          "Sponsored placement in eligible category searches",
-          "You only pay as your ad earns clicks",
-          "Pause or end anytime — unspent budget stops serving",
+          ads("cpcBenefit1"),
+          ads("cpcBenefit2"),
+          ads("cpcBenefit3"),
         ],
         lineItems,
         total: formatMoney(budgetNum, tenantCurrency),
-        confirmLabel: `Pay ${formatMoney(budgetNum, tenantCurrency)}`,
+        confirmLabel: ads("payAmount", { amount: formatMoney(budgetNum, tenantCurrency) }),
       });
       if (!confirmed) return;
     }
@@ -884,7 +914,7 @@ export default function AdsSettingsScreen() {
         }
       );
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
+        Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("createFailed")));
         return;
       }
       const data = res.data as AdsCampaignCreateData | undefined;
@@ -900,37 +930,37 @@ export default function AdsSettingsScreen() {
           orderId: adsCreateOrderId(data),
           amount: budgetNum,
           currency: tenantCurrency,
-          productLabel: "CPC budget",
+          productLabel: ads("cpcBudget"),
         });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       loadAll();
-      Alert.alert("Done", "Campaign created (draft). Activate it when ready.");
+      Alert.alert(t("common.done"), ads("createdDraft"));
     } catch (e: unknown) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
+      Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("createFailed")));
     } finally {
       setCreating(false);
     }
-  }, [createForm, loadAll, tenantCurrency, requestAdsCheckout, openAdsPaystack]);
+  }, [createForm, loadAll, tenantCurrency, requestAdsCheckout, openAdsPaystack, ads, t]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
       const confirmed = await requestAdsCheckout({
-        heading: "Impression pack",
-        title: `${formatCompactNumber(pack.impressions)} sponsored impressions`,
-        subtitle: "Prepaid reach — placements deliver until the pack is fully shown.",
+        heading: ads("impressionPack"),
+        title: ads("impressionPackTitle", { count: formatCompactNumber(pack.impressions) }),
+        subtitle: ads("impressionPackSubtitle"),
         benefits: [
-          `${formatCompactNumber(pack.impressions)} guaranteed sponsored impressions`,
-          "Delivery starts only after payment is verified",
-          "No bidding or daily caps to manage",
+          ads("impressionPackBenefit1", { count: formatCompactNumber(pack.impressions) }),
+          ads("impressionPackBenefit2"),
+          ads("impressionPackBenefit3"),
         ],
         lineItems: [
-          { label: "Impression pack", value: formatCompactNumber(pack.impressions) },
-          { label: "Total due", value: packDisplayPrice(pack) },
+          { label: ads("impressionPack"), value: formatCompactNumber(pack.impressions) },
+          { label: ads("totalDue"), value: packDisplayPrice(pack) },
         ],
         total: packDisplayPrice(pack),
-        confirmLabel: shouldUseAppleIap() ? `Purchase ${packDisplayPrice(pack)}` : `Pay ${packDisplayPrice(pack)}`,
+        confirmLabel: shouldUseAppleIap() ? ads("purchaseAmount", { amount: packDisplayPrice(pack) }) : ads("payAmount", { amount: packDisplayPrice(pack) }),
       });
       if (!confirmed) return;
 
@@ -943,7 +973,7 @@ export default function AdsSettingsScreen() {
 
         if (shouldUseAppleIap()) {
           setProcessing(true);
-          setProcessingMessage("Processing App Store purchase…");
+          setProcessingMessage(ads("processingApple"));
           const appleResult = await createAdsCampaignWithApplePayment({
             impression_pack_id: pack.id,
             targeting,
@@ -951,13 +981,13 @@ export default function AdsSettingsScreen() {
           setProcessing(false);
           if (!appleResult.ok) {
             if (!appleResult.cancelled) {
-              Alert.alert("Error", appleResult.error);
+              Alert.alert(ads("errorTitle"), appleResult.error);
             }
             return;
           }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           loadAll();
-          Alert.alert("Done", "Impression pack purchased and campaign created.");
+          Alert.alert(t("common.done"), ads("packPurchased"));
           return;
         }
 
@@ -972,7 +1002,7 @@ export default function AdsSettingsScreen() {
           }
         );
         if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
+          Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("createFailed")));
           return;
         }
         const data = res.data as AdsCampaignCreateData | undefined;
@@ -986,20 +1016,20 @@ export default function AdsSettingsScreen() {
             orderId: adsCreateOrderId(data),
             amount: pack.price_zar,
             currency: tenantCurrency,
-            productLabel: "Impression pack",
+            productLabel: ads("impressionPack"),
           });
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
-        Alert.alert("Done", "Campaign created.");
+        Alert.alert(t("common.done"), ads("created"));
       } catch (e: unknown) {
-        Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
+        Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("createFailed")));
       } finally {
         setCreatingPackId(null);
       }
     },
-    [loadAll, createForm.global_category_ids, requestAdsCheckout, tenantCurrency, openAdsPaystack]
+    [loadAll, createForm.global_category_ids, requestAdsCheckout, tenantCurrency, openAdsPaystack, ads, t]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -1009,8 +1039,8 @@ export default function AdsSettingsScreen() {
       const nextBudget = parseFloat(editForm.budget.replace(/,/g, "."));
       if (Number.isFinite(nextBudget) && nextBudget > Number(editCampaign.budget ?? 0)) {
         Alert.alert(
-          "Budget top-up needed",
-          "Budget increases require a new paid campaign or pack. Lower the budget here, or buy another boost."
+          ads("budgetTopUpTitle"),
+          ads("budgetTopUpBody")
         );
         return;
       }
@@ -1028,19 +1058,19 @@ export default function AdsSettingsScreen() {
       }
       const res = await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, payload);
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update campaign"));
+        Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("updateFailed")));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
       loadAll();
-      Alert.alert("Done", "Campaign updated.");
+      Alert.alert(t("common.done"), ads("updated"));
     } catch (e: unknown) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to update campaign"));
+      Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("updateFailed")));
     } finally {
       setUpdating(null);
     }
-  }, [editCampaign, editForm, loadAll]);
+  }, [editCampaign, editForm, loadAll, ads, t]);
 
   const handleSetStatus = useCallback(
     (campaignId: string, status: "active" | "paused" | "ended") => {
@@ -1049,27 +1079,27 @@ export default function AdsSettingsScreen() {
         try {
           const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
           if (res.error) {
-            Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update status"));
+            Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("statusUpdateFailed")));
             return;
           }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           loadAll();
         } catch (e: unknown) {
-          Alert.alert("Error", getApiErrorMessage(e, "Failed to update status"));
+          Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("statusUpdateFailed")));
         } finally {
           setUpdating(null);
         }
       };
       if (status === "ended") {
-        Alert.alert("End campaign", "This will stop the campaign. You can still view it in the list.", [
-          { text: "Cancel", style: "cancel" },
-          { text: "End", style: "destructive", onPress: () => void run() },
+        Alert.alert(ads("endCampaignTitle"), ads("endCampaignBody"), [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: ads("endAction"), style: "destructive", onPress: () => void run() },
         ]);
         return;
       }
       void run();
     },
-    [loadAll]
+    [loadAll, ads, t]
   );
 
   /**
@@ -1089,17 +1119,17 @@ export default function AdsSettingsScreen() {
       try {
         if (shouldUseAppleIap()) {
           setProcessing(true);
-          setProcessingMessage("Processing App Store purchase…");
+          setProcessingMessage(ads("processingApple"));
           const appleResult = await retryAdsCampaignWithApplePayment(campaign.id);
           setProcessing(false);
           if (!appleResult.ok) {
             if (!appleResult.cancelled) {
-              Alert.alert("Error", appleResult.error);
+              Alert.alert(ads("errorTitle"), appleResult.error);
             }
             return;
           }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Alert.alert("Success", "Purchase completed. Your campaign will start shortly.");
+          Alert.alert(ads("successTitle"), ads("applePurchaseSuccess"));
           await loadAll();
           return;
         }
@@ -1113,12 +1143,12 @@ export default function AdsSettingsScreen() {
           ADS_NATIVE_PAYMENT,
         );
         if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't reopen Paystack"));
+          Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("reopenPaystackFailed")));
           return;
         }
         const payUrl = (res.data?.payment_url ?? "").trim();
         if (!payUrl) {
-          Alert.alert("Error", "Paystack didn't return a payment URL. Please try again.");
+          Alert.alert(ads("errorTitle"), ads("noPaymentUrl"));
           return;
         }
         const orderId = res.data?.order_id ?? campaign.latest_budget_order?.id;
@@ -1130,14 +1160,14 @@ export default function AdsSettingsScreen() {
           orderId,
           amount,
           currency: campaign.latest_budget_order?.currency ?? tenantCurrency,
-          productLabel: campaignModelLabel(campaign),
+          productLabel: campaignModelLabel(campaign, ads),
         });
       } catch (e: unknown) {
         Alert.alert(
           "Error",
           getApiErrorMessage(
             e,
-            shouldUseAppleIap() ? "Couldn't restart App Store payment" : "Couldn't reopen Paystack",
+            shouldUseAppleIap() ? ads("restartAppleFailed") : ads("reopenPaystackFailed"),
           ),
         );
       } finally {
@@ -1145,7 +1175,7 @@ export default function AdsSettingsScreen() {
         setUpdating(null);
       }
     },
-    [loadAll, openAdsPaystack, requestAdsCheckout, tenantCurrency],
+    [loadAll, openAdsPaystack, requestAdsCheckout, tenantCurrency, ads, t],
   );
 
   /**
@@ -1157,19 +1187,19 @@ export default function AdsSettingsScreen() {
   const handleCancelDraft = useCallback(
     (campaign: Campaign) => {
       Alert.alert(
-        "Remove this campaign?",
-        "No charge was made. The draft will be cancelled and removed from your active list.",
+        ads("removeCampaignTitle"),
+        ads("removeCampaignBody"),
         [
-          { text: "Keep", style: "cancel" },
+          { text: ads("keep"), style: "cancel" },
           {
-            text: "Cancel campaign",
+            text: ads("cancelCampaign"),
             style: "destructive",
             onPress: () => handleSetStatus(campaign.id, "ended"),
           },
         ],
       );
     },
-    [handleSetStatus],
+    [handleSetStatus, ads],
   );
 
   const af = useCallback(
@@ -1227,25 +1257,25 @@ export default function AdsSettingsScreen() {
       try {
         const res = await api.post(`/api/provider/ads/budget-orders/${orderId}/abandon`, {});
         if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't cancel the payment"));
+          Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("cancelPaymentFailed")));
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
       } catch (e: unknown) {
-        Alert.alert("Error", getApiErrorMessage(e, "Couldn't cancel the payment"));
+        Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("cancelPaymentFailed")));
       } finally {
         setUpdating(null);
       }
     },
-    [loadAll],
+    [loadAll, ads],
   );
 
   const handleViewReceipt = useCallback(
     async (campaign: Campaign) => {
       const orderId = campaign.latest_budget_order?.id;
       if (!orderId) {
-        Alert.alert("Receipt unavailable", "No paid order found for this campaign.");
+        Alert.alert(ads("receiptUnavailable"), ads("noPaidOrder"));
         return;
       }
       setUpdating(campaign.id);
@@ -1255,22 +1285,22 @@ export default function AdsSettingsScreen() {
           {},
         );
         if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't open the receipt"));
+          Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("openReceiptFailed")));
           return;
         }
         const signed = res.data?.url?.trim();
         if (!signed) {
-          Alert.alert("Error", "Couldn't open the receipt.");
+          Alert.alert(ads("errorTitle"), ads("openReceiptFailedPeriod"));
           return;
         }
-        pushInAppBrowser(router, signed, "Receipt");
+        pushInAppBrowser(router, signed, ads("receipt"));
       } catch (e: unknown) {
-        Alert.alert("Error", getApiErrorMessage(e, "Couldn't open the receipt"));
+        Alert.alert(ads("errorTitle"), getApiErrorMessage(e, ads("openReceiptFailed")));
       } finally {
         setUpdating(null);
       }
     },
-    [router],
+    [router, ads],
   );
 
   const handleBuyAgain = useCallback((campaign: Campaign) => {
@@ -1281,7 +1311,7 @@ export default function AdsSettingsScreen() {
       global_category_ids: campaign.targeting?.global_category_ids ?? [],
     });
     if (isTimeBasedCampaign(campaign) || isImpressionPackCampaign(campaign)) {
-      Alert.alert("Buy again", "Pick a boost or pack above to run another campaign with the same targeting.");
+      Alert.alert(ads("buyAgainTitle"), ads("buyAgainBody"));
       return;
     }
     setCreateOpen(true);
@@ -1300,14 +1330,13 @@ export default function AdsSettingsScreen() {
   if (!enabled) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Paid ads" subtitle="Sponsored listings when available in your market" onBack={() => router.back()} />
+        <ScreenHeader title={ads("title")} subtitle={ads("subtitleDisabled")} onBack={() => router.back()} />
         <View style={[twStyle("flex-1 px-4 pt-8"), { paddingHorizontal: screenPadding }]}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-amber-50 p-6")}>
             <Ionicons name="megaphone-outline" size={40} color="#b45309" />
-            <Text style={twStyle("mt-3 text-base font-semibold text-gray-900")}>Ads not enabled</Text>
+            <Text style={twStyle("mt-3 text-base font-semibold text-gray-900")}>{ads("notEnabledTitle")}</Text>
             <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-              Sponsored listings are not available in your market yet. When ads are available, you will be able to boost your
-              profile and track visibility, reach, clicks, and bookings here.
+              {ads("notEnabledBody")}
             </Text>
           </View>
         </View>
@@ -1318,7 +1347,7 @@ export default function AdsSettingsScreen() {
   if (loading && campaigns.length === 0 && !performance) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Paid ads" subtitle="Loading campaigns…" onBack={() => router.back()} />
+        <ScreenHeader title={ads("title")} subtitle={ads("subtitleLoading")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -1330,8 +1359,8 @@ export default function AdsSettingsScreen() {
     <>
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Paid ads"
-        subtitle="Boost discovery, target categories, and track reach"
+        title={ads("title")}
+        subtitle={ads("subtitle")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -1358,10 +1387,10 @@ export default function AdsSettingsScreen() {
           {performance && (
             <View style={twStyle("mb-6")}>
               <View style={twStyle("mb-2 flex-row items-end justify-between")}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={twStyle("text-sm font-semibold text-gray-700")}>Ad performance</Text>
+                <View style={{ flex: 1, paddingEnd: 8 }}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-700")}>{ads("adPerformance")}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    Reach, clicks, bookings, and spend for the selected window.
+                    {ads("adPerformanceHint")}
                   </Text>
                 </View>
               </View>
@@ -1392,7 +1421,7 @@ export default function AdsSettingsScreen() {
                       accessibilityState={{ selected: active }}
                     >
                       <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-700"}`)}>
-                        {r.label}
+                        {ads(r.key)}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -1404,37 +1433,37 @@ export default function AdsSettingsScreen() {
                 {[
                   {
                     icon: "eye-outline" as const,
-                    label: "Impressions",
+                    label: ads("metricImpressions"),
                     value: formatCompactNumber(performance.impressions),
                     accent: "#6b7280",
                   },
                   {
                     icon: "people-outline" as const,
-                    label: "Reach",
+                    label: ads("metricReach"),
                     value: formatCompactNumber(performance.reach),
                     accent: "#6b7280",
                   },
                   {
                     icon: "hand-left-outline" as const,
-                    label: "Clicks",
+                    label: ads("metricClicks"),
                     value: formatCompactNumber(performance.clicks),
                     accent: "#6b7280",
                   },
                   {
                     icon: "trending-up-outline" as const,
-                    label: "CTR",
+                    label: ads("metricCtr"),
                     value: aggregateCtr,
                     accent: "#4f46e5",
                   },
                   {
                     icon: "calendar-outline" as const,
-                    label: "Bookings",
+                    label: ads("metricBookings"),
                     value: formatCompactNumber(totalBooks),
                     accent: "#059669",
                   },
                   {
                     icon: "wallet-outline" as const,
-                    label: "Spend",
+                    label: ads("metricSpend"),
                     value: formatMoney(Number(performance.spend), tenantCurrency),
                     accent: "#6b7280",
                   },
@@ -1445,7 +1474,7 @@ export default function AdsSettingsScreen() {
                       twStyle("rounded-2xl border border-gray-200 bg-white p-4 mb-2"),
                       {
                         flexBasis: "48%",
-                        marginRight: idx % 2 === 0 ? "4%" : 0,
+                        marginEnd: idx % 2 === 0 ? "4%" : 0,
                       },
                     ]}
                   >
@@ -1464,13 +1493,13 @@ export default function AdsSettingsScreen() {
                 <Ionicons name="sparkles-outline" size={22} color="#4f46e5" />
               </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-base font-semibold text-gray-950")}>Choose how you want to grow</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-950")}>{ads("chooseHowToGrow")}</Text>
                 <Text style={twStyle("mt-1 text-sm leading-5 text-gray-600")}>
                   {defaultModel === "time_based"
-                    ? "Recommended: buy a time boost for predictable visibility over a fixed number of days."
+                    ? ads("recommendTime")
                     : defaultModel === "impression_pack"
-                      ? "Recommended: buy a fixed impression pack and track delivery until it is used."
-                      : "Recommended: set a custom CPC budget if you want manual control over spend and bids."}
+                      ? ads("recommendPack")
+                      : ads("recommendCpc")}
                 </Text>
               </View>
             </View>
@@ -1479,18 +1508,18 @@ export default function AdsSettingsScreen() {
           {globalCategories.length > 0 && (timePacks.length > 0 || packs.length > 0) && (
             <View style={twStyle("mb-5")}>
               <View style={twStyle("flex-row items-center justify-between mb-1")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Target categories (optional)</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>{ads("targetCategoriesOptional")}</Text>
                 {createForm.global_category_ids.length > 0 ? (
                   <TouchableOpacity
                     onPress={() => setCreateForm((p) => ({ ...p, global_category_ids: [] }))}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={twStyle("text-xs font-semibold text-indigo-600")}>Clear ({createForm.global_category_ids.length})</Text>
+                    <Text style={twStyle("text-xs font-semibold text-indigo-600")}>{ads("clearCount", { count: createForm.global_category_ids.length })}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
               <Text style={twStyle("text-xs text-gray-500 mb-2")}>
-                For packs and boosts below. None selected = all category searches.
+                {ads("targetCategoriesHint")}
               </Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {globalCategories.map((cat) => {
@@ -1527,15 +1556,15 @@ export default function AdsSettingsScreen() {
           {timePacks.length > 0 && availableModels.includes("time_based") && (
             <View style={twStyle("mb-7")}>
               <View style={twStyle("flex-row items-center gap-2 mb-1")}>
-                <Text style={twStyle("text-base font-semibold text-gray-900")}>Boost for a set number of days</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{ads("boostDaysTitle")}</Text>
                 {defaultModel === "time_based" ? (
                   <Text style={twStyle("rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800")}>
-                    Recommended
+                    {ads("recommended")}
                   </Text>
                 ) : null}
               </View>
               <Text style={twStyle("text-sm text-gray-500 mb-4 leading-5")}>
-                Flat fee — your profile stays in sponsored placement for the whole window.
+                {ads("boostDaysHint")}
               </Text>
               <ScrollView
                 horizontal
@@ -1544,7 +1573,7 @@ export default function AdsSettingsScreen() {
                 snapToInterval={packCardWidth + packSnapGap}
                 snapToAlignment="start"
                 contentContainerStyle={{
-                  paddingRight: screenPadding + 8,
+                  paddingEnd: screenPadding + 8,
                   gap: packSnapGap,
                   paddingVertical: 4,
                 }}
@@ -1553,23 +1582,22 @@ export default function AdsSettingsScreen() {
                   <TouchableOpacity
                     key={tp.id}
                     onPress={async () => {
-                      const daysLabel =
-                        tp.duration_days === 1 ? "1 day" : `${tp.duration_days} days`;
+                      const daysLabel = ads("day", { count: tp.duration_days });
                       const confirmed = await requestAdsCheckout({
-                        heading: "Time boost",
-                        title: tp.label?.trim() ? tp.label : `${daysLabel} boost`,
-                        subtitle: `Flat fee — sponsored placement for ${daysLabel}.`,
+                        heading: ads("timeBoost"),
+                        title: tp.label?.trim() ? tp.label : ads("boostTitle", { days: daysLabel }),
+                        subtitle: ads("timeBoostSubtitle", { days: daysLabel }),
                         benefits: [
-                          `Sponsored placement for the full ${daysLabel}`,
-                          "Predictable flat price — no per-click charges",
-                          "Goes live only after payment is verified",
+                          ads("timeBoostBenefit1", { days: daysLabel }),
+                          ads("timeBoostBenefit2"),
+                          ads("timeBoostBenefit3"),
                         ],
                         lineItems: [
-                          { label: "Boost duration", value: daysLabel },
-                          { label: "Total due", value: packDisplayPrice(tp) },
+                          { label: ads("boostDuration"), value: daysLabel },
+                          { label: ads("totalDue"), value: packDisplayPrice(tp) },
                         ],
                         total: packDisplayPrice(tp),
-                        confirmLabel: shouldUseAppleIap() ? `Purchase ${packDisplayPrice(tp)}` : `Pay ${packDisplayPrice(tp)}`,
+                        confirmLabel: shouldUseAppleIap() ? ads("purchaseAmount", { amount: packDisplayPrice(tp) }) : ads("payAmount", { amount: packDisplayPrice(tp) }),
                       });
                       if (!confirmed) return;
 
@@ -1582,7 +1610,7 @@ export default function AdsSettingsScreen() {
 
                         if (shouldUseAppleIap()) {
                           setProcessing(true);
-                          setProcessingMessage("Processing App Store purchase…");
+                          setProcessingMessage(ads("processingApple"));
                           const appleResult = await createAdsCampaignWithApplePayment({
                             time_pack_id: tp.id,
                             targeting,
@@ -1590,11 +1618,11 @@ export default function AdsSettingsScreen() {
                           setProcessing(false);
                           if (!appleResult.ok) {
                             if (!appleResult.cancelled) {
-                              Alert.alert("Error", appleResult.error);
+                              Alert.alert(ads("errorTitle"), appleResult.error);
                             }
                             return;
                           }
-                          Alert.alert("Success", "Time boost purchased and campaign created.");
+                          Alert.alert(ads("successTitle"), ads("timeBoostPurchased"));
                           loadAll();
                           return;
                         }
@@ -1607,7 +1635,7 @@ export default function AdsSettingsScreen() {
                           targeting,
                         });
                         if (res.error) {
-                          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign."));
+                          Alert.alert(ads("errorTitle"), getApiErrorMessage(res.error, ads("createFailedPeriod")));
                           return;
                         }
                         const data = res.data as AdsCampaignCreateData | undefined;
@@ -1620,14 +1648,14 @@ export default function AdsSettingsScreen() {
                             orderId: adsCreateOrderId(data),
                             amount: tp.price_zar,
                             currency: tenantCurrency,
-                            productLabel: "Time boost",
+                            productLabel: ads("timeBoost"),
                           });
                           return;
                         }
-                        Alert.alert("Success", "Campaign created.");
+                        Alert.alert(ads("successTitle"), ads("created"));
                         loadAll();
                       } catch {
-                        Alert.alert("Error", "Failed to create campaign.");
+                        Alert.alert(ads("errorTitle"), ads("createFailedPeriod"));
                       } finally {
                         setCreatingPackId(null);
                       }
@@ -1659,13 +1687,13 @@ export default function AdsSettingsScreen() {
                       >
                         <View>
                           <Text style={twStyle("text-[11px] font-semibold uppercase tracking-wider text-emerald-600")}>
-                            Time boost
+                            {ads("timeBoost")}
                           </Text>
                           <Text style={[twStyle("text-3xl font-bold text-gray-900 mt-1"), { fontVariant: ["tabular-nums"] }]}>
                             {tp.duration_days}
                           </Text>
                           <Text style={twStyle("text-sm text-gray-600 mt-0.5")} numberOfLines={2}>
-                            {tp.label?.trim() ? tp.label : tp.duration_days === 1 ? "day in sponsored slots" : "days in sponsored slots"}
+                            {tp.label?.trim() ? tp.label : tp.duration_days === 1 ? ads("dayInSlots") : ads("daysInSlots")}
                           </Text>
                         </View>
                         <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
@@ -1675,7 +1703,7 @@ export default function AdsSettingsScreen() {
                           {creatingPackId === tp.id ? (
                             <ActivityIndicator size="small" color="#047857" style={{ marginTop: 10 }} />
                           ) : (
-                            <Text style={twStyle("text-xs font-semibold text-emerald-600 mt-2")}>Tap to purchase →</Text>
+                            <Text style={twStyle("text-xs font-semibold text-emerald-600 mt-2")}>{ads("tapToPurchase")}</Text>
                           )}
                         </View>
                       </View>
@@ -1690,15 +1718,15 @@ export default function AdsSettingsScreen() {
           {packs.length > 0 && availableModels.includes("impression_pack") && (
             <View style={twStyle("mb-7")}>
               <View style={twStyle("flex-row items-center gap-2 mb-1")}>
-                <Text style={twStyle("text-base font-semibold text-gray-900")}>Buy impressions</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{ads("buyImpressions")}</Text>
                 {defaultModel === "impression_pack" ? (
                   <Text style={twStyle("rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-800")}>
-                    Recommended
+                    {ads("recommended")}
                   </Text>
                 ) : null}
               </View>
               <Text style={twStyle("text-sm text-gray-500 mb-4 leading-5")}>
-                Prepaid reach — your sponsored placements deliver until the pack is fully shown.
+                {ads("buyImpressionsHint")}
               </Text>
               <ScrollView
                 horizontal
@@ -1707,7 +1735,7 @@ export default function AdsSettingsScreen() {
                 snapToInterval={packCardWidth + packSnapGap}
                 snapToAlignment="start"
                 contentContainerStyle={{
-                  paddingRight: screenPadding + 8,
+                  paddingEnd: screenPadding + 8,
                   gap: packSnapGap,
                   paddingVertical: 4,
                 }}
@@ -1743,12 +1771,12 @@ export default function AdsSettingsScreen() {
                       >
                         <View>
                           <Text style={twStyle("text-[11px] font-semibold uppercase tracking-wider text-violet-700")}>
-                            Impression pack
+                            {ads("impressionPack")}
                           </Text>
                           <Text style={[twStyle("text-3xl font-bold text-gray-900 mt-1"), { fontVariant: ["tabular-nums"] }]}>
                             {formatCompactNumber(pack.impressions)}
                           </Text>
-                          <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>sponsored impressions</Text>
+                          <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>{ads("sponsoredImpressions")}</Text>
                         </View>
                         <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
                           <Text style={twStyle("text-lg font-bold text-gray-900")}>
@@ -1757,7 +1785,7 @@ export default function AdsSettingsScreen() {
                           {creatingPackId === pack.id ? (
                             <ActivityIndicator size="small" color="#5b21b6" style={{ marginTop: 10 }} />
                           ) : (
-                            <Text style={twStyle("text-xs font-semibold text-violet-600 mt-2")}>Tap to purchase →</Text>
+                            <Text style={twStyle("text-xs font-semibold text-violet-600 mt-2")}>{ads("tapToPurchase")}</Text>
                           )}
                         </View>
                       </View>
@@ -1772,12 +1800,12 @@ export default function AdsSettingsScreen() {
           <View style={twStyle("mb-4")}>
             <View style={twStyle("mb-3 flex-row flex-wrap items-start justify-between gap-2")}>
               <View style={twStyle("flex-1 min-w-[65%]")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Edit targeting, pause/activate, and track delivery per campaign.</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>{ads("campaigns")}</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{ads("campaignsHint")}</Text>
               </View>
               {cpcBudgetAvailable && (
                 <ActionButton
-                  label="New campaign"
+                  label={ads("newCampaign")}
                   onPress={() => setCreateOpen(true)}
                   variant="primary"
                   size="sm"
@@ -1788,9 +1816,9 @@ export default function AdsSettingsScreen() {
             </View>
             {cpcBudgetAvailable && defaultModel === "cpc_budget" ? (
               <View style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom CPC budget is recommended by the marketplace</Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>{ads("cpcRecommendedTitle")}</Text>
                 <Text style={twStyle("mt-1 text-xs leading-5 text-gray-500")}>
-                  Use this when you want to control total spend, daily cap, and bid. Fixed boosts and packs stay locked to admin pricing.
+                  {ads("cpcRecommendedBody")}
                 </Text>
               </View>
             ) : null}
@@ -1831,7 +1859,7 @@ export default function AdsSettingsScreen() {
                     </Text>
                     <View
                       style={twStyle(
-                        `ml-1.5 min-w-[20px] rounded-full px-1.5 py-0.5 ${active ? "bg-white/20" : "bg-gray-100"}`,
+                        `ms-1.5 min-w-[20px] rounded-full px-1.5 py-0.5 ${active ? "bg-white/20" : "bg-gray-100"}`,
                       )}
                     >
                       <Text style={twStyle(`text-[10px] font-bold text-center ${active ? "text-white" : "text-gray-600"}`)}>
@@ -1873,7 +1901,7 @@ export default function AdsSettingsScreen() {
                 style={twStyle("mb-3 self-start rounded-lg border border-gray-300 bg-white px-3 py-2")}
               >
                 <Text style={twStyle("text-xs font-semibold text-gray-700")}>
-                  {showEndedCampaigns ? "Hide past campaigns" : "Show past campaigns"}
+                  {showEndedCampaigns ? ads("hidePast") : ads("showPast")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1888,26 +1916,26 @@ export default function AdsSettingsScreen() {
                   <Ionicons name="megaphone-outline" size={28} color="#4f46e5" />
                 </View>
                 <Text style={twStyle("text-base font-semibold text-gray-900 text-center")}>
-                  Get found by more clients
+                  {ads("emptyTitle")}
                 </Text>
                 <Text style={twStyle("mt-2 text-sm text-gray-600 text-center leading-5 px-2")}>
                   {(() => {
                     const hasPacks = timePacks.length > 0 || packs.length > 0;
                     if (cpcBudgetAvailable && hasPacks) {
-                      return "Pick a time boost or impression pack above, or run a custom CPC campaign with full control over bids and spend.";
+                      return ads("emptyBoth");
                     }
                     if (cpcBudgetAvailable) {
-                      return "Run a custom CPC campaign with full control over your total budget, daily cap, and bid per click.";
+                      return ads("emptyCpc");
                     }
                     if (hasPacks) {
-                      return "Pick a time boost or impression pack above to start running sponsored placements.";
+                      return ads("emptyPacks");
                     }
-                    return "Sponsored placements are not yet open in your market. Check back soon.";
+                    return ads("emptyMarket");
                   })()}
                 </Text>
                 {cpcBudgetAvailable ? (
                   <ActionButton
-                    label="New CPC campaign"
+                    label={ads("newCpcCampaign")}
                     onPress={() => setCreateOpen(true)}
                     variant="primary"
                     icon="add"
@@ -1974,15 +2002,15 @@ export default function AdsSettingsScreen() {
                         <View style={twStyle("flex-1 min-w-[60%]")}>
                           <View style={twStyle("flex-row items-center gap-2 flex-wrap mb-1")}>
                             <Text style={twStyle("text-sm font-semibold text-gray-900 capitalize")}>
-                              {campaignModelLabel(c)}
+                              {campaignModelLabel(c, ads)}
                             </Text>
                             {lifecycleBadge ? (
                               <Text style={[twStyle("text-xs font-semibold"), { color: lifecycleBadge.color }]}>
-                                {lifecycleBadge.label}
+                                {ads(lifecycleBadge.labelKey)}
                               </Text>
                             ) : null}
                           </View>
-                          <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency)}</Text>
+                          <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency, ads)}</Text>
                           <View style={twStyle("mt-3")}>
                             <View style={twStyle("h-2 overflow-hidden rounded-full bg-gray-100")}>
                               <View
@@ -1993,31 +2021,30 @@ export default function AdsSettingsScreen() {
                               />
                             </View>
                             <Text style={twStyle("mt-1 text-xs font-medium text-gray-500")}>
-                              {remainingLine(c, metrics, tenantCurrency, nowMs)}
+                              {remainingLine(c, metrics, tenantCurrency, nowMs, ads)}
                             </Text>
                           </View>
                           <View style={twStyle("mt-3 flex-row flex-wrap gap-2")}>
                             {[
-                              ["Impr.", formatCompactNumber(metrics.impressions)],
-                              ["Reach", formatCompactNumber(metrics.reach)],
-                              ["Clicks", formatCompactNumber(metrics.clicks)],
+                              ["metricImprShort", formatCompactNumber(metrics.impressions)],
+                              ["metricReach", formatCompactNumber(metrics.reach)],
+                              ["metricClicks", formatCompactNumber(metrics.clicks)],
                               // §Ads-mobile-audit 2026-05: CTR and Bookings
                               // chips bring the per-campaign card to parity
                               // with the aggregate dashboard.
-                              ["CTR", formatCtr(metrics.impressions, metrics.clicks)],
-                              ["Bookings", formatCompactNumber(metrics.books)],
-                              ["Spend", formatMoney(Number(metrics.spent ?? 0), tenantCurrency)],
-                            ].map(([label, value]) => (
-                              <View key={label} style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
-                                <Text style={twStyle("text-[10px] uppercase tracking-wide text-gray-400")}>{label}</Text>
+                              ["metricCtr", formatCtr(metrics.impressions, metrics.clicks)],
+                              ["metricBookings", formatCompactNumber(metrics.books)],
+                              ["metricSpend", formatMoney(Number(metrics.spent ?? 0), tenantCurrency)],
+                            ].map(([labelKey, value]) => (
+                              <View key={labelKey} style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+                                <Text style={twStyle("text-[10px] uppercase tracking-wide text-gray-400")}>{ads(labelKey)}</Text>
                                 <Text style={twStyle("text-xs font-semibold text-gray-900")}>{value}</Text>
                               </View>
                             ))}
                           </View>
                           {(c.targeting?.global_category_ids?.length ?? 0) > 0 ? (
                             <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                              Targeting: {c.targeting!.global_category_ids!.length} categor
-                              {c.targeting!.global_category_ids!.length === 1 ? "y" : "ies"}
+                              {ads("targetingCount", { count: c.targeting!.global_category_ids!.length })}
                             </Text>
                           ) : null}
                         </View>
@@ -2031,7 +2058,7 @@ export default function AdsSettingsScreen() {
                           style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
                         >
                           <Text style={twStyle("text-gray-800 text-xs font-medium")}>
-                            {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
+                            {canEditBudgetFields(c) ? t("common.edit") : ads("editTargeting")}
                           </Text>
                         </TouchableOpacity>
                         {/* §Provider-paystack-audit 2026-05: explicit recovery
@@ -2047,7 +2074,7 @@ export default function AdsSettingsScreen() {
                               style={twStyle("rounded-lg bg-indigo-600 px-3 py-2")}
                             >
                               <Text style={twStyle("text-white text-xs font-semibold")}>
-                                {paymentState === "failed" ? "Try payment again" : "Complete payment"}
+                                {paymentState === "failed" ? ads("tryPaymentAgain") : ads("completePayment")}
                               </Text>
                             </TouchableOpacity>
                             {paymentState === "failed" ? (
@@ -2066,7 +2093,7 @@ export default function AdsSettingsScreen() {
                               disabled={updating === c.id}
                               style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
                             >
-                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>Cancel campaign</Text>
+                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>{ads("cancelCampaign")}</Text>
                             </TouchableOpacity>
                           </>
                         ) : paymentState === "pending" ? (
@@ -2076,14 +2103,14 @@ export default function AdsSettingsScreen() {
                               disabled={updating === c.id}
                               style={twStyle("rounded-lg bg-indigo-600 px-3 py-2")}
                             >
-                              <Text style={twStyle("text-white text-xs font-semibold")}>Resume payment</Text>
+                              <Text style={twStyle("text-white text-xs font-semibold")}>{ads("resumePayment")}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => void handleAbandonPendingOrder(c)}
                               disabled={updating === c.id}
                               style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
                             >
-                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>Cancel payment</Text>
+                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>{ads("cancelPayment")}</Text>
                             </TouchableOpacity>
                           </>
                         ) : null}
@@ -2093,7 +2120,7 @@ export default function AdsSettingsScreen() {
                             disabled={updating === c.id}
                             style={twStyle("rounded-lg bg-green-600 px-3 py-2")}
                           >
-                            <Text style={twStyle("text-white text-xs font-semibold")}>Activate</Text>
+                            <Text style={twStyle("text-white text-xs font-semibold")}>{ads("activate")}</Text>
                           </TouchableOpacity>
                         ) : null}
                         {lifecycle === "active" ? (
@@ -2102,7 +2129,7 @@ export default function AdsSettingsScreen() {
                             disabled={updating === c.id}
                             style={twStyle("rounded-lg border border-amber-300 bg-amber-50 px-3 py-2")}
                           >
-                            <Text style={twStyle("text-amber-900 text-xs font-semibold")}>Pause</Text>
+                            <Text style={twStyle("text-amber-900 text-xs font-semibold")}>{ads("pause")}</Text>
                           </TouchableOpacity>
                         ) : null}
                         {(paymentState === "paid" || c.latest_budget_order?.status === "paid") &&
@@ -2112,7 +2139,7 @@ export default function AdsSettingsScreen() {
                             disabled={updating === c.id}
                             style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
                           >
-                            <Text style={twStyle("text-gray-800 text-xs font-medium")}>View receipt</Text>
+                            <Text style={twStyle("text-gray-800 text-xs font-medium")}>{ads("viewReceipt")}</Text>
                           </TouchableOpacity>
                         ) : null}
                         {isPastCampaign(lifecycle) ? (
@@ -2121,7 +2148,7 @@ export default function AdsSettingsScreen() {
                             disabled={updating === c.id}
                             style={twStyle("rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2")}
                           >
-                            <Text style={twStyle("text-indigo-900 text-xs font-semibold")}>Buy again</Text>
+                            <Text style={twStyle("text-indigo-900 text-xs font-semibold")}>{ads("buyAgain")}</Text>
                           </TouchableOpacity>
                         ) : null}
                         {!isPastCampaign(lifecycle) &&
@@ -2133,7 +2160,7 @@ export default function AdsSettingsScreen() {
                             disabled={updating === c.id}
                             style={twStyle("rounded-lg px-3 py-2")}
                           >
-                            <Text style={twStyle("text-gray-500 text-xs font-medium")}>End</Text>
+                            <Text style={twStyle("text-gray-500 text-xs font-medium")}>{ads("endAction")}</Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
@@ -2147,34 +2174,34 @@ export default function AdsSettingsScreen() {
       </ScrollView>
 
       {/* Create campaign sheet */}
-      <BottomSheet visible={createOpen} onClose={() => !creating && setCreateOpen(false)} title="Create campaign" subtitle={`Set a total budget (${tenantCurrency}). You can pay now or add budget later.`} snapHeight="full">
+      <BottomSheet visible={createOpen} onClose={() => !creating && setCreateOpen(false)} title={ads("createSheetTitle")} subtitle={ads("createSheetSubtitle", { currency: tenantCurrency })} snapHeight="full">
         <View style={[twStyle("gap-4"), { paddingBottom: 28 + insets.bottom }]}>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("totalBudget", { currency: tenantCurrency })}</Text>
             <TextInput
               value={createForm.budget}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, budget: t }))}
-              placeholder="e.g. 500"
+              placeholder={ads("placeholder500")}
               keyboardType="decimal-pad"
               style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
             />
           </View>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency}, optional)</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("dailyBudgetOptional", { currency: tenantCurrency })}</Text>
             <TextInput
               value={createForm.daily_budget}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, daily_budget: t }))}
-              placeholder="e.g. 50"
+              placeholder={ads("placeholder50")}
               keyboardType="decimal-pad"
               style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
             />
           </View>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency}, optional)</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("bidOptional", { currency: tenantCurrency })}</Text>
             <TextInput
               value={createForm.bid_cpc}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, bid_cpc: t }))}
-              placeholder="e.g. 2"
+              placeholder={ads("placeholder2")}
               keyboardType="decimal-pad"
               style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
             />
@@ -2182,11 +2209,11 @@ export default function AdsSettingsScreen() {
           {globalCategories.length > 0 && (
             <View>
               <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>
-                Target categories{" "}
-                <Text style={twStyle("text-xs text-gray-400 font-normal")}>(optional)</Text>
+                {ads("targetCategories")}{" "}
+                <Text style={twStyle("text-xs text-gray-400 font-normal")}>{ads("optionalParen")}</Text>
               </Text>
               <Text style={twStyle("text-xs text-gray-500 mb-2")}>
-                Leave blank to reach all searches. Select to target specific categories.
+                {ads("createTargetHint")}
               </Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {globalCategories.map((cat) => {
@@ -2225,7 +2252,7 @@ export default function AdsSettingsScreen() {
               </View>
             </View>
           )}
-          <ActionButton label={creating ? "Creating…" : "Create campaign"} onPress={handleCreateCampaign} loading={creating} disabled={creating} fullWidth />
+          <ActionButton label={creating ? ads("creating") : ads("createSheetTitle")} onPress={handleCreateCampaign} loading={creating} disabled={creating} fullWidth />
         </View>
       </BottomSheet>
 
@@ -2233,8 +2260,8 @@ export default function AdsSettingsScreen() {
       <BottomSheet
         visible={!!editCampaign}
         onClose={() => !updating && setEditCampaign(null)}
-        title="Edit campaign"
-        subtitle={canEditBudgetFields(editCampaign) ? "Update budget, bid, and targeting." : "Pack pricing is locked. You can refine targeting."}
+        title={ads("editSheetTitle")}
+        subtitle={canEditBudgetFields(editCampaign) ? ads("editSheetSubtitleBudget") : ads("editSheetSubtitleLocked")}
         snapHeight="full"
       >
         {editCampaign && (
@@ -2242,34 +2269,34 @@ export default function AdsSettingsScreen() {
             {canEditBudgetFields(editCampaign) ? (
               <>
                 <View>
-                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("totalBudget", { currency: tenantCurrency })}</Text>
                   <TextInput
                     value={editForm.budget}
                     onChangeText={(t) => setEditForm((p) => ({ ...p, budget: t }))}
-                    placeholder="e.g. 500"
+                    placeholder={ads("placeholder500")}
                     keyboardType="decimal-pad"
                     style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
                   />
                   <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                    You can lower this budget. To add more money, buy another boost or pack.
+                    {ads("budgetLowerHint")}
                   </Text>
                 </View>
                 <View>
-                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency})</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("dailyBudget", { currency: tenantCurrency })}</Text>
                   <TextInput
                     value={editForm.daily_budget}
                     onChangeText={(t) => setEditForm((p) => ({ ...p, daily_budget: t }))}
-                    placeholder="e.g. 50"
+                    placeholder={ads("placeholder50")}
                     keyboardType="decimal-pad"
                     style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
                   />
                 </View>
                 <View>
-                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency})</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>{ads("bidPerClickCurrency", { currency: tenantCurrency })}</Text>
                   <TextInput
                     value={editForm.bid_cpc}
                     onChangeText={(t) => setEditForm((p) => ({ ...p, bid_cpc: t }))}
-                    placeholder="e.g. 2"
+                    placeholder={ads("placeholder2")}
                     keyboardType="decimal-pad"
                     style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
                   />
@@ -2277,17 +2304,17 @@ export default function AdsSettingsScreen() {
               </>
             ) : (
               <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
-                <Text style={twStyle("text-sm font-semibold text-amber-950")}>Pricing is set by the marketplace</Text>
+                <Text style={twStyle("text-sm font-semibold text-amber-950")}>{ads("pricingLockedTitle")}</Text>
                 <Text style={twStyle("mt-1 text-xs leading-5 text-amber-800")}>
                   {isTimeBasedCampaign(editCampaign)
-                    ? "Time boosts keep their purchased dates and price. Buy another boost to extend visibility."
-                    : "Impression packs keep their purchased impression count and price."}
+                    ? ads("pricingLockedTime")
+                    : ads("pricingLockedPack")}
                 </Text>
               </View>
             )}
             {globalCategories.length > 0 && (
               <View>
-                <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Target categories</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{ads("targetCategories")}</Text>
                 <View style={twStyle("flex-row flex-wrap gap-2")}>
                   {globalCategories.map((cat) => {
                     const selected = editForm.global_category_ids.includes(cat.id);
@@ -2323,7 +2350,7 @@ export default function AdsSettingsScreen() {
                 </View>
               </View>
             )}
-            <ActionButton label={updating === editCampaign.id ? "Saving…" : "Save"} onPress={handleUpdateCampaign} loading={updating === editCampaign.id} disabled={!!updating} fullWidth />
+            <ActionButton label={updating === editCampaign.id ? ads("saving") : t("common.save")} onPress={handleUpdateCampaign} loading={updating === editCampaign.id} disabled={!!updating} fullWidth />
           </View>
         )}
       </BottomSheet>
@@ -2338,7 +2365,7 @@ export default function AdsSettingsScreen() {
     {adsPaystackCheckout.modal}
     <AdsCheckoutProcessingOverlay
       visible={processing}
-      title={processingMessage.includes("Activating") ? "Almost there" : "Confirming payment"}
+      title={processingMessage === ads("activatingCampaign") ? ads("overlayAlmostThere") : ads("overlayConfirming")}
       message={processingMessage}
       hint={processingHint}
     />

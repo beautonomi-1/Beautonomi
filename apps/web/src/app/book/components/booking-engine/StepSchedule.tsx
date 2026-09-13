@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
+  appendBookingEmbedQuery,
   coerceSelectedDate,
   formatBusinessDayYYYYMMDD,
   startOfBusinessDayLocalDate,
@@ -31,8 +32,17 @@ import {
   BOOKING_ACTIVE_SCALE,
 } from "../../constants";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
+const WEEKDAY1_KEYS = [
+  "weekdaySun",
+  "weekdayMon",
+  "weekdayTue",
+  "weekdayWed",
+  "weekdayThu",
+  "weekdayFri",
+  "weekdaySat",
+] as const;
 
 function getSlotHour(start: string, timeZone?: string | null): number {
   const d = new Date(start);
@@ -121,6 +131,8 @@ interface StepScheduleProps {
   providerTimeZone?: string | null;
   /** When false, unavailable slots are shown grayed out but without "Join Waitlist" */
   waitlistEnabled?: boolean;
+  /** Keep waitlist success on the salon iframe contract. */
+  embed?: boolean;
 }
 
 export function StepSchedule({
@@ -137,6 +149,7 @@ export function StepSchedule({
   serviceId = null,
   providerTimeZone = null,
   waitlistEnabled = true,
+  embed = false,
 }: StepScheduleProps) {
   const locale = useTenantLocaleTag();
   const { t } = useTranslation();
@@ -179,7 +192,7 @@ export function StepSchedule({
   }
 
   const formatDay = (d: Date) => d.getDate().toString();
-  const formatDayShort = (d: Date) => WEEKDAYS[d.getDay()].slice(0, 2);
+  const formatDayShort = (d: Date) => t(`web.booking.stepCalendar.weekday.${WEEKDAY_KEYS[d.getDay()]}`);
   const formatSlot = (start: string) =>
     new Date(start).toLocaleTimeString(locale, {
       hour: "2-digit",
@@ -247,7 +260,7 @@ export function StepSchedule({
     if (!waitlistSlot || !providerId || !waitlistForm.name.trim()) return;
     const rawPhone = waitlistForm.phone.trim();
     if (rawPhone && !isCompleteE164(rawPhone)) {
-      alert("Enter a valid phone number or leave the field blank.");
+      alert(t("web.book.engine.invalidPhoneOrBlank"));
       return;
     }
     setWaitlistSubmitting(true);
@@ -275,14 +288,14 @@ export function StepSchedule({
         const code = errData?.error?.code;
         const msg =
           res.status === 403 && (code === "FEATURE_DISABLED" || code === "NOT_FOUND")
-            ? "This provider doesn't offer waitlist."
-            : errData?.error?.message || "Could not join waitlist.";
+            ? t("booking.waitlistNotAvailableMessage")
+            : errData?.error?.message || t("booking.couldNotJoinWaitlist");
         throw new Error(msg);
       }
-      router.push("/checkout/success?waitlist=1");
+      router.push(appendBookingEmbedQuery("/checkout/success?waitlist=1", embed));
       return;
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Could not join waitlist");
+      alert(e instanceof Error ? e.message : t("booking.couldNotJoinWaitlist"));
     } finally {
       setWaitlistSubmitting(false);
     }
@@ -332,12 +345,12 @@ export function StepSchedule({
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-bold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Choose a date &amp; time
+          {t("web.book.engine.chooseDateTime")}
         </h2>
         <p className="mt-1 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          All times are in your local timezone ({timezoneLabel}).
+          {t("web.book.engine.timesLocalTimezone", { timezone: timezoneLabel })}
         </p>
       </div>
 
@@ -358,7 +371,7 @@ export function StepSchedule({
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={BOOKING_ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
-        Next available slot
+        {t("web.book.engine.nextAvailableSlot")}
       </button>
 
       {/* ── DATE SECTION ── */}
@@ -367,7 +380,7 @@ export function StepSchedule({
           <p className="text-sm font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
             {selectedDay
               ? selectedDay.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" })
-              : "Select a date"}
+              : t("booking.selectDate")}
           </p>
           <button
             type="button"
@@ -380,7 +393,7 @@ export function StepSchedule({
             style={{ color: BOOKING_ACCENT, background: BOOKING_WAITLIST_BG, border: `1px solid ${BOOKING_ACCENT}40` }}
           >
             <Calendar className="h-3.5 w-3.5" />
-            Month view
+            {t("web.book.engine.monthView")}
           </button>
         </div>
 
@@ -420,7 +433,7 @@ export function StepSchedule({
               >
                 {isToday && !isSelected && (
                   <span className="absolute top-2 left-0 right-0 text-center" style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: BOOKING_ACCENT }}>
-                    TODAY
+                    {t("web.book.engine.todayBadge")}
                   </span>
                 )}
                 <span className="text-[11px] font-semibold uppercase tracking-wide mt-2" style={{ opacity: isSelected ? 0.85 : 0.65 }}>
@@ -428,7 +441,7 @@ export function StepSchedule({
                 </span>
                 <span className="text-[22px] font-bold leading-tight">{formatDay(d)}</span>
                 <span className="text-[10px] font-medium" style={{ opacity: 0.6 }}>
-                  {MONTHS[d.getMonth()]}
+                  {t(`web.booking.stepCalendar.monthShort.${MONTH_KEYS[d.getMonth()]}`)}
                 </span>
               </button>
             );
@@ -456,12 +469,12 @@ export function StepSchedule({
                 disabled={!canPrevMonth}
                 className="w-10 h-10 rounded-full flex items-center justify-center transition-all touch-manipulation disabled:opacity-25"
                 style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
-                aria-label="Previous month"
+                aria-label={t("web.a11y.previousMonth")}
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <span className="text-base font-bold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                {MONTHS[month]} {year}
+                {t(`web.booking.stepCalendar.monthShort.${MONTH_KEYS[month]}`)} {year}
               </span>
               <button
                 type="button"
@@ -469,7 +482,7 @@ export function StepSchedule({
                 disabled={!canNextMonth}
                 className="w-10 h-10 rounded-full flex items-center justify-center transition-all touch-manipulation disabled:opacity-25"
                 style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
-                aria-label="Next month"
+                aria-label={t("web.a11y.nextMonth")}
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -477,9 +490,9 @@ export function StepSchedule({
 
             {/* Day name headers */}
             <div className="grid grid-cols-7 mb-1">
-              {["S","M","T","W","T","F","S"].map((w, i) => (
+              {WEEKDAY1_KEYS.map((key, i) => (
                 <div key={i} className="text-center py-2 text-xs font-bold" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                  {w}
+                  {t(`web.provider.calendarMobile.${key}`)}
                 </div>
               ))}
             </div>
@@ -528,7 +541,7 @@ export function StepSchedule({
               className="mt-4 w-full rounded-2xl h-11 text-sm font-semibold transition-all touch-manipulation"
               style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
             >
-              Done
+              {t("common.done")}
             </button>
           </div>
         </div>
@@ -546,14 +559,14 @@ export function StepSchedule({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              Join waitlist
+              {t("booking.joinWaitlist")}
             </h3>
             <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              We'll notify you when {formatSlot(waitlistSlot.start)} becomes available.
+              {t("web.book.engine.waitlistNotifyWhen", { time: formatSlot(waitlistSlot.start) })}
             </p>
             <input
               type="text"
-              placeholder="Your name *"
+              placeholder={t("web.book.engine.yourNameRequired")}
               value={waitlistForm.name}
               onChange={(e) => setWaitlistForm((f) => ({ ...f, name: e.target.value }))}
               className="w-full rounded-xl border px-4 py-3 text-sm min-h-[44px]"
@@ -561,7 +574,7 @@ export function StepSchedule({
             />
             <input
               type="email"
-              placeholder="Email"
+              placeholder={t("auth.email")}
               value={waitlistForm.email}
               onChange={(e) => setWaitlistForm((f) => ({ ...f, email: e.target.value }))}
               className="w-full rounded-xl border px-4 py-3 text-sm min-h-[44px]"
@@ -569,10 +582,10 @@ export function StepSchedule({
             />
             <PhoneInput
               inputId="booking-engine-waitlist-phone"
-              label="Phone (optional)"
+              label={t("web.book.engine.phoneOptional")}
               value={waitlistForm.phone}
               onChange={(e164) => setWaitlistForm((f) => ({ ...f, phone: e164 }))}
-              placeholder="Phone number"
+              placeholder={t("auth.phone")}
               className="[&_label]:text-xs [&_label]:font-medium"
             />
             <div className="flex gap-2">
@@ -583,7 +596,7 @@ export function StepSchedule({
                 className="flex-1 rounded-xl py-3 font-medium border min-h-[44px]"
                 style={{ borderColor: BOOKING_BORDER, color: BOOKING_TEXT_PRIMARY }}
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -592,7 +605,7 @@ export function StepSchedule({
                 className="flex-1 rounded-xl py-3 font-semibold text-white min-h-[44px] disabled:opacity-50"
                 style={{ backgroundColor: BOOKING_ACCENT }}
               >
-                {waitlistSubmitting ? "Joining..." : "Join waitlist"}
+                {waitlistSubmitting ? t("booking.joiningWaitlist") : t("booking.joinWaitlist")}
               </button>
             </div>
           </div>
@@ -604,7 +617,7 @@ export function StepSchedule({
         <div className="rounded-3xl overflow-hidden" style={cardStyle}>
           <div className="px-5 pt-5 pb-3">
             <p className="text-sm font-bold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              Available times
+              {t("web.book.engine.availableTimes")}
             </p>
           </div>
 
@@ -631,8 +644,8 @@ export function StepSchedule({
                   <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                 </svg>
               </div>
-              <p className="text-sm font-medium mb-1" style={{ color: BOOKING_TEXT_PRIMARY }}>No openings today</p>
-              <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>Try a different date or use &quot;Next available&quot; above.</p>
+              <p className="text-sm font-medium mb-1" style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.engine.noOpeningsToday")}</p>
+              <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.noOpeningsHint")}</p>
             </div>
           ) : (
             <div className="px-3 pb-4 space-y-2">
@@ -658,7 +671,7 @@ export function StepSchedule({
                       >
                         <PeriodIcon period={group.key} />
                       </span>
-                      <span className="flex-1 text-left font-semibold text-sm" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                      <span className="flex-1 text-start font-semibold text-sm" style={{ color: BOOKING_TEXT_PRIMARY }}>
                         {group.label}
                       </span>
                       <span
@@ -698,7 +711,7 @@ export function StepSchedule({
                             >
                               <span className="text-sm font-semibold">{formatSlot(slot.start)}</span>
                               <span className="text-[10px] font-bold mt-0.5" style={{ color: isSelected ? "rgba(255,255,255,0.8)" : availableLabelColor }}>
-                                Open
+                                {t("web.booking.stepCalendar.legendOpen")}
                               </span>
                             </button>
                           ) : (
@@ -716,7 +729,7 @@ export function StepSchedule({
                             >
                               <span className="text-sm font-semibold">{formatSlot(slot.start)}</span>
                               {waitlistEnabled && (
-                                <span className="text-[10px] font-bold mt-0.5" style={{ color: BOOKING_WAITLIST_TEXT }}>Waitlist</span>
+                                <span className="text-[10px] font-bold mt-0.5" style={{ color: BOOKING_WAITLIST_TEXT }}>{t("provider.waitlist")}</span>
                               )}
                             </button>
                           );
@@ -772,7 +785,7 @@ export function StepSchedule({
           fontSize: "1rem",
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

@@ -27,6 +27,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
@@ -129,6 +130,7 @@ export function PaystackReturnScreen({
   pendingSubtext,
   failedSubtext,
 }: PaystackReturnScreenProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams();
 
@@ -396,9 +398,9 @@ export function PaystackReturnScreen({
               style={({ pressed }) => [styles.secondaryCta, pressed && styles.ctaPressed]}
               onPress={handleRetry}
               accessibilityRole="button"
-              accessibilityLabel="Try again"
+              accessibilityLabel={t("common.retry")}
             >
-              <Text style={styles.secondaryCtaText}>Try again</Text>
+              <Text style={styles.secondaryCtaText}>{t("common.retry")}</Text>
             </Pressable>
           ) : null}
           <Pressable
@@ -477,7 +479,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   slowIcon: {
-    marginRight: 8,
+    marginEnd: 8,
     marginTop: 1,
   },
   slowText: {

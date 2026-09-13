@@ -535,6 +535,13 @@ async function handleGetProviderBookings(request: NextRequest) {
         // Include current_stage for Mangomint-style status/color (client_arrived → WAITING, etc.)
         current_stage: booking.current_stage || null,
         estimated_arrival: (booking as { estimated_arrival?: string | null }).estimated_arrival ?? null,
+        customer_running_late_at:
+          (booking as { customer_running_late_at?: string | null }).customer_running_late_at ?? null,
+        customer_running_late_minutes:
+          (booking as { customer_running_late_minutes?: number | null }).customer_running_late_minutes ??
+          null,
+        provider_late_ack_at:
+          (booking as { provider_late_ack_at?: string | null }).provider_late_ack_at ?? null,
         provider_eta_minutes:
           (booking as { provider_eta_minutes?: number | null }).provider_eta_minutes ?? null,
         arrival_otp_pending: Boolean((booking as any).arrival_otp_pending),
@@ -1055,15 +1062,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
-    // Determine appointment status based on provider settings
-    // This handles: default status, require confirmation, and auto-confirm logic
+    // Determine booking source. Only actual walk-ins should be 'walk_in';
+    // other provider-created bookings should be 'provider' so payout/reporting
+    // logic can distinguish platform-mediated from in-person revenue correctly.
+    const bookingSource = body.booking_source || "provider";
+
+    // Determine appointment status based on provider settings and booking source.
     const finalStatus = await determineAppointmentStatusFromDB(
       supabaseAdmin,
       providerId,
-      body.status // Allow explicit status override from request body
+      body.status,
+      { bookingSource },
     );
 
-    // Handle walk-in clients - create or find customer
     // customer_id is REQUIRED, so we must always have one
     let customerId = body.customer_id;
 
@@ -1201,11 +1212,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
         }
       }
     }
-
-    // Determine booking source. Only actual walk-ins should be 'walk_in';
-    // other provider-created bookings should be 'provider' so payout/reporting
-    // logic can distinguish platform-mediated from in-person revenue correctly.
-    const bookingSource = body.booking_source || "provider";
 
     // Referral source (where did this client come from?) — must belong to this provider
     const referralWarnings: string[] = [];

@@ -12,6 +12,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "env:init": "node ../../tooling/expo-dev/init-env-local.js .",
+    "update:production": "cross-env EXPO_NO_DOTENV=1 APP_ENV=production CI=1 eas update --channel production --environment production --non-interactive",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -44,6 +45,7 @@
     "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.104.1",
+    "babel-preset-expo": "~54.0.11",
     "base64-arraybuffer": "^1.0.2",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
@@ -106,6 +108,9 @@
     "singular-react-native": "^4.2.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/plugin-transform-react-jsx": "^7.28.6",
+    "@babel/types": "^7.29.7",
     "@sentry/cli": "^2.58.5",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",

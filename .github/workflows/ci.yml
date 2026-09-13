@@ -75,6 +75,12 @@ jobs:
       - name: Typecheck (turbo)
         run: pnpm turbo run typecheck --filter="./packages/*" --filter=web --filter=admin-web --filter=customer --filter=provider
 
+      - name: i18n locale parity
+        run: pnpm i18n:check
+
+      - name: i18n registry tests
+        run: pnpm --filter @beautonomi/i18n test
+
       - name: Admin regression (Vitest + API taxonomy)
         run: |
           pnpm --filter admin-web test

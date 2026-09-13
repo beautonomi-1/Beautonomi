@@ -5,6 +5,7 @@ import Logo from "./../../../public/images/Group 3.svg";
 import Sidebar from "./../../../public/images/sidebar-icon.svg";
 import closeIcon from "./../../../public/images/close-icon.svg";
 import Link from "next/link";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -12,19 +13,20 @@ interface MobileMenuProps {
 }
 
 const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-white z-50 md:hidden">
       <div className="flex justify-end p-4">
-        <Image onClick={onClose} src={closeIcon} alt="Close Menu" />
+        <Image onClick={onClose} src={closeIcon} alt={t("web.layout.navbar.closeMenuAlt")} />
       </div>
       <nav className="flex flex-col container space-y-4 mt-8">
         <a href="#" className="text-lg font-normal">
-          Life at Beautonomi
+          {t("web.layout.navbar.lifeAtBeautonomi")}
         </a>
         <a href="#" className="text-lg font-normal">
-          Job Search
+          {t("web.layout.navbar.jobSearch")}
         </a>
       </nav>
     </div>
@@ -32,6 +34,7 @@ const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
 };
 
 export default function CareerNavbar() {
+  const { t } = useTranslation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   const toggleMobileMenu = () => {
@@ -43,25 +46,25 @@ export default function CareerNavbar() {
       <header className="flex items-center justify-between bg-white ">
         <div className="flex items-center space-x-2  w-44 h-20">
         <Link href="/">
-          <Image src={Logo} alt="Logo"className="object-cover" />
+          <Image src={Logo} alt={t("web.layout.navbar.logoAlt")}className="object-cover" />
           </Link>
         </div>
         <div className="flex md:hidden">
           <button onClick={toggleMobileMenu}>
-            <Image src={Sidebar} alt="Menu" />
+            <Image src={Sidebar} alt={t("web.layout.navbar.menu")} />
           </button>
         </div>
 
         <div className="hidden md:flex items-center gap-6">
           <a href="#" className="text-sm font-normal text-black">
-            Life at Beautonomi
+            {t("web.layout.navbar.lifeAtBeautonomi")}
           </a>
           <a
             href="#"
             className="flex items-center text-sm font-normal text-black"
           >
-            Job Search
-            <ChevronDownIcon className="w-4 h-4 ml-1" />
+            {t("web.layout.navbar.jobSearch")}
+            <ChevronDownIcon className="w-4 h-4 ms-1" />
           </a>
         </div>
       </header>

@@ -21,6 +21,7 @@ import { Calendar, Loader2 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AvailableSlot {
   date: string;
@@ -48,12 +49,13 @@ export default function QuickBookingModal({
   availableSlots,
   onSuccess,
 }: QuickBookingModalProps) {
+  const { t } = useTranslation();
   const [selectedSlot, setSelectedSlot] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (!selectedSlot) {
-      toast.error("Please select a time slot");
+      toast.error(t("web.provider.portal.quickBookingModal.selectSlot"));
       return;
     }
 
@@ -66,7 +68,7 @@ export default function QuickBookingModal({
         staff_id: staffId,
       });
 
-      toast.success("Booking created successfully!");
+      toast.success(t("web.provider.portal.quickBookingModal.created"));
       onClose();
       setSelectedSlot("");
       onSuccess?.();
@@ -74,7 +76,7 @@ export default function QuickBookingModal({
       const msg =
         error instanceof Error && error.message.trim()
           ? error.message
-          : "Failed to create booking. Ensure you have create_appointments permission.";
+          : t("web.provider.portal.quickBookingModal.createFailed");
       toast.error(msg);
     } finally {
       setIsSubmitting(false);
@@ -83,7 +85,11 @@ export default function QuickBookingModal({
 
   const slotOptions = availableSlots.map((slot) => ({
     value: `${slot.date}|${slot.time}|${slot.staff_id}`,
-    label: `${format(parseISO(slot.date), "MMM d, yyyy")} at ${slot.time} with ${slot.staff_name}`,
+    label: t("web.provider.portal.quickBookingModal.slotLabel", {
+      date: format(parseISO(slot.date), "MMM d, yyyy"),
+      time: slot.time,
+      staff: slot.staff_name,
+    }),
     slot,
   }));
 
@@ -91,11 +97,9 @@ export default function QuickBookingModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Quick Book from Waitlist</DialogTitle>
+          <DialogTitle>{t("web.provider.portal.quickBookingModal.title")}</DialogTitle>
           <DialogDescription>
-            Create a booking for {clientName} from the waitlist. Requires{" "}
-            <span className="font-medium text-foreground">create_appointments</span>. If you lack
-            permission, the error toast shows the server message (403).
+            {t("web.provider.portal.quickBookingModal.description", { client: clientName })}
           </DialogDescription>
         </DialogHeader>
 
@@ -103,21 +107,25 @@ export default function QuickBookingModal({
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="space-y-2">
               <div>
-                <span className="text-sm font-medium text-gray-700">Client:</span>
-                <span className="ml-2 text-sm text-gray-900">{clientName}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {t("web.provider.portal.quickBookingModal.client")}
+                </span>
+                <span className="ms-2 text-sm text-gray-900">{clientName}</span>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-700">Service:</span>
-                <span className="ml-2 text-sm text-gray-900">{serviceName}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {t("web.provider.portal.quickBookingModal.service")}
+                </span>
+                <span className="ms-2 text-sm text-gray-900">{serviceName}</span>
               </div>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="slot">Select Time Slot *</Label>
+            <Label htmlFor="slot">{t("web.provider.portal.quickBookingModal.selectTimeSlot")}</Label>
             <Select value={selectedSlot} onValueChange={setSelectedSlot}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose a time slot" />
+                <SelectValue placeholder={t("web.provider.portal.quickBookingModal.chooseSlot")} />
               </SelectTrigger>
               <SelectContent>
                 {slotOptions.map((option) => (
@@ -132,7 +140,7 @@ export default function QuickBookingModal({
             </Select>
             {slotOptions.length === 0 && (
               <p className="text-sm text-amber-600">
-                No available slots. Please refresh the waitlist matches.
+                {t("web.provider.portal.quickBookingModal.noSlots")}
               </p>
             )}
           </div>
@@ -140,7 +148,7 @@ export default function QuickBookingModal({
           {selectedSlot && (
             <div className="bg-blue-50 p-4 rounded-lg">
               <p className="text-sm text-blue-900">
-                This will create a booking and notify the client automatically.
+                {t("web.provider.portal.quickBookingModal.willNotify")}
               </p>
             </div>
           )}
@@ -153,7 +161,7 @@ export default function QuickBookingModal({
               className="flex-1"
               disabled={isSubmitting}
             >
-              Cancel
+              {t("web.provider.portal.quickBookingModal.cancel")}
             </Button>
             <Button
               onClick={handleSubmit}
@@ -162,11 +170,11 @@ export default function QuickBookingModal({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                  {t("web.provider.portal.quickBookingModal.creating")}
                 </>
               ) : (
-                "Create Booking"
+                t("web.provider.portal.quickBookingModal.createBooking")
               )}
             </Button>
           </div>

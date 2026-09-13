@@ -99,7 +99,7 @@ export default function DeleteAccountScreen() {
 
   const handleDelete = useCallback(async () => {
     if (!authSecurityLoaded) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Still loading account security settings. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), da("stillLoadingSecurity"));
       return;
     }
     if (hasPassword && !password.trim()) {
@@ -107,7 +107,7 @@ export default function DeleteAccountScreen() {
       return;
     }
     if (!hasPassword && !verificationNonce.trim()) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Enter the verification code to delete your account.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), da("enterOtpToDelete"));
       return;
     }
     if (!confirmOk) {
@@ -146,10 +146,10 @@ export default function DeleteAccountScreen() {
             await signOut();
             const scheduled = res.data?.scheduled === true;
             Alert.alert(
-              scheduled ? "Deletion scheduled" : da("deletedTitle"),
+              scheduled ? da("deletionScheduledTitle") : da("deletedTitle"),
               res.data?.message ??
                 (scheduled
-                  ? `Your account will be permanently deleted in ${res.data?.grace_days ?? 30} days. Check your email to cancel.`
+                  ? da("deletionScheduledBody", { days: String(res.data?.grace_days ?? 30) })
                   : da("deletedBody")),
               [
                 {
@@ -181,7 +181,7 @@ export default function DeleteAccountScreen() {
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", otpDestination.codeSentMessage);
+      Alert.alert(t("customer.mobile.screens.loginSecurity.codeSentTitle"), otpDestination.codeSentMessage);
     } catch (e) {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, da("deleteFailed")));
     } finally {
@@ -208,9 +208,9 @@ export default function DeleteAccountScreen() {
                 padding: 14,
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400e" }}>Account deactivated</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400e" }}>{da("accountDeactivatedTitle")}</Text>
               <Text style={{ fontSize: 14, color: "#92400e", marginTop: 4, lineHeight: 20 }}>
-                You can still permanently delete your account below if you want all personal data removed.
+                {da("accountDeactivatedBody")}
               </Text>
             </View>
           )}
@@ -226,9 +226,9 @@ export default function DeleteAccountScreen() {
                 padding: 14,
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#991b1b" }}>Account suspended</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#991b1b" }}>{da("accountSuspendedTitle")}</Text>
               <Text style={{ fontSize: 14, color: "#b91c1c", marginTop: 4, lineHeight: 20 }}>
-                {status.suspension_reason ?? "Your account has been suspended. Contact support if you need help."}
+                {status.suspension_reason ?? da("accountSuspendedBodyDefault")}
               </Text>
             </View>
           )}
@@ -243,25 +243,25 @@ export default function DeleteAccountScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Permanent deletion</Text>
+            <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{da("permanentDeletionTitle")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[700], marginTop: 8, lineHeight: 20 }}>
-              Prefer a break instead? Use{" "}
-              <Text style={{ fontWeight: "600" }}>Login & security → Deactivate account</Text> to disable your account
-              without deleting data.
+              {da("permanentDeletionBodyPrefix")}
+              <Text style={{ fontWeight: "600" }}>{da("permanentDeletionLink")}</Text>
+              {da("permanentDeletionBodySuffix")}
             </Text>
           </View>
 
           {!authSecurityLoaded ? (
             <View style={{ paddingVertical: 12, alignItems: "center" }}>
               <ActivityIndicator color={Colors.gray[600]} />
-              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>{da("loadingVerificationOptions")}</Text>
             </View>
           ) : hasPassword ? (
             <>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Password</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="Enter your password"
+                placeholder={da("passwordPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={password}
                 onChangeText={setPassword}
@@ -272,18 +272,18 @@ export default function DeleteAccountScreen() {
             </>
           ) : (
             <View>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Confirm with a one-time verification code.</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{da("confirmWithOtpBody")}</Text>
               <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 8 }}>{otpDestination.sendButtonHint}</Text>
               <TouchableOpacity
                 onPress={requestVerificationCode}
                 disabled={requestingNonce || !canVerifyWithCode}
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
               >
-                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? da("sending") : da("sendVerificationCode")}</Text>
               </TouchableOpacity>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="Enter code"
+                placeholder={da("enterCodePlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={verificationNonce}
                 onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}
@@ -295,7 +295,7 @@ export default function DeleteAccountScreen() {
           )}
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginTop: 16, marginBottom: 6 }}>
-            Reason (optional)
+            {da("reasonLabel")}
           </Text>
           <TextInput
             style={{
@@ -310,7 +310,7 @@ export default function DeleteAccountScreen() {
               minHeight: 72,
               textAlignVertical: "top",
             }}
-            placeholder="Why are you leaving?"
+            placeholder={da("reasonPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             value={reason}
             onChangeText={setReason}
@@ -318,7 +318,8 @@ export default function DeleteAccountScreen() {
           />
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginTop: 16, marginBottom: 6 }}>
-            Type <Text style={{ fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", color: "#dc2626" }}>{DELETE_PHRASE}</Text> to confirm
+            {da("typePhraseToConfirm", { phrase: DELETE_PHRASE })}{" "}
+            <Text style={{ fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", color: "#dc2626" }}>{DELETE_PHRASE}</Text>
           </Text>
           <TextInput
             style={{
@@ -340,7 +341,7 @@ export default function DeleteAccountScreen() {
           />
 
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 12, lineHeight: 18 }}>
-            Same safeguards as the website. Passwordless accounts can confirm with a one-time verification code.
+            {da("safeguardsBody")}
           </Text>
 
           <TouchableOpacity
@@ -363,12 +364,12 @@ export default function DeleteAccountScreen() {
               alignItems: "center",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Delete account permanently"
+            accessibilityLabel={da("deleteAccountPermanently")}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Delete account permanently</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{da("deleteAccountPermanently")}</Text>
             )}
           </TouchableOpacity>
         </View>

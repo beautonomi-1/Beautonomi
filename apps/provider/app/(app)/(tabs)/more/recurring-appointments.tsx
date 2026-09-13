@@ -26,6 +26,11 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+
+type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
+
 function alertApiError(title: string, message: string, errorCode: string | null, router: Router | null) {
   if (isPlanGateErrorCode(errorCode)) {
     showPlanGateAlert({ title, message, errorCode, router: router ?? undefined });
@@ -68,7 +73,7 @@ interface RecurringListResponse {
 }
 
 /** Convert an RRULE or shorthand string into a human-readable label. */
-function humanizeRule(rule: string): string {
+function humanizeRule(rule: string, tr: TranslateFn): string {
   if (!rule) return rule;
   const r = rule.toUpperCase();
   if (r.startsWith("FREQ=")) {
@@ -77,41 +82,41 @@ function humanizeRule(rule: string): string {
     const freq = match?.[1];
     const n = interval ? parseInt(interval[1], 10) : 1;
     const freqMap: Record<string, string> = {
-      DAILY: n === 1 ? "Every day" : `Every ${n} days`,
-      WEEKLY: n === 1 ? "Every week" : `Every ${n} weeks`,
-      BIWEEKLY: "Every 2 weeks",
-      MONTHLY: n === 1 ? "Every month" : `Every ${n} months`,
-      YEARLY: "Every year",
+      DAILY: tr("freqDaily", { count: n }),
+      WEEKLY: tr("freqWeeklyLong", { count: n }),
+      BIWEEKLY: tr("freqBiweekly"),
+      MONTHLY: tr("freqMonthlyLong", { count: n }),
+      YEARLY: tr("freqYearly"),
     };
     return freqMap[freq ?? ""] ?? rule;
   }
   const simple: Record<string, string> = {
-    DAILY: "Every day",
-    WEEKLY: "Every week",
-    BIWEEKLY: "Every 2 weeks",
-    MONTHLY: "Every month",
-    YEARLY: "Every year",
-    "2WEEKLY": "Every 2 weeks",
-    "4WEEKLY": "Every 4 weeks",
+    DAILY: tr("freqDaily", { count: 1 }),
+    WEEKLY: tr("freqWeeklyLong", { count: 1 }),
+    BIWEEKLY: tr("freqBiweekly"),
+    MONTHLY: tr("freqMonthlyLong", { count: 1 }),
+    YEARLY: tr("freqYearly"),
+    "2WEEKLY": tr("freqBiweekly"),
+    "4WEEKLY": tr("freqEvery4Weeks"),
   };
   return simple[r] ?? rule;
 }
 
-function humanizeSimpleFrequency(f: string | null | undefined): string | null {
+function humanizeSimpleFrequency(f: string | null | undefined, tr: TranslateFn): string | null {
   if (!f?.trim()) return null;
   const x = f.toLowerCase();
-  if (x === "weekly") return "Every week";
-  if (x === "biweekly") return "Every 2 weeks";
-  if (x === "monthly") return "Every month";
+  if (x === "weekly") return tr("freqWeeklyLong", { count: 1 });
+  if (x === "biweekly") return tr("freqBiweekly");
+  if (x === "monthly") return tr("freqMonthlyLong", { count: 1 });
   return f;
 }
 
 /** RRULE from portal; otherwise customer `frequency` field. */
-function displaySchedule(item: RecurringAppointment): string {
+function displaySchedule(item: RecurringAppointment, tr: TranslateFn): string {
   if (item.recurrence_rule?.trim()) {
-    return humanizeRule(item.recurrence_rule);
+    return humanizeRule(item.recurrence_rule, tr);
   }
-  return humanizeSimpleFrequency(item.frequency ?? null) ?? "Recurring";
+  return humanizeSimpleFrequency(item.frequency ?? null, tr) ?? tr("recurringFallback");
 }
 
 function formatTimeSlot(item: RecurringAppointment): string {
@@ -170,6 +175,12 @@ function timeToHhMmSs(hhmm: string): string {
 }
 
 export default function RecurringAppointmentsScreen() {
+  const { t } = useTranslation();
+  const ra = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.recurringAppointments.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ series_id?: string }>();
   const { selectedLocationId } = useProvider();
@@ -281,28 +292,28 @@ export default function RecurringAppointmentsScreen() {
     // points at the exact field.
     const hhmm = editTime.trim();
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) {
-      Alert.alert("Invalid time", "Enter a time as HH:MM (e.g. 14:30), 24-hour clock.");
+      Alert.alert(ra("invalidTimeTitle"), ra("invalidTimeBody"));
       return;
     }
     if (!editNoEnd) {
       const endTrim = editEnd.trim();
       if (!endTrim) {
-        Alert.alert("End date", 'Choose an end date or turn on "No end date".');
+        Alert.alert(ra("endDateTitle"), ra("endDateOrNoEnd"));
         return;
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(endTrim)) {
-        Alert.alert("Invalid end date", "Enter as YYYY-MM-DD (e.g. 2026-12-31).");
+        Alert.alert(ra("invalidEndDateTitle"), ra("invalidEndDateFormat"));
         return;
       }
       const parsed = new Date(`${endTrim}T00:00:00Z`);
       if (!Number.isFinite(parsed.getTime())) {
-        Alert.alert("Invalid end date", "That date is not valid.");
+        Alert.alert(ra("invalidEndDateTitle"), ra("invalidEndDateValue"));
         return;
       }
       // end must not be before start_date
       const startStr = String(viewItem.start_date || "").slice(0, 10);
       if (startStr && endTrim < startStr) {
-        Alert.alert("End before start", "The end date cannot be before the series start date.");
+        Alert.alert(ra("endBeforeStartTitle"), ra("endBeforeStartBody"));
         return;
       }
     }
@@ -321,7 +332,7 @@ export default function RecurringAppointmentsScreen() {
     );
     setSavingEdit(false);
     if (err) {
-      alertApiError("Could not save", err, patchCode, router);
+      alertApiError(ra("saveFailedTitle"), err, patchCode, router);
     } else {
       const nextItem: RecurringAppointment = {
         ...viewItem,
@@ -339,7 +350,7 @@ export default function RecurringAppointmentsScreen() {
       setViewItem(null);
       void refresh();
     }
-  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, mutateRecurringItems, refresh, router]);
+  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, mutateRecurringItems, refresh, router, ra]);
 
   const handleToggleActive = useCallback(
     async (item: RecurringAppointment) => {
@@ -350,7 +361,7 @@ export default function RecurringAppointmentsScreen() {
         { is_active: newActive }
       );
       if (err) {
-        alertApiError("Could not update", err, patchCode, router);
+        alertApiError(ra("updateFailedTitle"), err, patchCode, router);
       } else {
         const nextItem = {
           ...item,
@@ -365,18 +376,18 @@ export default function RecurringAppointmentsScreen() {
         void refresh();
       }
     },
-    [patchRecurring, mutateRecurringItems, refresh, router]
+    [patchRecurring, mutateRecurringItems, refresh, router, ra]
   );
 
   const handleDelete = useCallback(
     (item: RecurringAppointment) => {
       Alert.alert(
-        "Delete recurring appointment",
-        `This will delete the entire recurring series for ${item.customer?.full_name ?? "this client"}. Future auto-created visits will stop; existing bookings already on the calendar stay as they are.`,
+        ra("deleteTitle"),
+        ra("deleteBody", { name: item.customer?.full_name ?? ra("thisClient") }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: ra("cancel"), style: "cancel" },
           {
-            text: "Delete series",
+            text: ra("deleteSeries"),
             style: "destructive",
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -385,7 +396,7 @@ export default function RecurringAppointmentsScreen() {
                 {}
               );
               if (err) {
-                alertApiError("Could not delete", err, delCode, router);
+                alertApiError(ra("deleteFailedTitle"), err, delCode, router);
               } else {
                 mutateRecurringItems((items) => items.filter((current) => current.id !== item.id));
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -397,13 +408,13 @@ export default function RecurringAppointmentsScreen() {
         ]
       );
     },
-    [deleteRecurring, mutateRecurringItems, refresh, router]
+    [deleteRecurring, mutateRecurringItems, refresh, router, ra]
   );
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Recurring Appointments" showBack />
+        <ScreenHeader title={ra("title")} showBack />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -415,10 +426,10 @@ export default function RecurringAppointmentsScreen() {
     const isSub = isPlanGateErrorCode(errorCode);
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Recurring Appointments" showBack />
+        <ScreenHeader title={ra("title")} showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState
-            message={isSub ? "Recurring appointments require a plan that includes this feature. Upgrade under Subscription." : error}
+            message={isSub ? ra("planGateMessage") : error}
             onRetry={isSub ? undefined : refresh}
           />
           {isSub && (
@@ -435,7 +446,7 @@ export default function RecurringAppointmentsScreen() {
                 borderRadius: 12,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>View plans & billing</Text>
+              <Text style={{ color: "#fff", fontWeight: "600" }}>{ra("viewPlans")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -449,9 +460,9 @@ export default function RecurringAppointmentsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Recurring"
+        title={ra("titleShort")}
         showBack
-        subtitle={total > 0 ? `${total} series` : undefined}
+        subtitle={total > 0 ? ra("subtitle", { count: total }) : undefined}
       />
       <ScrollView
         style={{ flex: 1 }}
@@ -477,21 +488,21 @@ export default function RecurringAppointmentsScreen() {
               <Text style={{ fontSize: 22, fontWeight: "700", color: Colors.gray[900] }}>
                 {total}
               </Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Total</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{ra("statTotal")}</Text>
             </View>
             <View style={{ width: 1, backgroundColor: Colors.gray[100] }} />
             <View style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 22, fontWeight: "700", color: "#16a34a" }}>
                 {activeCount}
               </Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Active</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{ra("statActive")}</Text>
             </View>
             <View style={{ width: 1, backgroundColor: Colors.gray[100] }} />
             <View style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 22, fontWeight: "700", color: "#d97706" }}>
                 {pausedCount}
               </Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Paused</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{ra("statPaused")}</Text>
             </View>
           </View>
         )}
@@ -509,7 +520,7 @@ export default function RecurringAppointmentsScreen() {
             }}
           >
             <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
-              New visits are created once per day by the system when a slot is due. Clients are not charged automatically for those visits—payment works like your other bookings (pay in app, at the venue, etc.).
+              {ra("autoCreateHint")}
             </Text>
           </View>
         )}
@@ -518,9 +529,9 @@ export default function RecurringAppointmentsScreen() {
           <View style={{ marginBottom: 16 }}>
             <FilterChipGroup
               options={[
-                { label: "All", value: "all" },
-                { label: "Active", value: "active" },
-                { label: "Paused", value: "paused" },
+                { label: ra("filterAll"), value: "all" },
+                { label: ra("filterActive"), value: "active" },
+                { label: ra("filterPaused"), value: "paused" },
               ]}
               selected={statusFilter}
               onSelect={(v) => setStatusFilter(v as "all" | "active" | "paused")}
@@ -532,14 +543,16 @@ export default function RecurringAppointmentsScreen() {
           <EmptyState
             icon="repeat-outline"
             title={
-              statusFilter !== "all"
-                ? `No ${statusFilter} recurring appointments`
-                : "No recurring appointments"
+              statusFilter === "active"
+                ? ra("emptyActiveTitle")
+                : statusFilter === "paused"
+                  ? ra("emptyPausedTitle")
+                  : ra("emptyTitle")
             }
             description={
               statusFilter !== "all"
-                ? "Change the filter to see others."
-                : "Repeating schedules create visits automatically when due (daily job). Set them up from the calendar or this screen. Payment is still per booking unless the client pays separately."
+                ? ra("emptyFilteredHint")
+                : ra("emptyDescription")
             }
           />
         ) : (
@@ -575,13 +588,13 @@ export default function RecurringAppointmentsScreen() {
                   color={item.is_active ? "#8b5cf6" : "#9ca3af"}
                 />
               </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ marginStart: 12, flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Text
                     style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}
                     numberOfLines={1}
                   >
-                    {item.customer?.full_name ?? "Client"}
+                    {item.customer?.full_name ?? ra("clientFallback")}
                   </Text>
                   {!item.is_active && (
                     <View
@@ -593,7 +606,7 @@ export default function RecurringAppointmentsScreen() {
                       }}
                     >
                       <Text style={{ fontSize: 10, fontWeight: "600", color: "#d97706" }}>
-                        Paused
+                        {ra("paused")}
                       </Text>
                     </View>
                   )}
@@ -602,16 +615,17 @@ export default function RecurringAppointmentsScreen() {
                   style={{ marginTop: 2, fontSize: 13, fontWeight: "500", color: "#6366f1" }}
                   numberOfLines={1}
                 >
-                  {displaySchedule(item)}
-                  {serviceTitle(item) ? ` · ${serviceTitle(item)}` : ""}
+                  {serviceTitle(item)
+                    ? ra("scheduleWithService", { schedule: displaySchedule(item, ra), service: serviceTitle(item) })
+                    : displaySchedule(item, ra)}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                  From {formatShortDate(item.start_date)} · {formatTimeSlot(item)}
-                  {item.end_date ? ` · Ends ${formatShortDate(item.end_date)}` : ""}
-                  {item.last_booking_date ? ` · Last booked ${formatShortDate(item.last_booking_date)}` : ""}
+                  {ra("listFrom", { date: formatShortDate(item.start_date), time: formatTimeSlot(item) })}
+                  {item.end_date ? ra("listEnds", { date: formatShortDate(item.end_date) }) : ""}
+                  {item.last_booking_date ? ra("listLastBooked", { date: formatShortDate(item.last_booking_date) }) : ""}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
             </TouchableOpacity>
           ))
         )}
@@ -622,8 +636,8 @@ export default function RecurringAppointmentsScreen() {
         <BottomSheet
           visible={!!viewItem}
           onClose={() => setViewItem(null)}
-          title="Recurring appointment"
-          subtitle={viewItem.customer?.full_name ?? "Client"}
+          title={ra("sheetTitle")}
+          subtitle={viewItem.customer?.full_name ?? ra("clientFallback")}
         >
           <View
             style={{
@@ -650,7 +664,7 @@ export default function RecurringAppointmentsScreen() {
                   color: viewItem.is_active ? "#16a34a" : "#d97706",
                 }}
               >
-                {viewItem.is_active ? "Active" : "Paused"}
+                {viewItem.is_active ? ra("active") : ra("paused")}
               </Text>
             </View>
           </View>
@@ -664,14 +678,14 @@ export default function RecurringAppointmentsScreen() {
             }}
           >
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-              SCHEDULE
+              {ra("labelSchedule")}
             </Text>
             <Text style={{ fontSize: 15, fontWeight: "600", color: "#6366f1" }}>
-              {displaySchedule(viewItem)}
+              {displaySchedule(viewItem, ra)}
             </Text>
             {viewItem.recurrence_rule ? (
               <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-                Rule: {viewItem.recurrence_rule}
+                {ra("rulePrefix", { rule: viewItem.recurrence_rule })}
               </Text>
             ) : null}
           </View>
@@ -685,10 +699,10 @@ export default function RecurringAppointmentsScreen() {
             }}
           >
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-              START
+              {ra("labelStart")}
             </Text>
             <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
-              {formatShortDate(viewItem.start_date)} at {formatTimeSlot(viewItem)}
+              {ra("startAt", { date: formatShortDate(viewItem.start_date), time: formatTimeSlot(viewItem) })}
             </Text>
           </View>
 
@@ -702,7 +716,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                LAST AUTO-BOOKED VISIT
+                {ra("labelLastVisit")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{formatShortDate(viewItem.last_booking_date)}</Text>
             </View>
@@ -718,7 +732,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                END DATE
+                {ra("labelEndDate")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
                 {formatShortDate(viewItem.end_date)}
@@ -736,7 +750,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                SERVICE
+                {ra("labelService")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{serviceTitle(viewItem)}</Text>
             </View>
@@ -752,7 +766,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                STAFF
+                {ra("labelStaff")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.staff.name}</Text>
             </View>
@@ -768,10 +782,10 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                LOCATION TYPE
+                {ra("labelLocationType")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
-                {viewItem.location_type === "at_home" ? "At client location" : "At salon"}
+                {viewItem.location_type === "at_home" ? ra("locationAtHome") : ra("locationAtSalon")}
               </Text>
             </View>
           ) : null}
@@ -788,10 +802,10 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                SERVICES
+                {ra("labelServices")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
-                {viewItem.metadata!.services!.length} services in this repeat visit (see client booking for full list).
+                {ra("multiServices", { count: viewItem.metadata!.services!.length })}
               </Text>
             </View>
           ) : null}
@@ -806,7 +820,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
-                NOTES
+                {ra("labelNotes")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.notes}</Text>
             </View>
@@ -823,9 +837,9 @@ export default function RecurringAppointmentsScreen() {
             }}
           >
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 8 }}>
-              EDIT SERIES SCHEDULE
+              {ra("editScheduleHeading")}
             </Text>
-            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>Frequency</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>{ra("frequency")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
               {(["weekly", "biweekly", "monthly"] as const).map((f) => (
                 <TouchableOpacity
@@ -841,16 +855,16 @@ export default function RecurringAppointmentsScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: "600", color: editFreq === f ? "#4f46e5" : Colors.gray[700] }}>
-                    {f === "weekly" ? "Weekly" : f === "biweekly" ? "Every 2 wks" : "Monthly"}
+                    {f === "weekly" ? ra("freqWeekly") : f === "biweekly" ? ra("freqEvery2Wks") : ra("freqMonthly")}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>Preferred time (HH:MM)</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>{ra("preferredTime")}</Text>
             <TextInput
               value={editTime}
               onChangeText={setEditTime}
-              placeholder="10:00"
+              placeholder={ra("timePlaceholder")}
               style={{
                 borderWidth: 1,
                 borderColor: Colors.gray[200],
@@ -863,7 +877,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[800], flex: 1 }}>No end date</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[800], flex: 1 }}>{ra("noEndDate")}</Text>
               <Switch
                 value={editNoEnd}
                 onValueChange={(on) => {
@@ -876,11 +890,11 @@ export default function RecurringAppointmentsScreen() {
             </View>
             {!editNoEnd && (
               <>
-                <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>End date (YYYY-MM-DD)</Text>
+                <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>{ra("endDateLabel")}</Text>
                 <TextInput
                   value={editEnd}
                   onChangeText={setEditEnd}
-                  placeholder="2026-12-31"
+                  placeholder={ra("endDatePlaceholder")}
                   style={{
                     borderWidth: 1,
                     borderColor: Colors.gray[200],
@@ -907,7 +921,7 @@ export default function RecurringAppointmentsScreen() {
               }}
             >
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
-                {savingEdit ? "Saving…" : "Save schedule changes"}
+                {savingEdit ? ra("saving") : ra("saveSchedule")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -936,13 +950,13 @@ export default function RecurringAppointmentsScreen() {
             />
             <Text
               style={{
-                marginLeft: 8,
+                marginStart: 8,
                 fontSize: 14,
                 fontWeight: "600",
                 color: viewItem.is_active ? "#d97706" : "#16a34a",
               }}
             >
-              {viewItem.is_active ? "Pause series" : "Resume series"}
+              {viewItem.is_active ? ra("pauseSeries") : ra("resumeSeries")}
             </Text>
           </TouchableOpacity>
 
@@ -962,9 +976,9 @@ export default function RecurringAppointmentsScreen() {
           >
             <Ionicons name="trash-outline" size={18} color="#dc2626" />
             <Text
-              style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: "#dc2626" }}
+              style={{ marginStart: 8, fontSize: 14, fontWeight: "500", color: "#dc2626" }}
             >
-              Delete recurring series
+              {ra("deleteRecurringSeries")}
             </Text>
           </TouchableOpacity>
         </BottomSheet>

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -19,12 +20,12 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 
 const APPOINTMENT_STATUSES = [
-  { value: "pending", label: "Pending" },
-  { value: "booked", label: "Booked" },
-  { value: "started", label: "Started" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "no_show", label: "No Show" },
+  { value: "pending", labelKey: "statusPending" },
+  { value: "booked", labelKey: "statusBooked" },
+  { value: "started", labelKey: "statusStarted" },
+  { value: "completed", labelKey: "statusCompleted" },
+  { value: "cancelled", labelKey: "statusCancelled" },
+  { value: "no_show", labelKey: "statusNoShow" },
 ];
 
 interface AppointmentSettings {
@@ -34,6 +35,12 @@ interface AppointmentSettings {
 }
 
 export default function SettingsAppointmentDefaultsScreen() {
+  const { t } = useTranslation();
+  const ad = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.appointmentDefaults." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { data, loading, error, refresh } = useApi<AppointmentSettings | { data?: AppointmentSettings }>(
     "/api/provider/settings/appointments"
@@ -70,42 +77,44 @@ export default function SettingsAppointmentDefaultsScreen() {
       requireConfirmationForBookings: settings.requireConfirmationForBookings,
     }) as { error?: string };
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(ad("errorTitle"), res.error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     }
-  }, [settings, patchSettings, router]);
+  }, [settings, patchSettings, router, ad]);
 
   if (loading && !raw) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Appointment settings" onBack={() => router.back()} />
-        <LoadingState message="Loading..." />
+        <ScreenHeader title={ad("title")} onBack={() => router.back()} />
+        <LoadingState message={t("common.loading") as string} />
       </ScreenContainer>
     );
   }
 
-  const statusLabel = APPOINTMENT_STATUSES.find((s) => s.value === settings.defaultAppointmentStatus)?.label ?? settings.defaultAppointmentStatus;
+  const statusLabel = APPOINTMENT_STATUSES.find((s) => s.value === settings.defaultAppointmentStatus)
+    ? ad(APPOINTMENT_STATUSES.find((s) => s.value === settings.defaultAppointmentStatus)!.labelKey)
+    : settings.defaultAppointmentStatus;
 
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Appointment settings"
-        subtitle="Default status & confirmation"
+        title={ad("title")}
+        subtitle={ad("subtitle")}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
             style={twStyle("min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4")}
-            accessibilityLabel="Save appointment settings"
+            accessibilityLabel={ad("saveA11y")}
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={twStyle("font-medium text-white")}>Save</Text>
+              <Text style={twStyle("font-medium text-white")}>{t("common.save") as string}</Text>
             )}
           </TouchableOpacity>
         }
@@ -123,23 +132,23 @@ export default function SettingsAppointmentDefaultsScreen() {
               <TouchableOpacity
                 onPress={() => refresh()}
                 style={twStyle("mt-2")}
-                accessibilityLabel="Retry"
+                accessibilityLabel={ad("retryA11y")}
                 accessibilityRole="button"
               >
-                <Text style={twStyle("text-sm font-medium text-red-700")}>Retry</Text>
+                <Text style={twStyle("text-sm font-medium text-red-700")}>{t("common.retry") as string}</Text>
               </TouchableOpacity>
             </View>
           )}
 
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Default appointment status</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ad("defaultStatus")}</Text>
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-              Status for new appointments when they are created
+              {ad("defaultStatusHint")}
             </Text>
             <TouchableOpacity
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
               onPress={() => setStatusSheetOpen(true)}
-              accessibilityLabel={`Default appointment status, ${statusLabel}`}
+              accessibilityLabel={ad("defaultStatusA11y", { status: statusLabel })}
               accessibilityRole="button"
             >
               <Text style={twStyle("text-base text-gray-900")}>{statusLabel}</Text>
@@ -147,10 +156,10 @@ export default function SettingsAppointmentDefaultsScreen() {
           </View>
 
           <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-            <View style={twStyle("flex-1 pr-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Auto-confirm appointments</Text>
+            <View style={twStyle("flex-1 pe-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{ad("autoConfirm")}</Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                New bookings are confirmed automatically
+                {ad("autoConfirmHint")}
               </Text>
             </View>
             <Switch
@@ -160,10 +169,10 @@ export default function SettingsAppointmentDefaultsScreen() {
           </View>
 
           <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-            <View style={twStyle("flex-1 pr-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Require confirmation for bookings</Text>
+            <View style={twStyle("flex-1 pe-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{ad("requireConfirm")}</Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                Online bookings need your confirmation first
+                {ad("requireConfirmHint")}
               </Text>
             </View>
             <Switch
@@ -174,7 +183,7 @@ export default function SettingsAppointmentDefaultsScreen() {
 
           <View style={twStyle("mt-4")}>
             <ActionButton
-              label={saving ? "Saving..." : "Save changes"}
+              label={saving ? ad("saving") : ad("saveChanges")}
               onPress={handleSave}
               fullWidth
               disabled={saving}
@@ -186,7 +195,7 @@ export default function SettingsAppointmentDefaultsScreen() {
       <BottomSheet
         visible={statusSheetOpen}
         onClose={() => setStatusSheetOpen(false)}
-        title="Default status"
+        title={ad("defaultStatusSheet")}
       >
         <ScrollView style={twStyle("max-h-80")}>
           {APPOINTMENT_STATUSES.map((s) => (
@@ -197,10 +206,10 @@ export default function SettingsAppointmentDefaultsScreen() {
                 setSettings((prev) => ({ ...prev, defaultAppointmentStatus: s.value }));
                 setStatusSheetOpen(false);
               }}
-              accessibilityLabel={s.label}
+              accessibilityLabel={ad(s.labelKey)}
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-base text-gray-900")}>{s.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{ad(s.labelKey)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

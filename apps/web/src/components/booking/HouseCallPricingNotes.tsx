@@ -157,7 +157,7 @@ export function HouseCallAtHomePricesBanner({
   if (!show) return null;
   return (
     <div
-      className="flex items-start gap-2.5 rounded-2xl px-4 py-3 mb-4 border text-left"
+      className="flex items-start gap-2.5 rounded-2xl px-4 py-3 mb-4 border text-start"
       style={{
         backgroundColor: "rgba(16, 185, 129, 0.08)",
         borderColor: "rgba(16, 185, 129, 0.22)",

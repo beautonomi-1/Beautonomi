@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -106,26 +107,29 @@ function buildSectionPayload(
 }
 
 function StatusTracker({ app }: { app: TerminalMerchantApplication }) {
+  const { t } = useTranslation();
+  const phone = app.otp_phone ?? t("web.provider.settings.pages.sales/terminal-merchant-application.yourPhone");
   const messages: Record<string, string> = {
-    submitted: "We received your application and will review it shortly.",
-    in_review: "Our team is reviewing your details.",
-    info_required: app.info_required_reason ?? "We need a few updates — please fix the sections below.",
-    sent_to_acquirer: "Your details were sent to our terminal partner.",
-    awaiting_term_sheet: `Watch ${app.otp_phone ?? "your phone"} for an SMS from our terminal partner to accept your term sheet.`,
-    approved: "Approved! Your terminal will be dispatched soon.",
-    declined: "Your application could not be approved. Contact support if you have questions.",
+    submitted: t("web.provider.settings.pages.sales/terminal-merchant-application.statusSubmitted"),
+    in_review: t("web.provider.settings.pages.sales/terminal-merchant-application.statusInReview"),
+    info_required: app.info_required_reason ?? t("web.provider.settings.pages.sales/terminal-merchant-application.statusInfoRequired"),
+    sent_to_acquirer: t("web.provider.settings.pages.sales/terminal-merchant-application.statusSentToAcquirer"),
+    awaiting_term_sheet: t("web.provider.settings.pages.sales/terminal-merchant-application.statusAwaitingTermSheet", { phone }),
+    approved: t("web.provider.settings.pages.sales/terminal-merchant-application.statusApproved"),
+    declined: t("web.provider.settings.pages.sales/terminal-merchant-application.statusDeclined"),
   };
   return (
     <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
       <p className="text-sm font-semibold text-indigo-900">{app.application_no}</p>
       <p className="mt-1 text-sm text-indigo-800">
-        {messages[app.status] ?? "Complete your application to get your card machine."}
+        {messages[app.status] ?? t("web.provider.settings.pages.sales/terminal-merchant-application.completeToGetMachine")}
       </p>
     </div>
   );
 }
 
 export default function TerminalMerchantApplicationPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const orderIdParam = searchParams.get("order");
 
@@ -163,7 +167,7 @@ export default function TerminalMerchantApplicationPage() {
         .catch(() => null);
       setCollectionLocations(locRes?.data?.locations ?? []);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load application");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-merchant-application.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -210,12 +214,12 @@ export default function TerminalMerchantApplicationPage() {
   const acquisitionBanner = useMemo(() => {
     const order = data?.linked_orders?.find((o) => o.id === orderIdParam) ?? data?.linked_orders?.[0];
     if (orderIdParam || order?.commercial_model === "once_off_purchase") {
-      return "For your purchased terminal — one more step before we can ship it.";
+      return t("web.provider.settings.pages.sales/terminal-merchant-application.bannerOnceOff");
     }
     if (order?.commercial_model === "subscription_bundle") {
-      return "Included with your plan — complete this to receive your machine.";
+      return t("web.provider.settings.pages.sales/terminal-merchant-application.bannerSubscription");
     }
-    return "Complete this application to receive your card machine.";
+    return t("web.provider.settings.pages.sales/terminal-merchant-application.bannerDefault");
   }, [data?.linked_orders, orderIdParam]);
 
   async function patchSection(section: string, payload: Record<string, unknown>) {
@@ -224,7 +228,7 @@ export default function TerminalMerchantApplicationPage() {
       await fetcher.patch("/api/provider/terminal-merchant-application", { section, ...payload });
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Save failed");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-merchant-application.saveFailed"));
       throw err;
     } finally {
       setSaving(false);
@@ -241,7 +245,7 @@ export default function TerminalMerchantApplicationPage() {
           const comma = result.indexOf(",");
           resolve(comma >= 0 ? result.slice(comma + 1) : result);
         };
-        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.onerror = () => reject(new Error(t("web.provider.settings.pages.sales/terminal-merchant-application.couldNotReadFile")));
         reader.readAsDataURL(file);
       });
       await fetcher.post("/api/provider/terminal-merchant-application/documents", {
@@ -250,10 +254,10 @@ export default function TerminalMerchantApplicationPage() {
         file_name: file.name,
         mime_type: file.type || "application/octet-stream",
       });
-      toast.success("Document uploaded");
+      toast.success(t("web.provider.settings.pages.sales/terminal-merchant-application.documentUploaded"));
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Upload failed");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-merchant-application.uploadFailed"));
     } finally {
       setUploadingDoc(null);
     }
@@ -263,7 +267,7 @@ export default function TerminalMerchantApplicationPage() {
     setSubmitting(true);
     try {
       await fetcher.post("/api/provider/terminal-merchant-application/submit", {});
-      toast.success("Application submitted — we will review it shortly.");
+      toast.success(t("web.provider.settings.pages.sales/terminal-merchant-application.applicationSubmittedWeWillReviewIt"));
       await load();
     } catch (err) {
       if (err instanceof FetchError && err.details && typeof err.details === "object") {
@@ -275,23 +279,23 @@ export default function TerminalMerchantApplicationPage() {
           return;
         }
       }
-      toast.error(err instanceof FetchError ? err.message : "Could not submit application");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-merchant-application.submitFailed"));
     } finally {
       setSubmitting(false);
     }
   }
 
   if (loading && !data) {
-    return <LoadingTimeout loadingMessage="Loading application…" />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.sales/terminal-merchant-application.loadingApplication")} />;
   }
 
   if (!app) {
     return (
-      <SettingsDetailLayout title="Card machine application" backHref="/provider/settings/sales/card-machines">
+      <SettingsDetailLayout title={t("web.provider.settings.pages.sales/terminal-merchant-application.cardMachineApplication")} backHref="/provider/settings/sales/card-machines">
         <SectionCard>
-          <p className="text-sm text-gray-600">Application unavailable. Please try again.</p>
+          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/terminal-merchant-application.unavailable")}</p>
           <Button className="mt-4" onClick={() => void load()}>
-            Retry
+            {t("web.provider.common.retry")}
           </Button>
         </SectionCard>
       </SettingsDetailLayout>
@@ -301,14 +305,14 @@ export default function TerminalMerchantApplicationPage() {
   if (!editable) {
     return (
       <SettingsDetailLayout
-        title="Card machine application"
-        description="Track your Beautonomi card machine onboarding."
+        title={t("web.provider.settings.pages.sales/terminal-merchant-application.cardMachineApplication")}
+        description={t("web.provider.settings.pages.sales/terminal-merchant-application.trackOnboarding")}
         backHref="/provider/settings/sales/card-machines"
       >
         <StatusTracker app={app} />
         <div className="mt-4">
           <Button variant="outline" asChild>
-            <Link href="/provider/settings/sales/card-machines">Back to card machines</Link>
+            <Link href="/provider/settings/sales/card-machines">{t("web.provider.settings.pages.sales/terminal-merchant-application.backToCardMachines")}</Link>
           </Button>
         </div>
       </SettingsDetailLayout>
@@ -321,15 +325,15 @@ export default function TerminalMerchantApplicationPage() {
 
   return (
     <SettingsDetailLayout
-      title="Card machine application"
+      title={t("web.provider.settings.pages.sales/terminal-merchant-application.cardMachineApplication")}
       description={acquisitionBanner}
       backHref="/provider/settings/sales/card-machines"
     >
       <div className="mb-4 text-sm text-gray-500">
-        Step {stepIndex + 1} of {TERMINAL_MERCHANT_WIZARD_STEPS.length}: {step.title}
+        {t("web.provider.settings.pages.sales/terminal-merchant-application.stepOf", { current: stepIndex + 1, total: TERMINAL_MERCHANT_WIZARD_STEPS.length, title: step.title })}
         {flaggedSections.has(step.id) ? (
-          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-            Needs update
+          <span className="ms-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            {t("web.provider.settings.pages.sales/terminal-merchant-application.needsUpdate")}
           </span>
         ) : null}
       </div>
@@ -339,12 +343,12 @@ export default function TerminalMerchantApplicationPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             {(
               [
-                ["first_name", "First name"],
-                ["last_name", "Last name"],
-                ["email", "Email"],
-                ["phone", "Phone"],
-                ["otp_phone", "Term sheet SMS phone"],
-                ["id_number", "ID number"],
+                ["first_name", t("web.provider.settings.pages.sales/terminal-merchant-application.firstName")],
+                ["last_name", t("web.provider.settings.pages.sales/terminal-merchant-application.lastName")],
+                ["email", t("web.provider.common.email")],
+                ["phone", t("web.provider.common.phone")],
+                ["otp_phone", t("web.provider.settings.pages.sales/terminal-merchant-application.otpPhone")],
+                ["id_number", t("web.provider.settings.pages.sales/terminal-merchant-application.idNumber")],
               ] as const
             ).map(([key, label]) => (
               <div key={key} className={key === "email" ? "sm:col-span-2" : ""}>
@@ -357,17 +361,17 @@ export default function TerminalMerchantApplicationPage() {
               </div>
             ))}
             <div className="sm:col-span-2">
-              <Label>ID type</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.idType")}</Label>
               <div className="mt-2 flex flex-wrap gap-2">
-                {(["national_id", "passport", "foreign_id"] as const).map((t) => (
+                {(["national_id", "passport", "foreign_id"] as const).map((idType) => (
                   <Button
-                    key={t}
+                    key={idType}
                     type="button"
                     size="sm"
-                    variant={form.id_type === t ? "default" : "outline"}
-                    onClick={() => setForm((f) => ({ ...f, id_type: t }))}
+                    variant={form.id_type === idType ? "default" : "outline"}
+                    onClick={() => setForm((f) => ({ ...f, id_type: idType }))}
                   >
-                    {t.replace(/_/g, " ")}
+                    {idType === "national_id" ? t("web.provider.settings.pages.sales/terminal-merchant-application.nationalId") : idType === "passport" ? t("web.provider.settings.pages.sales/terminal-merchant-application.passport") : t("web.provider.settings.pages.sales/terminal-merchant-application.foreignId")}
                   </Button>
                 ))}
               </div>
@@ -378,16 +382,16 @@ export default function TerminalMerchantApplicationPage() {
         {step.id === "business" && (
           <div className="space-y-3">
             <div>
-              <Label>Business type</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.businessType")}</Label>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {(
                   [
-                    ["sole_proprietor", "Sole proprietor"],
-                    ["private_company", "Private company"],
-                    ["close_corporation", "Close corporation"],
-                    ["partnership", "Partnership"],
-                    ["trust", "Trust"],
-                    ["npo", "NPO"],
+                    ["sole_proprietor", t("web.provider.settings.pages.sales/terminal-merchant-application.soleProprietor")],
+                    ["private_company", t("web.provider.settings.pages.sales/terminal-merchant-application.privateCompany")],
+                    ["close_corporation", t("web.provider.settings.pages.sales/terminal-merchant-application.closeCorporation")],
+                    ["partnership", t("web.provider.settings.pages.sales/terminal-merchant-application.partnership")],
+                    ["trust", t("web.provider.settings.pages.sales/terminal-merchant-application.trust")],
+                    ["npo", t("web.provider.settings.pages.sales/terminal-merchant-application.npo")],
                   ] as const
                 ).map(([value, label]) => (
                   <Button
@@ -404,10 +408,10 @@ export default function TerminalMerchantApplicationPage() {
             </div>
             {(
               [
-                ["legal_name", "Legal name"],
-                ["trading_name", "Trading name"],
-                ["registration_number", "Registration number"],
-                ["vat_number", "VAT number"],
+                ["legal_name", t("web.provider.settings.pages.sales/terminal-merchant-application.legalName")],
+                ["trading_name", t("web.provider.settings.pages.sales/terminal-merchant-application.tradingName")],
+                ["registration_number", t("web.provider.settings.pages.sales/terminal-merchant-application.registrationNumber")],
+                ["vat_number", t("web.provider.settings.pages.sales/terminal-merchant-application.vatNumber")],
               ] as const
             ).map(([key, label]) => (
               <div key={key}>
@@ -426,11 +430,11 @@ export default function TerminalMerchantApplicationPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             {(
               [
-                ["physical_line1", "Physical address"],
-                ["physical_suburb", "Suburb"],
-                ["physical_city", "City"],
-                ["physical_province", "Province"],
-                ["physical_postal_code", "Postal code"],
+                ["physical_line1", t("web.provider.settings.pages.sales/terminal-merchant-application.physicalAddress")],
+                ["physical_suburb", t("web.provider.settings.pages.sales/terminal-merchant-application.suburb")],
+                ["physical_city", t("web.provider.settings.pages.sales/terminal-shop.city")],
+                ["physical_province", t("web.provider.settings.pages.sales/terminal-shop.province")],
+                ["physical_postal_code", t("web.provider.settings.pages.sales/terminal-shop.postalCode")],
               ] as const
             ).map(([key, label]) => (
               <div key={key} className={key === "physical_line1" ? "sm:col-span-2" : ""}>
@@ -443,7 +447,7 @@ export default function TerminalMerchantApplicationPage() {
               </div>
             ))}
             <div className="sm:col-span-2 flex items-center justify-between rounded-lg border p-3">
-              <Label>Postal same as physical</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.postalSameAsPhysical")}</Label>
               <Switch
                 checked={form.postal_same_as_physical !== false}
                 onCheckedChange={(v) => setForm((f) => ({ ...f, postal_same_as_physical: v }))}
@@ -455,7 +459,7 @@ export default function TerminalMerchantApplicationPage() {
         {step.id === "banking" && (
           <div className="space-y-3">
             <div>
-              <Label>Bank name</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.bankName")}</Label>
               <Input
                 className="mt-1"
                 value={String(form.bank_name ?? "")}
@@ -463,13 +467,13 @@ export default function TerminalMerchantApplicationPage() {
               />
             </div>
             <div>
-              <Label>Account type</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.accountType")}</Label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(
                   [
-                    ["cheque_current", "Cheque / current"],
-                    ["savings", "Savings"],
-                    ["transmission", "Transmission"],
+                    ["cheque_current", t("web.provider.settings.pages.sales/terminal-merchant-application.chequeCurrent")],
+                    ["savings", t("web.provider.settings.pages.billing.savings")],
+                    ["transmission", t("web.provider.settings.pages.sales/terminal-merchant-application.transmission")],
                   ] as const
                 ).map(([value, label]) => (
                   <Button
@@ -485,7 +489,7 @@ export default function TerminalMerchantApplicationPage() {
               </div>
             </div>
             <div>
-              <Label>Account holder</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.accountHolder")}</Label>
               <Input
                 className="mt-1"
                 value={String(form.account_holder ?? "")}
@@ -493,14 +497,14 @@ export default function TerminalMerchantApplicationPage() {
               />
             </div>
             <div>
-              <Label>Account number</Label>
+              <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.accountNumber")}</Label>
               <Input
                 className="mt-1"
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
               />
               {form.account_number_last4 ? (
-                <p className="mt-1 text-xs text-gray-500">Saved ending ••••{form.account_number_last4}</p>
+                <p className="mt-1 text-xs text-gray-500">{t("web.provider.settings.pages.sales/terminal-merchant-application.savedEnding", { last4: form.account_number_last4 })}</p>
               ) : null}
             </div>
           </div>
@@ -509,7 +513,7 @@ export default function TerminalMerchantApplicationPage() {
         {step.id === "documents" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              South African law requires us to confirm who you are before we can give you a card machine.
+              {t("web.provider.settings.pages.sales/terminal-merchant-application.saLawHint")}
             </p>
             {requiredDocs.map((docType) => {
               const doc = documents.find((d) => d.doc_type === docType);
@@ -517,7 +521,7 @@ export default function TerminalMerchantApplicationPage() {
               if (docType === "id_document" && identityVerified && !doc) {
                 return (
                   <div key={docType} className="rounded-lg border border-green-200 bg-green-50 p-3">
-                    <p className="font-medium text-green-800">{meta.title} — Already verified</p>
+                    <p className="font-medium text-green-800">{t("web.provider.settings.pages.sales/terminal-merchant-application.alreadyVerified", { title: meta.title })}</p>
                   </div>
                 );
               }
@@ -526,7 +530,7 @@ export default function TerminalMerchantApplicationPage() {
                   <p className="font-medium">{meta.title}</p>
                   <p className="text-sm text-gray-600">{meta.hint}</p>
                   <p className="mt-1 text-xs text-gray-500">
-                    {doc ? doc.status : "Not added"}
+                    {doc ? doc.status : t("web.provider.settings.pages.sales/terminal-merchant-application.notAdded")}
                     {doc?.rejection_reason ? ` — ${doc.rejection_reason}` : ""}
                   </p>
                   <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
@@ -535,7 +539,7 @@ export default function TerminalMerchantApplicationPage() {
                     ) : (
                       <FileUp className="h-4 w-4" />
                     )}
-                    Upload file
+                    {t("web.provider.settings.pages.sales/terminal-merchant-application.uploadFile")}
                     <input
                       type="file"
                       accept="image/*,application/pdf"
@@ -562,19 +566,19 @@ export default function TerminalMerchantApplicationPage() {
                 variant={form.fulfillment_method !== "collection" ? "default" : "outline"}
                 onClick={() => setForm((f) => ({ ...f, fulfillment_method: "delivery" }))}
               >
-                Deliver to my address
+                {t("web.provider.settings.pages.sales/terminal-merchant-application.deliverToMyAddress")}
               </Button>
               <Button
                 type="button"
                 variant={form.fulfillment_method === "collection" ? "default" : "outline"}
                 onClick={() => setForm((f) => ({ ...f, fulfillment_method: "collection" }))}
               >
-                Collect from pickup point
+                {t("web.provider.settings.pages.sales/terminal-merchant-application.collectFromPickup")}
               </Button>
             </div>
             {form.fulfillment_method === "collection" ? (
               collectionLocations.length === 0 ? (
-                <p className="text-sm text-amber-700">No pickup locations configured — choose delivery or contact support.</p>
+                <p className="text-sm text-amber-700">{t("web.provider.settings.pages.sales/terminal-merchant-application.noPickupLocations")}</p>
               ) : (
                 <div className="grid gap-2">
                   {collectionLocations.map((loc) => (
@@ -599,7 +603,7 @@ export default function TerminalMerchantApplicationPage() {
             ) : (
               <>
                 <div>
-                  <Label>Delivery address</Label>
+                  <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.deliveryAddress")}</Label>
                   <Input
                     className="mt-1"
                     value={String(form.delivery_line1 ?? form.physical_line1 ?? "")}
@@ -609,7 +613,7 @@ export default function TerminalMerchantApplicationPage() {
                   />
                 </div>
                 <div>
-                  <Label>Delivery city</Label>
+                  <Label>{t("web.provider.settings.pages.sales/terminal-merchant-application.deliveryCity")}</Label>
                   <Input
                     className="mt-1"
                     value={String(form.delivery_city ?? form.physical_city ?? "")}
@@ -626,12 +630,11 @@ export default function TerminalMerchantApplicationPage() {
         {step.id === "review" && (
           <div className="space-y-2 text-sm text-gray-700">
             <p>
-              After review, a term sheet will be sent to <strong>{form.otp_phone ?? "your phone"}</strong> by our
-              terminal partner. Accept it via SMS on that number.
+              {t("web.provider.settings.pages.sales/terminal-merchant-application.reviewTermSheet", { phone: form.otp_phone ?? t("web.provider.settings.pages.sales/terminal-merchant-application.yourPhone") })}
             </p>
             <p className="flex items-center gap-2 text-green-700">
               <CheckCircle2 className="h-4 w-4" />
-              When you submit, our team reviews your documents before dispatch.
+              {t("web.provider.settings.pages.sales/terminal-merchant-application.reviewSubmitHint")}
             </p>
           </div>
         )}
@@ -639,8 +642,8 @@ export default function TerminalMerchantApplicationPage() {
         <div className="mt-6 flex flex-wrap gap-2">
           {stepIndex > 0 ? (
             <Button type="button" variant="outline" onClick={() => setStepIndex((i) => i - 1)} disabled={saving}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Back
+              <ArrowLeft className="me-1 h-4 w-4" />
+              {t("web.provider.common.back")}
             </Button>
           ) : null}
           {stepIndex < TERMINAL_MERCHANT_WIZARD_STEPS.length - 1 ? (
@@ -653,12 +656,12 @@ export default function TerminalMerchantApplicationPage() {
                 setStepIndex((i) => i + 1);
               }}
             >
-              {saving ? "Saving…" : "Save & continue"}
-              <ArrowRight className="ml-1 h-4 w-4" />
+              {saving ? t("web.provider.common.savingEllipsis") : t("web.provider.settings.pages.sales/terminal-merchant-application.saveAndContinue")}
+              <ArrowRight className="ms-1 h-4 w-4" />
             </Button>
           ) : (
             <Button type="button" disabled={submitting} onClick={() => void handleSubmit()}>
-              {submitting ? "Submitting…" : "Submit application"}
+              {submitting ? t("web.provider.settings.pages.sales/terminal-merchant-application.submitting") : t("web.provider.settings.pages.sales/terminal-merchant-application.submitApplication")}
             </Button>
           )}
         </div>

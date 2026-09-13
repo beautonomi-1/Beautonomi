@@ -59,6 +59,7 @@ import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
+import { useTranslation } from "@beautonomi/i18n";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -81,6 +82,12 @@ interface ProfileData {
 }
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
+  const pf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.profile.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { role } = useProvider();
   const canManageSubscription = role === "provider_owner" || role === "superadmin";
@@ -88,7 +95,7 @@ export default function ProfileScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { bundle } = useConfigBundle();
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [plan, setPlan] = useState<string>("Free");
+  const [plan, setPlan] = useState<string>(() => pf("planFree"));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -185,11 +192,11 @@ export default function ProfileScreen() {
       const defaultCountry =
         profile?.address?.country?.trim() ||
         tenantCountryFallback() ||
-        "South Africa";
+        pf("defaultCountryName");
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
         applyResolvedAddress({
-          address_line1: mapped.address_line1 || profile?.address?.line1 || "Current location",
+          address_line1: mapped.address_line1 || profile?.address?.line1 || pf("currentLocationFallback"),
           city: mapped.city || profile?.address?.city || "",
           state: mapped.state || "",
           postal_code: mapped.postal_code || "",
@@ -203,8 +210,8 @@ export default function ProfileScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (e) {
       Alert.alert(
-        "Location error",
-        e instanceof Error ? e.message : "Could not fetch current location.",
+        pf("locationErrorTitle"),
+        e instanceof Error ? e.message : pf("locationErrorBody"),
       );
     } finally {
       setLocating(false);
@@ -216,6 +223,7 @@ export default function ProfileScreen() {
     profile?.address?.city,
     tenantCountryFallback,
     applyResolvedAddress,
+    pf,
   ]);
 
   const handleDropPinConfirm = useCallback(
@@ -223,7 +231,7 @@ export default function ProfileScreen() {
       const defaultCountry =
         profile?.address?.country?.trim() ||
         tenantCountryFallback() ||
-        "South Africa";
+        pf("defaultCountryName");
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
         applyResolvedAddress({
@@ -241,7 +249,7 @@ export default function ProfileScreen() {
       setMapPinVisible(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
-    [profile?.address?.country, tenantCountryFallback, applyResolvedAddress],
+    [profile?.address?.country, tenantCountryFallback, applyResolvedAddress, pf],
   );
 
   const load = useCallback(async () => {
@@ -262,13 +270,13 @@ export default function ProfileScreen() {
         setError(
           typeof profileRes.error === "object" && profileRes.error && "message" in profileRes.error
             ? String((profileRes.error as { message: string }).message)
-            : "Failed to load profile",
+            : pf("loadFailed"),
         );
         setProfile(null);
         return;
       }
       const data = profileRes.data as Record<string, unknown>;
-      let planName = "Free";
+      let planName = pf("planFree");
       const subRaw = subscriptionRes?.data;
       const sub =
         subRaw && typeof subRaw === "object" && "plan_id" in (subRaw as object)
@@ -339,12 +347,12 @@ export default function ProfileScreen() {
       const code = getApiErrorCode(e);
       const transient = code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
       if (quiet || transient) return;
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : pf("loadFailedShort"));
       setProfile(null);
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, []);
+  }, [pf]);
 
   useEffect(() => {
     canUseQuietRefresh.current = false;
@@ -397,7 +405,7 @@ export default function ProfileScreen() {
     const picked = await pickWithOptions({ quality: 0.8, base64: false });
     if (!picked) return;
     if (picked.fileSize && picked.fileSize > IMAGE_CONSTRAINTS.maxSizeBytes) {
-      Alert.alert("File too large", "Please choose an image under 2MB.");
+      Alert.alert(pf("fileTooLargeTitle"), pf("fileTooLargeBody"));
       return;
     }
     setUploading(true);
@@ -416,18 +424,18 @@ export default function ProfileScreen() {
       });
       const url = res.data?.url;
       if (res.error || !url) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload photo."));
+        Alert.alert(pf("uploadFailedTitle"), getApiErrorMessage(res.error, pf("uploadFailedBody")));
         return;
       }
       const patchRes = await api.patch<{ data?: { avatar_url?: string } }>("/api/me/profile", { avatar_url: url });
       if (!patchRes.error) await load();
-      else Alert.alert("Error", getApiErrorMessage(patchRes.error, "Failed to update profile."));
+      else Alert.alert(pf("errorTitle"), getApiErrorMessage(patchRes.error, pf("updateFailed")));
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Upload failed.");
+      Alert.alert(pf("errorTitle"), e instanceof Error ? e.message : pf("uploadFailedShort"));
     } finally {
       setUploading(false);
     }
-  }, [load, pickWithOptions]);
+  }, [load, pickWithOptions, pf]);
 
   const save = useCallback(async () => {
     if (!profile) return;
@@ -435,7 +443,7 @@ export default function ProfileScreen() {
       const pErr = validateNationalPhoneDigits(phoneNational, phoneCountryCode);
       if (pErr) {
         setPhoneFieldError(pErr);
-        Alert.alert("Invalid phone", pErr);
+        Alert.alert(pf("invalidPhoneTitle"), pErr);
         return;
       }
     }
@@ -451,7 +459,7 @@ export default function ProfileScreen() {
 
     if (emailChanged) {
       if (!isMailableEmail(trimmedEmail)) {
-        Alert.alert("Invalid email", "Please enter a valid email address.");
+        Alert.alert(pf("invalidEmailTitle"), pf("invalidEmailBody"));
         return;
       }
       setSendingEmailOtp(true);
@@ -462,9 +470,9 @@ export default function ProfileScreen() {
         setEmailOtpCode("");
         setEmailStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Code sent", `We sent a verification code to ${trimmedEmail}.`);
+        Alert.alert(pf("codeSentTitle"), pf("codeSentEmail", { email: trimmedEmail }));
       } catch (e: unknown) {
-        Alert.alert("Error", e instanceof Error ? e.message : "Failed to send code.");
+        Alert.alert(pf("errorTitle"), e instanceof Error ? e.message : pf("sendCodeFailed"));
       } finally {
         setSendingEmailOtp(false);
       }
@@ -482,9 +490,9 @@ export default function ProfileScreen() {
         setPhoneOtpCode("");
         setPhoneStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Code sent", "We sent a verification code to your phone. Enter it below.");
+        Alert.alert(pf("codeSentTitle"), pf("codeSentPhone"));
       } catch (e: unknown) {
-        Alert.alert("Error", e instanceof Error ? e.message : "Failed to send code.");
+        Alert.alert(pf("errorTitle"), e instanceof Error ? e.message : pf("sendCodeFailed"));
       } finally {
         setSendingOtp(false);
       }
@@ -519,7 +527,7 @@ export default function ProfileScreen() {
         };
       }>("/api/me/profile", payload);
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save."));
+        Alert.alert(pf("errorTitle"), getApiErrorMessage(res.error, pf("saveFailed")));
       } else {
         const raw = res.data;
         const data =
@@ -527,7 +535,7 @@ export default function ProfileScreen() {
             ? (raw as { data: { email?: string; phone?: string } }).data
             : (raw as { email?: string; phone?: string } | undefined);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Saved", "Your profile has been updated.");
+        Alert.alert(pf("savedTitle"), pf("savedBody"));
         if (data?.email) {
           initialProfileRef.current.email = data.email;
           setSavedEmailForDisplay(data.email);
@@ -539,11 +547,11 @@ export default function ProfileScreen() {
         load();
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to save.");
+      Alert.alert(pf("errorTitle"), e instanceof Error ? e.message : pf("saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [profile, load, phoneNational, phoneCountryCode, phoneE164FromUi]);
+  }, [profile, load, phoneNational, phoneCountryCode, phoneE164FromUi, pf]);
 
   const verifyPhoneOtp = useCallback(async (otpOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
@@ -559,21 +567,21 @@ export default function ProfileScreen() {
       const res = await api.patch<{ data?: { phone?: string } }>("/api/me/profile", {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
-      if (res.error) throw new Error(getApiErrorMessage(res.error, "Failed to save phone"));
+      if (res.error) throw new Error(getApiErrorMessage(res.error, pf("savePhoneFailed")));
       initialProfileRef.current.phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
       setSavedPhoneForDisplay(normalizeSupabaseAuthPhone(pendingPhoneE164));
       setPhoneStep(null);
       setPendingPhoneE164("");
       setPhoneOtpCode("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Saved", "Your phone number has been updated.");
+      Alert.alert(pf("savedTitle"), pf("phoneUpdated"));
       load();
     } catch (e: unknown) {
-      Alert.alert("Verification failed", e instanceof Error ? e.message : "Invalid code.");
+      Alert.alert(pf("verificationFailedTitle"), e instanceof Error ? e.message : pf("invalidCode"));
     } finally {
       setSaving(false);
     }
-  }, [phoneOtpCode, pendingPhoneE164, load]);
+  }, [phoneOtpCode, pendingPhoneE164, load, pf]);
 
   const verifyEmailOtp = useCallback(async (otpOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtpCode);
@@ -587,7 +595,7 @@ export default function ProfileScreen() {
       });
       if (verifyError) throw verifyError;
       const res = await api.post("/api/me/email/verify", { email: pendingEmailForOtp });
-      if (res.error) throw new Error(getApiErrorMessage(res.error, "Failed to save email"));
+      if (res.error) throw new Error(getApiErrorMessage(res.error, pf("saveEmailFailed")));
       initialProfileRef.current.email = pendingEmailForOtp;
       setSavedEmailForDisplay(pendingEmailForOtp);
       setProfile((p) => (p ? { ...p, email: pendingEmailForOtp } : p));
@@ -595,22 +603,22 @@ export default function ProfileScreen() {
       setPendingEmailForOtp("");
       setEmailOtpCode("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Saved", "Your email address has been updated.");
+      Alert.alert(pf("savedTitle"), pf("emailUpdated"));
       load();
     } catch (e: unknown) {
-      Alert.alert("Verification failed", e instanceof Error ? e.message : "Invalid code.");
+      Alert.alert(pf("verificationFailedTitle"), e instanceof Error ? e.message : pf("invalidCode"));
     } finally {
       setSaving(false);
     }
-  }, [emailOtpCode, pendingEmailForOtp, load]);
+  }, [emailOtpCode, pendingEmailForOtp, load, pf]);
 
   if (loading && !profile) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Profile" onBack={() => router.back()} />
+        <ScreenHeader title={pf("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center")}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={twStyle("mt-3 text-gray-500")}>Loading profile…</Text>
+          <Text style={twStyle("mt-3 text-gray-500")}>{pf("loading")}</Text>
         </View>
       </ScreenContainer>
     );
@@ -619,11 +627,11 @@ export default function ProfileScreen() {
   if (error && !profile) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Profile" onBack={() => router.back()} />
+        <ScreenHeader title={pf("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center px-6")}>
           <Text style={twStyle("text-center text-gray-600")}>{error}</Text>
           <TouchableOpacity onPress={load} style={twStyle("mt-4 rounded-xl bg-gray-900 px-6 py-3")}>
-            <Text style={twStyle("font-medium text-white")}>Retry</Text>
+            <Text style={twStyle("font-medium text-white")}>{pf("retry")}</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -640,7 +648,7 @@ export default function ProfileScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Profile" subtitle="Manage your personal information" onBack={() => router.back()} />
+      <ScreenHeader title={pf("title")} subtitle={pf("subtitle")} onBack={() => router.back()} />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 200 }}
@@ -650,9 +658,9 @@ export default function ProfileScreen() {
         <View style={twStyle("px-2 pt-4")}>
           {/* Profile Picture */}
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Profile Picture</Text>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{pf("profilePicture")}</Text>
             <View style={twStyle("flex-row items-center")}>
-              <Pressable onPress={uploadAvatar} disabled={uploading} style={{ marginRight: 16 }}>
+              <Pressable onPress={uploadAvatar} disabled={uploading} style={{ marginEnd: 16 }}>
                 {profile.avatar_url ? (
                   <Image
                     source={{ uri: profile.avatar_url }}
@@ -674,46 +682,46 @@ export default function ProfileScreen() {
                   {uploading ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
-                    <Text style={twStyle("font-medium text-gray-900")}>Upload Photo</Text>
+<Text style={twStyle("font-medium text-gray-900")}>{pf("uploadPhoto")}</Text>
                   )}
                 </TouchableOpacity>
-                <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>JPG, PNG or GIF. Max size 2MB</Text>
+                <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>{pf("photoHint")}</Text>
               </View>
             </View>
           </View>
 
           {/* Personal Information */}
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Personal Information</Text>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{pf("personalInformation")}</Text>
             <View>
               <View>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Email</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("email")}</Text>
                 {savedEmailForDisplay.trim() ? (
-                  <Text style={twStyle("mb-2 text-sm text-gray-700")}>On file: {savedEmailForDisplay}</Text>
+                  <Text style={twStyle("mb-2 text-sm text-gray-700")}>{pf("onFile", { value: savedEmailForDisplay })}</Text>
                 ) : (
-                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>On file: none yet</Text>
+                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>{pf("onFileNone")}</Text>
                 )}
                 <TextInput
                   value={profile.email}
                   onChangeText={(email) => setProfile((p) => (p ? { ...p, email } : p))}
-                  placeholder="Email"
+                  placeholder={pf("emailPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
                 <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                  Changing your email sends a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
+                  {pf("emailChangeHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                 </Text>
               </View>
               <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Phone</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("phone")}</Text>
                 {savedPhoneForDisplay.trim() ? (
                   <Text style={twStyle("mb-2 text-sm text-gray-700")}>
-                    On file: {formatPhone(savedPhoneForDisplay)}
+                    {pf("onFile", { value: formatPhone(savedPhoneForDisplay) })}
                   </Text>
                 ) : (
-                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>On file: none yet</Text>
+                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>{pf("onFileNone")}</Text>
                 )}
                 <View
                   style={{
@@ -738,11 +746,11 @@ export default function ProfileScreen() {
                       borderRightWidth: 1,
                       borderRightColor: "#E5E7EB",
                     }}
-                    accessibilityLabel="Select country code"
+                    accessibilityLabel={pf("selectCountryCodeA11y")}
                     accessibilityRole="button"
                   >
-                    <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-                    <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>
+                    <Text style={{ fontSize: 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>
                       {phoneCountryCode}
                     </Text>
                     <Ionicons name="chevron-down" size={14} color="#6B7280" />
@@ -750,7 +758,7 @@ export default function ProfileScreen() {
                   <TextInput
                     value={phoneNational}
                     onChangeText={handlePhoneNationalChange}
-                    placeholder="82 123 4567"
+                    placeholder={pf("phonePlaceholder")}
                     placeholderTextColor="#9ca3af"
                     style={{
                       flex: 1,
@@ -761,12 +769,11 @@ export default function ProfileScreen() {
                       color: "#111827",
                     }}
                     keyboardType="phone-pad"
-                    accessibilityLabel="Phone number without country code"
+                    accessibilityLabel={pf("phoneNationalA11y")}
                   />
                 </View>
                 <Text style={twStyle("mt-1 text-xs text-gray-500 leading-5")}>
-                  Pick your country code, then enter the rest (leading 0 is optional). Changing your number sends a
-                  verification code (E.164 for Supabase).
+                  {pf("phoneHint")}
                 </Text>
                 {phoneFieldError ? (
                   <Text style={twStyle("mt-1 text-xs text-red-500")}>{phoneFieldError}</Text>
@@ -777,13 +784,12 @@ export default function ProfileScreen() {
 
           {/* Address */}
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Address</Text>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{pf("address")}</Text>
             <View>
               <View>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Address</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("address")}</Text>
                 <Text style={twStyle("mb-2 text-xs text-gray-500 leading-5")}>
-                  Search for an address to fill city, state, postal code and coordinates automatically, or type
-                  manually.
+                  {pf("addressSearchHint")}
                 </Text>
                 <AddressAutocomplete
                   value={profile.address?.line1 ?? ""}
@@ -819,7 +825,7 @@ export default function ProfileScreen() {
                         : p,
                     )
                   }
-                  placeholder="Street address or search…"
+                  placeholder={pf("streetPlaceholder")}
                   countryCode={
                     countryFilterIso2FromStorage(profile.address?.country ?? "") ?? "ZA"
                   }
@@ -855,7 +861,7 @@ export default function ProfileScreen() {
                       paddingHorizontal: 12,
                       paddingVertical: 7,
                     }}
-                    accessibilityLabel="Use current location"
+                    accessibilityLabel={pf("useCurrentLocationA11y")}
                     accessibilityRole="button"
                   >
                     {locating ? (
@@ -865,13 +871,13 @@ export default function ProfileScreen() {
                     )}
                     <Text
                       style={{
-                        marginLeft: 6,
+                        marginStart: 6,
                         fontSize: 12,
                         fontWeight: "600",
                         color: "#1d4ed8",
                       }}
                     >
-                      {locating ? "Locating…" : "Current location"}
+                      {locating ? pf("locating") : pf("currentLocation")}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -886,19 +892,19 @@ export default function ProfileScreen() {
                       paddingHorizontal: 12,
                       paddingVertical: 7,
                     }}
-                    accessibilityLabel="Drop pin on map"
+                    accessibilityLabel={pf("dropPinA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name="map-outline" size={16} color="#374151" />
                     <Text
                       style={{
-                        marginLeft: 6,
+                        marginStart: 6,
                         fontSize: 12,
                         fontWeight: "600",
                         color: "#374151",
                       }}
                     >
-                      Drop pin on map
+                      {pf("dropPin")}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -919,13 +925,13 @@ export default function ProfileScreen() {
                         textAlign: "center",
                       }}
                     >
-                      Map preview
+                      {pf("mapPreview")}
                     </Text>
                   </View>
                 ) : null}
               </View>
               <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Country</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("country")}</Text>
                 <TextInput
                   value={profile.address?.country ?? ""}
                   onChangeText={(country) =>
@@ -933,13 +939,13 @@ export default function ProfileScreen() {
                       p ? { ...p, address: { ...p.address!, country } } : p
                     )
                   }
-                  placeholder="Country"
+                  placeholder={pf("countryPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>State/Province</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("stateProvince")}</Text>
                 <TextInput
                   value={profile.address?.state ?? ""}
                   onChangeText={(state) =>
@@ -947,13 +953,13 @@ export default function ProfileScreen() {
                       p ? { ...p, address: { ...p.address!, state } } : p
                     )
                   }
-                  placeholder="State / Province"
+                  placeholder={pf("statePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>City</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("city")}</Text>
                 <TextInput
                   value={profile.address?.city ?? ""}
                   onChangeText={(city) =>
@@ -961,13 +967,13 @@ export default function ProfileScreen() {
                       p ? { ...p, address: { ...p.address!, city } } : p
                     )
                   }
-                  placeholder="City"
+                  placeholder={pf("cityPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Zip/Postal Code</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("postalCode")}</Text>
                 <TextInput
                   value={profile.address?.postal_code ?? ""}
                   onChangeText={(postal_code) =>
@@ -975,7 +981,7 @@ export default function ProfileScreen() {
                       p ? { ...p, address: { ...p.address!, postal_code } } : p
                     )
                   }
-                  placeholder="Zip / Postal code"
+                  placeholder={pf("postalPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   keyboardType="number-pad"
@@ -986,9 +992,9 @@ export default function ProfileScreen() {
 
           {/* Plan */}
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Plan</Text>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{pf("plan")}</Text>
             <View>
-              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Current plan</Text>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("currentPlan")}</Text>
               <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 px-4 py-3")}>
                 <Text style={twStyle("text-base text-gray-700")}>{plan}</Text>
               </View>
@@ -999,14 +1005,14 @@ export default function ProfileScreen() {
                     router.push("/(app)/(tabs)/more/settings/subscription" as never);
                   }}
                   style={twStyle("mt-3 rounded-xl bg-gray-900 py-3 items-center")}
-                  accessibilityLabel="Manage subscription and billing"
+                  accessibilityLabel={pf("manageSubscriptionA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("font-semibold text-white")}>Manage subscription & billing</Text>
+                  <Text style={twStyle("font-semibold text-white")}>{pf("manageSubscription")}</Text>
                 </TouchableOpacity>
               ) : (
                 <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-                  Subscription changes are available to the business owner.
+                  {pf("subscriptionOwnerOnly")}
                 </Text>
               )}
               <TouchableOpacity
@@ -1017,7 +1023,7 @@ export default function ProfileScreen() {
                 style={twStyle("mt-3")}
                 accessibilityRole="button"
               >
-                <Text style={twStyle("text-sm font-medium text-primary")}>Contact support</Text>
+                <Text style={twStyle("text-sm font-medium text-primary")}>{pf("contactSupport")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1030,7 +1036,7 @@ export default function ProfileScreen() {
             {saving || sendingOtp || sendingEmailOtp ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={twStyle("font-semibold text-white")}>Save changes</Text>
+              <Text style={twStyle("font-semibold text-white")}>{pf("saveChanges")}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -1044,9 +1050,9 @@ export default function ProfileScreen() {
         onRequestClose={() => setEmailStep(null)}
       >
         <View style={twStyle("flex-1 bg-white p-6 pt-12")}>
-          <Text style={twStyle("text-lg font-semibold text-gray-900")}>Verify email address</Text>
+          <Text style={twStyle("text-lg font-semibold text-gray-900")}>{pf("verifyEmailTitle")}</Text>
           <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-            We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to {pendingEmailForOtp}. Enter it below.
+            {pf("verifyEmailBody", { digits: SUPABASE_AUTH_OTP_LENGTH, email: pendingEmailForOtp })}
           </Text>
           <View style={twStyle("mt-4")}>
             <OtpDigitRow
@@ -1057,7 +1063,7 @@ export default function ProfileScreen() {
               }}
               disabled={saving}
               autoFocus
-              accessibilityLabelPrefix="Email change verification code"
+              accessibilityLabelPrefix={pf("emailOtpA11yPrefix")}
             />
           </View>
           <TouchableOpacity
@@ -1068,7 +1074,7 @@ export default function ProfileScreen() {
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={twStyle("font-semibold text-white")}>Verify and save</Text>
+              <Text style={twStyle("font-semibold text-white")}>{pf("verifyAndSave")}</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -1082,7 +1088,7 @@ export default function ProfileScreen() {
             }}
             style={twStyle("mt-4")}
           >
-            <Text style={twStyle("text-sm font-medium text-primary")}>Wrong email? Go back</Text>
+            <Text style={twStyle("text-sm font-medium text-primary")}>{pf("wrongEmail")}</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -1095,14 +1101,20 @@ export default function ProfileScreen() {
         onRequestClose={() => setPhoneStep(null)}
       >
         <View style={twStyle("flex-1 bg-white p-6 pt-12")}>
-          <Text style={twStyle("text-lg font-semibold text-gray-900")}>Verify phone number</Text>
+          <Text style={twStyle("text-lg font-semibold text-gray-900")}>{pf("verifyPhoneTitle")}</Text>
           <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-            We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to {pendingPhoneE164} (valid about{" "}
-            {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Enter it below.
+            {pf("verifyPhoneBody", {
+              digits: SUPABASE_AUTH_OTP_LENGTH,
+              phone: pendingPhoneE164,
+              minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)),
+              minuteWord:
+                Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1
+                  ? pf("minuteSingular")
+                  : pf("minutePlural"),
+            })}
           </Text>
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-            Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+            {pf("enterSmsCode", { digits: SUPABASE_AUTH_OTP_LENGTH })}
           </Text>
           <View style={twStyle("mt-4")}>
             <OtpDigitRow
@@ -1114,7 +1126,7 @@ export default function ProfileScreen() {
               disabled={saving}
               autoFocus
               smsAutofill
-              accessibilityLabelPrefix="Phone change verification code"
+              accessibilityLabelPrefix={pf("phoneOtpA11yPrefix")}
             />
           </View>
           <TouchableOpacity
@@ -1125,7 +1137,7 @@ export default function ProfileScreen() {
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={twStyle("font-semibold text-white")}>Verify and save</Text>
+              <Text style={twStyle("font-semibold text-white")}>{pf("verifyAndSave")}</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -1143,7 +1155,7 @@ export default function ProfileScreen() {
             }}
             style={twStyle("mt-4")}
           >
-            <Text style={twStyle("text-sm font-medium text-primary")}>Wrong number? Go back</Text>
+            <Text style={twStyle("text-sm font-medium text-primary")}>{pf("wrongNumber")}</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -1157,7 +1169,7 @@ export default function ProfileScreen() {
         <Pressable
           style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
           onPress={() => setShowCountryPicker(false)}
-          accessibilityLabel="Close country picker"
+          accessibilityLabel={pf("closeCountryPickerA11y")}
           accessibilityRole="button"
         >
           <Pressable
@@ -1176,7 +1188,7 @@ export default function ProfileScreen() {
               }}
             >
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select country
+                {pf("selectCountry")}
               </Text>
               <View
                 style={{
@@ -1190,7 +1202,7 @@ export default function ProfileScreen() {
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={pf("searchCountryPlaceholder")}
                   placeholderTextColor="#9CA3AF"
                   value={countrySearch}
                   onChangeText={setCountrySearch}
@@ -1224,7 +1236,7 @@ export default function ProfileScreen() {
                   accessibilityLabel={c.label}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,

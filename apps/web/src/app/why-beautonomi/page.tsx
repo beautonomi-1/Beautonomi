@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -10,19 +11,16 @@ import Benefits from "./components/benefits";
 import CTABanner from "./components/cta-banner";
 import FAQ from "@/components/global/faq";
 import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
-
-export const metadata: Metadata = {
-  title: "Why Beautonomi",
-  description:
-    "Learn why customers and beauty professionals choose Beautonomi.",
-  alternates: {
-    canonical: "/why-beautonomi",
-    languages: getHreflangAlternateUrls("/why-beautonomi"),
-  },
-};
 
 export const revalidate = 300;
+
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/why-beautonomi",
+    titleKey: "web.seo.whyBeautonomiTitle",
+    descriptionKey: "web.seo.whyBeautonomiDescription",
+  });
+}
 
 export default async function WhyBeautonomiPage() {
   const content = await getPublicPageContent("why-beautonomi");

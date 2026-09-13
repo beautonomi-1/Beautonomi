@@ -21,7 +21,9 @@ import {
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { isMailableEmail } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 type AuthSecurityState = {
@@ -34,22 +36,28 @@ type AuthSecurityState = {
 };
 
 const COUNTRY_CODES = [
-  { code: "+27", label: "ZA +27" },
-  { code: "+254", label: "KE +254" },
-  { code: "+233", label: "GH +233" },
-  { code: "+234", label: "NG +234" },
-  { code: "+255", label: "TZ +255" },
-  { code: "+256", label: "UG +256" },
-  { code: "+260", label: "ZM +260" },
-  { code: "+263", label: "ZW +263" },
-  { code: "+267", label: "BW +267" },
-  { code: "+264", label: "NA +264" },
-  { code: "+1", label: "US +1" },
-  { code: "+44", label: "UK +44" },
+  { code: "+27", labelKey: "countryZa" },
+  { code: "+254", labelKey: "countryKe" },
+  { code: "+233", labelKey: "countryGh" },
+  { code: "+234", labelKey: "countryNg" },
+  { code: "+255", labelKey: "countryTz" },
+  { code: "+256", labelKey: "countryUg" },
+  { code: "+260", labelKey: "countryZm" },
+  { code: "+263", labelKey: "countryZw" },
+  { code: "+267", labelKey: "countryBw" },
+  { code: "+264", labelKey: "countryNa" },
+  { code: "+1", labelKey: "countryUs" },
+  { code: "+44", labelKey: "countryUk" },
 ];
 
 export default function SettingsLoginAndSecurityScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const ls = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.loginSecurity.${key}`, opts) as string,
+    [t],
+  );
   const { user, signOut } = useAuth();
   const canUseQuietRefresh = useRef(false);
 
@@ -61,9 +69,15 @@ export default function SettingsLoginAndSecurityScreen() {
 
   const emailChange = useEmailChangeOtp({
     onVerified: () => load(),
+    errorTitle: ls("errorTitle"),
     strings: {
-      verifiedTitle: "Email updated",
-      verifiedBody: "Your email address has been verified and saved.",
+      verifiedTitle: ls("emailUpdatedTitle"),
+      verifiedBody: ls("emailUpdatedBody"),
+      invalidEmail: ls("invalidEmail"),
+      enterOtp: ls("enterEmailOtp", { digits: SUPABASE_AUTH_OTP_LENGTH }),
+      sendFailed: ls("sendFailed"),
+      verifyFailedTitle: ls("verifyFailedTitle"),
+      verifyFailedBody: ls("verifyFailedBody"),
     },
   });
 
@@ -89,18 +103,18 @@ export default function SettingsLoginAndSecurityScreen() {
     try {
       const res = await api.get<{ email?: string; phone?: string; email_change_pending?: boolean; auth_security?: AuthSecurityState | null }>("/api/me/profile");
       if (res.error) {
-        if (!quiet) setError(res.error.message || "Failed to load profile");
+        if (!quiet) setError(res.error.message || ls("loadFailed"));
       } else {
         setProfile(res.data ?? null);
         if (!quiet) setError(null);
         canUseQuietRefresh.current = true;
       }
     } catch (e) {
-      if (!quiet) setError(getApiErrorMessage(e, "Failed to load profile"));
+      if (!quiet) setError(getApiErrorMessage(e, ls("loadFailed")));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, []);
+  }, [ls]);
 
   useEffect(() => {
     canUseQuietRefresh.current = false;
@@ -115,7 +129,7 @@ export default function SettingsLoginAndSecurityScreen() {
   const handleSendPhoneOtp = async () => {
     const digits = phoneNational.replace(/\D/g, "");
     if (!digits || digits.length < 7) {
-      Alert.alert("Validation", "Please enter a valid phone number.");
+      Alert.alert(ls("validationTitle"), ls("invalidPhone"));
       return;
     }
     const raw = `${countryCode}${digits}`;
@@ -129,11 +143,11 @@ export default function SettingsLoginAndSecurityScreen() {
       setPhoneOtpCode("");
       const mins = Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60));
       Alert.alert(
-        "Code sent",
-        `A ${SUPABASE_AUTH_OTP_LENGTH}-digit code has been sent to ${e164}. It's valid for about ${mins} minute${mins === 1 ? "" : "s"}.`,
+        ls("codeSentTitle"),
+        ls("codeSentBody", { digits: SUPABASE_AUTH_OTP_LENGTH, phone: e164, count: mins }),
       );
     } catch (e: unknown) {
-      Alert.alert("Error", (e as Error)?.message ?? "Failed to send verification code.");
+      Alert.alert(ls("errorTitle"), (e as Error)?.message ?? ls("sendCodeFailed"));
     } finally {
       setPhoneSending(false);
     }
@@ -142,7 +156,7 @@ export default function SettingsLoginAndSecurityScreen() {
   const handleVerifyPhoneOtp = async (otpOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
     if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
-      Alert.alert("Validation", `Please enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS.`);
+      Alert.alert(ls("validationTitle"), ls("enterSmsOtp", { digits: SUPABASE_AUTH_OTP_LENGTH }));
       return;
     }
     setPhoneVerifying(true);
@@ -156,15 +170,15 @@ export default function SettingsLoginAndSecurityScreen() {
       const res = await api.patch<{ phone?: string }>("/api/me/profile", {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
-      if (res.error) throw new Error(res.error.message ?? "Failed to save phone number.");
+      if (res.error) throw new Error(res.error.message ?? ls("savePhoneFailed"));
       setPhoneStep(null);
       setPendingPhoneE164("");
       setPhoneOtpCode("");
       setPhoneNational("");
-      Alert.alert("Phone updated", "Your phone number has been updated successfully.");
+      Alert.alert(ls("phoneUpdatedTitle"), ls("phoneUpdatedBody"));
       void load();
     } catch (e: unknown) {
-      Alert.alert("Verification failed", (e as Error)?.message ?? "The code was incorrect or has expired.");
+      Alert.alert(ls("verificationFailedTitle"), (e as Error)?.message ?? ls("verificationFailedBody"));
     } finally {
       setPhoneVerifying(false);
     }
@@ -179,7 +193,7 @@ export default function SettingsLoginAndSecurityScreen() {
         await biometric.disable();
       }
     } catch {
-      Alert.alert("Error", `Could not ${value ? "enable" : "disable"} biometric authentication.`);
+      Alert.alert(ls("errorTitle"), value ? ls("biometricEnableFailed") : ls("biometricDisableFailed"));
     }
   };
 
@@ -190,40 +204,40 @@ export default function SettingsLoginAndSecurityScreen() {
       try {
         const res = await api.post<{ ok?: boolean }>("/api/auth/sign-out-global", {});
         if (res.error) {
-          Alert.alert("Error", res.error.message ?? "Could not sign out from all devices.");
+          Alert.alert(ls("errorTitle"), res.error.message ?? ls("signOutAllFailed"));
           return;
         }
         await signOut();
         goToLogin();
       } catch (e) {
-        Alert.alert("Error", getApiErrorMessage(e, "Could not sign out from all devices."));
+        Alert.alert(ls("errorTitle"), getApiErrorMessage(e, ls("signOutAllFailed")));
       } finally {
         setSigningOutGlobal(false);
       }
     };
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
-      "Sign out from all devices?",
-      "This ends every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Use this if you suspect unauthorised access.",
+      ls("signOutAllTitle"),
+      ls("signOutAllBody"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign out everywhere", style: "destructive", onPress: () => void perform() },
+        { text: ls("cancel"), style: "cancel" },
+        { text: ls("signOutEverywhere"), style: "destructive", onPress: () => void perform() },
       ],
     );
-  }, [router, signOut]);
+  }, [router, signOut, ls]);
 
   const rawEmail = profile?.email ?? user?.email ?? "";
   const currentEmail = isMailableEmail(rawEmail) ? rawEmail : "";
   const currentPhone = profile?.phone ?? "";
   const biometricLabel =
-    biometric.biometricType === "face" ? "Face ID" :
-    biometric.biometricType === "fingerprint" ? "Fingerprint" :
-    biometric.biometricType === "iris" ? "Iris" : "Biometrics";
+    biometric.biometricType === "face" ? ls("biometricFace") :
+    biometric.biometricType === "fingerprint" ? ls("biometricFingerprint") :
+    biometric.biometricType === "iris" ? ls("biometricIris") : ls("biometricGeneric");
 
   if (loading) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Login & security" onBack={() => router.back()} />
+        <ScreenHeader title={ls("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
@@ -234,14 +248,14 @@ export default function SettingsLoginAndSecurityScreen() {
   if (error) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Login & security" onBack={() => router.back()} />
+        <ScreenHeader title={ls("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
           <Text style={{ color: Colors.gray[500], textAlign: "center", marginBottom: 16 }}>{error}</Text>
           <TouchableOpacity
             onPress={() => void load()}
             style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("retry")}</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -250,7 +264,7 @@ export default function SettingsLoginAndSecurityScreen() {
 
   return (
     <ScreenContainer keyboardAvoiding={false}>
-      <ScreenHeader title="Login & security" subtitle="Email, phone, password & sessions" onBack={() => router.back()} />
+      <ScreenHeader title={ls("title")} subtitle={ls("subtitle")} onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior="padding"
@@ -269,11 +283,11 @@ export default function SettingsLoginAndSecurityScreen() {
           {Platform.OS !== "web" && biometric.isAvailable && (
             <View style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-                Security
+                {ls("sectionSecurity")}
               </Text>
               <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 14 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
                     <Ionicons
                       name={biometric.biometricType === "face" ? "scan-outline" : "finger-print-outline"}
                       size={18}
@@ -281,9 +295,9 @@ export default function SettingsLoginAndSecurityScreen() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{biometricLabel} lock</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{ls("lockLabel", { label: biometricLabel })}</Text>
                     <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 1 }}>
-                      Require {biometricLabel.toLowerCase()} to open the app
+                      {ls("requireBiometric", { label: biometricLabel.toLowerCase() })}
                     </Text>
                   </View>
                   <Switch
@@ -291,7 +305,7 @@ export default function SettingsLoginAndSecurityScreen() {
                     onValueChange={handleBiometricToggle}
                     trackColor={{ false: Colors.gray[200], true: "#6366f1" }}
                     thumbColor={Colors.white}
-                    accessibilityLabel={`Toggle ${biometricLabel} lock`}
+                    accessibilityLabel={ls("toggleLockA11y", { label: biometricLabel })}
                   />
                 </View>
               </View>
@@ -301,12 +315,12 @@ export default function SettingsLoginAndSecurityScreen() {
           {/* ── Email address ── */}
           <View style={{ marginBottom: 24 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-              Email address
+              {ls("sectionEmail")}
             </Text>
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
               <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
-                Current:{" "}
-                <Text style={{ fontWeight: "500", color: Colors.gray[800] }}>{currentEmail || "—"}</Text>
+                {ls("currentLabel")}{" "}
+                <Text style={{ fontWeight: "500", color: Colors.gray[800] }}>{currentEmail || ls("emptyValue")}</Text>
               </Text>
               {emailChange.step === null ? (
                 <>
@@ -324,15 +338,15 @@ export default function SettingsLoginAndSecurityScreen() {
                     }}
                     value={emailChange.newEmail}
                     onChangeText={emailChange.setNewEmail}
-                    placeholder="New email address"
+                    placeholder={ls("newEmailPlaceholder")}
                     placeholderTextColor="#9ca3af"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    accessibilityLabel="New email address"
+                    accessibilityLabel={ls("newEmailA11y")}
                   />
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
-                    We&apos;ll email a {emailChange.otpLength}-digit code to verify your new address.
+                    {ls("emailOtpHint", { digits: emailChange.otpLength })}
                   </Text>
                   <TouchableOpacity
                     onPress={() => void emailChange.sendCode()}
@@ -344,19 +358,19 @@ export default function SettingsLoginAndSecurityScreen() {
                       alignItems: "center",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Send verification code"
+                    accessibilityLabel={ls("sendVerificationA11y")}
                   >
                     {emailChange.sending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Send verification code</Text>
+                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{ls("sendVerification")}</Text>
                     )}
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 8 }}>
-                    Code sent to {emailChange.pendingEmail}
+                    {ls("codeSentTo", { destination: emailChange.pendingEmail })}
                   </Text>
                   <OtpDigitRow
                     value={emailChange.otpCode}
@@ -367,14 +381,14 @@ export default function SettingsLoginAndSecurityScreen() {
                     }}
                     disabled={emailChange.verifying}
                     autoFocus
-                    accessibilityLabelPrefix="Email change verification code"
+                    accessibilityLabelPrefix={ls("emailOtpA11yPrefix")}
                   />
                   <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
                     <TouchableOpacity
                       onPress={emailChange.reset}
                       style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}
                     >
-                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>Cancel</Text>
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>{ls("cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => void emailChange.verifyCode()}
@@ -384,7 +398,7 @@ export default function SettingsLoginAndSecurityScreen() {
                       {emailChange.verifying ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={{ color: Colors.white, fontWeight: "600" }}>Verify & save</Text>
+                        <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("verifyAndSave")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -396,15 +410,15 @@ export default function SettingsLoginAndSecurityScreen() {
           {/* ── Phone number ── */}
           <View style={{ marginBottom: 24 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-              Phone number
+              {ls("sectionPhone")}
             </Text>
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
               <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
-                Current:{" "}
+                {ls("currentLabel")}{" "}
                 <Text style={{ fontWeight: "500", color: Colors.gray[800] }}>
                   {currentPhone
                     ? currentPhone.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")
-                    : "—"}
+                    : ls("emptyValue")}
                 </Text>
               </Text>
 
@@ -425,7 +439,7 @@ export default function SettingsLoginAndSecurityScreen() {
                         alignItems: "center",
                         gap: 4,
                       }}
-                      accessibilityLabel={`Country code ${countryCode}`}
+                      accessibilityLabel={ls("countryCodeA11y", { code: countryCode })}
                     >
                       <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>{countryCode}</Text>
                       <Ionicons name="chevron-down" size={14} color={Colors.gray[500]} />
@@ -444,10 +458,10 @@ export default function SettingsLoginAndSecurityScreen() {
                       }}
                       value={phoneNational}
                       onChangeText={setPhoneNational}
-                      placeholder="New phone number"
+                      placeholder={ls("newPhonePlaceholder")}
                       placeholderTextColor="#9ca3af"
                       keyboardType="phone-pad"
-                      accessibilityLabel="New phone number"
+                      accessibilityLabel={ls("newPhoneA11y")}
                     />
                   </View>
 
@@ -467,9 +481,9 @@ export default function SettingsLoginAndSecurityScreen() {
                             borderBottomColor: Colors.gray[100],
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel={c.label}
+                          accessibilityLabel={ls(c.labelKey)}
                         >
-                          <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.label}</Text>
+                          <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{ls(c.labelKey)}</Text>
                           {countryCode === c.code && <Ionicons name="checkmark" size={16} color={Colors.primary} />}
                         </TouchableOpacity>
                       ))}
@@ -477,7 +491,7 @@ export default function SettingsLoginAndSecurityScreen() {
                   )}
 
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10, lineHeight: 18 }}>
-                    {`We'll SMS a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to verify your number (valid ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} min).`}
+                    {ls("phoneOtpHint", { digits: SUPABASE_AUTH_OTP_LENGTH, minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)) })}
                   </Text>
                   <TouchableOpacity
                     onPress={handleSendPhoneOtp}
@@ -489,12 +503,12 @@ export default function SettingsLoginAndSecurityScreen() {
                       alignItems: "center",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Send phone verification code"
+                    accessibilityLabel={ls("sendPhoneVerificationA11y")}
                   >
                     {phoneSending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Send verification code</Text>
+                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{ls("sendVerification")}</Text>
                     )}
                   </TouchableOpacity>
                 </>
@@ -503,11 +517,10 @@ export default function SettingsLoginAndSecurityScreen() {
               {phoneStep === "enter_otp" && (
                 <>
                   <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 4 }}>
-                    Code sent to{" "}
-                    <Text style={{ fontWeight: "600" }}>{pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}</Text>
+                    {ls("codeSentTo", { destination: pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4") })}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-                    Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                    {ls("enterSmsOtpHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                   </Text>
                   <OtpDigitRow
                     value={phoneOtpCode}
@@ -518,7 +531,7 @@ export default function SettingsLoginAndSecurityScreen() {
                     disabled={phoneVerifying}
                     autoFocus
                     smsAutofill
-                    accessibilityLabelPrefix="Phone change verification code"
+                    accessibilityLabelPrefix={ls("phoneOtpA11yPrefix")}
                   />
                   <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
                     <TouchableOpacity
@@ -532,9 +545,9 @@ export default function SettingsLoginAndSecurityScreen() {
                         borderColor: Colors.gray[200],
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Cancel phone change"
+                      accessibilityLabel={ls("cancelPhoneChangeA11y")}
                     >
-                      <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>Cancel</Text>
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{ls("cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => void handleVerifyPhoneOtp()}
@@ -547,12 +560,12 @@ export default function SettingsLoginAndSecurityScreen() {
                         alignItems: "center",
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Verify and save phone"
+                      accessibilityLabel={ls("verifySavePhoneA11y")}
                     >
                       {phoneVerifying ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Verify & save</Text>
+                        <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{ls("verifyAndSave")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -564,7 +577,7 @@ export default function SettingsLoginAndSecurityScreen() {
           {/* ── Password ── */}
           <View style={{ marginBottom: 24 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-              Password
+              {ls("sectionPassword")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/settings-change-password" as never)}
@@ -579,33 +592,33 @@ export default function SettingsLoginAndSecurityScreen() {
                 alignItems: "center",
               }}
               accessibilityRole="button"
-              accessibilityLabel={profile?.auth_security?.has_password === false ? "Set password" : "Change password"}
+              accessibilityLabel={profile?.auth_security?.has_password === false ? ls("setPassword") : ls("changePassword")}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
                 <Ionicons name="lock-closed-outline" size={18} color={Colors.gray[600]} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>
-                  {profile?.auth_security?.has_password === false ? "Set password" : "Change password"}
+                  {profile?.auth_security?.has_password === false ? ls("setPassword") : ls("changePassword")}
                 </Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 1 }}>
                   {profile?.auth_security?.has_password === false
-                    ? "Add password sign-in to your account"
-                    : "Update your account password"}
+                    ? ls("setPasswordDesc")
+                    : ls("changePasswordDesc")}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+              <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
             </TouchableOpacity>
           </View>
 
           {/* ── Active sessions ── */}
           <View style={{ marginBottom: 24 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-              Active sessions
+              {ls("sectionSessions")}
             </Text>
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
               <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 12, lineHeight: 18 }}>
-                Sign out from this app and every other phone, tablet or browser where your account is signed in.
+                {ls("sessionsBody")}
               </Text>
               <TouchableOpacity
                 onPress={handleGlobalSignOut}
@@ -619,12 +632,12 @@ export default function SettingsLoginAndSecurityScreen() {
                   alignItems: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Sign out from all devices"
+                accessibilityLabel={ls("signOutAllA11y")}
               >
                 {signingOutGlobal ? (
                   <ActivityIndicator size="small" color={Colors.gray[700]} />
                 ) : (
-                  <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 15 }}>Sign out from all devices</Text>
+                  <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 15 }}>{ls("signOutAllCta")}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -633,20 +646,20 @@ export default function SettingsLoginAndSecurityScreen() {
           {/* ── Danger zone ── */}
           <View>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-              Account
+              {ls("sectionAccount")}
             </Text>
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#FEF2F2", overflow: "hidden" }}>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/settings-deactivate-account" as never)}
                 style={{ paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center" }}
                 accessibilityRole="button"
-                accessibilityLabel="Deactivate account"
+                accessibilityLabel={ls("deactivateA11y")}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#b91c1c" }}>Deactivate account</Text>
-                  <Text style={{ fontSize: 12, color: "#dc2626", marginTop: 1 }}>Temporarily disable your account</Text>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#b91c1c" }}>{ls("deactivateAccount")}</Text>
+                  <Text style={{ fontSize: 12, color: "#dc2626", marginTop: 1 }}>{ls("deactivateDesc")}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#dc2626" />
+                <DirectionalIcon name="chevron-forward" size={18} color="#dc2626" />
               </TouchableOpacity>
             </View>
           </View>

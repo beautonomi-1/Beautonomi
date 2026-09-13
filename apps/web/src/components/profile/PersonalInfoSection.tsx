@@ -10,6 +10,9 @@ import Image from "next/image";
 import VerificationStatusCard from "./VerificationStatusCard";
 import { getCachedDefaultPhoneDial } from "@/lib/user-default-phone-dial";
 import { isMailableEmail } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
+
+const NOT_PROVIDED_SENTINEL = "Not provided";
 
 interface PersonalInfoData {
   legalName: { first: string; last: string };
@@ -66,26 +69,28 @@ const InfoItem: React.FC<{
   verified?: boolean;
   isPrivate?: boolean;
   isOptional?: boolean;
-}> = ({ label, value, onEdit, onAdd, verified, isPrivate, isOptional }) => (
+}> = ({ label, value, onEdit, onAdd, verified, isPrivate, isOptional }) => {
+  const { t } = useTranslation();
+  return (
   <div className="mb-4 pb-4 border-b border-gray-200 last:border-0">
     <div className="flex justify-between items-center mb-1">
       <div className="flex items-center gap-2">
         <span className="font-medium text-sm text-gray-900">{label}</span>
         {verified && (
           <Badge variant="outline" className="text-xs border-green-300 text-green-700 bg-green-50">
-            <Check className="w-3 h-3 mr-1" />
-            Verified
+            <Check className="w-3 h-3 me-1" />
+            {t("web.accountSettings.personalInfo.verified")}
           </Badge>
         )}
         {isPrivate && (
           <Badge variant="outline" className="text-xs border-gray-300 text-gray-600 bg-gray-50">
-            <Lock className="w-3 h-3 mr-1" />
-            Private
+            <Lock className="w-3 h-3 me-1" />
+            {t("web.accountSettings.personalInfo.private")}
           </Badge>
         )}
         {isOptional && (
           <Badge variant="outline" className="text-xs border-gray-300 text-gray-500 bg-gray-50">
-            Optional
+            {t("web.accountSettings.personalInfo.optional")}
           </Badge>
         )}
       </div>
@@ -95,7 +100,7 @@ const InfoItem: React.FC<{
           onClick={onEdit}
         >
           <Edit className="w-3 h-3" />
-          Edit
+          {t("web.accountSettings.personalInfo.edit")}
         </button>
       )}
       {onAdd && (
@@ -104,15 +109,17 @@ const InfoItem: React.FC<{
           onClick={onAdd}
         >
           <Plus className="w-3 h-3" />
-          Add
+          {t("web.accountSettings.personalInfo.add")}
         </button>
       )}
     </div>
-    <span className="text-sm text-gray-600">{value}</span>
+    <span className="text-sm text-gray-600">{value === NOT_PROVIDED_SENTINEL ? t("web.accountSettings.personalInfo.notProvided") : value}</span>
   </div>
-);
+  );
+};
 
 export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionProps) {
+  const { t } = useTranslation();
   // Auto-open if there are missing personal info fields (check via URL hash or prop)
   const [isOpen, setIsOpen] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -123,10 +130,10 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
   const [modalContent, setModalContent] = useState<ModalContent | null>(null);
   const [personalInfo, setPersonalInfo] = useState<PersonalInfoData>({
     legalName: { first: '', last: '' },
-    preferredName: 'Not provided',
+    preferredName: NOT_PROVIDED_SENTINEL,
     email: '',
     phone: '',
-    governmentId: 'Not provided',
+    governmentId: NOT_PROVIDED_SENTINEL,
     address: {
       country: '',
       street: '',
@@ -236,10 +243,10 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               first: profile.first_name || '',
               last: profile.last_name || '',
             },
-            preferredName: profile.preferred_name || 'Not provided',
-            email: maskedEmail || 'Not provided',
-            phone: maskedPhone || 'Not provided',
-            governmentId: profile.government_id ? 'Provided' : (profile.identity_verification_status === 'pending' ? 'Pending verification' : 'Not provided'),
+            preferredName: profile.preferred_name || NOT_PROVIDED_SENTINEL,
+            email: maskedEmail || NOT_PROVIDED_SENTINEL,
+            phone: maskedPhone || NOT_PROVIDED_SENTINEL,
+            governmentId: profile.government_id ? t("web.accountSettings.personalInfo.provided") : (profile.identity_verification_status === 'pending' ? t("web.accountSettings.personalInfo.pendingVerification") : NOT_PROVIDED_SENTINEL),
             address: profile.address ? {
               country: profile.address.country || '',
               street: profile.address.line1 || '',
@@ -327,21 +334,24 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
         const country = newValue.country || personalInfo.address.country || defaultCountry;
 
         if (!file) {
-          toast.error("Please select a file to upload");
+          toast.error(t("web.accountSettings.personalInfo.selectFile"));
           return;
         }
 
         if (!documentType) {
-          toast.error("Please select a document type");
+          toast.error(t("web.accountSettings.personalInfo.selectDocType"));
           return;
         }
 
         if (!country) {
-          toast.error("Please select a country");
+          toast.error(t("web.accountSettings.personalInfo.selectCountry"));
           return;
         }
 
         const documentTypeMap: Record<string, string> = {
+          license: "license",
+          passport: "passport",
+          identity: "identity",
           "Driver's License": "license",
           "Passport": "passport",
           "National ID": "identity",
@@ -359,17 +369,17 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
         });
 
         if (verificationResponse.ok) {
-          toast.success("Government ID uploaded successfully! It will be reviewed by our team.");
+          toast.success(t("web.accountSettings.personalInfo.idUploaded"));
           setPersonalInfo(prev => ({
             ...prev,
-            governmentId: 'Pending verification',
+            governmentId: t("web.accountSettings.personalInfo.pendingVerification"),
           }));
           closeModal();
           onUpdate?.();
           return;
         } else {
           const error = await verificationResponse.json();
-          toast.error(error.error?.message || "Failed to upload Government ID");
+          toast.error(error.error?.message || t("web.accountSettings.personalInfo.idUploadFailed"));
           return;
         }
       }
@@ -411,10 +421,10 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               first: profile.first_name || '',
               last: profile.last_name || '',
             },
-            preferredName: profile.preferred_name || 'Not provided',
-            email: maskedEmail || 'Not provided',
-            phone: maskedPhone || 'Not provided',
-            governmentId: profile.government_id ? 'Provided' : (profile.identity_verification_status === 'pending' ? 'Pending verification' : 'Not provided'),
+            preferredName: profile.preferred_name || NOT_PROVIDED_SENTINEL,
+            email: maskedEmail || NOT_PROVIDED_SENTINEL,
+            phone: maskedPhone || NOT_PROVIDED_SENTINEL,
+            governmentId: profile.government_id ? t("web.accountSettings.personalInfo.provided") : (profile.identity_verification_status === 'pending' ? t("web.accountSettings.personalInfo.pendingVerification") : NOT_PROVIDED_SENTINEL),
             address: profile.address ? {
               country: profile.address.country || '',
               street: profile.address.line1 || '',
@@ -441,15 +451,15 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           });
         }
         closeModal();
-        toast.success("Changes saved successfully!");
+        toast.success(t("web.accountSettings.personalInfo.changesSaved"));
         onUpdate?.();
       } else {
         const error = await response.json();
-        toast.error(error.error?.message || "Failed to save changes");
+        toast.error(error.error?.message || t("web.accountSettings.personalInfo.saveFailed"));
       }
     } catch (error) {
       console.error("Error saving changes:", error);
-      toast.error("An error occurred. Please try again.");
+      toast.error(t("web.accountSettings.personalInfo.errorGeneric"));
     } finally {
       setIsSaving(false);
     }
@@ -467,78 +477,78 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
       case 'legalName':
         return {
           type: 'legalName',
-          title: 'Legal name',
-          description: 'Make sure this matches the name on your government ID.',
+          title: t("web.accountSettings.personalInfo.modalLegalName"),
+          description: t("web.accountSettings.personalInfo.modalLegalNameDesc"),
           fields: [
-            { name: 'first', label: 'First name on ID', type: 'text' },
-            { name: 'last', label: 'Last name on ID', type: 'text' },
+            { name: 'first', label: t("web.accountSettings.personalInfo.firstNameOnId"), type: 'text' },
+            { name: 'last', label: t("web.accountSettings.personalInfo.lastNameOnId"), type: 'text' },
           ],
         };
       case 'preferredName':
         return {
           type: 'preferredName',
-          title: 'Preferred name',
-          description: 'This is how your first name will appear to Providers and clients.',
+          title: t("web.accountSettings.personalInfo.modalPreferredName"),
+          description: t("web.accountSettings.personalInfo.modalPreferredNameDesc"),
           fields: [
-            { name: 'preferredName', label: 'Preferred name (optional)', type: 'text' },
+            { name: 'preferredName', label: t("web.accountSettings.personalInfo.preferredNameOptional"), type: 'text' },
           ],
         };
       case 'email':
         return {
           type: 'email',
-          title: 'Email address',
-          description: 'Use an address you\'ll always have access to.',
+          title: t("web.accountSettings.personalInfo.modalEmail"),
+          description: t("web.accountSettings.personalInfo.modalEmailDesc", { digits: 6 }),
           fields: [
-            { name: 'email', label: 'Email address', type: 'email' },
+            { name: 'email', label: t("web.accountSettings.personalInfo.emailAddress"), type: 'email' },
           ],
         };
       case 'phone':
         return {
           type: 'phone',
-          title: 'Phone number',
-          description: 'For notifications, reminders, and help logging in',
+          title: t("web.accountSettings.personalInfo.modalPhone"),
+          description: t("web.accountSettings.personalInfo.modalPhoneDesc"),
           fields: [
-            { name: 'countryCode', label: 'Country code', type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : ['South Africa (+27)'] },
-            { name: 'phone', label: 'Phone number', type: 'tel' },
+            { name: 'countryCode', label: t("web.accountSettings.personalInfo.countryCode"), type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : [t("web.accountSettings.personalInfo.southAfricaPhone")] },
+            { name: 'phone', label: t("web.accountSettings.personalInfo.phoneNumber"), type: 'tel' },
           ],
         };
       case 'address':
         return {
           type: 'address',
-          title: 'Address',
-          description: 'Use a permanent address where you can receive mail.',
+          title: t("web.accountSettings.personalInfo.modalAddress"),
+          description: t("web.accountSettings.personalInfo.modalAddressDesc"),
           fields: [
-            { name: 'country', label: 'Country/region', type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : ['South Africa'] },
-            { name: 'street', label: 'Street address', type: 'text' },
-            { name: 'apt', label: 'Apt, suite. (optional)', type: 'text' },
-            { name: 'city', label: 'City', type: 'text' },
-            { name: 'state', label: 'State / Province / County / Region', type: 'text' },
-            { name: 'zip', label: 'ZIP code', type: 'text' },
+            { name: 'country', label: t("web.accountSettings.personalInfo.countryRegion"), type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : [t("web.accountSettings.personalInfo.southAfrica")] },
+            { name: 'street', label: t("web.accountSettings.personalInfo.streetAddress"), type: 'text' },
+            { name: 'apt', label: t("web.accountSettings.personalInfo.aptOptional"), type: 'text' },
+            { name: 'city', label: t("web.accountSettings.personalInfo.city"), type: 'text' },
+            { name: 'state', label: t("web.accountSettings.personalInfo.stateRegion"), type: 'text' },
+            { name: 'zip', label: t("web.accountSettings.personalInfo.zipCode"), type: 'text' },
           ],
         };
       case 'emergencyContact':
         return {
           type: 'emergencyContact',
-          title: 'Emergency contact',
-          description: 'A trusted contact we can alert in an urgent situation.',
+          title: t("web.accountSettings.personalInfo.modalEmergency"),
+          description: t("web.accountSettings.personalInfo.modalEmergencyDesc"),
           fields: [
-            { name: 'name', label: 'Name', type: 'text' },
-            { name: 'relationship', label: 'Relationship', type: 'text' },
-            { name: 'language', label: 'Preferred language', type: 'select', options: languageOptions },
-            { name: 'email', label: 'Email', type: 'email' },
-            { name: 'countryCode', label: 'Country code', type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : ['South Africa (+27)'] },
-            { name: 'phone', label: 'Phone number', type: 'tel' },
+            { name: 'name', label: t("web.accountSettings.personalInfo.name"), type: 'text' },
+            { name: 'relationship', label: t("web.accountSettings.personalInfo.relationship"), type: 'text' },
+            { name: 'language', label: t("web.accountSettings.personalInfo.preferredLanguage"), type: 'select', options: languageOptions },
+            { name: 'email', label: t("web.accountSettings.personalInfo.emailAddress"), type: 'email' },
+            { name: 'countryCode', label: t("web.accountSettings.personalInfo.countryCode"), type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : [t("web.accountSettings.personalInfo.southAfricaPhone")] },
+            { name: 'phone', label: t("web.accountSettings.personalInfo.phoneNumber"), type: 'tel' },
           ],
         };
       case 'governmentId':
         return {
           type: 'governmentId',
-          title: 'Government ID',
-          description: 'Upload a government-issued ID for identity verification. This helps keep our community safe. Your document will be reviewed by our team.',
+          title: t("web.accountSettings.personalInfo.modalGovId"),
+          description: t("web.accountSettings.personalInfo.modalGovIdDesc"),
           fields: [
-            { name: 'documentType', label: 'Document type', type: 'select', options: ['Driver\'s License', 'Passport', 'National ID'] },
-            { name: 'country', label: 'Country', type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : ['South Africa'] },
-            { name: 'file', label: 'Upload document', type: 'file', accept: 'image/*,.pdf' },
+            { name: 'documentType', label: t("web.accountSettings.personalInfo.documentType"), type: 'select', options: ['license', 'passport', 'identity'] },
+            { name: 'country', label: t("web.accountSettings.personalInfo.country"), type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : [t("web.accountSettings.personalInfo.southAfrica")] },
+            { name: 'file', label: t("web.accountSettings.personalInfo.uploadDocument"), type: 'file', accept: 'image/*,.pdf' },
           ],
         };
       default:
@@ -550,10 +560,10 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
     return (
       <Card className="w-full bg-white border border-gray-200 shadow-sm">
         <CardHeader className="bg-white">
-          <CardTitle className="text-lg font-semibold">Personal Information</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("web.accountSettings.personalInfo.personalInformation")}</CardTitle>
         </CardHeader>
         <CardContent className="bg-white">
-          <p className="text-sm text-gray-600">Loading...</p>
+          <p className="text-sm text-gray-600">{t("web.accountSettings.personalInfo.loading")}</p>
         </CardContent>
       </Card>
     );
@@ -566,7 +576,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           <CollapsibleTrigger asChild>
             <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors bg-white border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold text-gray-900">Personal Information</CardTitle>
+                <CardTitle className="text-lg font-semibold text-gray-900">{t("web.accountSettings.personalInfo.personalInformation")}</CardTitle>
                 {isOpen ? <ChevronUp className="w-5 h-5 text-gray-500" /> : <ChevronDown className="w-5 h-5 text-gray-500" />}
               </div>
             </CardHeader>
@@ -574,24 +584,24 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           <CollapsibleContent className="overflow-hidden transition-all duration-300 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
             <CardContent className="pt-4 bg-white space-y-4">
               <InfoItem
-                label="Legal name"
+                label={t("web.accountSettings.personalInfo.legalName")}
                 value={`${personalInfo.legalName.first} ${personalInfo.legalName.last}`}
                 onEdit={() => openModal('legalName')}
               />
               <InfoItem
-                label="Preferred name"
+                label={t("web.accountSettings.personalInfo.preferredName")}
                 value={personalInfo.preferredName}
-                onEdit={personalInfo.preferredName !== 'Not provided' ? () => openModal('preferredName') : undefined}
-                onAdd={personalInfo.preferredName === 'Not provided' ? () => openModal('preferredName') : undefined}
+                onEdit={personalInfo.preferredName !== NOT_PROVIDED_SENTINEL ? () => openModal('preferredName') : undefined}
+                onAdd={personalInfo.preferredName === NOT_PROVIDED_SENTINEL ? () => openModal('preferredName') : undefined}
               />
               <InfoItem
-                label="Email address"
+                label={t("web.accountSettings.personalInfo.emailAddress")}
                 value={personalInfo.email}
                 onEdit={() => openModal('email')}
                 verified={emailVerified}
               />
               <InfoItem
-                label="Phone number"
+                label={t("web.accountSettings.personalInfo.phoneNumber")}
                 value={personalInfo.phone}
                 onEdit={() => openModal('phone')}
                 verified={phoneVerified}
@@ -599,7 +609,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               
               {/* Government ID Verification Card */}
               <div>
-                <label className="text-sm font-medium text-gray-900 mb-2 block">Government ID</label>
+                <label className="text-sm font-medium text-gray-900 mb-2 block">{t("web.accountSettings.personalInfo.governmentId")}</label>
                 <VerificationStatusCard
                   status={verificationData.status}
                   submittedAt={verificationData.submittedAt}
@@ -609,15 +619,15 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               </div>
 
               <InfoItem
-                label="Address"
-                value={personalInfo.address.street && personalInfo.address.city ? `${personalInfo.address.street}, ${personalInfo.address.city}` : 'Not provided'}
+                label={t("web.accountSettings.personalInfo.address")}
+                value={personalInfo.address.street && personalInfo.address.city ? `${personalInfo.address.street}, ${personalInfo.address.city}` : NOT_PROVIDED_SENTINEL}
                 onEdit={personalInfo.address.street ? () => openModal('address') : undefined}
                 onAdd={!personalInfo.address.street ? () => openModal('address') : undefined}
                 isOptional={true}
               />
               <InfoItem
-                label="Emergency contact"
-                value={personalInfo.emergencyContact.name ? personalInfo.emergencyContact.name : 'Not provided'}
+                label={t("web.accountSettings.personalInfo.emergencyContact")}
+                value={personalInfo.emergencyContact.name ? personalInfo.emergencyContact.name : NOT_PROVIDED_SENTINEL}
                 onAdd={!personalInfo.emergencyContact.name ? () => openModal('emergencyContact') : undefined}
                 onEdit={personalInfo.emergencyContact.name ? () => openModal('emergencyContact') : undefined}
                 isPrivate={true}
@@ -647,6 +657,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
 // Import the Modal component from personal-info page
 // For now, I'll create a simplified version here
 function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, countries, defaultCountryCode, defaultCountry, languages }: any) {
+  const { t } = useTranslation();
   const getInitialFormData = () => {
     if (!initialData) return {};
     
@@ -654,7 +665,7 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
       case 'legalName':
         return { first: initialData.legalName.first, last: initialData.legalName.last };
       case 'preferredName':
-        return { preferredName: initialData.preferredName !== 'Not provided' ? initialData.preferredName : '' };
+        return { preferredName: initialData.preferredName !== NOT_PROVIDED_SENTINEL ? initialData.preferredName : '' };
       case 'email':
         return { email: '' };
       case 'phone':
@@ -754,7 +765,7 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
           <button 
             onClick={onClose} 
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label="Close"
+            aria-label={t("web.accountSettings.personalInfo.close")}
           >
             ×
           </button>
@@ -779,16 +790,16 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
                   />
                   {filePreview && (
                     <div className="mt-2 relative w-full h-48">
-                      <Image src={filePreview} alt="Preview" fill className="object-contain border border-gray-300 rounded-md" unoptimized />
+                      <Image src={filePreview} alt={t("web.accountSettings.personalInfo.preview")} fill className="object-contain border border-gray-300 rounded-md" unoptimized />
                     </div>
                   )}
                   {selectedFile && !filePreview && (
                     <div className="mt-2 text-sm text-gray-600">
-                      Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                      {t("web.accountSettings.personalInfo.selectedFile", { name: selectedFile.name, size: (selectedFile.size / 1024 / 1024).toFixed(2) })}
                     </div>
                   )}
                   <p className="mt-1 text-xs text-gray-500">
-                    Accepted formats: JPEG, PNG, WebP, PDF (Max 10MB)
+                    {t("web.accountSettings.personalInfo.acceptedFormats")}
                   </p>
                 </div>
               ) : field.type === 'select' ? (
@@ -800,9 +811,19 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
                   onChange={handleChange}
                   required={field.name !== 'apt' && field.name !== 'line2'}
                 >
-                  <option value="">Select {field.label}</option>
+                  <option value="">{t("web.accountSettings.personalInfo.selectLabel", { label: field.label })}</option>
                   {field.options?.map((option: string) => (
-                    <option key={option} value={option}>{option}</option>
+                    <option key={option} value={option}>{
+                      content.type === "governmentId" && field.name === "documentType"
+                        ? option === "license" || option === "Driver's License"
+                          ? t("web.accountSettings.personalInfo.driversLicense")
+                          : option === "passport" || option === "Passport"
+                            ? t("web.accountSettings.personalInfo.passport")
+                            : option === "identity" || option === "National ID"
+                              ? t("web.accountSettings.personalInfo.nationalId")
+                              : option
+                        : option
+                    }</option>
                   ))}
                 </select>
               ) : (
@@ -825,7 +846,7 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
               disabled={isSaving}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t("web.accountSettings.personalInfo.cancel")}
             </button>
             <button
               type="submit"
@@ -833,12 +854,12 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
               className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving
-                ? "Uploading..."
+                ? t("web.accountSettings.personalInfo.uploading")
                 : content.type === "phone"
-                ? "Verify"
+                ? t("web.accountSettings.personalInfo.verify")
                 : content.type === "governmentId"
-                ? "Upload for Verification"
-                : "Save"}
+                ? t("web.accountSettings.personalInfo.uploadForVerification")
+                : t("web.accountSettings.personalInfo.save")}
             </button>
           </div>
         </form>

@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -21,11 +22,11 @@ import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { getRuntimeMarketHost } from "@/config/public-env";
 import {
-  DOC_TYPE_LABELS,
   LEARN_ARTICLE_SLUGS,
   WIZARD_STEPS,
   requiredDocTypesForEntity,
   type TerminalMerchantApplication,
+  type TerminalMerchantDocType,
 } from "@/features/terminal-merchant-application/types";
 import {
   useTerminalMerchantApplication,
@@ -35,6 +36,47 @@ import {
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/useApi";
 import { getApiErrorMessage } from "@/lib/api-error";
+
+const STEP_KEYS: Record<string, string> = {
+  personal: "stepPersonal",
+  business: "stepBusiness",
+  address: "stepAddress",
+  banking: "stepBanking",
+  documents: "stepDocuments",
+  fulfillment: "stepFulfillment",
+  review: "stepReview",
+};
+
+const DOC_KEYS: Record<TerminalMerchantDocType, { title: string; hint: string }> = {
+  id_document: { title: "docIdTitle", hint: "docIdHint" },
+  proof_of_address: { title: "docAddressTitle", hint: "docAddressHint" },
+  bank_confirmation_letter: { title: "docBankTitle", hint: "docBankHint" },
+  company_registration: { title: "docCompanyTitle", hint: "docCompanyHint" },
+  trust_deed: { title: "docTrustTitle", hint: "docTrustHint" },
+  resolution_letter: { title: "docResolutionTitle", hint: "docResolutionHint" },
+  other: { title: "docOtherTitle", hint: "docOtherHint" },
+};
+
+const ID_TYPE_KEYS = {
+  national_id: "idNational",
+  passport: "idPassport",
+  foreign_id: "idForeign",
+} as const;
+
+const ENTITY_KEYS = {
+  sole_proprietor: "entitySole",
+  private_company: "entityPrivate",
+  close_corporation: "entityCc",
+  partnership: "entityPartnership",
+  trust: "entityTrust",
+  npo: "entityNpo",
+} as const;
+
+const ACCOUNT_TYPE_KEYS = {
+  cheque_current: "accountCheque",
+  savings: "accountSavings",
+  transmission: "accountTransmission",
+} as const;
 
 function Field({
   label,
@@ -149,26 +191,35 @@ function buildSectionPayload(stepId: string, form: Partial<TerminalMerchantAppli
 }
 
 function StatusTracker({ app }: { app: TerminalMerchantApplication }) {
+  const { t } = useTranslation();
+  const tm = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.terminalMerchantApplication.${key}`, opts) as string;
   const messages: Record<string, string> = {
-    submitted: "We received your application and will review it shortly.",
-    in_review: "Our team is reviewing your details.",
-    info_required: app.info_required_reason ?? "We need a few updates — please fix the sections below.",
-    sent_to_acquirer: "Your details were sent to our terminal partner.",
-    awaiting_term_sheet: `Watch ${app.otp_phone ?? "your phone"} for an SMS from our terminal partner to accept your term sheet.`,
-    approved: "Approved! Your terminal will be dispatched soon.",
-    declined: "Your application could not be approved. Contact support if you have questions.",
+    submitted: tm("statusSubmitted"),
+    in_review: tm("statusInReview"),
+    info_required: app.info_required_reason ?? tm("statusInfoRequired"),
+    sent_to_acquirer: tm("statusSentToAcquirer"),
+    awaiting_term_sheet: tm("statusAwaitingTermSheet", { phone: app.otp_phone ?? tm("yourPhone") }),
+    approved: tm("statusApproved"),
+    declined: tm("statusDeclined"),
   };
   return (
     <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-4")}>
       <Text style={twStyle("text-sm font-semibold text-indigo-900")}>{app.application_no}</Text>
       <Text style={twStyle("mt-1 text-sm text-indigo-800")}>
-        {messages[app.status] ?? "Complete your application to get your card machine."}
+        {messages[app.status] ?? tm("statusDefault")}
       </Text>
     </View>
   );
 }
 
 export default function TerminalMerchantApplicationScreen() {
+  const { t } = useTranslation();
+  const tm = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.terminalMerchantApplication.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const handleBack = useProviderStackBack();
   const { order_id: orderIdParam } = useLocalSearchParams<{ order_id?: string }>();
@@ -241,29 +292,29 @@ export default function TerminalMerchantApplicationScreen() {
   const acquisitionBanner = useMemo(() => {
     const order = data?.linked_orders?.[0];
     if (orderIdParam || order?.commercial_model === "once_off_purchase") {
-      return "For your purchased terminal — one more step before we can ship it.";
+      return tm("bannerPurchase");
     }
     if (order?.commercial_model === "subscription_bundle") {
-      return "Included with your plan — complete this to receive your machine.";
+      return tm("bannerSubscription");
     }
-    return "Complete this application to receive your card machine.";
-  }, [data?.linked_orders, orderIdParam]);
+    return tm("bannerDefault");
+  }, [data?.linked_orders, orderIdParam, tm]);
 
   const openHelp = useCallback((slug: string) => {
     const host = getRuntimeMarketHost();
-    pushInAppBrowser(router, `${host}/learn/article/${slug}`, "Help");
-  }, [router]);
+    pushInAppBrowser(router, `${host}/learn/article/${slug}`, tm("helpTitle"));
+  }, [router, tm]);
 
   const patch = useCallback(
     async (section: string, payload: Record<string, unknown>) => {
       const result = await saveMutation.mutateAsync({ section, ...payload });
       if (result.error) {
-        Alert.alert("Save failed", result.error);
+        Alert.alert(tm("saveFailed"), result.error);
         return;
       }
       await refetch();
     },
-    [saveMutation, refetch],
+    [saveMutation, refetch, tm],
   );
 
   const pickAndUpload = useCallback(
@@ -277,7 +328,7 @@ export default function TerminalMerchantApplicationScreen() {
         if (fromCamera) {
           const perm = await ImagePicker.requestCameraPermissionsAsync();
           if (!perm.granted) {
-            Alert.alert("Camera permission required");
+            Alert.alert(tm("cameraPermission"));
             return;
           }
           const result = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.7 });
@@ -300,17 +351,17 @@ export default function TerminalMerchantApplicationScreen() {
           mime_type: mimeType,
         });
         if (uploadResult.error) {
-          Alert.alert("Upload failed", getApiErrorMessage(uploadResult.error, "Try again"));
+          Alert.alert(tm("uploadFailed"), getApiErrorMessage(uploadResult.error, tm("tryAgain")));
           return;
         }
         await refetch();
       } catch (e) {
-        Alert.alert("Upload failed", e instanceof Error ? e.message : "Try again");
+        Alert.alert(tm("uploadFailed"), e instanceof Error ? e.message : tm("tryAgain"));
       } finally {
         setUploadingDoc(null);
       }
     },
-    [uploadDocument, refetch],
+    [uploadDocument, refetch, tm],
   );
 
   const handleSubmit = useCallback(async () => {
@@ -324,32 +375,32 @@ export default function TerminalMerchantApplicationScreen() {
         const idx = WIZARD_STEPS.findIndex((s) => s.id === issues[0]?.section);
         if (idx >= 0) setStepIndex(idx);
         Alert.alert(
-          "Application incomplete",
+          tm("incompleteTitle"),
           issues.map((i) => i.message).join("\n"),
         );
         return;
       }
-      Alert.alert("Could not submit", result.error.message ?? "Please complete all required fields.");
+      Alert.alert(tm("couldNotSubmit"), result.error.message ?? tm("completeRequired"));
       return;
     }
     await refetch();
-    Alert.alert("Submitted", "We will review your application and keep you updated.");
-  }, [refetch]);
+    Alert.alert(tm("submittedTitle"), tm("submittedBody"));
+  }, [refetch, tm]);
 
-  if (loading && !data) return <LoadingState message="Loading application…" />;
-  if (error) return <ErrorState message="Could not load application" onRetry={refetch} />;
-  if (!app) return <ErrorState message="Application unavailable" onRetry={refetch} />;
+  if (loading && !data) return <LoadingState message={tm("loading")} />;
+  if (error) return <ErrorState message={tm("loadError")} onRetry={refetch} />;
+  if (!app) return <ErrorState message={tm("unavailable")} onRetry={refetch} />;
 
   if (!editable) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Card machine application" onBack={handleBack} />
+        <ScreenHeader title={tm("title")} onBack={handleBack} />
         <ScrollView contentContainerStyle={twStyle("p-4")}>
           <StatusTracker app={app} />
           <TouchableOpacity onPress={() => openHelp(LEARN_ARTICLE_SLUGS.next)}>
-            <Text style={twStyle("text-indigo-600 underline")}>What happens next?</Text>
+            <Text style={twStyle("text-indigo-600 underline")}>{tm("whatHappensNext")}</Text>
           </TouchableOpacity>
-          <ActionButton label="Back to card machines" onPress={() => router.push("/(app)/(tabs)/more/card-machines")} />
+          <ActionButton label={tm("backToCardMachines")} onPress={() => router.push("/(app)/(tabs)/more/card-machines")} />
         </ScrollView>
       </ScreenContainer>
     );
@@ -357,75 +408,67 @@ export default function TerminalMerchantApplicationScreen() {
 
   const step = WIZARD_STEPS[stepIndex];
   const requiredDocs = requiredDocTypesForEntity(form.entity_type as any);
+  const stepTitle = STEP_KEYS[step.id] ? tm(STEP_KEYS[step.id]) : step.title;
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Card machine application" onBack={handleBack} />
+      <ScreenHeader title={tm("title")} onBack={handleBack} />
       <ScrollView contentContainerStyle={twStyle("p-4 pb-24")}>
         <Text style={twStyle("mb-2 text-sm text-gray-600")}>{acquisitionBanner}</Text>
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
-          Step {stepIndex + 1} of {WIZARD_STEPS.length}: {step.title}
+          {tm("stepProgress", { current: stepIndex + 1, total: WIZARD_STEPS.length, title: stepTitle })}
         </Text>
 
         {step.id === "personal" && (
           <>
-            <Field label="First name" value={String(form.first_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, first_name: v }))} />
-            <Field label="Last name" value={String(form.last_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, last_name: v }))} />
-            <Field label="Email" value={String(form.email ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))} keyboardType="email-address" />
-            <Field label="Phone" value={String(form.phone ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, phone: v }))} keyboardType="phone-pad" />
-            <Field label="Term sheet SMS phone" value={String(form.otp_phone ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, otp_phone: v }))} keyboardType="phone-pad" />
-            <Field label="ID number" value={String(form.id_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, id_number: v }))} />
-            <Text style={twStyle("mb-1 text-sm text-gray-600")}>ID type</Text>
-            {(["national_id", "passport", "foreign_id"] as const).map((t) => (
+            <Field label={tm("firstName")} value={String(form.first_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, first_name: v }))} />
+            <Field label={tm("lastName")} value={String(form.last_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, last_name: v }))} />
+            <Field label={tm("email")} value={String(form.email ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))} keyboardType="email-address" />
+            <Field label={tm("phone")} value={String(form.phone ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, phone: v }))} keyboardType="phone-pad" />
+            <Field label={tm("otpPhone")} value={String(form.otp_phone ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, otp_phone: v }))} keyboardType="phone-pad" />
+            <Field label={tm("idNumber")} value={String(form.id_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, id_number: v }))} />
+            <Text style={twStyle("mb-1 text-sm text-gray-600")}>{tm("idType")}</Text>
+            {(["national_id", "passport", "foreign_id"] as const).map((idType) => (
               <PickOption
-                key={t}
-                label={t.replace(/_/g, " ")}
-                selected={form.id_type === t}
-                onPress={() => setForm((f) => ({ ...f, id_type: t }))}
+                key={idType}
+                label={tm(ID_TYPE_KEYS[idType])}
+                selected={form.id_type === idType}
+                onPress={() => setForm((f) => ({ ...f, id_type: idType }))}
               />
             ))}
             <TouchableOpacity onPress={() => openHelp(LEARN_ARTICLE_SLUGS.application)}>
-              <Text style={twStyle("text-sm text-indigo-600 underline")}>Need help?</Text>
+              <Text style={twStyle("text-sm text-indigo-600 underline")}>{tm("needHelp")}</Text>
             </TouchableOpacity>
           </>
         )}
 
         {step.id === "business" && (
           <>
-            <Text style={twStyle("mb-1 text-sm text-gray-600")}>Business type</Text>
-            {(
-              [
-                ["sole_proprietor", "Sole proprietor"],
-                ["private_company", "Private company"],
-                ["close_corporation", "Close corporation"],
-                ["partnership", "Partnership"],
-                ["trust", "Trust"],
-                ["npo", "NPO"],
-              ] as const
-            ).map(([value, label]) => (
+            <Text style={twStyle("mb-1 text-sm text-gray-600")}>{tm("businessType")}</Text>
+            {(Object.entries(ENTITY_KEYS) as Array<[keyof typeof ENTITY_KEYS, string]>).map(([value, key]) => (
               <PickOption
                 key={value}
-                label={label}
+                label={tm(key)}
                 selected={form.entity_type === value}
                 onPress={() => setForm((f) => ({ ...f, entity_type: value }))}
               />
             ))}
-            <Field label="Legal name" value={String(form.legal_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, legal_name: v }))} />
-            <Field label="Trading name" value={String(form.trading_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, trading_name: v }))} />
-            <Field label="Registration number" value={String(form.registration_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, registration_number: v }))} />
-            <Field label="VAT number" value={String(form.vat_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, vat_number: v }))} />
+            <Field label={tm("legalName")} value={String(form.legal_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, legal_name: v }))} />
+            <Field label={tm("tradingName")} value={String(form.trading_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, trading_name: v }))} />
+            <Field label={tm("registrationNumber")} value={String(form.registration_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, registration_number: v }))} />
+            <Field label={tm("vatNumber")} value={String(form.vat_number ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, vat_number: v }))} />
           </>
         )}
 
         {step.id === "address" && (
           <>
-            <Field label="Physical address" value={String(form.physical_line1 ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_line1: v }))} />
-            <Field label="Suburb" value={String(form.physical_suburb ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_suburb: v }))} />
-            <Field label="City" value={String(form.physical_city ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_city: v }))} />
-            <Field label="Province" value={String(form.physical_province ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_province: v }))} />
-            <Field label="Postal code" value={String(form.physical_postal_code ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_postal_code: v }))} />
+            <Field label={tm("physicalAddress")} value={String(form.physical_line1 ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_line1: v }))} />
+            <Field label={tm("suburb")} value={String(form.physical_suburb ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_suburb: v }))} />
+            <Field label={tm("city")} value={String(form.physical_city ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_city: v }))} />
+            <Field label={tm("province")} value={String(form.physical_province ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_province: v }))} />
+            <Field label={tm("postalCode")} value={String(form.physical_postal_code ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, physical_postal_code: v }))} />
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-              <Text style={twStyle("text-sm text-gray-700")}>Postal same as physical</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>{tm("postalSameAsPhysical")}</Text>
               <Switch
                 value={form.postal_same_as_physical !== false}
                 onValueChange={(v) => setForm((f) => ({ ...f, postal_same_as_physical: v }))}
@@ -436,26 +479,20 @@ export default function TerminalMerchantApplicationScreen() {
 
         {step.id === "banking" && (
           <>
-            <Field label="Bank name" value={String(form.bank_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, bank_name: v }))} />
-            <Text style={twStyle("mb-1 text-sm text-gray-600")}>Account type</Text>
-            {(
-              [
-                ["cheque_current", "Cheque / current"],
-                ["savings", "Savings"],
-                ["transmission", "Transmission"],
-              ] as const
-            ).map(([value, label]) => (
+            <Field label={tm("bankName")} value={String(form.bank_name ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, bank_name: v }))} />
+            <Text style={twStyle("mb-1 text-sm text-gray-600")}>{tm("accountType")}</Text>
+            {(Object.entries(ACCOUNT_TYPE_KEYS) as Array<[keyof typeof ACCOUNT_TYPE_KEYS, string]>).map(([value, key]) => (
               <PickOption
                 key={value}
-                label={label}
+                label={tm(key)}
                 selected={form.account_type === value}
                 onPress={() => setForm((f) => ({ ...f, account_type: value }))}
               />
             ))}
-            <Field label="Account holder" value={String(form.account_holder ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, account_holder: v }))} />
-            <Field label="Account number" value={accountNumber} onChangeText={setAccountNumber} keyboardType="phone-pad" />
+            <Field label={tm("accountHolder")} value={String(form.account_holder ?? "")} onChangeText={(v) => setForm((f) => ({ ...f, account_holder: v }))} />
+            <Field label={tm("accountNumber")} value={accountNumber} onChangeText={setAccountNumber} keyboardType="phone-pad" />
             {form.account_number_last4 ? (
-              <Text style={twStyle("mb-2 text-xs text-gray-500")}>Saved ending ••••{form.account_number_last4}</Text>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>{tm("savedEnding", { last4: form.account_number_last4 })}</Text>
             ) : null}
           </>
         )}
@@ -463,24 +500,24 @@ export default function TerminalMerchantApplicationScreen() {
         {step.id === "documents" && (
           <>
             <Text style={twStyle("mb-2 text-sm text-gray-700")}>
-              South African law requires us to confirm who you are before we can give you a card machine. Most people finish this in under 5 minutes.
+              {tm("documentsIntro")}
             </Text>
             {requiredDocs.map((docType) => {
               const doc = documents.find((d) => d.doc_type === docType);
-              const meta = DOC_TYPE_LABELS[docType];
+              const meta = DOC_KEYS[docType];
               if (docType === "id_document" && identityVerified && !doc) {
                 return (
                   <View key={docType} style={twStyle("mb-3 rounded-lg border border-green-200 bg-green-50 p-3")}>
-                    <Text style={twStyle("font-medium text-green-800")}>{meta.title} — Already verified ✓</Text>
+                    <Text style={twStyle("font-medium text-green-800")}>{tm("alreadyVerified", { title: tm(meta.title) })}</Text>
                   </View>
                 );
               }
               return (
                 <View key={docType} style={twStyle("mb-3 rounded-lg border border-gray-200 p-3")}>
-                  <Text style={twStyle("font-medium")}>{meta.title}</Text>
-                  <Text style={twStyle("text-sm text-gray-600")}>{meta.hint}</Text>
+                  <Text style={twStyle("font-medium")}>{tm(meta.title)}</Text>
+                  <Text style={twStyle("text-sm text-gray-600")}>{tm(meta.hint)}</Text>
                   <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                    {doc ? doc.status : "Not added"}
+                    {doc ? doc.status : tm("notAdded")}
                     {doc?.rejection_reason ? ` — ${doc.rejection_reason}` : ""}
                   </Text>
                   <View style={twStyle("mt-2 flex-row gap-2")}>
@@ -489,14 +526,14 @@ export default function TerminalMerchantApplicationScreen() {
                       onPress={() => pickAndUpload(docType, true)}
                       disabled={uploadingDoc === docType}
                     >
-                      <Text>Camera</Text>
+                      <Text>{tm("camera")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={twStyle("rounded bg-gray-100 px-3 py-2")}
                       onPress={() => pickAndUpload(docType, false)}
                       disabled={uploadingDoc === docType}
                     >
-                      <Text>File</Text>
+                      <Text>{tm("file")}</Text>
                     </TouchableOpacity>
                   </View>
                   {uploadingDoc === docType ? <ActivityIndicator style={twStyle("mt-2")} /> : null}
@@ -507,24 +544,24 @@ export default function TerminalMerchantApplicationScreen() {
               style={twStyle("mt-2 rounded-lg border border-dashed border-gray-300 p-3")}
               onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new")}
             >
-              <Text style={twStyle("text-sm text-gray-700")}>Stuck? Message our team and we will attach documents for you.</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>{tm("stuckSupport")}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => openHelp(LEARN_ARTICLE_SLUGS.documents)}>
-              <Text style={twStyle("mt-2 text-sm text-indigo-600 underline")}>What documents do I need?</Text>
+              <Text style={twStyle("mt-2 text-sm text-indigo-600 underline")}>{tm("whatDocuments")}</Text>
             </TouchableOpacity>
           </>
         )}
 
         {step.id === "fulfillment" && (
           <>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>How should we get your machine to you?</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tm("fulfillmentQuestion")}</Text>
             <PickOption
-              label="Deliver to my address"
+              label={tm("deliverToAddress")}
               selected={form.fulfillment_method !== "collection"}
               onPress={() => setForm((f) => ({ ...f, fulfillment_method: "delivery" }))}
             />
             <PickOption
-              label="Collect from a pickup point"
+              label={tm("collectPickup")}
               selected={form.fulfillment_method === "collection"}
               onPress={() => setForm((f) => ({ ...f, fulfillment_method: "collection" }))}
             />
@@ -532,7 +569,7 @@ export default function TerminalMerchantApplicationScreen() {
               <>
                 {(collectionLocations ?? []).length === 0 ? (
                   <Text style={twStyle("mb-2 text-sm text-amber-700")}>
-                    No pickup locations are configured yet — choose delivery or contact support.
+                    {tm("noPickupLocations")}
                   </Text>
                 ) : (
                   (collectionLocations ?? []).map((loc) => (
@@ -554,17 +591,17 @@ export default function TerminalMerchantApplicationScreen() {
             ) : (
               <>
                 <Field
-                  label="Delivery address line 1"
+                  label={tm("deliveryLine1")}
                   value={String(form.delivery_line1 ?? form.physical_line1 ?? "")}
                   onChangeText={(v) => setForm((f) => ({ ...f, delivery_line1: v, fulfillment_method: "delivery" }))}
                 />
                 <Field
-                  label="Delivery city"
+                  label={tm("deliveryCity")}
                   value={String(form.delivery_city ?? form.physical_city ?? "")}
                   onChangeText={(v) => setForm((f) => ({ ...f, delivery_city: v, fulfillment_method: "delivery" }))}
                 />
                 <Text style={twStyle("text-sm text-gray-600")}>
-                  We will deliver to this address once your application is approved.
+                  {tm("deliveryHint")}
                 </Text>
               </>
             )}
@@ -574,21 +611,21 @@ export default function TerminalMerchantApplicationScreen() {
         {step.id === "review" && (
           <>
             <Text style={twStyle("mb-2 text-sm text-gray-700")}>
-              After review, a term sheet will be sent to {form.otp_phone ?? "your phone"} by our terminal partner. Accept it there via SMS.
+              {tm("reviewHint", { phone: form.otp_phone ?? tm("yourPhone") })}
             </Text>
             <TouchableOpacity onPress={() => openHelp(LEARN_ARTICLE_SLUGS.termSheet)}>
-              <Text style={twStyle("text-sm text-indigo-600 underline")}>What is the term sheet?</Text>
+              <Text style={twStyle("text-sm text-indigo-600 underline")}>{tm("whatIsTermSheet")}</Text>
             </TouchableOpacity>
           </>
         )}
 
         <View style={twStyle("mt-6 flex-row gap-2")}>
           {stepIndex > 0 ? (
-            <ActionButton label="Back" variant="secondary" onPress={() => setStepIndex((i) => i - 1)} />
+            <ActionButton label={tm("back")} variant="secondary" onPress={() => setStepIndex((i) => i - 1)} />
           ) : null}
           {stepIndex < WIZARD_STEPS.length - 1 ? (
             <ActionButton
-              label="Save & continue"
+              label={tm("saveContinue")}
               onPress={async () => {
                 const payload = buildSectionPayload(step.id, form, accountNumber);
                 await patch(step.id, payload);
@@ -596,7 +633,7 @@ export default function TerminalMerchantApplicationScreen() {
               }}
             />
           ) : (
-            <ActionButton label="Submit application" onPress={handleSubmit} />
+            <ActionButton label={tm("submit")} onPress={handleSubmit} />
           )}
         </View>
       </ScrollView>

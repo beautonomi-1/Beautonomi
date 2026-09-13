@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
@@ -59,6 +61,7 @@ export function LocationMapPickerDialog({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<{ remove: () => void } | null>(null);
   const markerRef = useRef<{ getLngLat: () => { lng: number; lat: number }; remove: () => void } | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!open) return;
@@ -155,7 +158,7 @@ export function LocationMapPickerDialog({
       });
       const feature = res.data;
       if (!feature?.place_name) {
-        toast.error("Could not resolve that spot to an address. Move the pin or use address search.");
+        toast.error(t("web.mapbox.locationPicker.resolveFailed"));
         return;
       }
       const parsed = mapGeocodeFeatureToAddressParts(feature, { defaultCountryName });
@@ -171,7 +174,7 @@ export function LocationMapPickerDialog({
       });
       onOpenChange(false);
     } catch {
-      toast.error("Could not look up that location. Check Mapbox setup or try again.");
+      toast.error(t("web.mapbox.locationPicker.lookupFailed"));
     } finally {
       setApplying(false);
     }
@@ -183,11 +186,10 @@ export function LocationMapPickerDialog({
         <DialogHeader className="space-y-1 border-b border-slate-200 bg-slate-50/90 px-4 py-4 sm:px-5">
           <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
             <MapPinned className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-            Pin your base on the map
+{t("web.mapbox.locationPicker.title")}
           </DialogTitle>
           <DialogDescription className="text-left text-sm text-slate-700">
-            Drag the pin to your door or gate, then confirm. We&apos;ll fill street, city, and coordinates—same as
-            choosing a search result.
+{t("web.mapbox.locationPicker.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -195,16 +197,14 @@ export function LocationMapPickerDialog({
           {mapboxState === "loading" ? (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" aria-hidden />
-              <p className="text-sm font-medium text-slate-800">Loading map…</p>
+<p className="text-sm font-medium text-slate-800">{t("web.mapbox.locationPicker.loading")}</p>
             </div>
           ) : mapboxState === "missing" ? (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-center">
               <MapPinned className="h-10 w-10 text-amber-600/80" aria-hidden />
-              <p className="text-sm font-semibold text-amber-950">Map not configured</p>
+<p className="text-sm font-semibold text-amber-950">{t("web.mapbox.locationPicker.notConfigured")}</p>
               <p className="text-xs text-amber-900/90">
-                Add a public Mapbox token in admin (Mapbox settings) or set{" "}
-                <code className="rounded bg-amber-100 px-1 text-[11px]">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for local
-                dev. You can still confirm your location using address search above.
+{t("web.mapbox.locationPicker.notConfiguredHint", { envVar: "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN" })}
               </p>
             </div>
           ) : (
@@ -217,7 +217,7 @@ export function LocationMapPickerDialog({
 
         <DialogFooter className="flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:px-5">
           <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
-            Cancel
+{t("common.cancel")}
           </Button>
           <Button
             type="button"
@@ -228,10 +228,10 @@ export function LocationMapPickerDialog({
             {applying ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                Applying…
+{t("web.mapbox.locationPicker.applying")}
               </>
             ) : (
-              "Use this pin location"
+t("web.mapbox.locationPicker.usePin")
             )}
           </Button>
         </DialogFooter>

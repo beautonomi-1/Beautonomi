@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -28,12 +29,12 @@ import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 
-const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "Last Month", value: "last_month" },
-  { label: "3 Months", value: "3months" },
+const DATE_RANGES: { labelKey: "rangeToday" | "rangeThisWeek" | "rangeThisMonth" | "rangeLastMonth" | "range3Months"; value: ReportDateRangeKey }[] = [
+  { labelKey: "rangeToday", value: "today" },
+  { labelKey: "rangeThisWeek", value: "week" },
+  { labelKey: "rangeThisMonth", value: "month" },
+  { labelKey: "rangeLastMonth", value: "last_month" },
+  { labelKey: "range3Months", value: "3months" },
 ];
 
 interface BookingsData {
@@ -56,11 +57,11 @@ interface BookingsData {
   reportBasis?: string;
 }
 
-const CHANNEL_LABELS: Record<string, string> = {
-  online: "Online",
-  walk_in: "Walk-in",
-  provider: "Provider-created",
-  unknown: "Unknown",
+const CHANNEL_KEYS: Record<string, string> = {
+  online: "channelOnline",
+  walk_in: "channelWalkIn",
+  provider: "channelProvider",
+  unknown: "channelUnknown",
 };
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -78,7 +79,41 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "#9ca3af",
 };
 
+const DAY_SHORT_KEYS: Record<string, string> = {
+  monday: "dayMon",
+  tuesday: "dayTue",
+  wednesday: "dayWed",
+  thursday: "dayThu",
+  friday: "dayFri",
+  saturday: "daySat",
+  sunday: "daySun",
+  mon: "dayMon",
+  tue: "dayTue",
+  wed: "dayWed",
+  thu: "dayThu",
+  fri: "dayFri",
+  sat: "daySat",
+  sun: "daySun",
+};
+
 export default function BookingsReport() {
+  const { t } = useTranslation();
+  const br = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.bookingsReport." + key, opts) as string,
+    [t],
+  );
+  const channelLabel = useCallback(
+    (channel: string) => (CHANNEL_KEYS[channel] ? br(CHANNEL_KEYS[channel]) : channel),
+    [br],
+  );
+  const dayShort = useCallback(
+    (day: string) => {
+      const key = DAY_SHORT_KEYS[day.toLowerCase()];
+      return key ? br(key) : day.slice(0, 3);
+    },
+    [br],
+  );
   const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
@@ -100,41 +135,44 @@ export default function BookingsReport() {
   const handleExport = useCallback(async () => {
     if (!data) return;
     const text = [
-      `Booking Report (${from} to ${to})`,
-      `Total Bookings: ${data.total_bookings}`,
-      `Completion Rate: ${formatPercentage(data.completion_rate)}`,
-      data.cancellation_count != null ? `Cancellations: ${data.cancellation_count}` : "",
-      data.no_show_count != null ? `No Shows: ${data.no_show_count}` : "",
+      br("exportHeading", { from, to }),
+      br("exportTotal", { count: data.total_bookings }),
+      br("exportCompletion", { rate: formatPercentage(data.completion_rate) }),
+      data.cancellation_count != null ? br("exportCancellations", { count: data.cancellation_count }) : "",
+      data.no_show_count != null ? br("exportNoShows", { count: data.no_show_count }) : "",
       "",
-      "By Status:",
+      br("exportByStatus"),
       ...data.by_status.map((s) => `  ${s.status}: ${s.count}`),
       "",
       ...(data.channel_breakdown?.length
         ? [
-            "By Channel:",
-            ...data.channel_breakdown.map(
-              (c) =>
-                `  ${CHANNEL_LABELS[c.channel] ?? c.channel}: ${c.count} (${formatCurrency(c.recognized_revenue)} recognized)`,
+            br("exportByChannel"),
+            ...data.channel_breakdown.map((c) =>
+              br("exportChannelLine", {
+                channel: channelLabel(c.channel),
+                count: c.count,
+                amount: formatCurrency(c.recognized_revenue),
+              }),
             ),
           ]
         : []),
     ].filter(Boolean).join("\n");
-    await Share.share({ message: text, title: "Booking Report" });
-  }, [data, from, to]);
+    await Share.share({ message: text, title: br("exportTitle") });
+  }, [br, channelLabel, data, from, to]);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Bookings" showBack subtitle="Booking analytics & trends" />
+      <ScreenHeader title={br("title")} showBack subtitle={br("subtitle")} />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
           {DATE_RANGES.map((r) => (
             <TouchableOpacity
               key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8 }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
             >
-              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{br(r.labelKey)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -150,23 +188,23 @@ export default function BookingsReport() {
       {!loading && dataError && !data && (
         <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       )}
-      {!loading && !data && !dataError && <EmptyState icon="calendar-outline" title="No bookings data" description="Booking analytics will appear here" />}
+      {!loading && !data && !dataError && <EmptyState icon="calendar-outline" title={br("emptyTitle")} description={br("emptyDescription")} />}
 
       {data && (
         <View>
           <ReportResponsiveStatRow>
-            <StatCard title="Total Bookings" value={String(data.total_bookings)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-            <StatCard title="Completion Rate" value={formatPercentage(data.completion_rate)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+            <StatCard title={br("totalBookings")} value={String(data.total_bookings)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+            <StatCard title={br("completionRate")} value={formatPercentage(data.completion_rate)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
           </ReportResponsiveStatRow>
 
           {(data.cancellation_count != null || data.no_show_count != null) && (
             <View style={twStyle("mt-3")}>
               <ReportResponsiveStatRow>
                 {data.cancellation_count != null ? (
-                  <StatCard title="Cancellations" value={String(data.cancellation_count)} icon="close-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
+                  <StatCard title={br("cancellations")} value={String(data.cancellation_count)} icon="close-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
                 ) : null}
                 {data.no_show_count != null ? (
-                  <StatCard title="No Shows" value={String(data.no_show_count)} icon="eye-off-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                  <StatCard title={br("noShows")} value={String(data.no_show_count)} icon="eye-off-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
                 ) : null}
               </ReportResponsiveStatRow>
             </View>
@@ -174,7 +212,7 @@ export default function BookingsReport() {
 
           {data.by_status.length > 0 && (
             <View>
-              <SectionHeader title="Status Breakdown" />
+              <SectionHeader title={br("statusBreakdown")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 {data.by_status.map((s, i) => {
                 const total = data.by_status.reduce((sum, st) => sum + st.count, 0);
@@ -184,7 +222,7 @@ export default function BookingsReport() {
                   <View key={i} style={i > 0 ? { marginTop: 8 } : undefined}>
                     <View style={twStyle("flex-row justify-between mb-1")}>
                       <Text style={twStyle("text-sm text-gray-600")}>{formatStatusLabel(s.status)}</Text>
-                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{s.count} ({pct.toFixed(0)}%)</Text>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{br("statusCountPct", { count: s.count, pct: pct.toFixed(0) })}</Text>
                     </View>
                     <View style={twStyle("h-2 rounded-full bg-gray-100")}>
                       <View style={[{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }, twStyle("h-full rounded-full")]} />
@@ -198,7 +236,7 @@ export default function BookingsReport() {
 
           {data.channel_breakdown && data.channel_breakdown.length > 0 && (
             <View>
-              <SectionHeader title="By Channel" />
+              <SectionHeader title={br("byChannel")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 {data.channel_breakdown.map((c, i) => {
                   const color = CHANNEL_COLORS[c.channel] || "#9ca3af";
@@ -206,14 +244,14 @@ export default function BookingsReport() {
                     <View key={c.channel} style={i > 0 ? { marginTop: 10 } : undefined}>
                       <View style={twStyle("flex-row justify-between mb-1")}>
                         <Text style={twStyle("text-sm text-gray-600")}>
-                          {CHANNEL_LABELS[c.channel] ?? c.channel}
+                          {channelLabel(c.channel)}
                         </Text>
                         <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                          {c.count} ({c.percentage.toFixed(0)}%)
+                          {br("statusCountPct", { count: c.count, pct: c.percentage.toFixed(0) })}
                         </Text>
                       </View>
                       <Text style={twStyle("text-xs text-gray-500 mb-1")}>
-                        {formatCurrency(c.recognized_revenue)} recognized
+                        {br("recognized", { amount: formatCurrency(c.recognized_revenue) })}
                       </Text>
                       <View style={twStyle("h-2 rounded-full bg-gray-100")}>
                         <View
@@ -232,17 +270,17 @@ export default function BookingsReport() {
 
           {data.by_day_of_week.length > 0 && (
             <View>
-              <SectionHeader title="By Day of Week" />
+              <SectionHeader title={br("byDayOfWeek")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 <View style={[twStyle("flex-row items-end justify-between"), { height: 140 }]}>
                   {data.by_day_of_week.map((item, i) => {
                     const maxVal = Math.max(...data.by_day_of_week.map((d) => d.count), 1);
                     const pct = Math.max((item.count / maxVal) * 100, 4);
                     return (
-                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end", marginRight: i < data.by_day_of_week.length - 1 ? 4 : 0 }]}>
+                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end", marginEnd: i < data.by_day_of_week.length - 1 ? 4 : 0 }]}>
                         <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.count}</Text>
                         <View style={[{ height: `${pct}%`, backgroundColor: "#3b82f6", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
-                        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>{item.day.slice(0, 3)}</Text>
+                        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>{dayShort(item.day)}</Text>
                       </View>
                     );
                   })}
@@ -253,7 +291,7 @@ export default function BookingsReport() {
 
           {data.cancellation_reasons && data.cancellation_reasons.length > 0 && (
             <View>
-              <SectionHeader title="Cancellation Reasons" />
+              <SectionHeader title={br("cancellationReasons")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.cancellation_reasons.map((r, i) => (
                   <View key={i} style={twStyle("flex-row items-center justify-between py-2.5 border-b border-gray-50")}>
@@ -267,7 +305,7 @@ export default function BookingsReport() {
 
           <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
+            <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>{br("exportReport")}</Text>
           </TouchableOpacity>
         </View>
       )}

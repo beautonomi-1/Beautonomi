@@ -30,6 +30,10 @@ import { useProvider } from "@/providers/ProviderContext";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+
+type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -150,17 +154,49 @@ function orderCollectibleAmount(order: Pick<Order, "total_amount" | "wallet_amou
   return Math.max(0, Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0));
 }
 
-const STATUS_OPTIONS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "processing", label: "Processing" },
-  { value: "ready_for_collection", label: "Ready" },
-  { value: "shipped", label: "Shipped" },
-  { value: "delivered", label: "Delivered" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "refunded", label: "Refunded" },
-];
+const STATUS_OPTION_DEFS = [
+  { value: "", labelKey: "filterAll" },
+  { value: "pending", labelKey: "statusPending" },
+  { value: "confirmed", labelKey: "statusConfirmed" },
+  { value: "processing", labelKey: "statusProcessing" },
+  { value: "ready_for_collection", labelKey: "statusReady" },
+  { value: "shipped", labelKey: "statusShipped" },
+  { value: "delivered", labelKey: "statusDelivered" },
+  { value: "cancelled", labelKey: "statusCancelled" },
+  { value: "refunded", labelKey: "statusRefunded" },
+] as const;
+
+const ORDER_STATUS_KEYS: Record<string, string> = {
+  pending: "statusPending",
+  confirmed: "statusConfirmed",
+  processing: "statusProcessing",
+  ready_for_collection: "statusReady",
+  shipped: "statusShipped",
+  delivered: "statusDelivered",
+  cancelled: "statusCancelled",
+  refunded: "statusRefunded",
+  packed: "statusPacked",
+};
+
+const PAYMENT_STATUS_KEYS: Record<string, string> = {
+  pending: "paymentPending",
+  paid: "paymentPaid",
+  unpaid: "paymentUnpaid",
+  failed: "paymentFailed",
+  requires_payment: "paymentRequiresPayment",
+  refunded: "paymentRefunded",
+  processing: "paymentProcessing",
+};
+
+const FULFILLMENT_TYPE_KEYS: Record<string, string> = {
+  delivery: "fulfillmentDelivery",
+  collection: "fulfillmentCollection",
+  pickup: "fulfillmentPickup",
+};
+
+function fallbackStatusLabel(status: string): string {
+  return status.replace(/_/g, " ");
+}
 
 const ACTION_REQUIRED_STATUSES = new Set(["pending", "confirmed", "processing", "ready_for_collection", "shipped"]);
 
@@ -252,7 +288,7 @@ function unwrapOne<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-function formatAddressLines(addr: OrderAddress | null): string[] {
+function formatAddressLines(addr: OrderAddress | null, po: TranslateFn): string[] {
   if (!addr) return [];
   const lines: string[] = [];
   const line1 = [addr.apartment_unit, addr.building_name, addr.address_line1].filter(Boolean).join(", ").trim();
@@ -261,21 +297,21 @@ function formatAddressLines(addr: OrderAddress | null): string[] {
   const cityLine = [addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ").trim();
   if (cityLine) lines.push(cityLine);
   if (addr.country?.trim()) lines.push(addr.country.trim());
-  if (addr.parking_instructions?.trim()) lines.push(`Parking: ${addr.parking_instructions.trim()}`);
-  if (addr.location_landmarks?.trim()) lines.push(`Landmarks: ${addr.location_landmarks.trim()}`);
+  if (addr.parking_instructions?.trim()) lines.push(po("parkingLine", { text: addr.parking_instructions.trim() }));
+  if (addr.location_landmarks?.trim()) lines.push(po("landmarksLine", { text: addr.location_landmarks.trim() }));
   return lines;
 }
 
-async function openExternalUrl(url: string) {
+async function openExternalUrl(url: string, po: TranslateFn) {
   const trimmed = url.trim();
   if (!trimmed) return;
   const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     const ok = await Linking.canOpenURL(withScheme);
     if (ok) await Linking.openURL(withScheme);
-    else Alert.alert("Open link", "This device cannot open that URL.");
+    else Alert.alert(po("openLinkTitle"), po("openLinkUnsupported"));
   } catch {
-    Alert.alert("Open link", "Could not open the tracking page.");
+    Alert.alert(po("openLinkTitle"), po("openLinkFailed"));
   }
 }
 
@@ -284,6 +320,33 @@ async function openExternalUrl(url: string) {
 /* ------------------------------------------------------------------ */
 
 export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: string }) {
+  const { t } = useTranslation();
+  const po = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.productOrders.${key}`, opts) as string,
+    [t],
+  );
+  const statusLabel = useCallback(
+    (status: string) => {
+      const key = ORDER_STATUS_KEYS[status];
+      return key ? po(key) : fallbackStatusLabel(status);
+    },
+    [po],
+  );
+  const paymentStatusLabel = useCallback(
+    (status: string) => {
+      const key = PAYMENT_STATUS_KEYS[status.toLowerCase()];
+      return key ? po(key) : fallbackStatusLabel(status);
+    },
+    [po],
+  );
+  const fulfillmentLabel = useCallback(
+    (type: string) => {
+      const key = FULFILLMENT_TYPE_KEYS[type.toLowerCase()];
+      return key ? po(key) : fallbackStatusLabel(type);
+    },
+    [po],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const currency = getTenantDefaultCurrency();
@@ -456,7 +519,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         ...extra,
       });
       if (err) {
-        Alert.alert("Error", err);
+        Alert.alert(po("errorTitle"), err);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setViewOrder(null);
@@ -472,7 +535,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         refresh();
       }
     },
-    [patchOrder, refresh]
+    [patchOrder, refresh, po]
   );
 
   const handleStatusTap = useCallback(
@@ -492,11 +555,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           return;
         }
         Alert.alert(
-          "Cancel order",
-          "Are you sure you want to cancel this order? Stock will be restored.",
+          po("cancelOrderTitle"),
+          po("cancelOrderBody"),
           [
-            { text: "No", style: "cancel" },
-            { text: "Cancel order", style: "destructive", onPress: () => doUpdateStatus(orderId, status) },
+            { text: po("no"), style: "cancel" },
+            { text: po("cancelOrderCta"), style: "destructive", onPress: () => doUpdateStatus(orderId, status) },
           ]
         );
       } else if (status === "refunded") {
@@ -505,47 +568,47 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         // those (and any order without a linked customer) are refunded in person.
         const canWallet = order?.order_source !== "walk_in" && !!order?.customer?.id;
         const buttons: Parameters<typeof Alert.alert>[2] = [
-          { text: "Cancel", style: "cancel" },
+          { text: po("cancel"), style: "cancel" },
           {
-            text: "In person (cash)",
+            text: po("refundInPerson"),
             onPress: () => doUpdateStatus(orderId, status, { refund_method: "cash" }),
           },
         ];
         if (canWallet) {
           buttons.push({
-            text: "Wallet credit",
+            text: po("refundWallet"),
             onPress: () => doUpdateStatus(orderId, status, { refund_method: "store_credit" }),
           });
         }
         Alert.alert(
-          "Refund order",
+          po("refundOrderTitle"),
           canWallet
-            ? "How was this refund returned to the customer?"
-            : "Confirm this order was refunded to the customer in person. No platform wallet is linked to this sale.",
+            ? po("refundOrderBodyWallet")
+            : po("refundOrderBodyCash"),
           buttons,
         );
       } else {
         doUpdateStatus(orderId, status);
       }
     },
-    [allOrders, doUpdateStatus, orderDetail, viewOrder]
+    [allOrders, doUpdateStatus, orderDetail, viewOrder, po]
   );
 
   const handleConfirmCancelWithReason = useCallback(() => {
     if (!cancelReasonOrderId) return;
     const reason = cancelReason.trim();
     if (reason.length < 3) {
-      Alert.alert("Reason required", "Enter a short reason before cancelling a paid order.");
+      Alert.alert(po("reasonRequiredTitle"), po("reasonRequiredBody"));
       return;
     }
     doUpdateStatus(cancelReasonOrderId, "cancelled", { cancellation_reason: reason });
-  }, [cancelReason, cancelReasonOrderId, doUpdateStatus]);
+  }, [cancelReason, cancelReasonOrderId, doUpdateStatus, po]);
 
   const recordCollectionPayment = useCallback(async (referenceOverride?: string) => {
     if (!activeOrder) return;
     const reference = (referenceOverride ?? recordPaymentReference).trim();
     if (recordPaymentMethod === "yoco" && !reference) {
-      Alert.alert("Reference required", "Enter the Yoco reference before recording this payment.");
+      Alert.alert(po("referenceRequiredTitle"), po("referenceRequiredBody"));
       return;
     }
     const { error: err } = await postOrderMutation(
@@ -557,7 +620,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       },
     );
     if (err) {
-      Alert.alert("Record payment", err);
+      Alert.alert(po("recordPaymentTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -569,7 +632,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     setViewOrder(null);
     setOrderDetail(null);
     refresh();
-  }, [activeOrder, postOrderMutation, recordPaymentMethod, recordPaymentReference, refresh]);
+  }, [activeOrder, postOrderMutation, recordPaymentMethod, recordPaymentReference, refresh, po]);
 
   const handleRecordCollectionPayment = useCallback(async () => {
     await recordCollectionPayment();
@@ -600,7 +663,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     const [orderId] = pendingStatus.split("|");
     const urlTrim = trackingUrl.trim();
     if (urlTrim && !/^https?:\/\//i.test(urlTrim)) {
-      Alert.alert("Invalid URL", "Tracking URL must start with http:// or https://");
+      Alert.alert(po("invalidUrlTitle"), po("invalidUrlBody"));
       return;
     }
     doUpdateStatus(orderId, "shipped", {
@@ -608,7 +671,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       carrier: carrier.trim() || undefined,
       tracking_url: urlTrim || undefined,
     });
-  }, [pendingStatus, trackingNumber, carrier, trackingUrl, doUpdateStatus]);
+  }, [pendingStatus, trackingNumber, carrier, trackingUrl, doUpdateStatus, po]);
 
   if (loading && !data) {
     return (
@@ -630,10 +693,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       {actionRequiredCount > 0 && (
         <View style={twStyle("mx-4 mb-2 rounded-2xl border border-pink-100 bg-pink-50 px-4 py-3")}>
           <Text style={twStyle("text-sm font-semibold text-pink-800")}>
-            {actionRequiredCount} order{actionRequiredCount === 1 ? "" : "s"} need action
+            {po("actionRequired", { count: actionRequiredCount })}
           </Text>
           <Text style={twStyle("mt-0.5 text-xs text-pink-700")}>
-            Check pending, processing, ready, or shipped orders.
+            {po("actionRequiredHint")}
           </Text>
         </View>
       )}
@@ -644,16 +707,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search by order number or customer…"
+          placeholder={po("searchPlaceholder")}
           placeholderTextColor="#9ca3af"
-          style={twStyle("ml-2 flex-1 text-sm text-gray-900")}
+          style={twStyle("ms-2 flex-1 text-sm text-gray-900")}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
-          accessibilityLabel="Search orders"
+          accessibilityLabel={po("searchA11y")}
         />
         {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch("")} accessibilityLabel="Clear search">
+          <TouchableOpacity onPress={() => setSearch("")} accessibilityLabel={po("clearSearchA11y")}>
             <Ionicons name="close-circle" size={16} color="#9ca3af" />
           </TouchableOpacity>
         )}
@@ -666,7 +729,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
         >
-          {STATUS_OPTIONS.map((opt) => {
+          {STATUS_OPTION_DEFS.map((opt) => {
+            const filterLabel = po(opt.labelKey);
             const active = statusFilter === opt.value;
             const count = opt.value ? Number(statusCounts[opt.value] ?? 0) : totalOrderCount;
             const needsAction = Boolean(opt.value && ACTION_REQUIRED_STATUSES.has(opt.value) && count > 0);
@@ -684,14 +748,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         borderColor: needsAction ? "#fbcfe8" : "#e5e7eb",
                       },
                 ]}
-                accessibilityLabel={`Filter by ${opt.label}`}
+                accessibilityLabel={po("filterByA11y", { label: filterLabel })}
               >
                 <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
-                  {opt.label}
+                  {filterLabel}
                 </Text>
                 <View
                   style={{
-                    marginLeft: 6,
+                    marginStart: 6,
                     minWidth: 20,
                     alignItems: "center",
                     borderRadius: 999,
@@ -707,7 +771,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       fontWeight: "800",
                     }}
                   >
-                    {count > 99 ? "99+" : count}
+                    {count > 99 ? po("countCapped") : count}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -728,11 +792,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-pink-100")}>
               <Ionicons name="bag-handle-outline" size={32} color="#ec4899" />
             </View>
-            <Text style={twStyle("text-center font-semibold text-gray-900")}>No orders</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>{po("emptyTitle")}</Text>
             <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
               {search || statusFilter
-                ? "No orders match your search or filter."
-                : "Customer product orders will appear here."}
+                ? po("emptyFiltered")
+                : po("emptyDefault")}
             </Text>
           </View>
         ) : (
@@ -744,26 +808,26 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 onPress={() => openOrder(order)}
                 activeOpacity={0.7}
                 style={twStyle("mb-2.5 rounded-2xl border border-gray-100 bg-white p-4")}
-                accessibilityLabel={`Order ${order.order_number}`}
+                accessibilityLabel={po("orderA11y", { number: order.order_number })}
                 accessibilityRole="button"
               >
                 <View style={twStyle("flex-row items-center")}>
                   <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-pink-100")}>
                     <Ionicons name="receipt-outline" size={20} color="#ec4899" />
                   </View>
-                  <View style={twStyle("ml-3 flex-1 min-w-0")}>
+                  <View style={twStyle("ms-3 flex-1 min-w-0")}>
                     <View style={twStyle("flex-row items-center justify-between")}>
                       <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                         {order.order_number}
                       </Text>
                       <View style={[twStyle("rounded-full px-2.5 py-0.5"), { backgroundColor: st.bg }]}>
                         <Text style={[twStyle("text-xs font-medium capitalize"), { color: st.text }]}>
-                          {order.status.replace(/_/g, " ")}
+                          {statusLabel(order.status)}
                         </Text>
                       </View>
                     </View>
                     <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={1}>
-                      {order.customer?.full_name ?? order.customer_name ?? (order.order_source === "walk_in" ? "Walk-in" : "Customer")}{" "}
+                      {order.customer?.full_name ?? order.customer_name ?? (order.order_source === "walk_in" ? po("walkIn") : po("customerFallback"))}{" "}
                       · {formatCurrency(Number(order.total_amount), currency)}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
@@ -772,17 +836,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       )}
                       {order.order_source === "walk_in" && (
                         <View style={twStyle("rounded-full bg-amber-100 px-2 py-0.5")}>
-                          <Text style={twStyle("text-xs font-medium text-amber-800")}>Walk-in</Text>
+                          <Text style={twStyle("text-xs font-medium text-amber-800")}>{po("walkIn")}</Text>
                         </View>
                       )}
                       {order.tracking_number ? (
                         <Text style={twStyle("text-xs text-gray-400")}>
-                          Tracking: {order.tracking_number}
+                          {po("trackingWithNumber", { number: order.tracking_number })}
                         </Text>
                       ) : null}
                     </View>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#d1d5db" style={{ marginLeft: 8 }} />
+                  <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" style={{ marginStart: 8 }} />
                 </View>
               </TouchableOpacity>
             );
@@ -797,13 +861,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 twStyle("flex-row items-center rounded-xl border border-gray-200 px-3 py-2"),
                 page <= 1 || loading ? { opacity: 0.45 } : undefined,
               ]}
-              accessibilityLabel="Previous order page"
+              accessibilityLabel={po("prevPageA11y")}
             >
-              <Ionicons name="chevron-back" size={16} color="#374151" />
-              <Text style={twStyle("ml-1 text-xs font-semibold text-gray-700")}>Prev</Text>
+              <DirectionalIcon name="chevron-back" size={16} color="#374151" />
+              <Text style={twStyle("ms-1 text-xs font-semibold text-gray-700")}>{po("prev")}</Text>
             </TouchableOpacity>
             <Text style={twStyle("text-xs font-semibold text-gray-600")}>
-              Page {page} of {totalPages}
+              {po("pageOf", { page, total: totalPages })}
             </Text>
             <TouchableOpacity
               onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -812,10 +876,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 twStyle("flex-row items-center rounded-xl border border-gray-200 px-3 py-2"),
                 page >= totalPages || loading ? { opacity: 0.45 } : undefined,
               ]}
-              accessibilityLabel="Next order page"
+              accessibilityLabel={po("nextPageA11y")}
             >
-              <Text style={twStyle("mr-1 text-xs font-semibold text-gray-700")}>Next</Text>
-              <Ionicons name="chevron-forward" size={16} color="#374151" />
+              <Text style={twStyle("me-1 text-xs font-semibold text-gray-700")}>{po("next")}</Text>
+              <DirectionalIcon name="chevron-forward" size={16} color="#374151" />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -830,7 +894,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           subtitle={
             activeOrder?.customer?.full_name ??
             activeOrder?.customer_name ??
-            "Order details"
+            po("orderDetails")
           }
           snapHeight="full"
         >
@@ -847,7 +911,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   return (
                     <View style={[twStyle("rounded-full px-3 py-1"), { backgroundColor: st.bg }]}>
                       <Text style={[twStyle("text-sm font-semibold capitalize"), { color: st.text }]}>
-                        {activeOrder.status.replace(/_/g, " ")}
+                        {statusLabel(activeOrder.status)}
                       </Text>
                     </View>
                   );
@@ -855,20 +919,20 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 {activeOrder.payment_status && (
                   <View style={twStyle("rounded-full bg-emerald-100 px-3 py-1")}>
                     <Text style={twStyle("text-sm font-semibold capitalize text-emerald-800")}>
-                      {activeOrder.payment_status}
+                      {paymentStatusLabel(activeOrder.payment_status)}
                     </Text>
                   </View>
                 )}
                 {activeOrder.fulfillment_type && (
                   <View style={twStyle("rounded-full bg-gray-100 px-3 py-1")}>
                     <Text style={twStyle("text-xs font-medium text-gray-600 capitalize")}>
-                      {activeOrder.fulfillment_type.replace(/_/g, " ")}
+                      {fulfillmentLabel(activeOrder.fulfillment_type)}
                     </Text>
                   </View>
                 )}
                 {activeOrder.order_source === "walk_in" && (
                   <View style={twStyle("rounded-full bg-amber-100 px-3 py-1")}>
-                    <Text style={twStyle("text-xs font-medium text-amber-900")}>Walk-in</Text>
+                    <Text style={twStyle("text-xs font-medium text-amber-900")}>{po("walkIn")}</Text>
                   </View>
                 )}
               </View>
@@ -879,12 +943,12 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 const coll = unwrapOne(activeOrder.collection_location);
                 const isDelivery = activeOrder.fulfillment_type === "delivery";
                 if (isDelivery && addr) {
-                  const lines = formatAddressLines(addr);
+                  const lines = formatAddressLines(addr, po);
                   if (lines.length === 0) return null;
                   return (
                     <View style={twStyle("mb-3 rounded-xl border border-gray-100 bg-white px-4 py-3")}>
                       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
-                        Delivery address{addr.label ? ` · ${addr.label}` : ""}
+                        {addr.label ? po("deliveryAddressWithLabel", { label: addr.label }) : po("deliveryAddress")}
                       </Text>
                       {lines.map((line, i) => (
                         <Text key={i} style={twStyle("text-sm text-gray-800")}>
@@ -898,7 +962,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   return (
                     <View style={twStyle("mb-3 rounded-xl border border-gray-100 bg-white px-4 py-3")}>
                       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
-                        Collection
+                        {po("collection")}
                       </Text>
                       {coll.name ? (
                         <Text style={twStyle("text-sm font-medium text-gray-900")}>{coll.name}</Text>
@@ -915,11 +979,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {(activeOrder.estimated_delivery_date || activeOrder.delivery_instructions?.trim()) && (
                 <View style={twStyle("mb-3 rounded-xl bg-slate-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1")}>
-                    Delivery notes
+                    {po("deliveryNotes")}
                   </Text>
                   {activeOrder.estimated_delivery_date ? (
                     <Text style={twStyle("text-sm text-gray-800")}>
-                      Est. delivery: {formatOrderDateLabel(`${activeOrder.estimated_delivery_date}T12:00:00`) ?? activeOrder.estimated_delivery_date}
+                      {po("estDelivery", { date: formatOrderDateLabel(`${activeOrder.estimated_delivery_date}T12:00:00`) ?? activeOrder.estimated_delivery_date })}
                     </Text>
                   ) : null}
                   {activeOrder.delivery_instructions?.trim() ? (
@@ -931,23 +995,23 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {(() => {
                 const rows: { label: string; at: string }[] = [];
                 const c1 = formatOrderDateLabel(activeOrder.confirmed_at);
-                if (c1) rows.push({ label: "Confirmed", at: c1 });
+                if (c1) rows.push({ label: po("statusConfirmed"), at: c1 });
                 const c2 = formatOrderDateLabel(activeOrder.shipped_at);
-                if (c2) rows.push({ label: "Shipped", at: c2 });
+                if (c2) rows.push({ label: po("statusShipped"), at: c2 });
                 const c3 = formatOrderDateLabel(activeOrder.delivered_at);
-                if (c3) rows.push({ label: "Delivered", at: c3 });
+                if (c3) rows.push({ label: po("statusDelivered"), at: c3 });
                 const c4 = formatOrderDateLabel(activeOrder.cancelled_at);
-                if (c4) rows.push({ label: "Cancelled", at: c4 });
+                if (c4) rows.push({ label: po("statusCancelled"), at: c4 });
                 if (rows.length === 0) return null;
                 return (
                   <View style={twStyle("mb-3 rounded-xl bg-gray-50 px-4 py-3")}>
                     <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2")}>
-                      Timeline
+                      {po("timeline")}
                     </Text>
                     {rows.map((r) => (
                       <View key={r.label} style={twStyle("mb-1 flex-row justify-between gap-2")}>
                         <Text style={twStyle("text-xs font-medium text-gray-600")}>{r.label}</Text>
-                        <Text style={twStyle("flex-1 text-right text-xs text-gray-800")}>{r.at}</Text>
+                        <Text style={twStyle("flex-1 text-end text-xs text-gray-800")}>{r.at}</Text>
                       </View>
                     ))}
                   </View>
@@ -957,7 +1021,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {activeOrder.status === "cancelled" && activeOrder.cancellation_reason?.trim() ? (
                 <View style={twStyle("mb-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-red-400 mb-1")}>
-                    Cancellation reason
+                    {po("cancellationReason")}
                   </Text>
                   <Text style={twStyle("text-sm text-red-900")}>{activeOrder.cancellation_reason.trim()}</Text>
                 </View>
@@ -971,7 +1035,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 activeOrder.customer_phone?.trim()) && (
                 <View style={twStyle("mb-3 rounded-xl bg-gray-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
-                    Customer
+                    {po("customer")}
                   </Text>
                   {(() => {
                     const nm = (activeOrder.customer?.full_name ?? activeOrder.customer_name ?? "").trim();
@@ -979,7 +1043,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
                         <Text style={twStyle("text-sm font-medium text-gray-900")}>{nm}</Text>
                         {activeOrder.customer?.identity_verified ? (
-                          <VerifiedBadge verified style={{ marginLeft: 8 }} />
+                          <VerifiedBadge verified style={{ marginStart: 8 }} />
                         ) : null}
                       </View>
                     ) : null;
@@ -999,7 +1063,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {(activeOrder.tracking_number || activeOrder.tracking_url) && (
                 <View style={twStyle("mb-3 rounded-xl bg-blue-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-blue-400 mb-1")}>
-                    Tracking
+                    {po("tracking")}
                   </Text>
                   {activeOrder.carrier && (
                     <Text style={twStyle("text-sm font-medium text-blue-800")}>{activeOrder.carrier}</Text>
@@ -1009,14 +1073,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   )}
                   {activeOrder.tracking_url ? (
                     <TouchableOpacity
-                      onPress={() => void openExternalUrl(activeOrder.tracking_url!)}
+                      onPress={() => void openExternalUrl(activeOrder.tracking_url!, po)}
                       style={twStyle("mt-2 flex-row items-center self-start rounded-lg bg-blue-600 px-3 py-2")}
                       accessibilityRole="link"
-                      accessibilityLabel="Open tracking page"
+                      accessibilityLabel={po("openTrackingPageA11y")}
                     >
                       <Ionicons name="open-outline" size={16} color="#fff" />
-                      <Text style={twStyle("ml-2 text-xs font-semibold text-white")} numberOfLines={1}>
-                        Open tracking page
+                      <Text style={twStyle("ms-2 text-xs font-semibold text-white")} numberOfLines={1}>
+                        {po("openTrackingPage")}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -1025,7 +1089,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
               {/* Line items */}
               <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                Items
+                {po("items")}
               </Text>
               {(activeOrder.items ?? []).map((item) => {
                 const variantLabel =
@@ -1052,7 +1116,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         {" × "}
                         {item.quantity}
                       </Text>
-                      <Text style={twStyle("ml-3 text-sm font-semibold text-gray-800")}>
+                      <Text style={twStyle("ms-3 text-sm font-semibold text-gray-800")}>
                         {formatCurrency(Number(item.total_price), currency)}
                       </Text>
                     </View>
@@ -1062,19 +1126,19 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         const nextStatuses = nextLineFulfilmentOptions(currentFulfilment);
                         if (nextStatuses.length === 0) return;
                         Alert.alert(
-                          "Line fulfilment",
-                          `${item.product_name} is ${currentFulfilment.replace(/_/g, " ")}. Choose next status.`,
+                          po("lineFulfilmentTitle"),
+                          po("lineFulfilmentBody", { name: item.product_name, status: statusLabel(currentFulfilment) }),
                           [
-                            { text: "Cancel", style: "cancel" },
+                            { text: po("cancel"), style: "cancel" },
                             ...nextStatuses.map((status) => ({
-                              text: status.replace(/_/g, " "),
+                              text: statusLabel(status),
                               onPress: async () => {
                                 const { error } = await patchLine(
                                   `/api/provider/product-orders/${activeOrder.id}/items/${item.id}`,
                                   { fulfilment_status: status },
                                 );
                                 if (error) {
-                                  Alert.alert("Error", error);
+                                  Alert.alert(po("errorTitle"), error);
                                   return;
                                 }
                                 const apply = (prev: Order | null) =>
@@ -1096,8 +1160,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       style={{ marginTop: 6, alignSelf: "flex-start", opacity: lineLocked ? 0.5 : 1 }}
                     >
                       <Text style={twStyle("text-xs font-semibold text-violet-700")}>
-                        {currentFulfilment.replace(/_/g, " ")}
-                        {lineLocked ? "" : " · tap to update"}
+                        {statusLabel(currentFulfilment)}
+                        {lineLocked ? "" : po("tapToUpdate")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1123,7 +1187,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   return (
                     <View style={twStyle("mb-4 flex-row justify-end")}>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>
-                        Total {formatCurrency(Number(activeOrder.total_amount), cur)}
+                        {po("totalWithAmount", { amount: formatCurrency(Number(activeOrder.total_amount), cur) })}
                       </Text>
                     </View>
                   );
@@ -1138,25 +1202,25 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 );
                 return (
                   <View style={twStyle("mb-4 rounded-xl bg-gray-50 px-3 py-3")}>
-                    {activeOrder.subtotal != null ? row("Subtotal", sub) : null}
-                    {tax > 0 ? row("Tax", tax) : null}
-                    {del > 0 ? row("Delivery", del) : null}
-                    {disc > 0 ? row("Discount", -disc, true) : null}
+                    {activeOrder.subtotal != null ? row(po("subtotal"), sub) : null}
+                    {tax > 0 ? row(po("tax"), tax) : null}
+                    {del > 0 ? row(po("delivery"), del) : null}
+                    {disc > 0 ? row(po("discount"), -disc, true) : null}
                     {numOrZero(activeOrder.gift_card_amount) > 0
-                      ? row("Gift card", -numOrZero(activeOrder.gift_card_amount), true)
+                      ? row(po("giftCard"), -numOrZero(activeOrder.gift_card_amount), true)
                       : null}
                     {activeOrder.promotion_code ? (
                       <View style={twStyle("mb-1 flex-row justify-between")}>
-                        <Text style={twStyle("text-sm text-gray-500")}>Promotion</Text>
+                        <Text style={twStyle("text-sm text-gray-500")}>{po("promotion")}</Text>
                         <Text style={twStyle("text-sm font-medium text-gray-500")}>
                           {activeOrder.promotion_code}
                         </Text>
                       </View>
                     ) : null}
-                    {platformFee > 0 ? row("Platform fee", -platformFee, true) : null}
-                    {platformFee > 0 ? row("Provider earnings", providerEarnings) : null}
+                    {platformFee > 0 ? row(po("platformFee"), -platformFee, true) : null}
+                    {platformFee > 0 ? row(po("providerEarnings"), providerEarnings) : null}
                     <View style={twStyle("mt-2 flex-row justify-between border-t border-gray-200 pt-2")}>
-                      <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                      <Text style={twStyle("text-base font-bold text-gray-900")}>{po("total")}</Text>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>
                         {formatCurrency(Number(activeOrder.total_amount), cur)}
                       </Text>
@@ -1168,8 +1232,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {activeOrder.order_source === "appointment" ? (
                 <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-blue-900")}>
-                    Payment is recorded on the linked appointment. Mark the product collected from the booking
-                    detail or advance fulfillment below.
+                    {po("appointmentPaymentNote")}
                   </Text>
                   {activeOrder.booking_id ? (
                     <TouchableOpacity
@@ -1180,10 +1243,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       }}
                       style={twStyle("mt-2 flex-row items-center")}
                       accessibilityRole="button"
-                      accessibilityLabel="Go to linked booking"
+                      accessibilityLabel={po("goToBookingA11y")}
                     >
                       <Ionicons name="calendar-outline" size={14} color="#1d4ed8" />
-                      <Text style={twStyle("ml-1 text-xs font-semibold text-blue-800")}>Go to booking</Text>
+                      <Text style={twStyle("ms-1 text-xs font-semibold text-blue-800")}>{po("goToBooking")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -1199,10 +1262,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   }}
                   style={twStyle("mb-3 flex-row items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5")}
                   accessibilityRole="button"
-                  accessibilityLabel="Record collection payment"
+                  accessibilityLabel={po("recordPaymentCollectionA11y")}
                 >
                   <Ionicons name="cash-outline" size={16} color="#fff" />
-                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Record payment / collection</Text>
+                  <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{po("recordPaymentCollection")}</Text>
                 </TouchableOpacity>
               ) : null}
 
@@ -1216,19 +1279,19 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       activeOrder.order_number,
                     ).catch((e) =>
                       Alert.alert(
-                        "Share receipt",
-                        e instanceof Error ? e.message : "Something went wrong.",
+                        po("shareReceiptTitle"),
+                        e instanceof Error ? e.message : po("somethingWentWrong"),
                       ),
                     );
                   }}
                   style={twStyle(
                     "flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
                   )}
-                  accessibilityLabel="Share order receipt"
+                  accessibilityLabel={po("shareReceiptA11y")}
                 >
                   <Ionicons name="share-outline" size={16} color="#374151" />
-                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
-                    Share receipt
+                  <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>
+                    {po("shareReceipt")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1240,24 +1303,24 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         pdfPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`,
                         signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/signed-url`,
                         filename: `order_${activeOrder.order_number || activeOrder.id}.pdf`,
-                        title: `Order ${activeOrder.order_number}`,
-                        label: "receipt",
+                        title: po("orderPdfTitle", { number: activeOrder.order_number }),
+                        label: po("receiptLabel"),
                       });
                     } catch (e) {
                       Alert.alert(
-                        "Download receipt",
-                        e instanceof Error ? e.message : "Something went wrong.",
+                        po("downloadReceiptTitle"),
+                        e instanceof Error ? e.message : po("somethingWentWrong"),
                       );
                     }
                   }}
                   style={twStyle(
                     "flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
                   )}
-                  accessibilityLabel="Download order receipt"
+                  accessibilityLabel={po("downloadReceiptA11y")}
                 >
                   <Ionicons name="download-outline" size={16} color="#374151" />
-                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
-                    Download PDF
+                  <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>
+                    {po("downloadPdf")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1274,23 +1337,23 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 if (!primary && destructive.length === 0) return null;
                 const primaryLabel =
                   primary === "confirmed"
-                    ? "Confirm order"
+                    ? po("confirmOrder")
                     : primary === "processing"
-                      ? "Start processing"
+                      ? po("startProcessing")
                       : primary === "ready_for_collection"
-                        ? "Mark ready for collection"
+                        ? po("markReady")
                         : primary === "shipped"
-                          ? "Mark shipped"
+                          ? po("markShipped")
                           : primary === "delivered"
-                            ? "Mark delivered"
+                            ? po("markDelivered")
                             : primary
-                              ? `Mark ${primary.replace(/_/g, " ")}`
+                              ? po("markStatus", { status: statusLabel(primary) })
                               : "";
                 const iconName = primary ? STATUS_ACTION_ICON[primary] ?? "arrow-forward-circle-outline" : "arrow-forward-circle-outline";
                 return (
                   <View style={twStyle("mb-2")}>
                     <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                      Next step
+                      {po("nextStep")}
                     </Text>
                     {primary ? (
                       <>
@@ -1305,11 +1368,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                           accessibilityRole="button"
                         >
                           <Ionicons name={iconName} size={20} color="#fff" />
-                          <Text style={twStyle("ml-2 text-base font-bold text-white")}>{primaryLabel}</Text>
+                          <Text style={twStyle("ms-2 text-base font-bold text-white")}>{primaryLabel}</Text>
                         </TouchableOpacity>
                         {primary === "shipped" ? (
                           <Text style={twStyle("mt-2 text-xs leading-relaxed text-gray-500")}>
-                            You’ll enter carrier / tracking next so the customer can follow delivery.
+                            {po("shippedHint")}
                           </Text>
                         ) : null}
                       </>
@@ -1323,24 +1386,24 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                             destructive.length === 1 &&
                             destructive[0] === "refunded";
                           Alert.alert(
-                            walkInRefund ? "Process refund / return" : "More actions",
-                            "Cancellation or refund affects stock and payouts. Use when there’s a problem with this order.",
+                            walkInRefund ? po("processRefundTitle") : po("moreActionsTitle"),
+                            po("moreActionsBody"),
                             [
                               ...destructive.map((st) => ({
-                                text: st === "cancelled" ? "Cancel order" : "Mark refunded",
+                                text: st === "cancelled" ? po("cancelOrderCta") : po("markRefunded"),
                                 style: "destructive" as const,
                                 onPress: () => {
                                   setTimeout(() => handleStatusTap(activeOrder.id, st), Platform.OS === "ios" ? 500 : 0);
                                 },
                               })),
-                              { text: "Close", style: "cancel" },
+                              { text: po("close"), style: "cancel" },
                             ],
                           );
                         }}
                         disabled={patching}
                         style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5")}
                         accessibilityRole="button"
-                        accessibilityLabel="More actions"
+                        accessibilityLabel={po("moreActionsA11y")}
                       >
                         <Ionicons
                           name={activeOrder.order_source === "walk_in" && activeOrder.status === "delivered"
@@ -1349,8 +1412,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                           size={18}
                           color={activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "#dc2626" : "#374151"}
                         />
-                        <Text style={[twStyle("ml-2 text-sm font-semibold"), { color: activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "#dc2626" : "#374151" }]}>
-                          {activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "Process refund / return" : "More actions"}
+                        <Text style={[twStyle("ms-2 text-sm font-semibold"), { color: activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "#dc2626" : "#374151" }]}>
+                          {activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? po("processRefundReturn") : po("moreActions")}
                         </Text>
                       </TouchableOpacity>
                     ) : null}
@@ -1370,24 +1433,24 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           setCancelReasonOrderId(null);
           setCancelReason("");
         }}
-        title="Cancel paid order"
-        subtitle="A cancellation reason is required for paid orders"
+        title={po("cancelPaidTitle")}
+        subtitle={po("cancelPaidSubtitle")}
       >
         <View style={twStyle("gap-3 pb-6")}>
           <Text style={twStyle("text-sm text-gray-600")}>
-            This order has already been paid. Add the reason so the order history and customer support records are clear.
+            {po("cancelPaidBody")}
           </Text>
           <TextInput
             value={cancelReason}
             onChangeText={setCancelReason}
-            placeholder="Reason for cancellation"
+            placeholder={po("cancelReasonPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             style={twStyle("min-h-[88px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            accessibilityLabel="Cancellation reason"
+            accessibilityLabel={po("cancelReasonA11y")}
           />
           <ActionButton
-            label={patching ? "Cancelling…" : "Cancel paid order"}
+            label={patching ? po("cancelling") : po("cancelPaidCta")}
             onPress={handleConfirmCancelWithReason}
             loading={patching}
             disabled={patching}
@@ -1403,15 +1466,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           setRecordPaymentReference("");
           setRecordPaymentMethod("cash");
         }}
-        title="Record payment"
-        subtitle="For cash/card-on-delivery collection orders"
+        title={po("recordPaymentTitle")}
+        subtitle={po("recordPaymentSubtitle")}
       >
         <View style={twStyle("gap-3 pb-6")}>
           {activeOrder?.order_source === "appointment" ? (
             <View style={twStyle("rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
               <Text style={twStyle("text-xs text-blue-900")}>
-                Payment is recorded on the linked appointment. Mark the product collected from the
-                booking detail or advance fulfillment on the order.
+                {po("appointmentPaymentNoteSheet")}
               </Text>
               {activeOrder.booking_id ? (
                 <TouchableOpacity
@@ -1423,23 +1485,23 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   }}
                   style={twStyle("mt-2 flex-row items-center")}
                   accessibilityRole="button"
-                  accessibilityLabel="Go to linked booking"
+                  accessibilityLabel={po("goToBookingA11y")}
                 >
                   <Ionicons name="calendar-outline" size={14} color="#1d4ed8" />
-                  <Text style={twStyle("ml-1 text-xs font-semibold text-blue-800")}>Go to booking</Text>
+                  <Text style={twStyle("ms-1 text-xs font-semibold text-blue-800")}>{po("goToBooking")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
           ) : (
             <>
           <Text style={twStyle("text-sm text-gray-600")}>
-            Record the payment collected at pickup or delivery. This updates the order and creates the matching accounting entry.
+            {po("recordPaymentBody")}
           </Text>
           <View style={twStyle("flex-row flex-wrap")}>
             {[
-              { label: "Cash", value: "cash" as const },
-              { label: "Card on delivery", value: "card_on_delivery" as const },
-              { label: "Yoco", value: "yoco" as const },
+              { label: po("payCash"), value: "cash" as const },
+              { label: po("payCardOnDelivery"), value: "card_on_delivery" as const },
+              { label: po("payYoco"), value: "yoco" as const },
               ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
                 ? [{
                     label: formatPaycloudCollectLabel({
@@ -1458,7 +1520,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   onPress={() => setRecordPaymentMethod(option.value)}
                   style={[
                     twStyle(`mb-2 rounded-full border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`),
-                    { marginRight: 8 },
+                    { marginEnd: 8 },
                   ]}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: active }}
@@ -1480,18 +1542,18 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             onChangeText={setRecordPaymentReference}
             placeholder={
               recordPaymentMethod === "yoco"
-                ? "Yoco reference required"
+                ? po("refYocoRequired")
                 : recordPaymentMethod === "paycloud"
-                  ? "Reference optional (terminal settles automatically)"
-                  : "Reference optional"
+                  ? po("refPaycloudOptional")
+                  : po("refOptional")
             }
             placeholderTextColor="#9ca3af"
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            accessibilityLabel="Payment reference"
+            accessibilityLabel={po("paymentRefA11y")}
           />
           {recordPaymentMethod === "yoco" ? (
             <ActionButton
-              label="Charge on Yoco terminal"
+              label={po("chargeYoco")}
               onPress={() => setShowYocoPaymentSheet(true)}
               variant="outline"
               fullWidth
@@ -1499,14 +1561,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           ) : null}
           {recordPaymentMethod === "paycloud" ? (
             <ActionButton
-              label="Charge on card machine"
+              label={po("chargeCardMachine")}
               onPress={() => setShowPaycloudPaymentSheet(true)}
               fullWidth
             />
           ) : null}
           {recordPaymentMethod !== "paycloud" ? (
             <ActionButton
-              label={postingOrderMutation ? "Recording…" : "Record payment"}
+              label={postingOrderMutation ? po("recording") : po("recordPaymentCta")}
               onPress={handleRecordCollectionPayment}
               loading={postingOrderMutation}
               disabled={postingOrderMutation}
@@ -1515,7 +1577,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           ) : null}
           {paystackTerminalEnabled ? (
             <ActionButton
-              label="Collect via Paystack Terminal"
+              label={po("collectPaystack")}
               onPress={() => {
                 setRecordPaymentSheetOpen(false);
                 setTerminalSheetOpen(true);
@@ -1544,7 +1606,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         onClose={() => setShowYocoPaymentSheet(false)}
         amountCents={Math.round((activeOrder ? orderCollectibleAmount(activeOrder) : 0) * 100)}
         currency={activeOrder?.currency ?? currency}
-        description={`Product order ${activeOrder?.order_number ?? activeOrder?.id ?? ""}`}
+        description={po("yocoDescription", { number: activeOrder?.order_number ?? activeOrder?.id ?? "" })}
         onPaymentSuccess={(result) => void handleYocoCollectionSuccess(result)}
       />
 
@@ -1564,58 +1626,58 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       <BottomSheet
         visible={trackingSheetOpen}
         onClose={() => { setTrackingSheetOpen(false); setPendingStatus(null); }}
-        title="Mark as shipped"
-        subtitle="Add tracking details (optional)"
+        title={po("markAsShipped")}
+        subtitle={po("trackingSheetSubtitle")}
       >
         <View style={twStyle("gap-3 pb-6")}>
           <View>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tracking number</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("trackingNumber")}</Text>
             <TextInput
               value={trackingNumber}
               onChangeText={setTrackingNumber}
-              placeholder="e.g. 1Z999AA10123456784"
+              placeholder={po("trackingNumberPlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="characters"
               returnKeyType="next"
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              accessibilityLabel="Tracking number"
+              accessibilityLabel={po("trackingNumberA11y")}
             />
           </View>
           <View>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Carrier / courier</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("carrier")}</Text>
             <TextInput
               value={carrier}
               onChangeText={setCarrier}
-              placeholder="e.g. Aramex, DHL, Paxi"
+              placeholder={po("carrierPlaceholder")}
               placeholderTextColor="#9ca3af"
               returnKeyType="next"
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              accessibilityLabel="Carrier name"
+              accessibilityLabel={po("carrierA11y")}
             />
           </View>
           {/* §Customer-audit 2026-04 (follow-up): let providers paste a
               carrier tracking link so the customer can tap straight through
               from their order detail page. */}
           <View>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tracking URL (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("trackingUrl")}</Text>
             <TextInput
               value={trackingUrl}
               onChangeText={setTrackingUrl}
-              placeholder="https://…"
+              placeholder={po("trackingUrlPlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
               returnKeyType="done"
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              accessibilityLabel="Tracking URL"
+              accessibilityLabel={po("trackingUrlA11y")}
             />
             <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-              Paste the carrier&apos;s tracking page so customers can tap through from their order.
+              {po("trackingUrlHelp")}
             </Text>
           </View>
           <ActionButton
-            label={patching ? "Saving…" : "Confirm shipped"}
+            label={patching ? po("saving") : po("confirmShipped")}
             onPress={handleConfirmShipped}
             loading={patching}
             disabled={patching}
@@ -1625,7 +1687,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             onPress={() => { setTrackingSheetOpen(false); setPendingStatus(null); }}
             style={twStyle("items-center py-2")}
           >
-            <Text style={twStyle("text-sm text-gray-400")}>Cancel</Text>
+            <Text style={twStyle("text-sm text-gray-400")}>{po("cancel")}</Text>
           </TouchableOpacity>
         </View>
       </BottomSheet>
@@ -1634,12 +1696,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 }
 
 export default function ProductOrdersScreen() {
+  const { t } = useTranslation();
   const { order } = useLocalSearchParams<{ order?: string }>();
   const deepLinkOrderId = typeof order === "string" ? order : Array.isArray(order) ? order[0] : undefined;
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Product Orders" showBack subtitle="Customer orders" />
+      <ScreenHeader title={t("provider.mobile.screens.productOrders.title") as string} showBack subtitle={t("provider.mobile.screens.productOrders.subtitle") as string} />
       <ProductOrdersContent deepLinkOrderId={deepLinkOrderId} />
     </ScreenContainer>
   );

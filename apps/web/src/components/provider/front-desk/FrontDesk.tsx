@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * FOUND MAP (Discovery)
@@ -48,6 +49,7 @@ import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
 export function FrontDesk() {
   const { selectedLocationId, salons, setSelectedLocation } = useProviderPortal();
   const { selectedAppointmentId } = useAppointmentSidebar();
+  const { t } = useTranslation();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,35 +80,34 @@ export function FrontDesk() {
 
   const headerSubtitle = useMemo(() => {
     const n = filteredBookings.length;
-    const unit = n === 1 ? "appointment" : "appointments";
-    return `${rangeCaption} • ${n} ${unit}`;
-  }, [filteredBookings.length, rangeCaption]);
+    return t("web.provider.frontDesk.appointmentCount", { count: n, range: rangeCaption });
+  }, [filteredBookings.length, rangeCaption, t]);
 
   const emptyState = useMemo(() => {
     const q = searchQuery.trim();
     if (q) {
       return {
-        description: `No matches for "${q}" in this period (${rangeCaption}). Clear search or change the metrics range (Today / Week / …) above.`,
-        action: { label: "Clear search", onClick: () => setSearchQuery("") } as const,
+        description: t("web.provider.frontDesk.emptySearch", { query: q, range: rangeCaption }),
+        action: { label: t("web.provider.frontDesk.clearSearch"), onClick: () => setSearchQuery("") } as const,
       };
     }
     if (activeTab !== "all") {
       return {
-        description: `Nothing in this queue for ${rangeCaption}. Try another queue tab or choose All.`,
-        action: { label: "Show all queues", onClick: () => setActiveTab("all") } as const,
+        description: t("web.provider.frontDesk.emptyQueue", { range: rangeCaption }),
+        action: { label: t("web.provider.frontDesk.showAllQueues"), onClick: () => setActiveTab("all") } as const,
       };
     }
     return {
       description:
         locationsList.length > 1
-          ? `No bookings for ${rangeCaption} at this location. Switch location or pick another date in the bar above.`
-          : `No bookings for ${rangeCaption}. Pick another date in the calendar or create an appointment.`,
+          ? t("web.provider.frontDesk.emptyLocation", { range: rangeCaption })
+          : t("web.provider.frontDesk.emptyDate", { range: rangeCaption }),
       action:
         format(selectedDate, "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
-          ? ({ label: "Jump to today", onClick: () => setSelectedDate(new Date()) } as const)
+          ? ({ label: t("web.provider.frontDesk.jumpToToday"), onClick: () => setSelectedDate(new Date()) } as const)
           : undefined,
     };
-  }, [activeTab, locationsList.length, rangeCaption, searchQuery, selectedDate]);
+  }, [activeTab, locationsList.length, rangeCaption, searchQuery, selectedDate, t]);
 
   const dayQueueCounts = useMemo(() => getQueueCounts(bookings), [bookings]);
   const queueCounts = useMemo(() => getQueueCounts(metricBookings), [metricBookings]);
@@ -118,11 +119,11 @@ export function FrontDesk() {
         id: b.id,
         booking_id: b.id,
         ref_number: (b as any).booking_number || (b as any).group_booking_ref || "",
-        client_name: (b as any).customer_name || "Group booking",
+        client_name: (b as any).customer_name || t("web.provider.frontDesk.groupBooking"),
         client_email: (b as any).customers?.email || "",
         client_phone: (b as any).customers?.phone || "",
         service_id: firstService.offering_id || firstService.id || "",
-        service_name: firstService.service_name || firstService.offering_name || "Group booking",
+        service_name: firstService.service_name || firstService.offering_name || t("web.provider.frontDesk.groupBooking"),
         team_member_id: firstService.staff_id || "",
         team_member_name: firstService.staff_name || (b as any).staff_name || "",
         scheduled_date: format(new Date((b as any).scheduled_at), "yyyy-MM-dd"),
@@ -133,7 +134,7 @@ export function FrontDesk() {
         location_type: (b as any).location_type || "at_salon",
         location_id: (b as any).location_id || "",
         payment_status: (b as any).payment_status || "",
-        created_by: (b as any).customer_name || "Group booking",
+        created_by: (b as any).customer_name || t("web.provider.frontDesk.groupBooking"),
         total_amount: (b as any).total_amount || 0,
         is_group_booking: true,
         group_booking_ref: (b as any).group_booking_ref || null,
@@ -147,7 +148,7 @@ export function FrontDesk() {
       const appointment = await providerApi.getAppointment(b.id);
       openViewMode(appointment);
     } catch {
-      toast.error("Failed to load appointment");
+      toast.error(t("web.provider.frontDesk.loadAppointmentFailed"));
     } finally {
       setLoadingAppointment(null);
     }
@@ -162,12 +163,12 @@ export function FrontDesk() {
       <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
         <div className="container mx-auto px-3 py-4 sm:px-6 sm:py-8 lg:p-8 bg-[#FDFDFD] min-h-[60vh] min-w-0 max-w-full overflow-x-hidden">
           <PageHeader
-            title="Front Desk"
-            subtitle="Loading appointments…"
+            title={t("web.provider.frontDesk.title")}
+            subtitle={t("web.provider.frontDesk.loadingAppointments")}
             breadcrumbs={[
-              { label: "Home", href: "/" },
-              { label: "Provider", href: "/provider" },
-              { label: "Front Desk" },
+              { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+              { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+              { label: t("web.provider.frontDesk.title") },
             ]}
           />
           <div className="space-y-4">
@@ -188,12 +189,12 @@ export function FrontDesk() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
       <div className="flex flex-col min-h-0 w-full min-w-0 max-w-full overflow-x-hidden bg-[#FDFDFD] rounded-2xl transition-all duration-500">
         <PageHeader
-          title="Front Desk"
+          title={t("web.provider.frontDesk.title")}
           subtitle={headerSubtitle}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Front Desk" },
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.frontDesk.title") },
           ]}
         />
 
@@ -214,17 +215,15 @@ export function FrontDesk() {
               role="status"
               className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 shadow-sm"
             >
-              <span className="font-semibold">{dayQueueCounts.needs_confirmation}</span>
-              {dayQueueCounts.needs_confirmation === 1 ? " booking needs " : " bookings need "}
-              your confirmation before check-in or at-home steps. Use{" "}
+              {t("web.provider.frontDesk.needsConfirm", { count: dayQueueCounts.needs_confirmation })}{" "}
               <button
                 type="button"
                 className="font-semibold underline underline-offset-2 hover:text-amber-900"
                 onClick={() => setActiveTab("needs_confirmation")}
               >
-                To confirm
+                {t("web.provider.frontDesk.toConfirm")}
               </button>{" "}
-              or confirm from each card.
+              {t("web.provider.frontDesk.orConfirmFromCard")}
             </div>
           )}
 
@@ -239,16 +238,16 @@ export function FrontDesk() {
 
         {error && (
           <EmptyState
-            title="Failed to load"
+            title={t("web.provider.frontDesk.failedToLoad")}
             description={error}
-            action={{ label: "Retry", onClick: refetch }}
+            action={{ label: t("web.provider.common.retry"), onClick: refetch }}
           />
         )}
 
         {!error && (
           <div className="flex flex-1 min-h-0 px-3 pb-6 sm:px-6 lg:px-8 pt-0">
             <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-              <ScrollArea className="flex-1 pr-3">
+              <ScrollArea className="flex-1 pe-3">
                 <div className="grid gap-5 pb-8 grid-cols-1 md:grid-cols-2 transition-all duration-500">
                   {filteredBookings.map((b) => (
                     <BookingTile
@@ -264,7 +263,7 @@ export function FrontDesk() {
                 {filteredBookings.length === 0 && (
                   <div className="py-16">
                     <EmptyState
-                      title="No appointments"
+                      title={t("web.provider.frontDesk.noAppointments")}
                       description={emptyState.description}
                       action={emptyState.action}
                     />

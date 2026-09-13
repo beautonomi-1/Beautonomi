@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -38,8 +40,10 @@ export default function FilterBar({
   onFilterChange,
   onClearFilters,
   className,
-  mobileSheetTitle = "Filters",
+  mobileSheetTitle,
 }: FilterBarProps) {
+  const { t } = useTranslation();
+  const sheetTitle = mobileSheetTitle ?? t("web.ui.filterBar.filters");
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
   const activeFilterCount = Object.values(selectedFilters).filter(
@@ -94,7 +98,7 @@ export default function FilterBar({
               onChange={(e) => onFilterChange(filter.key, e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             >
-              <option value="">All</option>
+              <option value="">{t("web.ui.filterBar.all")}</option>
               {filter.options.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -114,8 +118,8 @@ export default function FilterBar({
           }}
           className="w-full"
         >
-          <X className="h-4 w-4 mr-2" />
-          Clear Filters
+          <X className="h-4 w-4 me-2" />
+          {t("web.ui.filterBar.clearFilters")}
         </Button>
       )}
     </div>
@@ -128,18 +132,18 @@ export default function FilterBar({
         <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" className="w-full justify-start">
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
+              <Filter className="h-4 w-4 me-2" />
+              {t("web.ui.filterBar.filters")}
               {activeFilterCount > 0 && (
-                <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+                <span className="ms-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
                   {activeFilterCount}
                 </span>
               )}
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[300px] sm:w-[400px] bg-white">
+          <SheetContent side="start" className="w-[300px] sm:w-[400px] bg-white">
             <SheetHeader>
-              <SheetTitle>{mobileSheetTitle}</SheetTitle>
+              <SheetTitle>{sheetTitle}</SheetTitle>
             </SheetHeader>
             <div className="mt-6">
               <FilterContent />

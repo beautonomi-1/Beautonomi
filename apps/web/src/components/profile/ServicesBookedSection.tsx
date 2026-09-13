@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Booking {
   id: string;
@@ -47,6 +48,7 @@ export default function ServicesBookedSection({
   isPublic = false,
   onUpdate,
 }: ServicesBookedSectionProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -54,11 +56,9 @@ export default function ServicesBookedSection({
 
   const handleToggleChange = (checked: boolean) => {
     if (checked && !isPublic) {
-      // Switching to public - show confirmation
       setPendingValue(true);
       setShowConfirmation(true);
     } else {
-      // Switching to private - no confirmation needed
       handleSavePrivacy(checked);
     }
   };
@@ -69,10 +69,10 @@ export default function ServicesBookedSection({
       await fetcher.patch("/api/me/privacy-settings", {
         services_booked_visible: value,
       });
-      toast.success("Privacy settings updated");
+      toast.success(t("web.accountSettings.servicesBooked.privacyUpdated"));
       onUpdate?.();
     } catch (error: any) {
-      toast.error(error.message || "Failed to update privacy settings");
+      toast.error(error.message || t("web.accountSettings.servicesBooked.privacyUpdateFailed"));
     } finally {
       setIsSaving(false);
       setShowConfirmation(false);
@@ -98,7 +98,7 @@ export default function ServicesBookedSection({
             <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors bg-white border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-semibold text-gray-900">
-                  Services Booked
+                  {t("web.accountSettings.servicesBooked.title")}
                 </CardTitle>
                 {isOpen ? (
                   <ChevronUp className="w-5 h-5 text-gray-500" />
@@ -110,7 +110,6 @@ export default function ServicesBookedSection({
           </CollapsibleTrigger>
           <CollapsibleContent className="overflow-hidden transition-all duration-300 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
             <CardContent className="pt-4 bg-white space-y-4">
-              {/* Privacy Toggle */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center gap-3">
                   {isPublic ? (
@@ -120,10 +119,10 @@ export default function ServicesBookedSection({
                   )}
                   <div>
                     <Label htmlFor="privacy-toggle" className="text-sm font-medium text-gray-900">
-                      Show booking history to providers
+                      {t("web.accountSettings.servicesBooked.showHistory")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Providers can see your booking history to understand your preferences
+                      {t("web.accountSettings.servicesBooked.showHistoryHint")}
                     </p>
                   </div>
                 </div>
@@ -135,20 +134,19 @@ export default function ServicesBookedSection({
                 />
               </div>
 
-              {/* Bookings Preview */}
               {isPublic && (
                 <>
                   {upcomingBookings.length > 0 ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-gray-900">
-                          Upcoming Bookings
+                          {t("web.accountSettings.servicesBooked.upcoming")}
                         </h4>
                         <Link
                           href="/account-settings/bookings"
                           className="text-xs text-[#FF0077] hover:underline"
                         >
-                          View all
+                          {t("web.accountSettings.servicesBooked.viewAll")}
                         </Link>
                       </div>
                       {upcomingBookings.map((booking) => {
@@ -158,7 +156,7 @@ export default function ServicesBookedSection({
                           firstService?.offering_name ||
                           firstService?.offering?.title ||
                           firstService?.offering?.master_service?.name ||
-                          "Service";
+                          t("web.accountSettings.servicesBooked.serviceFallback");
                         const scheduledDate = new Date(booking.scheduled_at);
 
                         return (
@@ -175,10 +173,12 @@ export default function ServicesBookedSection({
                                   {format(scheduledDate, "MMM d, yyyy 'at' h:mm a")}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
-                                  Booking #{booking.booking_number}
+                                  {t("web.accountSettings.servicesBooked.bookingNumber", {
+                                    number: booking.booking_number,
+                                  })}
                                 </p>
                               </div>
-                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full capitalize ml-2">
+                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full capitalize ms-2">
                                 {booking.status}
                               </span>
                             </div>
@@ -188,12 +188,12 @@ export default function ServicesBookedSection({
                     </div>
                   ) : (
                     <div className="text-center py-8 text-gray-500">
-                      <p className="text-sm">No upcoming bookings</p>
+                      <p className="text-sm">{t("web.accountSettings.servicesBooked.noUpcoming")}</p>
                       <Link
                         href="/search"
                         className="text-xs text-[#FF0077] hover:underline mt-2 inline-block"
                       >
-                        Browse services
+                        {t("web.accountSettings.servicesBooked.browseServices")}
                       </Link>
                     </div>
                   )}
@@ -203,7 +203,7 @@ export default function ServicesBookedSection({
               {!isPublic && (
                 <div className="text-center py-8 text-gray-500">
                   <Lock className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                  <p className="text-sm">Your bookings are private</p>
+                  <p className="text-sm">{t("web.accountSettings.servicesBooked.bookingsPrivate")}</p>
                 </div>
               )}
             </CardContent>
@@ -211,25 +211,23 @@ export default function ServicesBookedSection({
         </Collapsible>
       </Card>
 
-      {/* Confirmation Dialog */}
       <AlertDialog open={showConfirmation} onOpenChange={setShowConfirmation}>
         <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Make booking history public?</AlertDialogTitle>
+            <AlertDialogTitle>{t("web.accountSettings.servicesBooked.makePublicTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Providers will be able to see your booking history. This helps them understand
-              your preferences and provide better service. You can change this setting anytime.
+              {t("web.accountSettings.servicesBooked.makePublicBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setShowConfirmation(false)}>
-              Cancel
+              {t("web.accountSettings.servicesBooked.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmPublic}
               className="bg-[#FF0077] hover:bg-[#E6006A] text-white"
             >
-              Make Public
+              {t("web.accountSettings.servicesBooked.makePublic")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

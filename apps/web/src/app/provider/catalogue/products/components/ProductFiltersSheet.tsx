@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React from "react";
 import {
@@ -17,51 +18,52 @@ interface ProductFiltersSheetProps {
 }
 
 export function ProductFiltersSheet({ open, onOpenChange }: ProductFiltersSheetProps) {
+  const { t } = useTranslation();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Filter Products</SheetTitle>
+          <SheetTitle>{t("web.provider.catalogueProducts.filtersTitle")}</SheetTitle>
         </SheetHeader>
         <div className="space-y-4 mt-6">
           <div>
-            <Label>Category</Label>
+            <Label>{t("web.provider.catalogueProducts.category")}</Label>
             <Select>
               <SelectTrigger>
-                <SelectValue placeholder="All Categories" />
+                <SelectValue placeholder={t("web.provider.catalogueProducts.allCategories")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="hair">Hair Care</SelectItem>
-                <SelectItem value="nail">Nail Care</SelectItem>
-                <SelectItem value="skin">Skin Care</SelectItem>
+                <SelectItem value="all">{t("web.provider.catalogueProducts.allCategories")}</SelectItem>
+                <SelectItem value="hair">{t("web.provider.catalogueProducts.hairCare")}</SelectItem>
+                <SelectItem value="nail">{t("web.provider.catalogueProducts.nailCare")}</SelectItem>
+                <SelectItem value="skin">{t("web.provider.catalogueProducts.skinCare")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label>Supplier</Label>
+            <Label>{t("web.provider.catalogueProducts.supplier")}</Label>
             <Select>
               <SelectTrigger>
-                <SelectValue placeholder="All Suppliers" />
+                <SelectValue placeholder={t("web.provider.catalogueProducts.allSuppliers")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Suppliers</SelectItem>
+                <SelectItem value="all">{t("web.provider.catalogueProducts.allSuppliers")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label>Stock Status</Label>
+            <Label>{t("web.provider.catalogueProducts.stockStatus")}</Label>
             <Select>
               <SelectTrigger>
-                <SelectValue placeholder="All" />
+                <SelectValue placeholder={t("web.provider.common.all")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="in-stock">In Stock</SelectItem>
-                <SelectItem value="low-stock">Low Stock</SelectItem>
-                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                <SelectItem value="all">{t("web.provider.common.all")}</SelectItem>
+                <SelectItem value="in-stock">{t("web.provider.catalogueProducts.inStock")}</SelectItem>
+                <SelectItem value="low-stock">{t("web.provider.catalogueProducts.lowStock")}</SelectItem>
+                <SelectItem value="out-of-stock">{t("web.provider.catalogueProducts.outOfStock")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -72,13 +74,13 @@ export function ProductFiltersSheet({ open, onOpenChange }: ProductFiltersSheetP
               className="flex-1"
               onClick={() => onOpenChange(false)}
             >
-              Reset
+              {t("web.provider.common.reset")}
             </Button>
             <Button
               className="flex-1 bg-primary hover:bg-primary-hover"
               onClick={() => onOpenChange(false)}
             >
-              Apply Filters
+              {t("web.provider.common.applyFilters")}
             </Button>
           </div>
         </div>

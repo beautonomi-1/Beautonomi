@@ -95,9 +95,9 @@ export function ActionButton({
       ) : (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           {icon && iconPosition === "left" && (
-            <Ionicons name={icon} size={iconSize} color={iconColor} style={{ marginRight: 8 }} />
+            <Ionicons name={icon} size={iconSize} color={iconColor} style={{ marginEnd: 8 }} />
           )}
-          <Text style={{ textAlign: "center", fontWeight: "600", fontSize: sizeFontSize[size], color: variantTextColor[variant], ...(icon && iconPosition === "right" ? { marginRight: 8 } : {}) }}>
+          <Text style={{ textAlign: "center", fontWeight: "600", fontSize: sizeFontSize[size], color: variantTextColor[variant], ...(icon && iconPosition === "right" ? { marginEnd: 8 } : {}) }}>
             {label}
           </Text>
           {icon && iconPosition === "right" && (

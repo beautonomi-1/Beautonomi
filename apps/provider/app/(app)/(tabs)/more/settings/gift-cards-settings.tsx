@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, Switch, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -31,6 +32,12 @@ interface GiftCardSettings {
 }
 
 export default function GiftCardsSettingsScreen() {
+  const { t } = useTranslation();
+  const gc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.giftCardsSettings.${key}`, opts) as string,
+    [t],
+  );
   const { data: settings, loading, refresh } = useApi<GiftCardSettings>(
     "/api/provider/settings/sales/gift-cards"
   );
@@ -92,7 +99,7 @@ export default function GiftCardsSettingsScreen() {
       payload
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(gc("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -103,8 +110,8 @@ export default function GiftCardsSettingsScreen() {
   if (loading && !settings) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Gift Card Settings" showBack />
-        <LoadingState message="Loading settings..." />
+        <ScreenHeader title={gc("title")} showBack />
+        <LoadingState message={gc("loading")} />
       </ScreenContainer>
     );
   }
@@ -114,17 +121,17 @@ export default function GiftCardsSettingsScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Gift Card Settings"
+        title={gc("title")}
         showBack
-        subtitle="Configure gift cards"
+        subtitle={gc("subtitle")}
       />
 
       {stats && (
         <View style={twStyle("mb-4")}>
           <View style={twStyle("flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
               <StatCard
-                title="Sold"
+                title={gc("statSold")}
                 value={formatCurrency(stats.total_sold)}
                 icon="card-outline"
                 iconColor="#22c55e"
@@ -134,7 +141,7 @@ export default function GiftCardsSettingsScreen() {
             </View>
             <View style={twStyle("flex-1")}>
               <StatCard
-                title="Active"
+                title={gc("statActive")}
                 value={String(stats.active_cards)}
                 icon="gift-outline"
                 iconColor="#a855f7"
@@ -144,9 +151,9 @@ export default function GiftCardsSettingsScreen() {
             </View>
           </View>
           <View style={twStyle("mt-2 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
               <StatCard
-                title="Redeemed"
+                title={gc("statRedeemed")}
                 value={formatCurrency(stats.total_redeemed)}
                 icon="checkmark-circle-outline"
                 iconColor="#6366f1"
@@ -156,7 +163,7 @@ export default function GiftCardsSettingsScreen() {
             </View>
             <View style={twStyle("flex-1")}>
               <StatCard
-                title="Outstanding"
+                title={gc("statOutstanding")}
                 value={formatCurrency(stats.outstanding_balance)}
                 icon="wallet-outline"
                 iconColor="#f59e0b"
@@ -176,8 +183,8 @@ export default function GiftCardsSettingsScreen() {
             color="#f59e0b"
             style={{ marginTop: 1 }}
           />
-          <Text style={twStyle("ml-2 flex-1 text-xs leading-4 text-amber-700")}>
-            Using platform defaults. Enable custom values to override.
+          <Text style={twStyle("ms-2 flex-1 text-xs leading-4 text-amber-700")}>
+            {gc("platformDefaultsBanner")}
           </Text>
         </View>
       )}
@@ -188,12 +195,12 @@ export default function GiftCardsSettingsScreen() {
             <View style={twStyle("h-11 w-11 items-center justify-center rounded-xl bg-purple-50")}>
               <Ionicons name="gift" size={22} color="#a855f7" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
+            <View style={twStyle("ms-3 flex-1")}>
               <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>
-                Enable Gift Cards
+                {gc("enableTitle")}
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Allow clients to purchase and redeem gift cards
+                {gc("enableHint")}
               </Text>
             </View>
           </View>
@@ -210,25 +217,25 @@ export default function GiftCardsSettingsScreen() {
         <>
           {/* Platform defaults display */}
           <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-            Platform Defaults
+            {gc("platformDefaults")}
           </Text>
           <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-4")}>
             <View style={twStyle("mb-2 flex-row justify-between")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Min Value</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{gc("minValue")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {`${getTenantDefaultCurrency()} ${settings?.min_value ?? 50}`}
               </Text>
             </View>
             <View style={twStyle("mb-2 flex-row justify-between")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Max Value</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{gc("maxValue")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {`${getTenantDefaultCurrency()} ${settings?.max_value ?? 10000}`}
               </Text>
             </View>
             <View style={twStyle("flex-row justify-between")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Default Expiry</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{gc("defaultExpiry")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                {settings?.default_expiry_months ?? 12} months
+                {gc("monthsCount", { count: settings?.default_expiry_months ?? 12 })}
               </Text>
             </View>
           </View>
@@ -238,10 +245,10 @@ export default function GiftCardsSettingsScreen() {
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <View style={twStyle("flex-1")}>
                 <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                  Custom Values
+                  {gc("customValues")}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  Override platform defaults
+                  {gc("customValuesHint")}
                 </Text>
               </View>
               <Switch
@@ -256,36 +263,36 @@ export default function GiftCardsSettingsScreen() {
               <>
                 <View style={twStyle("border-t border-gray-100 pt-3")}>
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                    {`Min Value (${getTenantDefaultCurrency()})`}
+                    {gc("minValueCurrency", { currency: getTenantDefaultCurrency() })}
                   </Text>
                   <TextInput
                     style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customMin}
-                    onChangeText={(t) => update(() => setCustomMin(t))}
+                    onChangeText={(text) => update(() => setCustomMin(text))}
                     keyboardType="decimal-pad"
-                    placeholder={`Default: ${settings?.min_value ?? 50}`}
+                    placeholder={gc("defaultPlaceholder", { value: settings?.min_value ?? 50 })}
                     placeholderTextColor="#9ca3af"
                   />
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                    {`Max Value (${getTenantDefaultCurrency()})`}
+                    {gc("maxValueCurrency", { currency: getTenantDefaultCurrency() })}
                   </Text>
                   <TextInput
                     style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customMax}
-                    onChangeText={(t) => update(() => setCustomMax(t))}
+                    onChangeText={(text) => update(() => setCustomMax(text))}
                     keyboardType="decimal-pad"
-                    placeholder={`Default: ${settings?.max_value ?? 10000}`}
+                    placeholder={gc("defaultPlaceholder", { value: settings?.max_value ?? 10000 })}
                     placeholderTextColor="#9ca3af"
                   />
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                    Expiry (months)
+                    {gc("expiryMonths")}
                   </Text>
                   <TextInput
                     style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customExpiry}
-                    onChangeText={(t) => update(() => setCustomExpiry(t))}
+                    onChangeText={(text) => update(() => setCustomExpiry(text))}
                     keyboardType="number-pad"
-                    placeholder={`Default: ${settings?.default_expiry_months ?? 12}`}
+                    placeholder={gc("defaultPlaceholder", { value: settings?.default_expiry_months ?? 12 })}
                     placeholderTextColor="#9ca3af"
                   />
                 </View>
@@ -296,21 +303,17 @@ export default function GiftCardsSettingsScreen() {
           {/* How it works */}
           <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-4")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>
-              How Gift Cards Work
+              {gc("howTitle")}
             </Text>
             <View>
-              {[
-                "Clients purchase gift cards through your booking page or in-store",
-                "Gift cards can be sent via email with a personal message",
-                "Recipients redeem the card code at checkout for services or products",
-              ].map((step, idx) => (
+              {[gc("howStep1"), gc("howStep2"), gc("howStep3")].map((step, idx) => (
                 <View key={idx} style={[twStyle("flex-row items-start"), idx > 0 ? { marginTop: 8 } : undefined]}>
                   <View style={twStyle("mt-0.5 h-4 w-4 items-center justify-center rounded-full bg-indigo-200")}>
                     <Text style={twStyle("text-[9px] font-bold text-indigo-700")}>
                       {idx + 1}
                     </Text>
                   </View>
-                  <Text style={twStyle("ml-2 flex-1 text-xs text-indigo-700")}>
+                  <Text style={twStyle("ms-2 flex-1 text-xs text-indigo-700")}>
                     {step}
                   </Text>
                 </View>
@@ -321,7 +324,7 @@ export default function GiftCardsSettingsScreen() {
           {settings?.terms && (
             <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
               <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>
-                Terms & Conditions
+                {gc("terms")}
               </Text>
               <Text style={twStyle("text-sm leading-5 text-gray-700")}>
                 {settings.terms}
@@ -332,7 +335,7 @@ export default function GiftCardsSettingsScreen() {
       )}
 
       <ActionButton
-        label="Save Settings"
+        label={gc("saveCta")}
         onPress={handleSave}
         loading={saving}
         disabled={!dirty}

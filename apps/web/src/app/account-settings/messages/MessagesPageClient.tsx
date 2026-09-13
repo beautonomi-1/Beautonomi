@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -35,6 +36,7 @@ interface _Message {
 
 export function MessagesPageClient({ initial }: MessagesPageClientProps) {
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>(() => initial?.conversations ?? []);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -203,7 +205,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
             customer_id: currentUserId,
             last_message_at: new Date().toISOString(),
             unread_count: 0,
-            provider_name: providerInfo?.provider_name || "Provider",
+            provider_name: providerInfo?.provider_name || t("web.accountSettings.messages.providerFallback"),
             avatar: providerInfo?.avatar || null,
           } as Conversation;
         }
@@ -214,7 +216,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
         setShowChat(true);
         
         // Show success message
-        toast.success("Conversation created");
+        toast.success(t("web.accountSettings.messages.conversationCreated"));
         
         // Clean up URL after state has been set (longer delay to ensure React has updated)
         setTimeout(() => {
@@ -239,7 +241,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
       }
     } catch (err) {
       console.error("Error creating conversation:", err);
-      toast.error("Failed to create conversation. Please try again.");
+      toast.error(t("web.accountSettings.messages.createFailed"));
       // Clean up URL even on error
       router.replace("/account-settings/messages", { scroll: false });
     } finally {
@@ -297,28 +299,28 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
       });
       return deduplicated;
     } catch (err) {
-      let errorMessage = "Failed to load conversations";
+      let errorMessage = t("web.accountSettings.messages.loadFailed");
       
       if (err instanceof FetchTimeoutError) {
-        errorMessage = "Request timed out. Please check your connection and try again.";
+        errorMessage = t("web.accountSettings.messages.timeout");
       } else if (err instanceof FetchError) {
         // Provide more specific error messages based on status code
         if (err.status === 401) {
-          errorMessage = "Please sign in to view your conversations.";
+          errorMessage = t("web.accountSettings.messages.signInRequired");
         } else if (err.status === 403) {
-          errorMessage = "You don't have permission to view conversations.";
+          errorMessage = t("web.accountSettings.messages.permissionDenied");
         } else if (err.status === 404) {
-          errorMessage = "Conversations endpoint not found.";
+          errorMessage = t("web.accountSettings.messages.endpointNotFound");
         } else if (err.status === 0) {
-          errorMessage = "Network error: Unable to reach server. Please check your connection.";
+          errorMessage = t("web.accountSettings.messages.networkError");
         } else if (err.status >= 500) {
-          errorMessage = "Server error. Please try again later.";
+          errorMessage = t("web.accountSettings.messages.serverError");
         } else {
-          errorMessage = err.message || `Failed to load conversations (${err.status})`;
+          errorMessage = err.message || t("web.accountSettings.messages.loadFailedWithStatus", { status: err.status });
         }
       } else {
         // Handle unknown errors
-        errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
+        errorMessage = err instanceof Error ? err.message : t("web.accountSettings.messages.unexpectedError");
       }
       
       setError(errorMessage);
@@ -442,7 +444,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
         {!showChat && (
           <div className="md:hidden border-b border-[#e9edef] bg-white px-4 py-3">
             <BackButton href="/account-settings" />
-            <h1 className="text-xl font-semibold text-[#111b21] mt-2">Messages</h1>
+            <h1 className="text-xl font-semibold text-[#111b21] mt-2">{t("web.accountSettings.messages.title")}</h1>
           </div>
         )}
 
@@ -450,8 +452,8 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
         <div className="hidden md:block border-b border-[#e9edef] bg-white px-6 py-4">
           <Breadcrumb
             items={[
-              { label: "Account", href: "/account-settings" },
-              { label: "Messages" },
+              { label: t("web.accountSettings.messages.breadcrumbAccount"), href: "/account-settings" },
+              { label: t("web.accountSettings.messages.breadcrumbMessages") },
             ]}
           />
         </div>
@@ -486,7 +488,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
                   onClick={loadConversations}
                   className="mt-4 px-4 py-2 bg-[#008489] text-white rounded-lg text-sm font-medium hover:bg-[#006a6f] transition-colors"
                 >
-                  Try Again
+                  {t("web.accountSettings.messages.tryAgain")}
                 </button>
               </div>
             ) : (
@@ -531,9 +533,9 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
                       />
                     </svg>
                   </div>
-                  <p className="text-[#667781] text-sm md:text-base font-medium">Select a conversation</p>
+                  <p className="text-[#667781] text-sm md:text-base font-medium">{t("web.accountSettings.messages.selectConversation")}</p>
                   <p className="text-[#667781] text-xs md:text-sm mt-1">
-                    Choose a conversation from the list to start messaging
+                    {t("web.accountSettings.messages.selectConversationHint")}
                   </p>
                 </div>
               </div>

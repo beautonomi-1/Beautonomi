@@ -14,7 +14,7 @@
  */
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
+import { percentOf, subtractMoney, sumMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 
 export interface ServiceItem {
   id: string;
@@ -497,7 +497,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
  * Format currency for display
  */
 export function formatCurrency(amount: number, currency: string = LAST_RESORT_CURRENCY): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getDefaultMoneyLocale(), {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,

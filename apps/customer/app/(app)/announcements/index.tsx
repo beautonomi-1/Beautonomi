@@ -11,6 +11,7 @@ import { STACK_CONTENT_PADDING_BOTTOM, RADIUS_CARD } from "@/constants/layout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Row = {
   id: string;
@@ -95,7 +96,9 @@ export default function CustomerAnnouncementsScreen() {
         <View style={{ padding: 24 }}>
           <Text style={{ fontSize: 15, color: Colors.gray[700] }}>{loadErr}</Text>
           <Pressable onPress={load} accessibilityRole="button" style={{ marginTop: 12 }}>
-            <Text style={{ color: Colors.primary, fontWeight: "700" }}>Retry</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "700" }}>
+              {t("customer.mobile.screens.announcements.retry")}
+            </Text>
           </Pressable>
         </View>
       ) : (
@@ -113,10 +116,10 @@ export default function CustomerAnnouncementsScreen() {
             <View style={{ alignItems: "center", paddingTop: 48 }}>
               <Ionicons name="megaphone-outline" size={40} color={Colors.gray[300]} />
               <Text style={{ marginTop: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[700] }}>
-                Nothing here yet
+                {t("customer.mobile.screens.announcements.emptyTitle")}
               </Text>
               <Text style={{ marginTop: 6, fontSize: 14, color: Colors.gray[500], textAlign: "center", maxWidth: 280 }}>
-                Promotions and news from Beautonomi will appear here.
+                {t("customer.mobile.screens.announcements.emptyBody")}
               </Text>
             </View>
           }
@@ -128,7 +131,7 @@ export default function CustomerAnnouncementsScreen() {
                 onPress={() => router.push(`/(app)/announcements/${item.id}` as never)}
                 style={announceRowStyles.row}
               >
-                <View style={{ paddingLeft: 12, justifyContent: "center" }}>
+                <View style={{ paddingStart: 12, justifyContent: "center" }}>
                   <View style={{ width: 52, height: 52, borderRadius: 10, overflow: "hidden", backgroundColor: Colors.gray[100] }}>
                     {thumbUri ? (
                       <Image source={{ uri: thumbUri }} style={{ width: 52, height: 52 }} contentFit="cover" />
@@ -139,24 +142,26 @@ export default function CustomerAnnouncementsScreen() {
                     )}
                   </View>
                 </View>
-                <View style={{ flex: 1, marginLeft: 10, paddingRight: 12, paddingVertical: 4 }}>
+                <View style={{ flex: 1, marginStart: 10, paddingEnd: 12, paddingVertical: 4 }}>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Text numberOfLines={1} style={{ flex: 1, fontWeight: "700", fontSize: 16, color: Colors.gray[900] }}>
                       {item.title}
                     </Text>
                     {!item.is_read ? (
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary, marginLeft: 6 }} />
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary, marginStart: 6 }} />
                     ) : null}
                   </View>
                   <Text numberOfLines={2} style={{ marginTop: 4, fontSize: 13, color: Colors.gray[600] }}>
                     {item.message}
                   </Text>
                   {isExpired ? (
-                    <Text style={{ marginTop: 8, fontSize: 11, color: Colors.gray[400] }}>Expired</Text>
+                    <Text style={{ marginTop: 8, fontSize: 11, color: Colors.gray[400] }}>
+                      {t("customer.mobile.screens.announcements.expired")}
+                    </Text>
                   ) : null}
                 </View>
-                <View style={{ justifyContent: "center", paddingRight: 8 }}>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
+                <View style={{ justifyContent: "center", paddingEnd: 8 }}>
+                  <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} />
                 </View>
               </Pressable>
             );

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unstable_cache } from "next/cache";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
@@ -86,7 +86,7 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
   return unstable_cache(
     async () => {
       try {
-      const supabase = await getSupabaseServer();
+      const supabase = getSupabaseAdmin();
       let tenantSettings: { settings?: unknown } | null = null;
       if (tenantId) {
         const { data } = await supabase

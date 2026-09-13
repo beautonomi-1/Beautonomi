@@ -8,6 +8,7 @@ import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import TaxInfoModal from "./components/tax-info-modal";
@@ -19,6 +20,7 @@ type TaxInfo = TaxInfoPayload;
 type TaxDocument = TaxDocumentPayload;
 
 const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("taxpayers");
   const [isTaxInfoModalOpen, setTaxInfoModalOpen] = useState(false);
   const [isVatModalOpen, setVatModalOpen] = useState(false);
@@ -54,10 +56,10 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.accountSettings.taxes.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load tax information";
+          : t("web.accountSettings.taxes.loadFailed");
       setError(errorMessage);
       console.error("Error loading tax data:", err);
     } finally {
@@ -68,11 +70,11 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
   const handleTaxInfoSave = async (data: TaxInfoFormData) => {
     try {
       await fetcher.post("/api/me/tax-info", data);
-      toast.success("Tax information saved successfully");
+      toast.success(t("web.accountSettings.taxes.saved"));
       await loadTaxData();
       setTaxInfoModalOpen(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to save tax information";
+      const message = err instanceof Error ? err.message : t("web.accountSettings.taxes.saveFailed");
       toast.error(message);
       throw err;
     }
@@ -81,11 +83,11 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
   const handleVatIdSave = async (vatId: string) => {
     try {
       await fetcher.patch("/api/me/tax-info/vat-id", { vat_id: vatId });
-      toast.success("VAT ID saved successfully");
+      toast.success(t("web.accountSettings.taxes.vatSaved"));
       await loadTaxData();
       setVatModalOpen(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to save VAT ID";
+      const message = err instanceof Error ? err.message : t("web.accountSettings.taxes.vatSaveFailed");
       toast.error(message);
       throw err;
     }
@@ -95,7 +97,7 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
     return (
       <div className="min-h-screen bg-zinc-50/50">
           <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-            <LoadingTimeout loadingMessage="Loading tax information..." />
+            <LoadingTimeout loadingMessage={t("web.accountSettings.taxes.loading")} />
           </div>
         </div>
     );
@@ -106,9 +108,9 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
       <div className="min-h-screen bg-zinc-50/50">
           <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
             <EmptyState
-              title="Unable to load tax information"
+              title={t("web.accountSettings.unableLoadTaxes")}
               description={error}
-              action={{ label: "Try Again", onClick: () => loadTaxData() }}
+              action={{ label: t("web.accountSettings.taxes.tryAgain"), onClick: () => loadTaxData() }}
             />
           </div>
         </div>
@@ -124,15 +126,15 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
             <BackButton href="/account-settings" />
             <Breadcrumb
               items={[
-                { label: "Account", href: "/account-settings" },
-                { label: "Taxes" },
+                { label: t("web.accountSettings.account"), href: "/account-settings" },
+                { label: t("web.accountSettings.taxes.title") },
               ]}
             />
 
             <h1
               className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 border-b border-gray-200 mb-6 pb-4 mt-4 md:mt-6"
             >
-              Taxes
+              {t("web.accountSettings.taxes.title")}
             </h1>
 
             <div
@@ -141,8 +143,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
             >
               <Info className="h-5 w-5 shrink-0 text-sky-600 mt-0.5" aria-hidden />
               <p className="font-light leading-relaxed">
-                <span className="font-medium">Coming soon:</span> deeper tax filing helpers and automated document delivery.
-                You can still save taxpayer details and download documents below when they are available for your account.
+                <span className="font-medium">{t("web.accountSettings.taxes.comingSoon")}</span>{" "}
+                {t("web.accountSettings.taxes.comingSoonBody")}
               </p>
             </div>
 
@@ -152,13 +154,13 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                   value="taxpayers"
                   className="text-sm md:text-base font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
                 >
-                  Taxpayers
+                  {t("web.accountSettings.taxes.taxpayers")}
                 </TabsTrigger>
                 <TabsTrigger
                   value="taxDocuments"
                   className="text-sm md:text-base font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
                 >
-                  Tax Documents
+                  {t("web.accountSettings.taxes.taxDocuments")}
                 </TabsTrigger>
               </TabsList>
 
@@ -170,10 +172,10 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                     {/* Taxpayer Information */}
                     <div>
                       <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                        Taxpayer information
+                        {t("web.accountSettings.taxes.taxpayerInfo")}
                       </h2>
                       <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                        Tax info is required for most countries/regions.
+                        {t("web.accountSettings.taxes.taxpayerInfoHint")}
                       </p>
 
                       {taxInfo ? (
@@ -188,7 +190,7 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                                     <FileText className="w-4 h-4 text-[#FF0077]" />
                                   </div>
                                   <span className="text-sm md:text-base text-gray-700">
-                                    <span className="font-medium">Country:</span> {taxInfo.country}
+                                    <span className="font-medium">{t("web.accountSettings.taxes.country")}</span> {taxInfo.country}
                                   </span>
                                 </div>
                               )}
@@ -198,7 +200,7 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                                     <Receipt className="w-4 h-4 text-[#FF0077]" />
                                   </div>
                                   <span className="text-sm md:text-base text-gray-700">
-                                    <span className="font-medium">Tax ID:</span> {taxInfo.tax_id}
+                                    <span className="font-medium">{t("web.accountSettings.taxes.taxId")}</span> {taxInfo.tax_id}
                                   </span>
                                 </div>
                               )}
@@ -208,7 +210,7 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                                     <FileText className="w-4 h-4 text-[#FF0077]" />
                                   </div>
                                   <span className="text-sm md:text-base text-gray-700">
-                                    <span className="font-medium">Full Name:</span> {taxInfo.full_name}
+                                    <span className="font-medium">{t("web.accountSettings.taxes.fullName")}</span> {taxInfo.full_name}
                                   </span>
                                 </div>
                               )}
@@ -219,8 +221,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                               onClick={() => setTaxInfoModalOpen(true)}
                               className="text-[#FF0077] border-[#FF0077] hover:bg-pink-50"
                             >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
+                              <Edit className="w-4 h-4 me-2" />
+                              {t("web.accountSettings.taxes.edit")}
                             </Button>
                           </div>
                         </div>
@@ -231,8 +233,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                             onClick={() => setTaxInfoModalOpen(true)}
                             className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-medium px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all"
                           >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add tax info
+                            <Plus className="w-4 h-4 me-2" />
+                            {t("web.accountSettings.taxes.addTaxInfo")}
                           </Button>
                         </div>
                       )}
@@ -241,10 +243,10 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                     {/* VAT ID */}
                     <div>
                       <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                        Value Added Tax (VAT)
+                        {t("web.accountSettings.taxes.vatTitle")}
                       </h2>
                       <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                        If you are VAT-registered, please add your VAT ID.
+                        {t("web.accountSettings.taxes.vatHint")}
                       </p>
 
                       {vatId ? (
@@ -257,7 +259,7 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                                 <Receipt className="w-4 h-4 text-[#FF0077]" />
                               </div>
                               <span className="text-sm md:text-base text-gray-700 font-medium">
-                                VAT ID: {vatId}
+                                {t("web.accountSettings.taxes.vatId", { id: vatId })}
                               </span>
                             </div>
                             <Button
@@ -266,8 +268,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                               onClick={() => setVatModalOpen(true)}
                               className="text-[#FF0077] border-[#FF0077] hover:bg-pink-50"
                             >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
+                              <Edit className="w-4 h-4 me-2" />
+                              {t("web.accountSettings.taxes.edit")}
                             </Button>
                           </div>
                         </div>
@@ -278,8 +280,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                             onClick={() => setVatModalOpen(true)}
                             className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-medium px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all"
                           >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add VAT ID Number
+                            <Plus className="w-4 h-4 me-2" />
+                            {t("web.accountSettings.taxes.addVatId")}
                           </Button>
                         </div>
                       )}
@@ -295,15 +297,15 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                         <HelpCircle className="w-5 h-5 text-[#FF0077]" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Need help?</h3>
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">{t("web.accountSettings.taxes.needHelp")}</h3>
                         <p className="text-sm font-light text-gray-600 mb-3">
-                          Get answers to questions about taxes in our Help Center.
+                          {t("web.accountSettings.taxes.helpBody")}
                         </p>
                         <a
                           href="/help-center"
                           className="text-sm font-medium text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                         >
-                          Visit Help Center
+                          {t("web.accountSettings.taxes.visitHelpCenter")}
                         </a>
                       </div>
                     </div>
@@ -316,13 +318,13 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                    Tax documents
+                    {t("web.accountSettings.taxes.documentsTitle")}
                   </h2>
                   <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                    Tax documents required for filing taxes are available to review and download here.
+                    {t("web.accountSettings.taxes.documentsHint")}
                   </p>
                   <p className="text-sm md:text-base font-light text-gray-500 mb-8">
-                    You can also file taxes using detailed earnings info, available in the earnings summary.
+                    {t("web.accountSettings.taxes.documentsSecondary")}
                   </p>
 
                   <div className="space-y-6">
@@ -336,8 +338,10 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                             <h3 className="text-lg font-semibold text-gray-900 mb-1">{doc.year}</h3>
                             <p className="text-sm font-light text-gray-500">
                               {doc.status === "issued" && doc.document_url
-                                ? `Issued on ${new Date(doc.issued_at!).toLocaleDateString()}`
-                                : "No tax document issued"}
+                                ? t("web.accountSettings.taxes.issuedOn", {
+                                    date: new Date(doc.issued_at!).toLocaleDateString(),
+                                  })
+                                : t("web.accountSettings.taxes.noDocumentIssued")}
                             </p>
                           </div>
                           {doc.status === "issued" && doc.document_url && (
@@ -347,8 +351,8 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                               onClick={() => window.open(doc.document_url!, "_blank")}
                               className="text-[#FF0077] border-[#FF0077] hover:bg-pink-50"
                             >
-                              <Download className="w-4 h-4 mr-2" />
-                              Download
+                              <Download className="w-4 h-4 me-2" />
+                              {t("web.accountSettings.taxes.download")}
                             </Button>
                           )}
                         </div>
@@ -357,7 +361,9 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                   </div>
 
                   <p className="text-sm font-light text-gray-600 mt-8">
-                    For tax documents issued prior to {new Date().getFullYear() - 4}, contact us.
+                    {t("web.accountSettings.taxes.priorYearsContact", {
+                      year: new Date().getFullYear() - 4,
+                    })}
                   </p>
 
                   {/* Help Section */}
@@ -369,15 +375,15 @@ const TaxesPage = ({ initial }: { initial: TaxesPageInitial | null }) => {
                         <HelpCircle className="w-5 h-5 text-[#FF0077]" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Need help?</h3>
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">{t("web.accountSettings.taxes.needHelp")}</h3>
                         <p className="text-sm font-light text-gray-600 mb-3">
-                          Get answers to questions about taxes in our Help Center.
+                          {t("web.accountSettings.taxes.helpBody")}
                         </p>
                         <a
                           href="/help-center"
                           className="text-sm font-medium text-[#FF0077] hover:text-[#D60565] underline transition-colors"
                         >
-                          Visit Help Center
+                          {t("web.accountSettings.taxes.visitHelpCenter")}
                         </a>
                       </div>
                     </div>

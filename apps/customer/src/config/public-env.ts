@@ -175,30 +175,26 @@ export function webApiTenantHeaders(): Record<string, string> {
   return host ? { "x-forwarded-host": host } : {};
 }
 
+/**
+ * User-Agent token for mobile API + WebView traffic so the Vercel Firewall can
+ * bypass bot / rate-limit rules for first-party app traffic.
+ *
+ * KEEP IN SYNC: the Vercel Firewall allow rule must match `User-Agent contains
+ * "BeautonomiApp"`. The `/customer` suffix lets you distinguish app surfaces if needed.
+ */
+export const MOBILE_WEB_USER_AGENT_TOKEN = "BeautonomiApp/customer";
+
 /** Merge tenant + mobile app identity headers for raw `fetch` (WAF bypass + spec §7.1). */
 export function withWebApiTenantHeaders(init?: RequestInit): RequestInit {
   const h = new Headers(init?.headers as HeadersInit | undefined);
   if (!h.has("X-App")) h.set("X-App", "customer");
+  if (!h.has("User-Agent")) h.set("User-Agent", MOBILE_WEB_USER_AGENT_TOKEN);
   const tenant = webApiTenantHeaders();
   for (const [k, v] of Object.entries(tenant)) {
     if (!h.has(k)) h.set(k, v);
   }
   return { ...init, headers: h };
 }
-
-/**
- * User-Agent token appended to in-app `WebView` requests so the Vercel Firewall can
- * bypass bot / rate-limit rules for first-party app traffic.
- *
- * WHY: `withWebApiTenantHeaders` only tags raw `fetch` calls with `X-App`; WebView
- * page loads (and every subresource / XHR they fan out into) cannot send that header.
- * The UA, however, is sent on *every* request the WebView makes, so it is the reliable
- * signal for the Firewall bypass.
- *
- * KEEP IN SYNC: the Vercel Firewall allow rule must match `User-Agent contains
- * "BeautonomiApp"`. The `/customer` suffix lets you distinguish app surfaces if needed.
- */
-export const MOBILE_WEB_USER_AGENT_TOKEN = "BeautonomiApp/customer";
 
 /**
  * Props to spread onto a `react-native-webview` `<WebView>` that loads first-party

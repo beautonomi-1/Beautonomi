@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Salon, YocoDevice } from "@/lib/provider-portal/types";
@@ -36,6 +37,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 export default function YocoDevicesPage() {
+  const { t } = useTranslation();
   const { bundle, isLoading: isConfigLoading } = useConfigBundle();
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
@@ -69,7 +71,7 @@ export default function YocoDevicesPage() {
       setSalons(salonData);
     } catch (error) {
       console.error("Failed to load devices or locations:", error);
-      toast.error("Failed to load devices");
+      toast.error(t("web.provider.settings.pages.sales/yoco-devices.failedToLoadDevices"));
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +102,7 @@ export default function YocoDevicesPage() {
   const handleSave = async () => {
     const name = formData.name.trim();
     if (!name) {
-      toast.error("Device name is required");
+      toast.error(t("web.provider.settings.pages.sales/yoco-devices.deviceNameIsRequired"));
       return;
     }
     const locationId: string | null = formData.location_id ? formData.location_id : null;
@@ -111,7 +113,7 @@ export default function YocoDevicesPage() {
           location_id: locationId,
           is_active: formData.is_active,
         });
-        toast.success("Device updated successfully");
+        toast.success(t("web.provider.settings.pages.sales/yoco-devices.deviceUpdatedSuccessfully"));
       } else {
         await providerApi.createYocoDevice({
           name,
@@ -119,61 +121,61 @@ export default function YocoDevicesPage() {
           is_active: formData.is_active,
           credential_mode: formData.credential_mode,
         });
-        toast.success("Device added successfully");
+        toast.success(t("web.provider.settings.pages.sales/yoco-devices.deviceAddedSuccessfully"));
       }
       setIsDialogOpen(false);
       loadPageData();
     } catch (error) {
       console.error("Failed to save device:", error);
-      toastPlanGateError(error, "Failed to save device");
+      toastPlanGateError(error, t("web.provider.settings.pages.sales/yoco-devices.saveFailed"));
     }
   };
 
   const handleToggleActive = async (device: YocoDevice) => {
     try {
       await providerApi.updateYocoDevice(device.id, { is_active: !device.is_active });
-      toast.success(`Device ${!device.is_active ? "activated" : "deactivated"}`);
+      toast.success(!device.is_active ? t("web.provider.settings.pages.sales/yoco-devices.deviceActivated") : t("web.provider.settings.pages.sales/yoco-devices.deviceDeactivated"));
       loadPageData();
     } catch (error) {
       console.error("Failed to update device:", error);
-      toast.error("Failed to update device");
+      toast.error(t("web.provider.settings.pages.sales/yoco-devices.failedToUpdateDevice"));
     }
   };
 
   const handleDelete = async (device: YocoDevice) => {
-    if (!confirm(`Are you sure you want to delete "${device.name}"?`)) return;
+    if (!confirm(t("web.provider.catalogueProducts.deleteConfirm", { name: device.name }))) return;
     
     try {
       await providerApi.deleteYocoDevice(device.id);
-      toast.success("Device deleted successfully");
+      toast.success(t("web.provider.settings.pages.sales/yoco-devices.deviceDeletedSuccessfully"));
       loadPageData();
     } catch (error) {
       console.error("Failed to delete device:", error);
-      toast.error("Failed to delete device");
+      toast.error(t("web.provider.settings.pages.sales/yoco-devices.failedToDeleteDevice"));
     }
   };
 
   if (isConfigLoading || isLoading) {
-    return <LoadingTimeout loadingMessage="Loading devices..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.sales/yoco-devices.loadingDevices")} />;
   }
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-    { label: "Yoco Devices" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.sales/yoco-devices.sales"), href: "/provider/settings/sales/yoco-integration" },
+    { label: t("web.provider.settings.pages.sales/yoco-devices.yocoDevices") },
   ];
 
   if (!yocoEnabled) {
     return (
-      <SettingsDetailLayout title="Yoco Payment Devices" subtitle="Yoco is currently unavailable" breadcrumbs={breadcrumbs}>
+      <SettingsDetailLayout title={t("web.provider.settings.categories.sales.items.yocoIntegration.title")} subtitle={t("web.provider.settings.categories.sales.items.yocoIntegration.description")} breadcrumbs={breadcrumbs}>
         <SectionCard>
           <div className="py-8 text-center">
             <CreditCard className="mx-auto mb-3 h-8 w-8 text-gray-400" />
-            <h2 className="text-base font-semibold text-gray-900">Yoco payments are disabled</h2>
+            <h2 className="text-base font-semibold text-gray-900">{t("web.provider.settings.pages.sales/yoco-integration.yocoPaymentsDisabled")}</h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
-              Yoco devices and hosted checkout are hidden because the platform has disabled Yoco for this market.
+              {t("web.provider.settings.pages.sales/yoco-devices.yocoHiddenHint")}
             </p>
           </div>
         </SectionCard>
@@ -182,35 +184,35 @@ export default function YocoDevicesPage() {
   }
 
   return (
-    <SettingsDetailLayout title="Yoco Payment Devices" subtitle="Manage your Yoco Web POS devices" breadcrumbs={breadcrumbs}>
+    <SettingsDetailLayout title={t("web.provider.settings.pages.sales/yoco-devices.yocoPaymentDevices")} subtitle={t("web.provider.settings.pages.sales/yoco-devices.manageYourYocoWebPosDevices")} breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Yoco Payment Devices"
-        subtitle="Manage your Yoco Web POS devices"
+        title={t("web.provider.settings.pages.sales/yoco-devices.yocoPaymentDevices")}
+        subtitle={t("web.provider.settings.pages.sales/yoco-devices.manageYourYocoWebPosDevices")}
         actions={
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Device
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.settings.pages.sales/yoco-devices.addDevice")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {editingDevice ? "Edit Device" : "Add New Device"}
+                  {editingDevice ? t("web.provider.settings.pages.sales/yoco-devices.editDevice") : t("web.provider.settings.pages.sales/yoco-devices.addNewDevice")}
                 </DialogTitle>
                 <DialogDescription>
                   {editingDevice
-                    ? "Update this Web POS device. The Yoco device ID is assigned by Yoco and cannot be changed here."
-                    : "Register a Web POS device: Beautonomi calls Yoco's create-device API with the name you enter; Yoco returns the device ID used for charges."}
+                    ? t("web.provider.settings.pages.sales/yoco-devices.editHint")
+                    : t("web.provider.settings.pages.sales/yoco-devices.addHint")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
-                  <Label htmlFor="name">Device name</Label>
+                  <Label htmlFor="name">{t("web.provider.settings.pages.sales/yoco-devices.deviceName")}</Label>
                   <Input
                     id="name"
-                    placeholder="e.g., Main counter terminal"
+                    placeholder={t("web.provider.settings.pages.sales/yoco-devices.eGMainCounterTerminal")}
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="mt-1"
@@ -218,19 +220,19 @@ export default function YocoDevicesPage() {
                 </div>
                 {editingDevice ? (
                   <div>
-                    <Label htmlFor="yoco_device_id_readonly">Yoco device ID</Label>
+                    <Label htmlFor="yoco_device_id_readonly">{t("web.provider.settings.pages.sales/yoco-devices.yocoDeviceId")}</Label>
                     <Input
                       id="yoco_device_id_readonly"
                       readOnly
                       value={editingDevice.device_id}
                       className="mt-1 bg-muted"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Assigned by Yoco when the device was created</p>
+                    <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.sales/yoco-devices.assignedByYoco")}</p>
                   </div>
                 ) : null}
                 {!editingDevice ? (
                   <div>
-                    <Label htmlFor="credential_mode">Device type</Label>
+                    <Label htmlFor="credential_mode">{t("web.provider.settings.pages.sales/yoco-devices.deviceType")}</Label>
                     <Select
                       value={formData.credential_mode}
                       onValueChange={(value) =>
@@ -241,20 +243,20 @@ export default function YocoDevicesPage() {
                       }
                     >
                       <SelectTrigger id="credential_mode" className="mt-1">
-                        <SelectValue placeholder="Choose device type" />
+                        <SelectValue placeholder={t("web.provider.settings.pages.sales/yoco-devices.chooseDeviceType")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="web_pos">Physical Web POS terminal</SelectItem>
-                        <SelectItem value="virtual_checkout">Virtual checkout link / QR</SelectItem>
+                        <SelectItem value="web_pos">{t("web.provider.settings.pages.sales/yoco-devices.physicalTerminal")}</SelectItem>
+                        <SelectItem value="virtual_checkout">{t("web.provider.settings.pages.sales/yoco-devices.virtualCheckout")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-gray-500 mt-1">
-                      Virtual checkout uses your Yoco Checkout secret key and does not create a physical terminal.
+                      {t("web.provider.settings.pages.sales/yoco-devices.virtualHint")}
                     </p>
                   </div>
                 ) : null}
                 <div>
-                  <Label htmlFor="location_id">Location (optional)</Label>
+                  <Label htmlFor="location_id">{t("web.provider.settings.pages.sales/yoco-devices.locationOptional")}</Label>
                   <Select
                     value={formData.location_id || "none"}
                     onValueChange={(value) =>
@@ -262,10 +264,10 @@ export default function YocoDevicesPage() {
                     }
                   >
                     <SelectTrigger id="location_id" className="mt-1">
-                      <SelectValue placeholder="All locations" />
+                      <SelectValue placeholder={t("web.provider.settings.pages.sales/yoco-devices.allLocations")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">All locations</SelectItem>
+                      <SelectItem value="none">{t("web.provider.settings.pages.sales/yoco-devices.allLocations")}</SelectItem>
                       {salons.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
@@ -275,7 +277,7 @@ export default function YocoDevicesPage() {
                   </Select>
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="is_active">Active</Label>
+                  <Label htmlFor="is_active">{t("web.provider.common.active")}</Label>
                   <Switch
                     id="is_active"
                     checked={formData.is_active}
@@ -285,10 +287,10 @@ export default function YocoDevicesPage() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
                 <Button onClick={handleSave} disabled={!formData.name.trim()}>
-                  {editingDevice ? "Update" : "Add"} device
+                  {editingDevice ? t("web.provider.settings.pages.sales/yoco-devices.updateDevice") : t("web.provider.settings.pages.sales/yoco-devices.addDeviceLabel")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -300,16 +302,16 @@ export default function YocoDevicesPage() {
         <div className="flex items-start gap-2">
           <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800">
-            <strong>Refunds:</strong> Card refunds for Yoco payments are processed in your{" "}
+            <strong>{t("web.provider.settings.pages.sales/yoco-devices.refundsStrong")}</strong> {t("web.provider.settings.pages.sales/yoco-devices.refundsBody")}{" "}
             <a
               href="https://dashboard.yoco.com"
               target="_blank"
               rel="noopener noreferrer"
               className="underline font-medium"
             >
-              Yoco dashboard
+              {t("web.provider.settings.pages.sales/yoco-devices.yocoDashboard")}
             </a>
-            . When you refund a payment there, we sync the refund to the booking automatically.
+            {t("web.provider.settings.pages.sales/yoco-devices.refundsSync")}
           </div>
         </div>
       </SectionCard>
@@ -317,10 +319,10 @@ export default function YocoDevicesPage() {
       {devices.length === 0 ? (
         <SectionCard className="p-12 text-center">
           <EmptyState
-            title="No payment devices"
-            description="Add your first Yoco Web POS device to start accepting card payments"
+            title={t("web.provider.settings.pages.sales/yoco-devices.noPaymentDevices")}
+            description={t("web.provider.settings.pages.sales/yoco-devices.emptyHint")}
             action={{
-              label: "Add Device",
+              label: t("web.provider.settings.pages.sales/yoco-devices.addDevice"),
               onClick: handleCreate,
             }}
           />
@@ -347,16 +349,16 @@ export default function YocoDevicesPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => handleEdit(device)}>
-                      Edit
+                      {t("web.provider.common.edit")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleToggleActive(device)}>
-                      {device.is_active ? "Deactivate" : "Activate"}
+                      {device.is_active ? t("web.provider.settings.pages.sales/yoco-devices.deactivate") : t("web.provider.settings.pages.sales/yoco-devices.activate")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleDelete(device)}
                       className="text-red-600"
                     >
-                      Delete
+                      {t("web.provider.common.delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -370,30 +372,30 @@ export default function YocoDevicesPage() {
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Status:</span>
+                  <span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-devices.status")}</span>
                   <Badge variant={device.is_active ? "default" : "secondary"}>
                     {device.is_active ? (
                       <>
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Active
+                        <CheckCircle2 className="w-3 h-3 me-1" />
+                        {t("web.provider.common.active")}
                       </>
                     ) : (
                       <>
-                        <XCircle className="w-3 h-3 mr-1" />
-                        Inactive
+                        <XCircle className="w-3 h-3 me-1" />
+                        {t("web.provider.common.inactive")}
                       </>
                     )}
                   </Badge>
                 </div>
                 {device.total_transactions !== undefined && (
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Transactions:</span>
+                    <span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-devices.transactions")}</span>
                     <span className="font-medium">{device.total_transactions}</span>
                   </div>
                 )}
                 {device.total_amount !== undefined && (
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-devices.totalAmount")}</span>
                     <span className="font-medium">
                       <Money amount={device.total_amount / 100} />
                     </span>
@@ -401,7 +403,7 @@ export default function YocoDevicesPage() {
                 )}
                 {device.last_used && (
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>Last used:</span>
+                    <span>{t("web.provider.settings.pages.sales/yoco-devices.lastUsed")}</span>
                     <span>{new Date(device.last_used).toLocaleDateString()}</span>
                   </div>
                 )}

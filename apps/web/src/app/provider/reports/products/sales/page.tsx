@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -58,15 +59,16 @@ interface ProductSalesData {
   }>;
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  bookingLines: "Appointment add-ons",
-  orderLines: "Retail orders",
-  profit: "Profit",
-  topProducts: "Top products",
-  averageRevenuePerUnit: "Avg revenue per unit",
+const BASIS_LABEL_KEYS: Record<string, string> = {
+  bookingLines: "web.provider.reports.pages.products/sales.appointmentAddOns",
+  orderLines: "web.provider.reports.pages.products/sales.retailOrders",
+  profit: "web.provider.reports.pages.products/sales.profit",
+  topProducts: "web.provider.reports.pages.products/sales.topProducts",
+  averageRevenuePerUnit: "web.provider.reports.pages.products/sales.avgRevenuePerUnit",
 };
 
 export default function ProductSalesReport() {
+  const { t } = useTranslation();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -127,10 +129,10 @@ export default function ProductSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Product Sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.products/sales.title") },
         ]}
       >
         <ReportSkeleton />
@@ -142,15 +144,15 @@ export default function ProductSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Product Sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.products/sales.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Product Sales" />
-          <ReportSubscriptionRequired feature="Product Sales" />
+          <PageHeader title={t("web.provider.reports.pages.products/sales.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.products/sales.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -160,15 +162,15 @@ export default function ProductSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Product Sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.products/sales.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load product sales data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.products/sales.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -183,18 +185,18 @@ export default function ProductSalesReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Product Sales" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.products/sales.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
-            title="Product Sales"
-            subtitle="Retail product lines: appointment add-ons (by scheduled date) plus paid orders (by order date). Totals combine both."
+            title={t("web.provider.reports.pages.products/sales.title")}
+            subtitle={t("web.provider.reports.pages.products/sales.subtitle")}
           />
           <Button
             variant="outline"
@@ -206,8 +208,8 @@ export default function ProductSalesReport() {
             className="gap-2 min-h-[44px] touch-manipulation"
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export</span>
-            <span className="sm:hidden">Export</span>
+            <span className="hidden sm:inline">{t("web.provider.dataTableShell.export")}</span>
+            <span className="sm:hidden">{t("web.provider.dataTableShell.export")}</span>
           </Button>
         </div>
 
@@ -219,13 +221,13 @@ export default function ProductSalesReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+              {data.timezone ? <span>{t("web.provider.reports.pages.products/sales.timezoneDot", { tz: data.timezone })}</span> : null}
               {data.fromYmd && data.toYmd ? (
                 <span>
-                  Calendar window · {data.fromYmd} – {data.toYmd}
+                  {t("web.provider.reports.pages.products/sales.calendarWindow", { from: data.fromYmd, to: data.toYmd })}
                 </span>
               ) : null}
             </div>
@@ -235,12 +237,12 @@ export default function ProductSalesReport() {
         {basisEntries.length > 0 ? (
           <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+              <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-violet-950/95">
               {basisEntries.map(([k, v]) => (
                 <p key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{BASIS_LABEL_KEYS[k] ? t(BASIS_LABEL_KEYS[k]) : k} · </span>
                   {v}
                 </p>
               ))}
@@ -252,7 +254,7 @@ export default function ProductSalesReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Units sold</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.products/sales.unitsSold")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
@@ -264,7 +266,7 @@ export default function ProductSalesReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.products/sales.totalRevenue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
@@ -276,7 +278,7 @@ export default function ProductSalesReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total profit</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.products/sales.totalProfit")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
@@ -286,14 +288,14 @@ export default function ProductSalesReport() {
                 </p>
               </div>
               <p className="mt-2 text-xs text-gray-500 leading-snug">
-                Revenue minus cost from Σ(supply_price × quantity) where supply_price is set on the product.
+                {t("web.provider.reports.pages.products/sales.profitHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg revenue per unit sold</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.products/sales.avgRevenuePerUnitSold")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
@@ -301,7 +303,7 @@ export default function ProductSalesReport() {
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(avgPerUnit)}</p>
               </div>
               <p className="mt-2 text-xs text-gray-500 leading-snug">
-                total revenue ÷ total units across both sources (not an average per distinct product).
+                {t("web.provider.reports.pages.products/sales.avgHint")}
               </p>
             </CardContent>
           </Card>
@@ -309,24 +311,23 @@ export default function ProductSalesReport() {
 
         {(typeof data.unitsFromBookings === "number" || typeof data.unitsFromOrders === "number") && (
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">By source</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">{t("web.provider.reports.pages.products/sales.bySource")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Card className="border-amber-100 bg-amber-50/50 shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base text-amber-950 flex items-center gap-2">
                     <Layers className="w-4 h-4" />
-                    Appointment add-ons
+                    {t("web.provider.reports.pages.products/sales.appointmentAddOns")}
                   </CardTitle>
                   <p className="text-xs text-amber-900/85 font-normal leading-snug">
-                    Lines on bookings whose scheduled date falls in the window (status completed, confirmed, in progress,
-                    checked in). Location filter applies to the booking when set.
+                    {t("web.provider.reports.pages.products/sales.addOnsHint")}
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-1">
                   <p className="text-2xl font-semibold tabular-nums text-amber-950">
                     {fmt(data.revenueFromBookings ?? 0)}
                   </p>
-                  <p className="text-sm text-amber-900/90">{data.unitsFromBookings ?? 0} units</p>
+                  <p className="text-sm text-amber-900/90">{t("web.provider.reports.pages.products/sales.unitsCount", { count: data.unitsFromBookings ?? 0 })}</p>
                 </CardContent>
               </Card>
 
@@ -334,18 +335,17 @@ export default function ProductSalesReport() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base text-teal-950 flex items-center gap-2">
                     <Package className="w-4 h-4" />
-                    Paid retail orders
+                    {t("web.provider.reports.pages.products/sales.paidRetailOrders")}
                   </CardTitle>
                   <p className="text-xs text-teal-900/85 font-normal leading-snug">
-                    Items on product_orders with payment_status paid and created_at in the window. Appointment-mirror
-                    orders are excluded (those lines are counted under add-ons).
+                    {t("web.provider.reports.pages.products/sales.ordersHint")}
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-1">
                   <p className="text-2xl font-semibold tabular-nums text-teal-950">
                     {fmt(data.revenueFromOrders ?? 0)}
                   </p>
-                  <p className="text-sm text-teal-900/90">{data.unitsFromOrders ?? 0} units</p>
+                  <p className="text-sm text-teal-900/90">{t("web.provider.reports.pages.products/sales.unitsCount", { count: data.unitsFromOrders ?? 0 })}</p>
                 </CardContent>
               </Card>
             </div>
@@ -356,9 +356,9 @@ export default function ProductSalesReport() {
         {data.topProducts && data.topProducts.length > 0 ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Top products</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.products/sales.topProducts")}</CardTitle>
               <p className="text-sm text-gray-500 font-normal mt-1">
-                Ranked by line revenue in this period (up to 10).
+                {t("web.provider.reports.pages.products/sales.topProductsHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -375,15 +375,15 @@ export default function ProductSalesReport() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{product.productName}</p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
-                          <p className="text-xs text-gray-600">{product.quantitySold} sold</p>
-                          <p className="text-xs text-gray-500">Avg line price: {fmt(product.averagePrice)}</p>
+                          <p className="text-xs text-gray-600">{t("web.provider.reports.pages.products/sales.soldCount", { count: product.quantitySold })}</p>
+                          <p className="text-xs text-gray-500">{t("web.provider.reports.pages.products/sales.avgLinePrice", { amount: fmt(product.averagePrice) })}</p>
                         </div>
                       </div>
                     </div>
-                    <div className="text-right shrink-0 pl-3">
+                    <div className="text-end shrink-0 ps-3">
                       <p className="text-sm font-semibold tabular-nums text-gray-900">{fmt(product.revenue)}</p>
                       {product.profit != null && (
-                        <p className="text-xs text-gray-500 mt-0.5 tabular-nums">Profit: {fmt(product.profit)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5 tabular-nums">{t("web.provider.reports.pages.products/sales.profitAmount", { amount: fmt(product.profit) })}</p>
                       )}
                     </div>
                   </div>
@@ -394,11 +394,11 @@ export default function ProductSalesReport() {
         ) : (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Top products</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.products/sales.topProducts")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600 text-center py-8">
-                No product sales data available for the selected period.
+                {t("web.provider.reports.pages.products/sales.emptyTop")}
               </p>
             </CardContent>
           </Card>
@@ -408,9 +408,9 @@ export default function ProductSalesReport() {
         {data.productsByCategory.length > 0 && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>By category</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.products/sales.byCategory")}</CardTitle>
               <p className="text-sm text-gray-500 font-normal mt-1">
-                Aggregated line revenue and profit by product category for the same lines as above.
+                {t("web.provider.reports.pages.products/sales.byCategoryHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -421,12 +421,12 @@ export default function ProductSalesReport() {
                     className="p-4 rounded-xl border border-gray-100 bg-gray-50/80 hover:bg-gray-50 transition-colors"
                   >
                     <p className="text-sm font-medium text-gray-900 mb-2 capitalize">
-                      {category.category || "Uncategorized"}
+                      {category.category || t("web.provider.reports.pages.products/inventory.uncategorized")}
                     </p>
-                    <p className="text-lg font-semibold tabular-nums text-gray-900">{category.quantitySold} sold</p>
+                    <p className="text-lg font-semibold tabular-nums text-gray-900">{t("web.provider.reports.pages.products/sales.soldCount", { count: category.quantitySold })}</p>
                     <p className="text-xs text-gray-600 mt-1">
-                      Revenue {fmt(category.revenue)}
-                      {category.profit != null && <> · Profit {fmt(category.profit)}</>}
+                      {t("web.provider.reports.pages.products/sales.revenueAmount", { amount: fmt(category.revenue) })}
+                      {category.profit != null && <>{t("web.provider.reports.pages.products/sales.profitDot", { amount: fmt(category.profit) })}</>}
                     </p>
                   </div>
                 ))}

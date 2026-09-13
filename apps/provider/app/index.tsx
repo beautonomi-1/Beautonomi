@@ -60,6 +60,8 @@ function portalFromRole(role: string | undefined | null): string | null {
 
 export default function Index() {
   const { t } = useTranslation();
+  const ix = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.appIndex.${key}`, opts) as string;
   const { session, loading, signOut } = useAuth();
   const [portalState, setPortalState] = useState<"idle" | "loading" | "wrong_app" | "ok" | "error">("idle");
   const [portalErrorKind, setPortalErrorKind] = useState<PortalErrorKind | null>(null);
@@ -714,42 +716,42 @@ export default function Index() {
       switch (kind) {
         case "unauthorized":
           return {
-            title: "Please sign in again",
-            body: "Your session expired while we were checking your provider access.",
-            primaryLabel: "Sign in again",
+            title: ix("unauthorizedTitle"),
+            body: ix("unauthorizedBody"),
+            primaryLabel: ix("signInAgain"),
             showRetry: false,
             showSignOut: false,
           };
         case "timeout":
           return {
-            title: "Taking longer than expected",
-            body: "We couldn't reach our servers in time. Check your connection and try again.",
-            primaryLabel: "Try again",
+            title: ix("timeoutTitle"),
+            body: ix("timeoutBody"),
+            primaryLabel: ix("tryAgain"),
             showRetry: true,
             showSignOut: true,
           };
         case "no_portal":
           return {
-            title: "We couldn't place your account",
-            body: "Your account is signed in but we couldn't confirm a provider role. Retry or sign out and back in.",
-            primaryLabel: "Try again",
+            title: ix("noPortalTitle"),
+            body: ix("noPortalBody"),
+            primaryLabel: ix("tryAgain"),
             showRetry: true,
             showSignOut: true,
           };
         case "config_missing":
           return {
-            title: "App not configured",
-            body: "This build is missing a required setting (EXPO_PUBLIC_APP_URL). Please reinstall the latest provider app from the store, or contact support if the problem persists.",
-            primaryLabel: "Sign out",
+            title: ix("configTitle"),
+            body: ix("configBody"),
+            primaryLabel: ix("signOut"),
             showRetry: false,
             showSignOut: false,
           };
         case "network":
         default:
           return {
-            title: "Couldn't verify your account",
-            body: "We had trouble confirming your provider access. Check your connection and try again.",
-            primaryLabel: "Try again",
+            title: ix("networkTitle"),
+            body: ix("networkBody"),
+            primaryLabel: ix("tryAgain"),
             showRetry: true,
             showSignOut: true,
           };
@@ -757,11 +759,13 @@ export default function Index() {
     })();
 
     const handlePrimary = () => {
-      clearPortalCache();
       if (kind === "unauthorized" || kind === "config_missing") {
+        clearPortalCache();
         signOut();
         return;
       }
+      // Keep persisted portal on transient retries — clearing cache forces a cold
+      // network probe and drops the render-immediately fallback on slow radios.
       setPortalState("idle");
       setPortalErrorKind(null);
       setPortalRetryKey((k) => k + 1);
@@ -792,9 +796,9 @@ export default function Index() {
               signOut();
             }}
             accessibilityRole="button"
-            accessibilityLabel="Sign out"
+            accessibilityLabel={ix("signOut")}
           >
-            <Text style={{ color: Colors.gray[500], fontSize: 14, textDecorationLine: "underline" }}>Sign out</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, textDecorationLine: "underline" }}>{ix("signOut")}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -809,10 +813,10 @@ export default function Index() {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
         <Text style={{ fontSize: 16, color: Colors.gray[700], textAlign: "center", marginBottom: 8 }}>
-          {"Couldn't load your profile"}
+          {ix("profileLoadFailed")}
         </Text>
         <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
-          Check your connection and try again.
+          {ix("checkConnection")}
         </Text>
         <TouchableOpacity
           onPress={() => {
@@ -821,7 +825,7 @@ export default function Index() {
           }}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{ix("retry")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -845,10 +849,10 @@ export default function Index() {
       return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
           <Text style={{ fontSize: 16, color: Colors.gray[700], textAlign: "center", marginBottom: 8 }}>
-            Couldn&apos;t load your salon membership
+            {ix("membershipFailed")}
           </Text>
           <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
-            Your account is signed in, but we couldn&apos;t attach a business profile. Retry, start your own business, or ask the owner to resend your invite.
+            {ix("membershipBody")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -857,7 +861,7 @@ export default function Index() {
             }}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginBottom: 12 }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{ix("retry")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -875,13 +879,13 @@ export default function Index() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Start my own business</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>{ix("startOwnBusiness")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => signOut().catch(() => undefined)}
             style={{ paddingHorizontal: 24, paddingVertical: 12 }}
           >
-            <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>Sign out</Text>
+            <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>{ix("signOut")}</Text>
           </TouchableOpacity>
         </View>
       );

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Loader2, MapPin, Navigation, Clock, DollarSign, TrendingDown, Route } f
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/pricing/calculate-booking-price-complete";
 import { fetcher } from "@/lib/http/fetcher";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface RouteSegment {
   id: string;
@@ -51,6 +53,7 @@ interface RouteData {
 }
 
 export default function RoutesPage() {
+  const { t } = useTranslation();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [loading, setLoading] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
@@ -90,7 +93,7 @@ export default function RoutesPage() {
       );
       const data = res.data;
 
-      toast.success(`Route optimized! Saved ${formatCurrency(data?.savings?.amount_saved ?? 0)} (${data?.savings?.percentage_saved ?? 0}%)`);
+      toast.success(t("web.provider.routesPage.optimizedToast", { amount: formatCurrency(data?.savings?.amount_saved ?? 0), pct: data?.savings?.percentage_saved ?? 0 }));
 
       fetchRoute();
     } catch (error: any) {
@@ -101,7 +104,7 @@ export default function RoutesPage() {
   };
 
   const formatTime = (isoString: string) => {
-    return new Date(isoString).toLocaleTimeString('en-US', {
+    return new Date(isoString).toLocaleTimeString(getDefaultMoneyLocale(), {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -110,9 +113,9 @@ export default function RoutesPage() {
   return (
     <div className="container max-w-7xl py-8 space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">Route Optimizer</h1>
+        <h1 className="text-3xl font-bold">{t("web.provider.routesPage.title")}</h1>
         <p className="text-muted-foreground mt-2">
-          Optimize travel routes for at-home appointments and reduce travel fees
+{t("web.provider.routesPage.subtitle")}
         </p>
       </div>
 
@@ -120,8 +123,8 @@ export default function RoutesPage() {
         {/* Left Column - Date Selector */}
         <Card>
           <CardHeader>
-            <CardTitle>Select Date</CardTitle>
-            <CardDescription>Choose a date to view or optimize routes</CardDescription>
+            <CardTitle>{t("web.provider.routesPage.selectDate")}</CardTitle>
+            <CardDescription>{t("web.provider.routesPage.selectDateHint")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Calendar
@@ -137,13 +140,13 @@ export default function RoutesPage() {
             >
               {optimizing ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Optimizing...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                  {t("web.provider.routesPage.optimizing")}
                 </>
               ) : (
                 <>
-                  <Route className="w-4 h-4 mr-2" />
-                  Optimize Route
+                  <Route className="w-4 h-4 me-2" />
+                  {t("web.provider.routesPage.optimizeRoute")}
                 </>
               )}
             </Button>
@@ -162,13 +165,13 @@ export default function RoutesPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <Navigation className="w-12 h-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Route Found</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("web.provider.routesPage.noRoute")}</h3>
                 <p className="text-muted-foreground mb-4">
-                  No at-home appointments scheduled for this date, or route hasn't been optimized yet.
+{t("web.provider.routesPage.noRouteHint")}
                 </p>
                 <Button onClick={handleOptimize} disabled={optimizing}>
-                  <Route className="w-4 h-4 mr-2" />
-                  Create Route
+                  <Route className="w-4 h-4 me-2" />
+                  {t("web.provider.routesPage.createRoute")}
                 </Button>
               </CardContent>
             </Card>
@@ -180,7 +183,7 @@ export default function RoutesPage() {
                   <CardTitle className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
                       <Route className="w-6 h-6 text-primary" />
-                      Route for {new Date(routeData.route.date).toLocaleDateString()}
+{t("web.provider.routesPage.routeFor", { date: new Date(routeData.route.date).toLocaleDateString() })}
                     </span>
                     <Badge variant={routeData.route.optimization_status === 'optimized' ? 'default' : 'secondary'}>
                       {routeData.route.optimization_status}
@@ -190,19 +193,19 @@ export default function RoutesPage() {
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-background rounded-lg p-4 border">
-                      <p className="text-sm text-muted-foreground mb-1">Appointments</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t("web.provider.routesPage.appointments")}</p>
                       <p className="text-2xl font-bold">{routeData.segments.length}</p>
                     </div>
                     <div className="bg-background rounded-lg p-4 border">
-                      <p className="text-sm text-muted-foreground mb-1">Total Distance</p>
-                      <p className="text-2xl font-bold">{routeData.route.total_distance_km.toFixed(1)} km</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t("web.provider.routesPage.totalDistance")}</p>
+                      <p className="text-2xl font-bold">{t("web.provider.routesPage.km", { km: routeData.route.total_distance_km.toFixed(1) })}</p>
                     </div>
                     <div className="bg-background rounded-lg p-4 border">
-                      <p className="text-sm text-muted-foreground mb-1">Travel Time</p>
-                      <p className="text-2xl font-bold">{routeData.route.total_duration_minutes} min</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t("web.provider.routesPage.travelTime")}</p>
+                      <p className="text-2xl font-bold">{t("web.provider.routesPage.min", { min: routeData.route.total_duration_minutes })}</p>
                     </div>
                     <div className="bg-background rounded-lg p-4 border">
-                      <p className="text-sm text-muted-foreground mb-1">Travel Fees</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t("web.provider.routesPage.travelFees")}</p>
                       <p className="text-2xl font-bold">{formatCurrency(routeData.savings.chained_total)}</p>
                     </div>
                   </div>
@@ -213,13 +216,13 @@ export default function RoutesPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-green-700 dark:text-green-300 mb-1">
-                            💰 Route Optimization Savings
+{t("web.provider.routesPage.savingsTitle")}
                           </p>
                           <p className="text-2xl font-bold text-green-900 dark:text-green-100">
                             {formatCurrency(routeData.savings.savings)}
                           </p>
                           <p className="text-sm text-green-700 dark:text-green-300">
-                            {routeData.savings.savings_percentage.toFixed(1)}% less than standard fees
+{t("web.provider.routesPage.savingsLess", { pct: routeData.savings.savings_percentage.toFixed(1) })}
                           </p>
                         </div>
                         <TrendingDown className="w-12 h-12 text-green-600" />
@@ -232,9 +235,9 @@ export default function RoutesPage() {
               {/* Route Segments */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Route Details</CardTitle>
+                  <CardTitle>{t("web.provider.routesPage.routeDetails")}</CardTitle>
                   <CardDescription>
-                    Appointment sequence with travel information
+{t("web.provider.routesPage.routeDetailsHint")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -244,8 +247,8 @@ export default function RoutesPage() {
                       🏢
                     </div>
                     <div className="flex-1">
-                      <p className="font-semibold">Starting Location</p>
-                      <p className="text-sm text-muted-foreground">Your salon/office</p>
+                      <p className="font-semibold">{t("web.provider.routesPage.startingLocation")}</p>
+                      <p className="text-sm text-muted-foreground">{t("web.provider.routesPage.yourSalon")}</p>
                     </div>
                   </div>
 
@@ -253,16 +256,16 @@ export default function RoutesPage() {
                   {routeData.segments.map((segment, index) => (
                     <div key={segment.id}>
                       {/* Travel Arrow */}
-                      <div className="flex items-center gap-2 pl-4 py-2">
+                      <div className="flex items-center gap-2 ps-4 py-2">
                         <Navigation className="w-4 h-4 text-muted-foreground" />
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
-                            {segment.distance_km.toFixed(1)} km
+                            {t("web.provider.routesPage.km", { km: segment.distance_km.toFixed(1) })}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {segment.duration_minutes} min
+                            {t("web.provider.routesPage.min", { min: segment.duration_minutes })}
                           </span>
                           <span className="flex items-center gap-1">
                             <DollarSign className="w-3 h-3" />
@@ -282,10 +285,10 @@ export default function RoutesPage() {
                             <Badge variant="outline">{formatTime(segment.booking.scheduled_at)}</Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
-                            {segment.booking.duration} min appointment • {segment.booking.customer.phone}
+{t("web.provider.routesPage.appointmentMeta", { duration: segment.booking.duration, phone: segment.booking.customer.phone })}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Booking #{segment.booking.ref_number}
+{t("web.provider.routesPage.bookingRef", { ref: segment.booking.ref_number })}
                           </p>
                         </div>
                       </div>
@@ -293,9 +296,9 @@ export default function RoutesPage() {
                   ))}
 
                   {/* Return Journey (Optional) */}
-                  <div className="flex items-center gap-2 pl-4 py-2 border-t pt-4">
+                  <div className="flex items-center gap-2 ps-4 py-2 border-t pt-4">
                     <Navigation className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Return to salon (optional)</p>
+                    <p className="text-sm text-muted-foreground">{t("web.provider.routesPage.returnToSalon")}</p>
                   </div>
                 </CardContent>
               </Card>

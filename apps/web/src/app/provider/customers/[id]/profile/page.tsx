@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -56,6 +57,7 @@ interface CustomerProfileData {
 }
 
 export default function CustomerProfilePage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const customerId = params.id as string;
@@ -80,10 +82,10 @@ export default function CustomerProfilePage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load customer profile";
+          : t("web.provider.customerProfilePage.failedToLoad");
       setError(errorMessage);
       console.error("Error loading customer profile:", err);
     } finally {
@@ -96,7 +98,7 @@ export default function CustomerProfilePage() {
       <RoleGuard allowedRoles={["provider_owner", "provider_staff", "superadmin"]}>
         <div className="min-h-screen bg-gray-50">
           <div className="max-w-5xl mx-auto p-4 md:p-6 lg:p-8">
-            <LoadingTimeout loadingMessage="Loading customer profile..." />
+            <LoadingTimeout loadingMessage={t("web.provider.customerProfilePage.loading")} />
           </div>
         </div>
       </RoleGuard>
@@ -109,9 +111,9 @@ export default function CustomerProfilePage() {
         <div className="min-h-screen bg-gray-50">
           <div className="max-w-5xl mx-auto p-4 md:p-6 lg:p-8">
             <div className="text-center py-12">
-              <p className="text-gray-600 mb-4">{error || "Customer profile not found"}</p>
+              <p className="text-gray-600 mb-4">{error || t("web.provider.customerProfilePage.notFound")}</p>
               <Button onClick={() => router.back()} variant="outline">
-                Go Back
+                {t("web.provider.common.goBack")}
               </Button>
             </div>
           </div>
@@ -129,9 +131,9 @@ export default function CustomerProfilePage() {
         <div className="max-w-5xl mx-auto p-4 md:p-6 lg:p-8">
           <Breadcrumb
             items={[
-              { label: "Provider Portal", href: "/provider/dashboard" },
-              { label: "Customers", href: "/provider/messaging" },
-              { label: customer.full_name || "Customer Profile" },
+              { label: t("web.provider.customerProfilePage.breadcrumbPortal"), href: "/provider/dashboard" },
+              { label: t("web.provider.customerProfilePage.breadcrumbCustomers"), href: "/provider/messaging" },
+              { label: customer.full_name || t("web.provider.clientsPage.customerFallback") },
             ]}
           />
 
@@ -141,8 +143,8 @@ export default function CustomerProfilePage() {
               onClick={() => router.back()}
               className="mb-4"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              <ArrowLeft className="h-4 w-4 me-2" />
+              {t("web.provider.common.back")}
             </Button>
 
             {/* Customer Header */}
@@ -165,11 +167,11 @@ export default function CustomerProfilePage() {
                 </div>
                 <div className="flex-1">
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                    {customer.full_name || "Customer"}
+                    {customer.full_name || t("web.provider.clientsPage.customerFallback")}
                   </h1>
                   {memberSince && (
                     <p className="text-sm text-gray-500 mb-4">
-                      Member since {memberSince}
+{t("web.provider.customerProfilePage.memberSince", { date: memberSince })}
                     </p>
                   )}
                   {customer.rating_average !== undefined && customer.rating_average > 0 && (
@@ -181,7 +183,7 @@ export default function CustomerProfilePage() {
                         </span>
                       </div>
                       <span className="text-sm text-gray-500">
-                        ({customer.review_count || 0} {customer.review_count === 1 ? 'review' : 'reviews'})
+{t("web.provider.customerProfilePage.reviewCount", { count: customer.review_count || 0 })}
                       </span>
                     </div>
                   )}
@@ -206,20 +208,20 @@ export default function CustomerProfilePage() {
             {/* About Section */}
             {profile?.about && (
               <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">About</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">{t("web.provider.customerProfilePage.about")}</h2>
                 <p className="text-gray-700 whitespace-pre-wrap">{profile.about}</p>
               </div>
             )}
 
             {/* Profile Information */}
             <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Profile Information</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">{t("web.provider.customerProfilePage.profileInformation")}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {profile?.school && (
                   <div className="flex items-start gap-3">
                     <GraduationCap className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">School</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.school")}</p>
                       <p className="text-gray-900">{profile.school}</p>
                     </div>
                   </div>
@@ -228,7 +230,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Briefcase className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Work</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.work")}</p>
                       <p className="text-gray-900">{profile.work}</p>
                     </div>
                   </div>
@@ -237,7 +239,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Location</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.common.location")}</p>
                       <p className="text-gray-900">{profile.location}</p>
                     </div>
                   </div>
@@ -246,7 +248,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Languages className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Languages</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.languages")}</p>
                       <p className="text-gray-900">{profile.languages.join(", ")}</p>
                     </div>
                   </div>
@@ -255,7 +257,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Calendar className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Decade Born</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.decadeBorn")}</p>
                       <p className="text-gray-900">{profile.decade_born}</p>
                     </div>
                   </div>
@@ -264,7 +266,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Music className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Favorite Song</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.favoriteSong")}</p>
                       <p className="text-gray-900">{profile.favorite_song}</p>
                     </div>
                   </div>
@@ -273,7 +275,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Heart className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Obsessed With</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.obsessedWith")}</p>
                       <p className="text-gray-900">{profile.obsessed_with}</p>
                     </div>
                   </div>
@@ -282,7 +284,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Lightbulb className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Fun Fact</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.funFact")}</p>
                       <p className="text-gray-900">{profile.fun_fact}</p>
                     </div>
                   </div>
@@ -291,7 +293,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Wand2 className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Useless Skill</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.uselessSkill")}</p>
                       <p className="text-gray-900">{profile.useless_skill}</p>
                     </div>
                   </div>
@@ -300,7 +302,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <BookOpen className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Biography Title</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.biographyTitle")}</p>
                       <p className="text-gray-900">{profile.biography_title}</p>
                     </div>
                   </div>
@@ -309,7 +311,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <Clock className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Spends Time</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.spendsTime")}</p>
                       <p className="text-gray-900">{profile.spend_time}</p>
                     </div>
                   </div>
@@ -318,7 +320,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-start gap-3">
                     <PawPrint className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Pets</p>
+                      <p className="text-sm font-medium text-gray-500">{t("web.provider.customerProfilePage.pets")}</p>
                       <p className="text-gray-900">{profile.pets}</p>
                     </div>
                   </div>
@@ -328,7 +330,7 @@ export default function CustomerProfilePage() {
               {/* Interests */}
               {profile?.interests && profile.interests.length > 0 && (
                 <div className="mt-6 pt-6 border-t">
-                  <p className="text-sm font-medium text-gray-500 mb-3">Interests</p>
+                  <p className="text-sm font-medium text-gray-500 mb-3">{t("web.provider.customerProfilePage.interests")}</p>
                   <div className="flex flex-wrap gap-2">
                     {profile.interests.map((interest, idx) => (
                       <span
@@ -347,7 +349,7 @@ export default function CustomerProfilePage() {
             {bookings.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Booking History ({bookings.length})
+{t("web.provider.customerProfilePage.bookingHistory", { count: bookings.length })}
                 </h2>
                 <div className="space-y-3">
                   {bookings.map((booking) => (
@@ -357,13 +359,13 @@ export default function CustomerProfilePage() {
                     >
                       <div>
                         <p className="font-medium text-gray-900">
-                          Booking #{booking.booking_number}
+{t("web.provider.customerProfilePage.bookingNumber", { number: booking.booking_number })}
                         </p>
                         <p className="text-sm text-gray-500">
                           {format(new Date(booking.scheduled_at), "MMM d, yyyy 'at' h:mm a")}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="font-medium text-gray-900">
                           {booking.currency} {booking.total_amount.toFixed(2)}
                         </p>
@@ -386,7 +388,7 @@ export default function CustomerProfilePage() {
             {reviews.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Reviews Left ({reviews.length})
+{t("web.provider.customerProfilePage.reviewsLeft", { count: reviews.length })}
                 </h2>
                 <div className="space-y-4">
                   {reviews.map((review) => (
@@ -402,7 +404,7 @@ export default function CustomerProfilePage() {
                             }`}
                           />
                         ))}
-                        <span className="text-sm text-gray-500 ml-2">
+                        <span className="text-sm text-gray-500 ms-2">
                           {format(new Date(review.created_at), "MMM d, yyyy")}
                         </span>
                       </div>

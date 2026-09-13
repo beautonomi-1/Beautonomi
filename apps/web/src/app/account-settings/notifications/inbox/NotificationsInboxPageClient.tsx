@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetcher, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import Link from "next/link";
@@ -28,6 +29,7 @@ import BackButton from "../../components/back-button";
 import Breadcrumb from "../../components/breadcrumb";
 import { deriveCustomerNotificationHref } from "@/lib/customer/derive-customer-notification-url";
 import type { InboxNotification, NotificationsInboxInitial } from "./notification-inbox-types";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 interface NotificationResponse {
   notifications: InboxNotification[];
@@ -86,15 +88,15 @@ const getIconColor = (type: string, priority: string = "low") => {
   }
 };
 
-const formatTimeAgo = (ts: string) => {
+const formatTimeAgo = (ts: string, t: TFunction) => {
   const now = new Date();
   const time = new Date(ts);
   const diff = Math.floor((now.getTime() - time.getTime()) / 1000);
-  if (diff < 60) return "Just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return time.toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
+  if (diff < 60) return t("web.accountSettings.inbox.justNow");
+  if (diff < 3600) return t("web.accountSettings.inbox.minutesAgo", { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t("web.accountSettings.inbox.hoursAgo", { count: Math.floor(diff / 3600) });
+  if (diff < 604800) return t("web.accountSettings.inbox.daysAgo", { count: Math.floor(diff / 86400) });
+  return time.toLocaleDateString(getDefaultMoneyLocale(), { day: "numeric", month: "short", year: "numeric" });
 };
 
 const realtimeChannelKey = () =>
@@ -105,6 +107,7 @@ const realtimeChannelKey = () =>
 type Filter = "all" | "unread";
 
 function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInboxInitial | null }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const router = useRouter();
   const initialSnapshot = useRef(initialInbox);
@@ -207,7 +210,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
           ),
         );
         setTotalUnread(unreadBefore);
-        toast.error("Could not mark as read. Try again.");
+        toast.error(t("web.accountSettings.inbox.markReadFailed"));
         return;
       }
     }
@@ -223,7 +226,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
     } else if ((data as Record<string, unknown>).request_id) {
       router.push("/account-settings/custom-requests");
     } else {
-      toast.info("No quick link for this notification — it stays in your inbox.");
+      toast.info(t("web.accountSettings.inbox.noQuickLink"));
     }
   };
 
@@ -235,11 +238,11 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
     try {
       await fetcher.post("/api/me/notifications/mark-all-read");
       deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
-      toast.success("All notifications marked as read");
+      toast.success(t("web.accountSettings.inbox.markAllReadSuccess"));
     } catch {
       setNotifications(prevNotifications);
       setTotalUnread(prevUnread);
-      toast.error("Failed to mark all as read");
+      toast.error(t("web.accountSettings.inbox.markAllReadFailed"));
     }
   };
 
@@ -251,7 +254,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
     e.stopPropagation();
     if (
       typeof window !== "undefined" &&
-      !window.confirm("Delete this notification? It will be removed from your list.")
+      !window.confirm(t("web.accountSettings.inbox.deleteConfirm"))
     ) {
       return;
     }
@@ -270,7 +273,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
     } catch {
       setNotifications(prevList);
       setTotalUnread(prevUnread);
-      toast.error("Could not delete notification");
+      toast.error(t("web.accountSettings.inbox.deleteFailed"));
     }
   };
 
@@ -285,9 +288,9 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
       <BackButton href="/account-settings" />
       <Breadcrumb
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Notifications", href: "/account-settings/notifications" },
-          { label: "Inbox" },
+          { label: t("web.accountSettings.account"), href: "/account-settings" },
+          { label: t("web.accountSettings.notifications.title"), href: "/account-settings/notifications" },
+          { label: t("web.accountSettings.inbox.breadcrumbInbox") },
         ]}
       />
 
@@ -295,11 +298,11 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
           <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">Inbox</h1>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">{t("web.accountSettings.inbox.title")}</h1>
             <p className="text-sm text-gray-500 mt-1">
               {totalUnread > 0
-                ? `${totalUnread} unread — tap a row to open · trash removes an item`
-                : "All caught up — we’ll show new activity here"}
+                ? t("web.accountSettings.inbox.unreadSummary", { count: totalUnread })
+                : t("web.accountSettings.inbox.allCaughtUp")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -310,7 +313,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                 onClick={() => void handleMarkAllRead()}
                 className="rounded-full border-gray-200 text-sm font-medium touch-manipulation"
               >
-                Mark all read
+                {t("web.accountSettings.inbox.markAllRead")}
               </Button>
             )}
             <Button
@@ -318,7 +321,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
               size="icon"
               onClick={() => void handleRefresh()}
               disabled={isRefreshing}
-              title="Refresh"
+              title={t("common.refresh")}
               className="rounded-full border-gray-200 touch-manipulation"
             >
               <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
@@ -330,7 +333,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                 className="rounded-full bg-primary hover:bg-primary/90 shadow-sm touch-manipulation gap-1.5"
               >
                 <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Settings</span>
+                <span className="hidden sm:inline">{t("common.settings")}</span>
               </Button>
             </Link>
           </div>
@@ -340,7 +343,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
         <div
           className="inline-flex p-1 rounded-2xl bg-gray-100/90 border border-gray-200/80 mb-5 w-full sm:w-auto"
           role="tablist"
-          aria-label="Filter notifications"
+          aria-label={t("web.a11y.filterNotifications")}
         >
           {(["all", "unread"] as const).map((f) => (
             <button
@@ -357,7 +360,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
               )}
             >
               <span className="inline-flex items-center justify-center gap-1.5">
-                {f === "all" ? "All" : "Unread"}
+                {f === "all" ? t("web.accountSettings.inbox.all") : t("web.accountSettings.inbox.unread")}
                 {f === "unread" && totalUnread > 0 && (
                   <Badge className="rounded-full bg-primary/15 text-primary border-0 text-[10px] px-2 font-semibold">
                     {totalUnread}
@@ -371,19 +374,19 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
         {/* Content */}
         {isLoading ? (
           <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-16 text-center">
-            <p className="text-sm font-medium text-gray-700">Loading notifications…</p>
-            <p className="text-xs text-gray-500 mt-1">One moment</p>
+            <p className="text-sm font-medium text-gray-700">{t("web.accountSettings.inbox.loading")}</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.accountSettings.inbox.loadingHint")}</p>
           </div>
         ) : notifications.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-200 bg-gradient-to-b from-gray-50/70 to-white py-14 px-6 text-center">
             <Bell className="w-12 h-12 mx-auto mb-3 text-gray-300" aria-hidden />
             <p className="font-semibold text-gray-800">
-              {filter === "unread" ? "No unread notifications" : "No notifications yet"}
+              {filter === "unread" ? t("web.accountSettings.inbox.emptyUnread") : t("web.accountSettings.inbox.emptyAll")}
             </p>
             <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
               {filter === "unread"
-                ? "Switch to All to see older items."
-                : "We’ll notify you about bookings, messages, offers, and more."}
+                ? t("web.accountSettings.inbox.emptyUnreadHint")
+                : t("web.accountSettings.inbox.emptyAllHint")}
             </p>
             {filter === "unread" && (
               <Button
@@ -392,7 +395,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                 onClick={() => setFilter("all")}
                 className="mt-5 rounded-full border-gray-200"
               >
-                Show all notifications
+                {t("web.accountSettings.inbox.showAll")}
               </Button>
             )}
           </div>
@@ -415,7 +418,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                       type="button"
                       onClick={() => void handleNotificationClick(notification)}
                       className={cn(
-                        "flex min-w-0 flex-1 items-start gap-3.5 rounded-2xl px-4 py-4 text-left touch-manipulation",
+                        "flex min-w-0 flex-1 items-start gap-3.5 rounded-2xl px-4 py-4 text-start touch-manipulation",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
                       )}
                     >
@@ -437,7 +440,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                           )}
                         </div>
                         <p className="text-sm text-gray-500 line-clamp-3 leading-relaxed mb-1">{notification.message}</p>
-                        <span className="text-[11px] text-gray-400">{formatTimeAgo(ts)}</span>
+                        <span className="text-[11px] text-gray-400">{formatTimeAgo(ts, t)}</span>
                       </div>
                     </button>
                     <button
@@ -447,7 +450,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                         "flex-shrink-0 self-start rounded-xl p-3 m-2 text-gray-400 hover:text-red-600 hover:bg-red-50",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
                       )}
-                      aria-label="Delete notification"
+                      aria-label={t("web.a11y.deleteNotification")}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -459,9 +462,9 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
         )}
 
         <div className="mt-8 pt-5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-xs text-gray-500">Tip: pull to refresh isn&apos;t available on web — use the refresh button.</p>
+          <p className="text-xs text-gray-500">{t("web.accountSettings.inbox.webTip")}</p>
           <Button asChild variant="ghost" size="sm" className="rounded-full text-primary hover:text-primary/90 self-start sm:self-auto">
-            <Link href="/account-settings/notifications">Notification preferences →</Link>
+            <Link href="/account-settings/notifications">{t("web.accountSettings.inbox.preferencesLink")}</Link>
           </Button>
         </div>
       </div>

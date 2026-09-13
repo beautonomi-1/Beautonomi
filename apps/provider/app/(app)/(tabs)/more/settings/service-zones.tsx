@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -52,6 +53,12 @@ interface ZoneWithSelection {
 type FilterMode = "all" | "active" | "inactive" | "available";
 
 export default function ServiceZonesScreen() {
+  const { t } = useTranslation();
+  const sz = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.serviceZones.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingZone, setEditingZone] = useState<ZoneWithSelection | null>(
@@ -177,13 +184,13 @@ export default function ServiceZonesScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sz("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await addZone(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sz("errorTitle"), error);
         return;
       }
     }
@@ -198,7 +205,7 @@ export default function ServiceZonesScreen() {
         `/api/provider/zone-selections/${zone.selection.id}`,
         { is_active: !zone.selection.is_active }
       );
-      if (error) Alert.alert("Error", error);
+      if (error) Alert.alert(sz("errorTitle"), error);
       else refresh();
     }
   }
@@ -206,18 +213,18 @@ export default function ServiceZonesScreen() {
   async function handleRemove(zone: ZoneWithSelection) {
     if (!zone.selection) return;
     Alert.alert(
-      "Remove Zone",
-      `Stop servicing ${zone.platform_zone.name}?`,
+      sz("removeTitle"),
+      sz("removeBody", { name: zone.platform_zone.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: sz("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: sz("remove"),
           style: "destructive",
           onPress: async () => {
             const { error } = await removeZone(
               `/api/provider/zone-selections/${zone.selection!.id}`
             );
-            if (error) Alert.alert("Error", error);
+            if (error) Alert.alert(sz("errorTitle"), error);
             else refresh();
           },
         },
@@ -228,16 +235,16 @@ export default function ServiceZonesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Service Zones"
+        title={sz("title")}
         showBack
-        subtitle={`${activeCount} active zones`}
+        subtitle={sz("subtitle", { count: activeCount })}
       />
 
       {zones && zones.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Active"
+              title={sz("statActive")}
               value={String(activeCount)}
               icon="map-outline"
               iconColor="#22c55e"
@@ -245,10 +252,10 @@ export default function ServiceZonesScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Avg Travel"
-              value={`${avgTravelTime}m`}
+              title={sz("statAvgTravel")}
+              value={sz("avgTravelValue", { minutes: avgTravelTime })}
               icon="time-outline"
               iconColor="#6366f1"
               iconBg="bg-indigo-50"
@@ -257,7 +264,7 @@ export default function ServiceZonesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Total Fees"
+              title={sz("statTotalFees")}
               value={formatCurrency(totalFees)}
               icon="cash-outline"
               iconColor="#f59e0b"
@@ -273,15 +280,15 @@ export default function ServiceZonesScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search zones..."
+            placeholder={sz("searchPlaceholder")}
           />
           <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
-                { label: "All", value: "all" },
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
-                { label: "Available", value: "available" },
+                { label: sz("filterAll"), value: "all" },
+                { label: sz("filterActive"), value: "active" },
+                { label: sz("filterInactive"), value: "inactive" },
+                { label: sz("filterAvailable"), value: "available" },
               ]}
               selected={filter}
               onSelect={(v: string) => setFilter(v as FilterMode)}
@@ -297,11 +304,11 @@ export default function ServiceZonesScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="map-outline"
-          title={search || filter !== "all" ? "No matches" : "No zones"}
+          title={search || filter !== "all" ? sz("emptyMatches") : sz("emptyTitle")}
           description={
             search || filter !== "all"
-              ? "Try different filters"
-              : "Service zones will be configured by the platform"
+              ? sz("emptyMatchesHint")
+              : sz("emptyHint")
           }
         />
       ) : (
@@ -341,7 +348,7 @@ export default function ServiceZonesScreen() {
                       color={zone.is_selected ? "#6366f1" : "#9ca3af"}
                     />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                       {zone.platform_zone.name}
                     </Text>
@@ -367,7 +374,7 @@ export default function ServiceZonesScreen() {
                     onPress={() => openAdd(zone.platform_zone)}
                   >
                     <Text style={twStyle("text-xs font-medium text-indigo-700")}>
-                      Add
+                      {sz("add")}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -375,16 +382,16 @@ export default function ServiceZonesScreen() {
               {zone.is_selected && zone.selection && (
                 <View style={twStyle("mt-2 flex-row items-center justify-between")}>
                   <View style={twStyle("flex-row items-center")}>
-                    <View style={[twStyle("flex-row items-center"), { marginRight: 4 }]}>
+                    <View style={[twStyle("flex-row items-center"), { marginEnd: 4 }]}>
                       <Ionicons name="cash-outline" size={12} color="#6b7280" />
                       <Text style={twStyle("text-xs text-gray-500")}>
                         {formatCurrency(zone.selection.travel_fee)}
                       </Text>
                     </View>
-                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                    <View style={[twStyle("flex-row items-center"), { marginEnd: 12 }]}>
                       <Ionicons name="time-outline" size={12} color="#6b7280" />
                       <Text style={twStyle("text-xs text-gray-500")}>
-                        {zone.selection.travel_time_minutes}min
+                        {sz("travelMinutes", { minutes: zone.selection.travel_time_minutes })}
                       </Text>
                     </View>
                   </View>
@@ -403,52 +410,52 @@ export default function ServiceZonesScreen() {
         onClose={() => setShowForm(false)}
         title={
           editingZone
-            ? `Edit ${selectedZone?.name ?? "Zone"}`
-            : `Add ${selectedZone?.name ?? "Zone"}`
+            ? sz("editTitle", { name: selectedZone?.name ?? sz("zoneFallback") })
+            : sz("addTitle", { name: selectedZone?.name ?? sz("zoneFallback") })
         }
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            {`Travel Fee (${getTenantDefaultCurrency()})`}
+            {sz("travelFeeLabel", { currency: getTenantDefaultCurrency() })}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.travel_fee}
-            onChangeText={(t) =>
-              setForm((p) => ({ ...p, travel_fee: t }))
+            onChangeText={(text) =>
+              setForm((p) => ({ ...p, travel_fee: text }))
             }
             keyboardType="decimal-pad"
-            placeholder="0.00"
+            placeholder={sz("travelFeePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Travel Time (minutes)
+            {sz("travelTimeLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.travel_time}
-            onChangeText={(t) =>
-              setForm((p) => ({ ...p, travel_time: t }))
+            onChangeText={(text) =>
+              setForm((p) => ({ ...p, travel_time: text }))
             }
             keyboardType="number-pad"
-            placeholder="30"
+            placeholder={sz("travelTimePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Notes
+            {sz("notes")}
           </Text>
           <TextInput
             style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) =>
-              setForm((p) => ({ ...p, description: t }))
+            onChangeText={(text) =>
+              setForm((p) => ({ ...p, description: text }))
             }
-            placeholder="Optional notes..."
+            placeholder={sz("notesPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
           <ActionButton
-            label={editingZone ? "Update Zone" : "Add Zone"}
+            label={editingZone ? sz("updateZone") : sz("addZone")}
             onPress={handleSave}
             loading={adding || updating}
             fullWidth

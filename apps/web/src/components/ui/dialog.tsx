@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useTranslation } from "@beautonomi/i18n"
 
 const Dialog = DialogPrimitive.Root
 
@@ -40,6 +41,7 @@ const DialogContent = React.forwardRef<
     suppressFallbackTitle?: boolean
   }
 >(({ className, children, hideClose, suppressFallbackTitle, "aria-describedby": ariaDescribedby, onOpenAutoFocus, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
+  const { t } = useTranslation();
   const contentRef = React.useRef<HTMLDivElement>(null);
   const mergedRef = (node: HTMLDivElement | null) => {
     (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -94,13 +96,13 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {!suppressFallbackTitle ? (
-        <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
+        <DialogPrimitive.Title className="sr-only">{t("web.ui.dialog.title")}</DialogPrimitive.Title>
       ) : null}
       {children}
       {!hideClose && (
         <DialogPrimitive.Close className="absolute right-3 sm:right-4 top-3 sm:top-4 z-10 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 opacity-70 ring-offset-background transition-all hover:opacity-100 hover:bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground p-2 sm:p-2.5 touch-manipulation active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center">
           <X className="h-4 w-4 sm:h-5 sm:w-5" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t("common.close")}</span>
         </DialogPrimitive.Close>
       )}
     </DialogPrimitive.Content>
@@ -115,7 +117,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "flex flex-col space-y-1.5 text-center sm:text-start",
       className
     )}
     {...props}

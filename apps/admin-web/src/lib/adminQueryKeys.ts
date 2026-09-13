@@ -299,6 +299,11 @@ export const adminQueryKeys = {
 
   ledgerHealth: (days: string) => [...adminQueryKeys.root, "ledger-health", days] as const,
 
+  fxRatesDesk: () => [...adminQueryKeys.root, "fx-rates", "desk"] as const,
+  fxRatesHistory: (base: string, quote: string) =>
+    [...adminQueryKeys.root, "fx-rates", "history", base, quote] as const,
+  fxRatesAudit: () => [...adminQueryKeys.root, "fx-rates", "audit"] as const,
+
   inboundWebhooks: (source: string, status: string, sigOnly: boolean, q: string) =>
     [...adminQueryKeys.root, "inbound-webhooks", source, status, sigOnly, q] as const,
 

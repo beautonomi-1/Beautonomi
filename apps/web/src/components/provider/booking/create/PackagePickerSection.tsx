@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -46,6 +47,7 @@ export function PackagePickerSection({
   onPackageApplied,
   onClearPackage,
 }: PackagePickerSectionProps) {
+  const { t } = useTranslation();
   const [packages, setPackages] = useState<PackageRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -88,7 +90,7 @@ export function PackagePickerSection({
         services.push({
           id: `pkg-svc-${services.length}`,
           serviceId: svcId,
-          serviceName: off?.title || off?.name || catalog?.name || "Service",
+          serviceName: off?.title || off?.name || catalog?.name || t("web.provider.common.service"),
           duration: off?.duration_minutes ?? catalog?.duration_minutes ?? 60,
           price: off?.price ?? catalog?.price ?? 0,
         });
@@ -99,7 +101,7 @@ export function PackagePickerSection({
         products.push({
           id: `pkg-prod-${products.length}`,
           productId: pid,
-          productName: prod?.name || "Product",
+          productName: prod?.name || t("web.packagePicker.product"),
           quantity: 1,
           unitPrice: price,
           totalPrice: price,
@@ -108,12 +110,12 @@ export function PackagePickerSection({
     }
 
     if (services.length === 0 && products.length === 0) {
-      toast.error("Package has no valid items for this location");
+      toast.error(t("web.packagePicker.emptyItems"));
       return;
     }
 
     onPackageApplied({ packageId: pkg.id, services, products });
-    toast.success(`Package "${pkg.name}" added`);
+    toast.success(t("web.packagePicker.added", { name: pkg.name }));
   };
 
   if (loading) {
@@ -128,7 +130,7 @@ export function PackagePickerSection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-2">Package</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.packagePicker.label")}</BookingSectionLabel>
       <Select
         value={selectedPackageId ?? ""}
         onValueChange={(v) => {
@@ -140,11 +142,11 @@ export function PackagePickerSection({
         }}
       >
         <SelectTrigger className="rounded-xl min-h-[44px]">
-          <SelectValue placeholder="Add a package…" />
+          <SelectValue placeholder={t("web.packagePicker.placeholder")} />
         </SelectTrigger>
         <SelectContent>
           {selectedPackageId ? (
-            <SelectItem value="">Clear package</SelectItem>
+            <SelectItem value="">{t("web.packagePicker.clear")}</SelectItem>
           ) : null}
           {packages.map((p) => (
             <SelectItem key={p.id} value={p.id}>

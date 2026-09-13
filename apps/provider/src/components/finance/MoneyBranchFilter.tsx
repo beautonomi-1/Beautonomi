@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useProvider } from "@/providers/ProviderContext";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 
 type MoneyBranchFilterProps = {
@@ -15,6 +16,9 @@ type MoneyBranchFilterProps = {
  * Defaults to all branches (null); does not reuse the global dashboard location filter.
  */
 export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
+  const { t } = useTranslation();
+  const mb = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.components.moneyBranchFilter.${key}`, opts) as string;
   const { provider } = useProvider();
   const [visible, setVisible] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -23,7 +27,7 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
 
   const locations = provider?.locations ?? [];
   const current = value ? locations.find((l) => l.id === value) : null;
-  const label = current?.name ?? "All branches";
+  const label = current?.name ?? mb("allBranches");
 
   function handleSelectAll() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -50,13 +54,13 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
           setVisible(true);
         }}
         accessibilityRole="button"
-        accessibilityLabel={`Money scope: ${label}. Tap to change branch filter.`}
+        accessibilityLabel={mb("scopeA11y", { label })}
       >
         <Ionicons name="location-outline" size={14} color="#6b7280" />
-        <Text style={twStyle("ml-1.5 text-xs font-medium text-gray-700")} numberOfLines={1}>
+        <Text style={twStyle("ms-1.5 text-xs font-medium text-gray-700")} numberOfLines={1}>
           {label}
         </Text>
-        <Ionicons name="chevron-down" size={12} color="#9ca3af" style={{ marginLeft: 4 }} />
+        <Ionicons name="chevron-down" size={12} color="#9ca3af" style={{ marginStart: 4 }} />
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
@@ -66,9 +70,9 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
             onPress={(e) => e.stopPropagation?.()}
           >
             <View style={twStyle("border-b border-gray-100 px-5 py-4")}>
-              <Text style={twStyle("text-base font-bold text-gray-900")}>Money scope</Text>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>{mb("title")}</Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                Filter earnings, ledger and sales by branch, or show all branches
+                {mb("subtitle")}
               </Text>
             </View>
 
@@ -85,7 +89,7 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
               >
                 <View
                   style={twStyle(
-                    `mr-3 h-10 w-10 items-center justify-center rounded-xl ${
+                    `me-3 h-10 w-10 items-center justify-center rounded-xl ${
                       value == null ? "bg-indigo-100" : "bg-gray-100"
                     }`,
                   )}
@@ -98,9 +102,9 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
                       `text-sm font-medium ${value == null ? "text-indigo-700" : "text-gray-900"}`,
                     )}
                   >
-                    All branches
+                    {mb("allBranches")}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Org-wide totals and activity</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{mb("allBranchesHint")}</Text>
                 </View>
                 {value == null ? <Ionicons name="checkmark-circle" size={20} color="#6366f1" /> : null}
               </TouchableOpacity>
@@ -121,7 +125,7 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
                   >
                     <View
                       style={twStyle(
-                        `mr-3 h-10 w-10 items-center justify-center rounded-xl ${
+                        `me-3 h-10 w-10 items-center justify-center rounded-xl ${
                           isSelected ? "bg-indigo-100" : "bg-gray-100"
                         }`,
                       )}
@@ -153,7 +157,7 @@ export function MoneyBranchFilter({ value, onChange }: MoneyBranchFilterProps) {
                 style={twStyle("min-h-[44px] items-center justify-center rounded-xl bg-gray-100")}
                 onPress={() => setVisible(false)}
               >
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Close</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{mb("close")}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

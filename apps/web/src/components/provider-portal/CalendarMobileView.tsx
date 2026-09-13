@@ -45,8 +45,9 @@ import {
   subDays,
   getDay,
 } from "date-fns";
-import { mapStatus, extractIconFlags, isMangomintModeEnabled } from "@/lib/scheduling/mangomintAdapter";
+import { mapStatus, extractIconFlags, isMangomintModeEnabled, AppointmentStatus } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors, getActiveIcons } from "@/lib/scheduling/visualMapping";
+import { useTranslation } from "@beautonomi/i18n";
 import { nowInTz, isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
@@ -377,6 +378,28 @@ export function CalendarMobileView({
   businessTimezone,
   onRefresh,
 }: CalendarMobileViewProps) {
+  const { t } = useTranslation();
+  const cm = "web.provider.calendarMobile";
+  const calendarStatusLabel = (status: AppointmentStatus) => {
+    switch (status) {
+      case AppointmentStatus.UNCONFIRMED:
+        return t(`${cm}.statusUnconfirmed`);
+      case AppointmentStatus.CONFIRMED:
+        return t(`${cm}.statusBooked`);
+      case AppointmentStatus.WAITING:
+        return t(`${cm}.statusWaiting`);
+      case AppointmentStatus.IN_SERVICE:
+        return t(`${cm}.statusInService`);
+      case AppointmentStatus.COMPLETED:
+        return t(`${cm}.statusCompleted`);
+      case AppointmentStatus.CANCELED:
+        return t(`${cm}.statusCanceled`);
+      case AppointmentStatus.NO_SHOW:
+        return t(`${cm}.statusNoShow`);
+      default:
+        return t(`${cm}.statusBooked`);
+    }
+  };
   const { format: formatMoney } = useProviderMoneyFormat();
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<MobileLayoutMode>("columns"); // Default to columns view like Mangomint
@@ -469,12 +492,12 @@ export function CalendarMobileView({
           ...a,
           name:
             a._source === "staff_unavailability"
-              ? (a.reason?.trim() || "Time off")
+              ? (a.reason?.trim() || t(`${cm}.timeOff`))
               : (a.reason || a.block_type),
         })),
       ];
     },
-    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate],
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, t],
   );
 
   /** Week / 3-day: one column per day — show provider-wide + every staff member's blocks (like all columns stacked). */
@@ -496,12 +519,12 @@ export function CalendarMobileView({
           ...a,
           name:
             a._source === "staff_unavailability"
-              ? (a.reason?.trim() || "Time off")
+              ? (a.reason?.trim() || t(`${cm}.timeOff`))
               : (a.reason || a.block_type),
         })),
       ];
     },
-    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, teamMembers],
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, teamMembers, t],
   );
 
   // Date strip: day = 14-day scroll; week / 3-day = the same days as the grid
@@ -615,7 +638,7 @@ export function CalendarMobileView({
       if (memberIds.has(staffId)) return;
       orphans.push({
         id: staffId,
-        name: apts[0]?.team_member_name || "Staff",
+        name: apts[0]?.team_member_name || t(`${cm}.staff`),
         role: "employee",
         email: "",
         mobile: "",
@@ -628,7 +651,7 @@ export function CalendarMobileView({
     if (hasUnassigned) {
       result.push({
         id: UNASSIGNED_ID,
-        name: "Unassigned",
+        name: t(`${cm}.unassigned`),
         role: "employee",
         email: "",
         mobile: "",
@@ -637,7 +660,7 @@ export function CalendarMobileView({
     }
     result.push(...teamMembers, ...orphans);
     return result;
-  }, [teamMembers, selectedDate, view, appointmentsByStaffDate]);
+  }, [teamMembers, selectedDate, view, appointmentsByStaffDate, t]);
 
   const staffForDayGrid = view === "day" ? displayMembers : teamMembers;
 
@@ -775,7 +798,7 @@ export function CalendarMobileView({
   ]);
 
   return (
-    <div className="w-full bg-white relative box-border max-w-[100vw]">
+    <div dir="ltr" className="ltr-island w-full bg-white relative box-border max-w-[100vw]">
       {/* Dark Header */}
       <div className="bg-[#1a1f3c] text-white w-full box-border">
         {/* Filter Banner - Show when single staff member is filtered */}
@@ -785,14 +808,14 @@ export function CalendarMobileView({
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <User className="w-4 h-4 flex-shrink-0 text-white" />
                 <span className="text-sm font-semibold text-white truncate">
-                  Viewing: {teamMembers.find(m => m.id === selectedTeamMemberId)?.name || "Staff Member"}
+                  {t(`${cm}.viewing`, { name: teamMembers.find(m => m.id === selectedTeamMemberId)?.name || t(`${cm}.staffMember`) })}
                 </span>
               </div>
               <button
                 onClick={onClearStaffFilter}
                 className="text-sm font-bold text-white hover:text-blue-100 underline flex-shrink-0 px-2 py-1 rounded active:bg-blue-700/50"
               >
-                Show All
+                {t(`${cm}.showAll`)}
               </button>
             </div>
           </div>
@@ -802,7 +825,7 @@ export function CalendarMobileView({
           <button 
             onClick={onFilterClick}
             className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-            aria-label="Open filters"
+            aria-label={t(`${cm}.openFilters`)}
           >
             <SlidersHorizontal className="w-5 h-5" />
           </button>
@@ -816,7 +839,7 @@ export function CalendarMobileView({
                 onDateChange(prevMonth);
               }}
               className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-              aria-label="Previous month"
+              aria-label={t(`${cm}.previousMonth`)}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -833,7 +856,7 @@ export function CalendarMobileView({
                 onDateChange(nextMonth);
               }}
               className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-              aria-label="Next month"
+              aria-label={t(`${cm}.nextMonth`)}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -851,7 +874,7 @@ export function CalendarMobileView({
                       : "text-white/70 hover:bg-white/10",
                   )}
                 >
-                  Day
+                  {t(`${cm}.viewDay`)}
                 </button>
                 <button
                   type="button"
@@ -864,7 +887,7 @@ export function CalendarMobileView({
                       : "text-white/70 hover:bg-white/10",
                   )}
                 >
-                  3d
+                  {t(`${cm}.view3d`)}
                 </button>
                 <button
                   type="button"
@@ -877,7 +900,7 @@ export function CalendarMobileView({
                       : "text-white/70 hover:bg-white/10",
                   )}
                 >
-                  Wk
+                  {t(`${cm}.viewWeek`)}
                 </button>
               </div>
             )}
@@ -896,7 +919,7 @@ export function CalendarMobileView({
                 type="button"
                 onClick={() => onRefresh()}
                 className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-                aria-label="Refresh schedule"
+                aria-label={t(`${cm}.refreshSchedule`)}
               >
                 <RefreshCw className="w-5 h-5" />
               </button>
@@ -908,7 +931,7 @@ export function CalendarMobileView({
                 onAddAppointment();
               }}
               className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-              aria-label="Add appointment"
+              aria-label={t(`${cm}.addAppointment`)}
             >
               <Plus className="w-5 h-5" />
             </button>
@@ -982,7 +1005,7 @@ export function CalendarMobileView({
           <div className="flex items-center justify-between px-3 py-2.5 w-full box-border">
             <span className="text-xs font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
               <Users className="w-3.5 h-3.5 text-primary" />
-              Staff View
+              {t(`${cm}.staffView`)}
             </span>
             <div className="flex items-center p-1 bg-gray-100/80 rounded-lg border border-gray-200">
               <button
@@ -996,7 +1019,7 @@ export function CalendarMobileView({
                 )}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                All
+                {t(`${cm}.layoutAll`)}
               </button>
               <button
                 onClick={() => setLayoutMode("single")}
@@ -1009,7 +1032,7 @@ export function CalendarMobileView({
                 )}
               >
                 <User className="w-3.5 h-3.5" />
-                Single
+                {t(`${cm}.layoutSingle`)}
               </button>
             </div>
           </div>
@@ -1236,7 +1259,7 @@ export function CalendarMobileView({
                           {isOutside && (
                             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                               <span className="text-[8px] font-bold uppercase text-amber-900/80 bg-white/90 px-1 py-0.5 rounded border border-amber-300">
-                                Closed
+                                {t(`${cm}.closed`)}
                               </span>
                             </div>
                           )}
@@ -1315,7 +1338,7 @@ export function CalendarMobileView({
                                   {apt.client_name}
                                 </p>
                                 <p className="text-[8px] truncate opacity-90" style={{ color: aptColors.text }}>
-                                  {apt.team_member_name || "Staff"}
+                                  {apt.team_member_name || t(`${cm}.staff`)}
                                 </p>
                                 {height > 36 && (
                                   <p className="text-[8px] font-semibold opacity-80" style={{ color: aptColors.text }}>
@@ -1339,7 +1362,7 @@ export function CalendarMobileView({
                                     statusColors.badgeClasses,
                                   )}
                                 >
-                                  {statusColors.label.toUpperCase()}
+                                  {calendarStatusLabel(mapStatus(apt))}
                                 </Badge>
                                 {activeIcons.slice(0, 1).map((icon, idx) => {
                                   const IconComponent = ICON_MAP[icon.icon];
@@ -1364,7 +1387,7 @@ export function CalendarMobileView({
                                         onCheckout(apt);
                                       }}
                                       className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
-                                      title="Checkout"
+                                      title={t(`${cm}.checkout`)}
                                     >
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
                                     </button>
@@ -1378,7 +1401,7 @@ export function CalendarMobileView({
                                       onStatusChange(apt, "started");
                                     }}
                                     className="absolute bottom-0.5 right-5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
-                                    title="Start"
+                                    title={t(`${cm}.start`)}
                                   >
                                     <Check className="w-2.5 h-2.5 text-gray-700" />
                                   </button>
@@ -1491,7 +1514,7 @@ export function CalendarMobileView({
                               {member.name.split(" ")[0]}
                             </span>
                             <span className="text-[9px] text-[#4fd1c5] font-medium truncate">
-                              {uniqueBookingCount} {uniqueBookingCount === 1 ? 'apt' : 'apts'}
+                              {t(`${cm}.aptCount`, { count: uniqueBookingCount })}
                             </span>
                           </div>
                           <ChevronDown className="w-3 h-3 text-white/70 flex-shrink-0" />
@@ -1502,26 +1525,26 @@ export function CalendarMobileView({
                           onClick={() => onViewWeekSchedule?.(member)}
                           disabled={!onViewWeekSchedule}
                         >
-                          View Week Schedule
+                          {t(`${cm}.viewWeekSchedule`)}
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           onClick={() => onPrintDaySchedule?.(member)}
                           disabled={!onPrintDaySchedule}
                         >
-                          Print Day Schedule
+                          {t(`${cm}.printDaySchedule`)}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
                           onClick={() => onEditWorkHours?.(member)}
                           disabled={!onEditWorkHours}
                         >
-                          Edit Work Hours
+                          {t(`${cm}.editWorkHours`)}
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           onClick={() => onSetDayOff?.(member)}
                           disabled={!onSetDayOff}
                         >
-                          Set Day Off
+                          {t(`${cm}.setDayOff`)}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1611,14 +1634,14 @@ export function CalendarMobileView({
                           {isNonWorking && (
                             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                               <span className="text-[9px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1 py-0.5 rounded border border-amber-300 shadow-sm">
-                                Closed
+                                {t(`${cm}.closed`)}
                               </span>
                             </div>
                           )}
                           {staffOff && !isNonWorking && slotAppointments.length === 0 && (
                             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                               <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
-                                Off
+                                {t(`${cm}.off`)}
                               </span>
                             </div>
                           )}
@@ -1732,7 +1755,7 @@ export function CalendarMobileView({
                                     statusColors.badgeClasses,
                                   )}
                                 >
-                                  {statusColors.label.toUpperCase()}
+                                  {calendarStatusLabel(mapStatus(apt))}
                                 </Badge>
 
                                 {activeIcons.slice(0, 1).map((icon, idx) => {
@@ -1765,7 +1788,7 @@ export function CalendarMobileView({
                                         onCheckout(apt);
                                       }}
                                       className="absolute bottom-1 right-1 w-4 h-4 rounded bg-white/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
-                                      title="Checkout"
+                                      title={t(`${cm}.checkout`)}
                                     >
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
                                     </button>
@@ -1956,14 +1979,14 @@ export function CalendarMobileView({
                     {isNonWorking && (
                       <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                         <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1.5 py-0.5 rounded border border-amber-300 shadow-sm">
-                          Closed
+                          {t(`${cm}.closed`)}
                         </span>
                       </div>
                     )}
                     {staffOff && !isNonWorking && (
                       <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                         <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
-                          Off
+                          {t(`${cm}.off`)}
                         </span>
                       </div>
                     )}
@@ -2097,7 +2120,7 @@ export function CalendarMobileView({
                                       className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
                                     >
                                       <CreditCard className="w-2.5 h-2.5" />
-                                      Checkout
+                                      {t(`${cm}.checkout`)}
                                     </button>
                                   )}
                                   {onStatusChange && apt.status === "booked" &&
@@ -2111,7 +2134,7 @@ export function CalendarMobileView({
                                       className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
                                     >
                                       <Check className="w-2.5 h-2.5" />
-                                      Start
+                                      {t(`${cm}.start`)}
                                     </button>
                                   )}
                                 </div>
@@ -2126,7 +2149,7 @@ export function CalendarMobileView({
                                 statusColors.badgeClasses,
                               )}
                             >
-                              {statusColors.label.toUpperCase()}
+                              {calendarStatusLabel(mapStatus(apt))}
                             </Badge>
 
                             {activeIcons.slice(0, 2).map((icon, idx) => {
@@ -2198,8 +2221,8 @@ export function CalendarMobileView({
               <CalendarIcon className="w-12 h-12 mb-4 text-gray-300" />
               <p className="text-center text-sm">
                 {staffForDayGrid.length === 0 
-                  ? "No team members available. Add team members to see the calendar."
-                  : "Select a team member to view their schedule"}
+                  ? t(`${cm}.emptyNoTeam`)
+                  : t(`${cm}.emptySelectStaff`)}
               </p>
             </div>
           )}

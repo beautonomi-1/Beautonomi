@@ -26,7 +26,7 @@ export function Badge({ status, label, size = "sm" }: BadgeProps) {
       <View
         style={{
           backgroundColor: colors.dot,
-          marginRight: 6,
+          marginEnd: 6,
           height: 6,
           width: 6,
           borderRadius: 3,

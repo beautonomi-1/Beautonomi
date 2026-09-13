@@ -11,6 +11,7 @@ import React, {
 import { coerceChipMultiValue, coerceChipSingleRow } from "@beautonomi/utils";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface ChipComboboxSuggestion {
   value: string;
@@ -75,6 +76,7 @@ function rankScore(
 }
 
 export function ChipCombobox(props: ChipComboboxProps) {
+  const { t } = useTranslation();
   const {
     staticSuggestions = [],
     fetchSuggestions,
@@ -82,11 +84,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
     maxSuggestions = 5,
     debounceMs = 250,
     normalizeValue = defaultNormalize,
-    placeholder = "Type or select…",
+    placeholder: placeholderProp,
     className,
     allowFreeForm = true,
     onCreateNew,
   } = props;
+  const placeholder = placeholderProp ?? t("web.ui.chipCombobox.typeOrSelect");
 
   const isSingle = props.singleSelect === true;
   const value = props.value;
@@ -196,12 +199,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
       rows.push({
         type: "freeform" as const,
         value: inputValue.trim(),
-        label: `Add "${inputValue.trim()}"`,
+        label: t("web.ui.chipCombobox.addQuoted", { value: inputValue.trim() }),
         isFreeForm: true as const,
       });
     }
     return rows;
-  }, [filteredAndRanked, canAddFreeForm, inputValue]);
+  }, [filteredAndRanked, canAddFreeForm, inputValue, t]);
 
   const getLabelForValue = useCallback(
     (v: string): string => {
@@ -385,7 +388,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
         >
           {loading && !error && (
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-              <span className="animate-pulse">Loading…</span>
+              <span className="animate-pulse">{t("web.ui.chipCombobox.loading")}</span>
             </div>
           )}
           {error && (
@@ -395,19 +398,19 @@ export function ChipCombobox(props: ChipComboboxProps) {
             <div className="px-3 py-2 text-sm text-muted-foreground">
               {inputValue.trim() ? (
                 <>
-                  No matches
+                  {t("web.ui.chipCombobox.noMatches")}
                   {canAddFreeForm && (
                     <button
                       type="button"
-                      className="ml-2 text-primary hover:underline"
+                      className="ms-2 text-primary hover:underline"
                       onClick={() => addValue(inputValue.trim(), true)}
                     >
-                      Add &quot;{inputValue.trim()}&quot;
+                      {t("web.ui.chipCombobox.addQuoted", { value: inputValue.trim() })}
                     </button>
                   )}
                 </>
               ) : (
-                "Type to search or select from suggestions"
+                t("web.ui.chipCombobox.typeToSearch")
               )}
             </div>
           )}
@@ -421,7 +424,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
                     role="option"
                     aria-selected={idx === highlightedIndex}
                     className={cn(
-                      "w-full px-3 py-2 text-left text-sm",
+                      "w-full px-3 py-2 text-start text-sm",
                       idx === highlightedIndex && "bg-accent",
                       opt.type === "freeform" && "text-primary font-medium"
                     )}

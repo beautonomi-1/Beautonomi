@@ -23,7 +23,9 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface PayRun {
   id: string;
@@ -34,10 +36,10 @@ interface PayRun {
   approved_at: string | null;
 }
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty = "—"): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -46,6 +48,17 @@ function isPayrollOwnerRole(role: string | null): boolean {
 }
 
 export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const pr = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.payroll.${key}`, opts) as string;
+  const statusLabel = (status: string) =>
+    status === "draft"
+      ? pr("statusDraft")
+      : status === "approved"
+        ? pr("statusApproved")
+        : status === "paid"
+          ? pr("statusPaid")
+          : status;
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const { role } = useProvider();
@@ -80,17 +93,17 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
     (run: PayRun) => {
       if (run.status !== "draft") return;
       Alert.alert(
-        "Approve pay run?",
-        "This will lock the pay run for payment. This cannot be undone.",
+        pr("approveTitle"),
+        pr("approveBody"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: pr("cancel"), style: "cancel" },
           {
-            text: "Approve",
+            text: pr("approve"),
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`, {});
               if (err) {
-                Alert.alert("Error", err);
+                Alert.alert(pr("errorTitle"), err);
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -100,24 +113,24 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
         ]
       );
     },
-    [approveRun, refresh]
+    [approveRun, refresh, t]
   );
 
   const handleMarkPaid = useCallback(
     (run: PayRun) => {
       if (run.status !== "approved") return;
       Alert.alert(
-        "Mark as paid?",
-        "Confirm that this pay run has been paid out to staff.",
+        pr("markPaidTitle"),
+        pr("markPaidBody"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: pr("cancel"), style: "cancel" },
           {
-            text: "Mark paid",
+            text: pr("markPaid"),
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`, {});
               if (err) {
-                Alert.alert("Error", err);
+                Alert.alert(pr("errorTitle"), err);
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -127,11 +140,11 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
         ]
       );
     },
-    [markPaidRun, refresh]
+    [markPaidRun, refresh, t]
   );
 
   const formatDate = (d: string) =>
-    formatDateSafe(d);
+    formatDateSafe(d, pr("emptyValue"));
 
   const getPeriodBounds = useCallback(() => {
     if (periodType === "monthly") {
@@ -153,13 +166,13 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
       period_type: periodType,
     });
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(pr("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setCreateOpen(false);
     refresh();
-  }, [getPeriodBounds, periodType, createPayRun, refresh]);
+  }, [getPeriodBounds, periodType, createPayRun, refresh, t]);
 
   const periodLabel =
     periodType === "monthly"
@@ -193,23 +206,17 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
         showsVerticalScrollIndicator={false}
       >
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50/80 p-4")}>
-          <Text style={twStyle("text-sm font-medium text-emerald-900")}>Pay runs</Text>
+          <Text style={twStyle("text-sm font-medium text-emerald-900")}>{pr("sectionTitle")}</Text>
           <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
-            {isOwner
-              ? "Create a run for a period, then tap a draft run to adjust per-staff PAYE, UIF, and manual deductions. Approve and mark paid when ready."
-              : "View pay runs for your workplace. Only the business owner can create runs, approve, or mark them paid."}
+            {isOwner ? pr("ownerHint") : pr("staffHint")}
           </Text>
         </View>
         {payRuns.length === 0 ? (
           <EmptyState
             icon="wallet-outline"
-            title="No pay runs yet"
-            description={
-              isOwner
-                ? "Create a pay run for a weekly or monthly period. Then approve and mark it paid here."
-                : "Your owner hasn’t created a pay run yet. Ask them to start one from this screen."
-            }
-            actionLabel={isOwner ? "Create pay run" : undefined}
+            title={pr("emptyTitle")}
+            description={isOwner ? pr("emptyOwner") : pr("emptyStaff")}
+            actionLabel={isOwner ? pr("createPayRun") : undefined}
             onAction={
               isOwner
                 ? () => {
@@ -231,7 +238,11 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
               activeOpacity={0.8}
               style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}
               accessibilityRole="button"
-              accessibilityLabel={`Open pay run for ${formatDate(run.pay_period_start)} through ${formatDate(run.pay_period_end)}, status ${run.status}`}
+              accessibilityLabel={pr("openPayRunA11y", {
+                start: formatDate(run.pay_period_start),
+                end: formatDate(run.pay_period_end),
+                status: statusLabel(run.status),
+              })}
             >
               <View style={twStyle("flex-row items-start justify-between")}>
                 <View style={twStyle("flex-1")}>
@@ -248,7 +259,7 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
                     }`)}
                   >
                     <Text
-                      style={twStyle(`text-xs font-medium capitalize ${
+                      style={twStyle(`text-xs font-medium ${
                         run.status === "paid"
                           ? "text-gray-700"
                           : run.status === "approved"
@@ -256,11 +267,11 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
                             : "text-blue-800"
                       }`)}
                     >
-                      {run.status}
+                      {statusLabel(run.status)}
                     </Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
               </View>
               {run.status === "draft" && isOwner && (
                 <TouchableOpacity
@@ -270,10 +281,10 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
                   }}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5")}
                   accessibilityRole="button"
-                  accessibilityLabel="Approve pay run"
+                  accessibilityLabel={pr("approveA11y")}
                 >
                   <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Approve</Text>
+                  <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("approve")}</Text>
                 </TouchableOpacity>
               )}
               {run.status === "approved" && isOwner && (
@@ -284,10 +295,10 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
                   }}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5")}
                   accessibilityRole="button"
-                  accessibilityLabel="Mark pay run as paid"
+                  accessibilityLabel={pr("markPaidA11y")}
                 >
                   <Ionicons name="cash-outline" size={18} color="#fff" />
-                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Mark as paid</Text>
+                  <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("markAsPaid")}</Text>
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
@@ -298,18 +309,18 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
       <BottomSheet
         visible={createOpen && isOwner}
         onClose={() => !creating && setCreateOpen(false)}
-        title="Create pay run"
-        subtitle="Choose period type and date"
+        title={pr("createTitle")}
+        subtitle={pr("createSubtitle")}
       >
         <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
             onPress={() => setPeriodType("weekly")}
-            style={[twStyle(`flex-1 rounded-xl py-3 ${periodType === "weekly" ? "bg-emerald-600" : "bg-gray-100"}`), { marginRight: 12 }]}
+            style={[twStyle(`flex-1 rounded-xl py-3 ${periodType === "weekly" ? "bg-emerald-600" : "bg-gray-100"}`), { marginEnd: 12 }]}
           >
             <Text
               style={twStyle(`text-center text-sm font-medium ${periodType === "weekly" ? "text-white" : "text-gray-700"}`)}
             >
-              Weekly
+              {pr("weekly")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -319,12 +330,12 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
             <Text
               style={twStyle(`text-center text-sm font-medium ${periodType === "monthly" ? "text-white" : "text-gray-700"}`)}
             >
-              Monthly
+              {pr("monthly")}
             </Text>
           </TouchableOpacity>
         </View>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-          {periodType === "monthly" ? "Month" : "Period end date"}
+          {periodType === "monthly" ? pr("month") : pr("periodEndDate")}
         </Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}
@@ -344,7 +355,7 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
           />
         )}
         <ActionButton
-          label={creating ? "Creating…" : "Create pay run"}
+          label={creating ? pr("creating") : pr("createPayRun")}
           onPress={handleCreatePayRun}
           loading={creating}
           fullWidth
@@ -364,7 +375,7 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
       style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
     >
       <Ionicons name="add" size={18} color="#fff" />
-      <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
+      <Text style={twStyle("ms-1.5 text-sm font-semibold text-white")}>{pr("newRun")}</Text>
     </TouchableOpacity>
   ) : null;
 
@@ -380,9 +391,9 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Payroll"
+        title={pr("title")}
         showBack
-        subtitle={`${payRuns.length} pay run${payRuns.length === 1 ? "" : "s"}`}
+        subtitle={pr("payRunCount", { count: payRuns.length })}
         rightAction={newRunButton}
       />
       {listBody}

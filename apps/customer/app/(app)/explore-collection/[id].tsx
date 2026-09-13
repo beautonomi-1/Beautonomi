@@ -10,12 +10,12 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { ExplorePost } from "@/types/api";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type CollectionData = {
   id: string;
@@ -50,14 +50,14 @@ export default function ExploreCollectionScreen() {
       try {
         const res = await api.get<CollectionData>(`/api/explore/collections/${id}`);
         if (res.error) {
-          setError(res.error.message || "Could not load board");
+          setError(res.error.message || t("customer.exploreCollection.loadFailed"));
         } else if (res.data && typeof res.data === "object" && "name" in res.data) {
           setCollection(res.data);
         } else {
-          setError("Could not load board");
+          setError(t("customer.exploreCollection.loadFailed"));
         }
       } catch {
-        setError("Could not load board");
+        setError(t("customer.exploreCollection.loadFailed"));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -93,14 +93,14 @@ export default function ExploreCollectionScreen() {
     return (
       <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
         <Text style={{ fontSize: 16, color: Colors.gray[600], textAlign: "center" }}>
-          {error || "Board not found"}
+          {error || t("customer.exploreCollection.boardNotFound")}
         </Text>
         {error && (
           <TouchableOpacity
             onPress={() => load()}
             style={{ marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.gray[100] }}
           >
-            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("customer.exploreCollection.retry")}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
@@ -114,7 +114,7 @@ export default function ExploreCollectionScreen() {
             borderRadius: 10,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "600" }}>Go back</Text>
+          <Text style={{ color: "#fff", fontWeight: "600" }}>{t("customer.exploreCollection.goBack")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -132,18 +132,20 @@ export default function ExploreCollectionScreen() {
         onPress={() => router.back()}
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
       >
-        <Ionicons name="chevron-back" size={24} color={Colors.gray[700]} />
-        <Text style={{ fontSize: 16, color: Colors.gray[700], marginLeft: 4 }}>Saved</Text>
+        <DirectionalIcon name="chevron-back" size={24} color={Colors.gray[700]} />
+        <Text style={{ fontSize: 16, color: Colors.gray[700], marginStart: 4 }}>{t("customer.exploreCollection.saved")}</Text>
       </TouchableOpacity>
       <Text style={{ fontSize: 22, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
         {collection.name}
       </Text>
       <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-        {collection.post_count} saved post{collection.post_count === 1 ? "" : "s"}
+        {collection.post_count === 1
+          ? t("customer.exploreCollection.savedPostCount", { count: collection.post_count })
+          : t("customer.exploreCollection.savedPostCountPlural", { count: collection.post_count })}
       </Text>
       {collection.posts.length === 0 ? (
         <Text style={{ fontSize: 15, color: Colors.gray[600] }}>
-          No posts in this board yet. Save posts from Explore and add them from your Saved tab.
+          {t("customer.exploreCollection.emptyBoard")}
         </Text>
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -157,7 +159,7 @@ export default function ExploreCollectionScreen() {
                 }
                 style={{
                   width: tileWidth,
-                  marginRight: index % COL_COUNT === 0 ? COLUMN_GAP : 0,
+                  marginEnd: index % COL_COUNT === 0 ? COLUMN_GAP : 0,
                   marginBottom: COLUMN_GAP,
                 }}
               >

@@ -880,7 +880,7 @@ export default function ProductCheckoutPage() {
                 paystackEnabled &&
                 !useWallet &&
                 cardsLoading && (
-                  <div className="space-y-2 pl-1">
+                  <div className="space-y-2 ps-1">
                     <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
                     <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
                   </div>
@@ -922,7 +922,7 @@ export default function ProductCheckoutPage() {
                                     setUseNewCard(false);
                                   }
                                 }}
-                                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
+                                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-start cursor-pointer ${
                                   active
                                     ? "border-pink-500 bg-pink-50"
                                     : "border-gray-200 hover:border-gray-300 bg-white"
@@ -979,7 +979,7 @@ export default function ProductCheckoutPage() {
                                   disabled={removingCardId === card.id}
                                   aria-label={`Remove card ending in ${card.last4 ?? "****"}`}
                                   title="Remove this card"
-                                  className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                  className="ms-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -1013,7 +1013,7 @@ export default function ProductCheckoutPage() {
                           <ArrowLeft className="w-4 h-4" />
                           Use a saved card instead
                         </button>
-                        <p className="text-xs text-gray-500 pl-1">
+                        <p className="text-xs text-gray-500 ps-1">
                           You will be redirected to our secure payment page to enter card details.
                         </p>
                       </>

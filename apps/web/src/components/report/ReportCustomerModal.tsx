@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { Loader2, Flag } from "lucide-react";
 
+import { useTranslation } from "@beautonomi/i18n";
 interface ReportCustomerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -29,6 +30,7 @@ export function ReportCustomerModal({
   customerName,
   onSuccess,
 }: ReportCustomerModalProps) {
+  const { t } = useTranslation();
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,7 +38,7 @@ export function ReportCustomerModal({
     e.preventDefault();
     const trimmed = description.trim();
     if (!trimmed) {
-      toast.error("Please describe your concern");
+      toast.error(t("web.report.describeConcern"));
       return;
     }
     setSubmitting(true);
@@ -46,12 +48,12 @@ export function ReportCustomerModal({
         reported_user_id: reportedUserId,
         description: trimmed,
       });
-      toast.success("Report submitted. Our team will review it.");
+      toast.success(t("web.report.submitted"));
       setDescription("");
       onOpenChange(false);
       onSuccess?.();
     } catch {
-      toast.error("Failed to submit report");
+      toast.error(t("web.report.submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -63,22 +65,22 @@ export function ReportCustomerModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Flag className="w-5 h-5 text-amber-500" />
-            Report this customer
+            {t("web.report.customer.title")}
           </DialogTitle>
           <DialogDescription>
-            Report &quot;{customerName}&quot;. Your report will be reviewed by our team. Please provide a clear description of your concern.
+{t("web.report.customer.description", { name: customerName })}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe your concern (e.g. no-show, inappropriate behaviour...)"
+            placeholder={t("web.report.customer.placeholder")}
             className="w-full min-h-[120px] rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none resize-y"
             maxLength={2000}
             disabled={submitting}
           />
-          <p className="text-xs text-gray-500 mt-1">{description.length}/2000</p>
+          <p className="text-xs text-gray-500 mt-1">{t("web.report.charCount", { count: description.length })}</p>
           <DialogFooter className="gap-2 sm:gap-0 mt-4">
             <Button
               type="button"
@@ -86,7 +88,7 @@ export function ReportCustomerModal({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               type="submit"
@@ -95,11 +97,11 @@ export function ReportCustomerModal({
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Submitting...
+                  <Loader2 className="w-4 h-4 animate-spin me-2" />
+                  {t("web.report.submitting")}
                 </>
               ) : (
-                "Submit report"
+                t("web.report.submitReport")
               )}
             </Button>
           </DialogFooter>

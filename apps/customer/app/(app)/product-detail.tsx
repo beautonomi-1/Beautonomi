@@ -26,6 +26,7 @@ import { shareMarketplaceProduct } from "@/lib/share-product";
 import { formatMoney } from "@beautonomi/utils";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import type { PublicProductVariant } from "@/types/api";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ShippingConfig {
   offers_delivery: boolean;
@@ -101,7 +102,10 @@ function formatVariantLabel(optionValues?: Record<string, string>): string {
 
 export default function ProductDetailScreen() {
   const { t } = useTranslation();
-  const pd = useCallback((key: string) => t(`customer.mobile.screens.productDetail.${key}`), [t]);
+  const pd = useCallback((key: string, options?: Record<string, string | number>) => {
+    const fullKey = `customer.mobile.screens.productDetail.${key}`;
+    return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+  }, [t]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const cart = useCart();
@@ -154,7 +158,7 @@ export default function ProductDetailScreen() {
 
   const load = useCallback(async () => {
     if (!id) {
-      setError("No product ID provided.");
+      setError(pd("missingId"));
       setLoading(false);
       return;
     }
@@ -165,9 +169,9 @@ export default function ProductDetailScreen() {
       if (res.error) {
         const status = (res.error as { status?: number } | undefined)?.status;
         if (status === 404) {
-          setError("This product is no longer available or could not be found.");
+          setError(pd("notFound"));
         } else {
-          setError(getApiErrorMessage(res.error, "Could not load product. Please try again."));
+          setError(getApiErrorMessage(res.error, pd("loadFailed")));
         }
         setData(null);
       } else {
@@ -182,12 +186,12 @@ export default function ProductDetailScreen() {
         }
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Could not load product. Please try again."));
+      setError(getApiErrorMessage(e, pd("loadFailed")));
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, pd]);
 
   useEffect(() => {
     load();
@@ -345,7 +349,7 @@ export default function ProductDetailScreen() {
   if (loading && !data) {
     return (
       <>
-        <Stack.Screen options={{ title: "Product", headerShown: true }} />
+        <Stack.Screen options={{ title: pd("stackTitle"), headerShown: true }} />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
@@ -354,10 +358,12 @@ export default function ProductDetailScreen() {
   }
 
   if (error || !product) {
-    const isNotFound = !product && (!error || error.includes("no longer available") || error.includes("not found"));
+    const isNotFound =
+      !product &&
+      (!error || error === pd("notFound") || /no longer available|not found/i.test(error));
     return (
       <>
-        <Stack.Screen options={{ title: "Product", headerShown: true, headerBackTitle: "Back" }} />
+        <Stack.Screen options={{ title: pd("stackTitle"), headerShown: true, headerBackTitle: t("common.back") }} />
         <ScrollView contentContainerStyle={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
           <Ionicons
             name={isNotFound ? "cube-outline" : "wifi-outline"}
@@ -365,10 +371,10 @@ export default function ProductDetailScreen() {
             color="#D1D5DB"
           />
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16, textAlign: "center" }}>
-            {isNotFound ? "Product unavailable" : "Couldn't load product"}
+            {isNotFound ? pd("unavailableHeading") : pd("loadFailedHeading")}
           </Text>
           <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center", maxWidth: 280, lineHeight: 20 }}>
-            {error ?? "This product could not be found. It may have been removed or is no longer available."}
+            {error ?? pd("notFoundBody")}
           </Text>
           <View style={{ flexDirection: "row", gap: 12, marginTop: 24 }}>
             {!isNotFound && (
@@ -376,14 +382,14 @@ export default function ProductDetailScreen() {
                 onPress={load}
                 style={{ paddingVertical: 12, paddingHorizontal: 20, backgroundColor: Colors.primary, borderRadius: 12 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Try again</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{pd("tryAgain")}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               onPress={() => router.back()}
               style={{ paddingVertical: 12, paddingHorizontal: 20, backgroundColor: "#F3F4F6", borderRadius: 12 }}
             >
-              <Text style={{ color: "#374151", fontWeight: "600" }}>Go back</Text>
+              <Text style={{ color: "#374151", fontWeight: "600" }}>{pd("goBack")}</Text>
             </TouchableOpacity>
           </View>
           {isNotFound && (
@@ -391,7 +397,7 @@ export default function ProductDetailScreen() {
               onPress={() => router.push("/(app)/(tabs)/explore" as any)}
               style={{ marginTop: 12, paddingVertical: 10, paddingHorizontal: 20 }}
             >
-              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Browse other products</Text>
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>{pd("browseOtherProducts")}</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -418,12 +424,12 @@ export default function ProductDetailScreen() {
   // when the provider simply doesn't track quantities.
   const showUntrackedInStock = !hasVariants && !trackingEnabled;
   const stockLabel = showUntrackedInStock
-    ? "In stock"
+    ? pd("inStock")
     : displayStock > 10
-      ? "In stock"
+      ? pd("inStock")
       : displayStock > 0
-        ? `Only ${displayStock} left`
-        : "Sold out";
+        ? pd("onlyLeft", { count: displayStock })
+        : pd("soldOut");
   const stockColor = showUntrackedInStock
     ? "#16A34A"
     : displayStock > 10
@@ -438,7 +444,7 @@ export default function ProductDetailScreen() {
         options={{
           title: product.name,
           headerShown: true,
-          headerBackTitle: "Back",
+          headerBackTitle: t("common.back"),
         }}
       />
       <ScrollView style={{ flex: 1, backgroundColor: "#fff" }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
@@ -496,7 +502,7 @@ export default function ProductDetailScreen() {
                 elevation: 3,
               }}
               accessibilityRole="button"
-              accessibilityLabel="Share product"
+              accessibilityLabel={pd("shareProductA11y")}
             >
               <Ionicons name="share-outline" size={22} color="#111827" />
             </TouchableOpacity>
@@ -508,10 +514,10 @@ export default function ProductDetailScreen() {
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: 4,
-                    marginRight: 8,
+                    marginEnd: 8,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Sold out</Text>
+                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>{pd("soldOut")}</Text>
                 </View>
               ) : null}
               <TouchableOpacity
@@ -534,7 +540,7 @@ export default function ProductDetailScreen() {
                   opacity: wishlistLoading ? 0.6 : 1,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={isInWishlist ? "Remove from wishlist" : "Save to wishlist"}
+                accessibilityLabel={isInWishlist ? pd("removeFromWishlistA11y") : pd("saveToWishlistA11y")}
               >
                 <Ionicons
                   name={isInWishlist ? "heart" : "heart-outline"}
@@ -572,7 +578,7 @@ export default function ProductDetailScreen() {
                 <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600" }}>
                   {product.provider.business_name}
                 </Text>
-                <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+                <DirectionalIcon name="chevron-forward" size={14} color={Colors.primary} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -585,7 +591,7 @@ export default function ProductDetailScreen() {
               {priceLabel(Number(displayPrice))}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: stockColor, marginRight: 6 }} />
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: stockColor, marginEnd: 6 }} />
               <Text style={{ fontSize: 13, fontWeight: "600", color: stockColor }}>{stockLabel}</Text>
             </View>
           </View>
@@ -600,11 +606,11 @@ export default function ProductDetailScreen() {
                   borderWidth: 1, borderColor: "#FED7AA",
                   padding: 12,
                 }}>
-                  <Ionicons name="storefront-outline" size={18} color="#C2410C" style={{ marginRight: 10, marginTop: 1 }} />
+                  <Ionicons name="storefront-outline" size={18} color="#C2410C" style={{ marginEnd: 10, marginTop: 1 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C" }}>In-store pickup only</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C" }}>{pd("pickupOnlyTitle")}</Text>
                     <Text style={{ fontSize: 12, color: "#92400E", marginTop: 2, lineHeight: 17 }}>
-                      This item must be collected in person. No delivery available.
+                      {pd("pickupOnlyBody")}
                     </Text>
                     {shipping.collection_notes ? (
                       <Text style={{ fontSize: 12, color: "#92400E", marginTop: 4, lineHeight: 17 }}>
@@ -614,8 +620,11 @@ export default function ProductDetailScreen() {
                     {collectionLocations.length > 0 && (
                       <Text style={{ fontSize: 12, color: "#C2410C", marginTop: 4, fontWeight: "600" }}>
                         {collectionLocations.length === 1
-                          ? `📍 ${collectionLocations[0].name}, ${collectionLocations[0].city}`
-                          : `📍 ${collectionLocations.length} pickup locations`}
+                          ? pd("pickupLocationNamed", {
+                              name: collectionLocations[0].name,
+                              city: collectionLocations[0].city,
+                            })
+                          : pd("pickupLocationsCount", { count: collectionLocations.length })}
                       </Text>
                     )}
                   </View>
@@ -624,15 +633,17 @@ export default function ProductDetailScreen() {
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   {shipping.offers_collection && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}>
-                      <Ionicons name="storefront-outline" size={13} color="#16A34A" style={{ marginRight: 4 }} />
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: "#16A34A" }}>In-store pickup</Text>
+                      <Ionicons name="storefront-outline" size={13} color="#16A34A" style={{ marginEnd: 4 }} />
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: "#16A34A" }}>{pd("inStorePickup")}</Text>
                     </View>
                   )}
                   {hasDelivery && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}>
-                      <Ionicons name="bicycle-outline" size={13} color="#1D4ED8" style={{ marginRight: 4 }} />
+                      <Ionicons name="bicycle-outline" size={13} color="#1D4ED8" style={{ marginEnd: 4 }} />
                       <Text style={{ fontSize: 12, fontWeight: "600", color: "#1D4ED8" }}>
-                        Delivery{shipping.delivery_fee ? ` · ${priceLabel(shipping.delivery_fee)}` : " available"}
+                        {shipping.delivery_fee
+                          ? pd("deliveryWithFee", { amount: priceLabel(shipping.delivery_fee) })
+                          : pd("deliveryAvailable")}
                       </Text>
                     </View>
                   )}
@@ -645,11 +656,11 @@ export default function ProductDetailScreen() {
           {hasVariants && (
             <View style={{ marginTop: 20 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
-                {product.variant_option_types?.[0]?.name ?? "Option"}
+                {product.variant_option_types?.[0]?.name ?? pd("optionFallback")}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                 {variants.map((v) => {
-                  const label = formatVariantLabel(v.option_values) || `Variant ${v.id.slice(0, 8)}`;
+                  const label = formatVariantLabel(v.option_values) || pd("variantFallback", { id: v.id.slice(0, 8) });
                   const isSelected = selectedVariant?.id === v.id;
                   const outOfStock = (v.quantity ?? 0) <= 0;
                   return (
@@ -673,7 +684,7 @@ export default function ProductDetailScreen() {
                         borderColor: isSelected ? Colors.primary : "#E5E7EB",
                         backgroundColor: isSelected ? Colors.primaryLight : "#fff",
                         opacity: outOfStock ? 0.5 : 1,
-                        marginRight: 10,
+                        marginEnd: 10,
                         marginBottom: 10,
                       }}
                       disabled={outOfStock}
@@ -682,7 +693,7 @@ export default function ProductDetailScreen() {
                       <Text style={{ fontSize: 14, fontWeight: "600", color: isSelected ? Colors.primary : "#374151" }}>{label}</Text>
                       <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
                         {priceLabel(Number(v.retail_price))}
-                        {outOfStock ? " · Sold out" : ""}
+                        {outOfStock ? pd("soldOutSuffix") : ""}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -694,7 +705,7 @@ export default function ProductDetailScreen() {
           {/* Description — short first, then long */}
           {(product.short_description || product.description || product.long_description) && (
             <View style={{ marginTop: 20 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Description</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>{pd("description")}</Text>
               {product.short_description ? (
                 <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22, marginBottom: product.long_description ? 8 : 0 }}>
                   {product.short_description}
@@ -721,15 +732,15 @@ export default function ProductDetailScreen() {
             <View style={{ marginTop: 22 }}>
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>
-                  Customer reviews
+                  {pd("customerReviews")}
                 </Text>
                 <View style={{ flex: 1 }} />
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Ionicons name="star" size={14} color="#F59E0B" />
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827", marginLeft: 4 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827", marginStart: 4 }}>
                     {data.reviews.average_rating.toFixed(1)}
                   </Text>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginLeft: 4 }}>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginStart: 4 }}>
                     ({data.reviews.total_count})
                   </Text>
                 </View>
@@ -751,12 +762,12 @@ export default function ProductDetailScreen() {
                         name={n <= r.rating ? "star" : "star-outline"}
                         size={12}
                         color="#F59E0B"
-                        style={{ marginRight: 2 }}
+                        style={{ marginEnd: 2 }}
                       />
                     ))}
-                    <Text style={{ fontSize: 12, color: "#6B7280", marginLeft: 6 }}>
-                      {r.customer?.full_name ?? "Customer"}
-                      {r.is_verified_purchase ? " · Verified" : ""}
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginStart: 6 }}>
+                      {r.customer?.full_name ?? pd("customerFallback")}
+                      {r.is_verified_purchase ? pd("verifiedSuffix") : ""}
                     </Text>
                   </View>
                   {r.title ? (
@@ -779,7 +790,7 @@ export default function ProductDetailScreen() {
                 <TouchableOpacity
                   onPress={() => router.push(`/(app)/product-reviews?id=${encodeURIComponent(id as string)}` as never)}
                   accessibilityRole="button"
-                  accessibilityLabel="See all reviews"
+                  accessibilityLabel={pd("seeAllReviewsA11y")}
                   style={{
                     marginTop: 4,
                     flexDirection: "row",
@@ -792,9 +803,9 @@ export default function ProductDetailScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                    See all {data.reviews.total_count} reviews
+                    {pd("seeAllReviews", { count: data.reviews.total_count })}
                   </Text>
-                  <Ionicons name="chevron-forward" size={16} color="#111827" style={{ marginLeft: 4 }} />
+                  <DirectionalIcon name="chevron-forward" size={16} color="#111827" style={{ marginStart: 4 }} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -815,16 +826,16 @@ export default function ProductDetailScreen() {
               ...Shadows.cardSmall,
             }}
             accessibilityRole="button"
-            accessibilityLabel={inStock ? "Add to cart" : "Sold out"}
+            accessibilityLabel={inStock ? pd("addToCartA11y") : pd("soldOut")}
             accessibilityState={{ disabled: !inStock || addingToCart }}
           >
             {addingToCart ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Ionicons name="cart-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                <Ionicons name="cart-outline" size={22} color="#fff" style={{ marginEnd: 8 }} />
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                  {inStock ? `Add to cart · ${priceLabel(Number(displayPrice))}` : "Sold out"}
+                  {inStock ? pd("addToCartWithPrice", { price: priceLabel(Number(displayPrice)) }) : pd("soldOut")}
                 </Text>
               </>
             )}
@@ -842,7 +853,7 @@ export default function ProductDetailScreen() {
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>View cart</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>{pd("viewCart")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -874,7 +885,7 @@ export default function ProductDetailScreen() {
               accessibilityState={{ disabled: !canCheckoutProviderCart }}
             >
               <Text style={{ color: canCheckoutProviderCart ? Colors.primary : "#9CA3AF", fontWeight: "700", fontSize: 14 }}>
-                {canCheckoutProviderCart ? `Checkout cart (${providerCartItemCount})` : "Add to cart first"}
+                {canCheckoutProviderCart ? pd("checkoutCart", { count: providerCartItemCount }) : pd("addToCartFirst")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -885,11 +896,11 @@ export default function ProductDetailScreen() {
               onPress={() => router.push(`/(app)/partner-profile?slug=${product.provider!.slug}&tab=products` as any)}
               style={{ marginTop: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}
             >
-              <Ionicons name="storefront-outline" size={16} color="#6B7280" style={{ marginRight: 6 }} />
+              <Ionicons name="storefront-outline" size={16} color="#6B7280" style={{ marginEnd: 6 }} />
               <Text style={{ fontSize: 14, color: "#6B7280", fontWeight: "500" }}>
-                More from {product.provider.business_name}
+                {pd("moreFrom", { name: product.provider.business_name })}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+              <DirectionalIcon name="chevron-forward" size={16} color="#6B7280" />
             </TouchableOpacity>
           ) : null}
         </View>

@@ -16,7 +16,7 @@
  * uses. The fallback only runs when a class isn't in the explicit map, so
  * existing styles are unchanged.
  */
-import type { ViewStyle, TextStyle } from "react-native";
+import { I18nManager, type ViewStyle, type TextStyle } from "react-native";
 
 const GRAY = {
   50: "#F9FAFB",
@@ -434,30 +434,30 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     if (c === "self-end") { style.alignSelf = "flex-end"; continue; }
     if (c === "self-center") { style.alignSelf = "center"; continue; }
 
-    // Padding
-    const pMatch = c.match(/^p(?:x|y|t|b|l|r)?-(\d+(?:\.\d+)?)$/);
+    // Padding (physical + logical start/end)
+    const pMatch = c.match(/^p(?:x|y|t|b|l|r|s|e)?-(\d+(?:\.\d+)?)$/);
     if (pMatch) {
       const v = getSpace(pMatch[1]);
       if (c.startsWith("px-")) style.paddingHorizontal = v;
       else if (c.startsWith("py-")) style.paddingVertical = v;
       else if (c.startsWith("pt-")) style.paddingTop = v;
       else if (c.startsWith("pb-")) style.paddingBottom = v;
-      else if (c.startsWith("pl-")) style.paddingLeft = v;
-      else if (c.startsWith("pr-")) style.paddingRight = v;
+      else if (c.startsWith("pl-") || c.startsWith("ps-")) style.paddingStart = v;
+      else if (c.startsWith("pr-") || c.startsWith("pe-")) style.paddingEnd = v;
       else style.padding = v;
       continue;
     }
 
-    // Margin
-    const mMatch = c.match(/^m(?:x|y|t|b|l|r)?-(\d+(?:\.\d+)?)$/);
+    // Margin (physical + logical start/end)
+    const mMatch = c.match(/^m(?:x|y|t|b|l|r|s|e)?-(\d+(?:\.\d+)?)$/);
     if (mMatch) {
       const v = getSpace(mMatch[1]);
       if (c.startsWith("mx-")) style.marginHorizontal = v;
       else if (c.startsWith("my-")) style.marginVertical = v;
       else if (c.startsWith("mt-")) style.marginTop = v;
       else if (c.startsWith("mb-")) style.marginBottom = v;
-      else if (c.startsWith("ml-")) style.marginLeft = v;
-      else if (c.startsWith("mr-")) style.marginRight = v;
+      else if (c.startsWith("ml-") || c.startsWith("ms-")) style.marginStart = v;
+      else if (c.startsWith("mr-") || c.startsWith("me-")) style.marginEnd = v;
       else style.margin = v;
       continue;
     }
@@ -494,14 +494,16 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       style.left = 0;
       continue;
     }
-    const posMatch = c.match(/^(-?)(top|right|bottom|left)-(\d+(?:\.\d+)?)$/);
+    const posMatch = c.match(/^(-?)(top|right|bottom|left|start|end)-(\d+(?:\.\d+)?)$/);
     if (posMatch) {
       const val = getSpace(posMatch[3]);
       const v = posMatch[1] === "-" ? -val : val;
       if (posMatch[2] === "top") style.top = v;
       else if (posMatch[2] === "right") style.right = v;
       else if (posMatch[2] === "bottom") style.bottom = v;
-      else style.left = v;
+      else if (posMatch[2] === "left") style.left = v;
+      else if (posMatch[2] === "start") style.start = v;
+      else style.end = v;
       continue;
     }
 
@@ -510,8 +512,8 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     if (c === "border-2") { style.borderWidth = 2; continue; }
     if (c === "border-t") { style.borderTopWidth = 1; continue; }
     if (c === "border-b") { style.borderBottomWidth = 1; continue; }
-    if (c === "border-l") { style.borderLeftWidth = 1; continue; }
-    if (c === "border-r") { style.borderRightWidth = 1; continue; }
+    if (c === "border-l" || c === "border-s") { style.borderStartWidth = 1; continue; }
+    if (c === "border-r" || c === "border-e") { style.borderEndWidth = 1; continue; }
 
     // Border colour (curated map first)
     if (c.startsWith("border-")) {
@@ -544,8 +546,8 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
         if (!style.borderColor) {
           if (c.startsWith("border-t-")) style.borderTopColor = primary;
           else if (c.startsWith("border-b-")) style.borderBottomColor = primary;
-          else if (c.startsWith("border-l-")) style.borderLeftColor = primary;
-          else if (c.startsWith("border-r-")) style.borderRightColor = primary;
+          else if (c.startsWith("border-l-") || c.startsWith("border-s-")) style.borderStartColor = primary;
+          else if (c.startsWith("border-r-") || c.startsWith("border-e-")) style.borderEndColor = primary;
           else style.borderColor = primary;
         }
         continue;
@@ -565,8 +567,8 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
           // Honour `border-t-`/`border-b-`/`border-l-`/`border-r-` colour tokens
           if (c.startsWith("border-t-")) style.borderTopColor = palette;
           else if (c.startsWith("border-b-")) style.borderBottomColor = palette;
-          else if (c.startsWith("border-l-")) style.borderLeftColor = palette;
-          else if (c.startsWith("border-r-")) style.borderRightColor = palette;
+          else if (c.startsWith("border-l-") || c.startsWith("border-s-")) style.borderStartColor = palette;
+          else if (c.startsWith("border-r-") || c.startsWith("border-e-")) style.borderEndColor = palette;
           else style.borderColor = palette;
         }
         continue;
@@ -664,6 +666,10 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     else if (c === "text-2xl") style.fontSize = 24;
     else if (c.match(/^text-\[(\d+)px\]$/)) style.fontSize = parseInt(c.replace(/\D/g, ""), 10);
     else if (c === "text-center") style.textAlign = "center";
+    else if (c === "text-start") style.textAlign = I18nManager.isRTL ? "right" : "left";
+    else if (c === "text-end") style.textAlign = I18nManager.isRTL ? "left" : "right";
+    else if (c === "text-left") style.textAlign = "left";
+    else if (c === "text-right") style.textAlign = "right";
     else if (c === "uppercase") style.textTransform = "uppercase";
     else if (c === "capitalize") style.textTransform = "capitalize";
     else if (c === "font-mono") style.fontFamily = "monospace";

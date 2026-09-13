@@ -25,7 +25,7 @@ export function ActiveLocationChip({ style }: { style?: object }) {
       ]}
     >
       <Ionicons name="location-outline" size={13} color="#6b7280" />
-      <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")} numberOfLines={1}>
+      <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")} numberOfLines={1}>
         Showing: {active.name}
       </Text>
     </View>

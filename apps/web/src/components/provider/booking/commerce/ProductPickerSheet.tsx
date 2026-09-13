@@ -19,6 +19,7 @@ import {
   BookingSectionCard,
   BookingSectionLabel,
 } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface ProductPickerItem {
   id: string;
@@ -43,6 +44,7 @@ export function ProductPickerSheet({
   autoLoadProducts = true,
   onAdd,
 }: ProductPickerSheetProps) {
+  const { t } = useTranslation();
   const [loadedProducts, setLoadedProducts] = useState<ProductPickerItem[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -86,18 +88,18 @@ export function ProductPickerSheet({
   const handleAdd = async () => {
     const qty = Number(quantity);
     if (!productId || !Number.isFinite(qty) || qty <= 0) {
-      toast.error("Select a product and quantity");
+      toast.error(t("web.provider.bookings.productPicker.selectProductAndQty"));
       return;
     }
     setSaving(true);
     try {
       await onAdd(productId, qty);
-      toast.success("Product added");
+      toast.success(t("web.provider.bookings.productPicker.added"));
       onOpenChange(false);
       setProductId("");
       setQuantity("1");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add product");
+      toast.error(error instanceof Error ? error.message : t("web.provider.bookings.productPicker.addFailed"));
     } finally {
       setSaving(false);
     }
@@ -107,11 +109,11 @@ export function ProductPickerSheet({
     <BookingActionButton disabled={saving || !productId} onClick={handleAdd}>
       {saving ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Adding…
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+          {t("web.provider.bookings.productPicker.adding")}
         </>
       ) : (
-        "Add product"
+        t("web.provider.bookings.productPicker.addProduct")
       )}
     </BookingActionButton>
   );
@@ -121,7 +123,7 @@ export function ProductPickerSheet({
       open={open}
       onOpenChange={onOpenChange}
       mode="edit"
-      title="Add product"
+      title={t("web.provider.bookings.productPicker.addProduct")}
       footer={footer}
     >
       <div className="space-y-4 pb-4">
@@ -130,14 +132,14 @@ export function ProductPickerSheet({
             <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
           </div>
         ) : products.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4">No retail products in catalog.</p>
+          <p className="text-sm text-gray-500 py-4">{t("web.provider.bookings.productPicker.empty")}</p>
         ) : (
         <>
         <BookingSectionCard>
-          <BookingSectionLabel className="mb-2">Product</BookingSectionLabel>
+          <BookingSectionLabel className="mb-2">{t("web.provider.bookings.productPicker.product")}</BookingSectionLabel>
           <Select value={productId} onValueChange={setProductId}>
             <SelectTrigger className="rounded-xl min-h-[44px]">
-              <SelectValue placeholder="Select product" />
+              <SelectValue placeholder={t("web.provider.bookings.productPicker.selectProduct")} />
             </SelectTrigger>
             <SelectContent>
               {products.map((p) => (
@@ -152,7 +154,7 @@ export function ProductPickerSheet({
 
         <BookingSectionCard>
           <BookingSectionLabel htmlFor="product-qty" className="mb-2">
-            Quantity
+            {t("web.provider.bookings.productPicker.quantity")}
           </BookingSectionLabel>
           <Input
             id="product-qty"
@@ -163,7 +165,9 @@ export function ProductPickerSheet({
             className="rounded-xl min-h-[44px]"
           />
           {selected?.stock != null ? (
-            <p className="text-xs text-gray-500 mt-1">In stock: {selected.stock}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {t("web.provider.bookings.productPicker.inStock", { count: selected.stock })}
+            </p>
           ) : null}
         </BookingSectionCard>
         </>

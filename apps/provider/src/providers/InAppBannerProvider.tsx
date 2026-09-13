@@ -257,11 +257,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginEnd: 10,
   },
   textWrap: {
     flex: 1,
-    marginRight: 8,
+    marginEnd: 8,
   },
   title: {
     fontSize: 14,

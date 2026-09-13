@@ -9,6 +9,7 @@ import {
   Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
@@ -50,10 +51,10 @@ interface Resource {
 }
 
 const RESOURCE_TYPES = [
-  { label: "Room", value: "room", icon: "home-outline" as const, color: "#6366f1" },
-  { label: "Chair", value: "chair", icon: "person-outline" as const, color: "#22c55e" },
-  { label: "Equipment", value: "equipment", icon: "construct-outline" as const, color: "#f59e0b" },
-  { label: "Other", value: "other", icon: "ellipse-outline" as const, color: "#6b7280" },
+  { labelKey: "typeRoom", value: "room", icon: "home-outline" as const, color: "#6366f1" },
+  { labelKey: "typeChair", value: "chair", icon: "person-outline" as const, color: "#22c55e" },
+  { labelKey: "typeEquipment", value: "equipment", icon: "construct-outline" as const, color: "#f59e0b" },
+  { labelKey: "typeOther", value: "other", icon: "ellipse-outline" as const, color: "#6b7280" },
 ];
 
 const COLOR_PALETTE = [
@@ -61,16 +62,22 @@ const COLOR_PALETTE = [
   "#f59e0b", "#22c55e", "#14b8a6", "#0ea5e9", "#3b82f6",
 ];
 
-const TAB_OPTIONS = [
-  { label: "Resources", value: "resources" },
-  { label: "Groups", value: "groups" },
-];
+const TAB_OPTION_KEYS = [
+  { labelKey: "tabResources", value: "resources" },
+  { labelKey: "tabGroups", value: "groups" },
+] as const;
 
 function typeInfo(type: string | null) {
   return RESOURCE_TYPES.find((t) => t.value === type) ?? RESOURCE_TYPES[3];
 }
 
 export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const rs = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.resources.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState("resources");
@@ -102,7 +109,18 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   );
 
   const hasError = (resourcesError && !resources) || (groupsError && !groups);
-  const errorMessage = resourcesError || groupsError || "Failed to load";
+  const errorMessage = resourcesError || groupsError || rs("loadFailed");
+  const tabOptions = useMemo(
+    () => TAB_OPTION_KEYS.map((opt) => ({ label: rs(opt.labelKey), value: opt.value })),
+    [rs],
+  );
+  const typeFilterOptions = useMemo(
+    () => [
+      { label: rs("filterAll"), value: "all" },
+      ...RESOURCE_TYPES.map((type) => ({ label: rs(type.labelKey), value: type.value })),
+    ],
+    [rs],
+  );
   const { execute: createResource, loading: creating } = useApiPost<any, any>("/api/provider/resources");
   const { execute: updateResource, loading: updating } = useApiMutation("patch");
   const { execute: deleteResource } = useApiMutation("delete");
@@ -168,7 +186,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Resource name is required");
+      Alert.alert(rs("requiredTitle"), rs("nameRequired"));
       return;
     }
     const payload = {
@@ -182,13 +200,13 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
     };
     if (editing) {
       const { error } = await updateResource(`/api/provider/resources/${editing.id}`, payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     } else {
       const { error } = await createResource({
         ...payload,
         ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
       });
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowForm(false);
@@ -196,14 +214,14 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   }
 
   function handleDelete(res: Resource) {
-    Alert.alert("Delete Resource", `Delete "${res.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(rs("deleteResourceTitle"), rs("deleteResourceBody", { name: res.name }), [
+      { text: rs("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: rs("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteResource(`/api/provider/resources/${res.id}`);
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(rs("errorTitle"), error);
           else refresh();
         },
       },
@@ -224,16 +242,16 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
 
   async function handleSaveGroup() {
     if (!groupForm.name.trim()) {
-      Alert.alert("Required", "Group name is required");
+      Alert.alert(rs("requiredTitle"), rs("groupNameRequired"));
       return;
     }
     const payload = { name: groupForm.name.trim(), color: groupForm.color };
     if (editingGroup) {
       const { error } = await updateGroup(`/api/provider/resource-groups/${editingGroup.id}`, payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     } else {
       const { error } = await createGroup(payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowGroupForm(false);
@@ -241,14 +259,14 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   }
 
   function handleDeleteGroup(group: ResourceGroup) {
-    Alert.alert("Delete Group", `Delete "${group.name}"? Resources in this group won't be deleted.`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(rs("deleteGroupTitle"), rs("deleteGroupBody", { name: group.name }), [
+      { text: rs("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: rs("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteGroup(`/api/provider/resource-groups/${group.id}`);
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(rs("errorTitle"), error);
           else refreshGroups();
         },
       },
@@ -263,35 +281,32 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
           onPress={tab === "resources" ? openCreate : openCreateGroup}
         >
           <Ionicons name="add" size={20} color="#fff" />
-          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>{tab === "resources" ? "Add resource" : "Add group"}</Text>
+          <Text style={{ marginStart: 8, fontWeight: "600", color: Colors.white }}>{tab === "resources" ? rs("addResource") : rs("addGroup")}</Text>
         </TouchableOpacity>
       )}
       <View style={{ minHeight: 0, flex: 1 }}>
         <View style={{ marginBottom: 16, flexDirection: "row" }}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <StatCard title="Total" value={String(stats.total)} icon="construct-outline" iconColor="#6366f1" iconBg="#eef2ff" compact />
+          <View style={{ flex: 1, marginEnd: 12 }}>
+            <StatCard title={rs("statTotal")} value={String(stats.total)} icon="construct-outline" iconColor="#6366f1" iconBg="#eef2ff" compact />
           </View>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <StatCard title="Active" value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="#f0fdf4" compact />
+          <View style={{ flex: 1, marginEnd: 12 }}>
+            <StatCard title={rs("statActive")} value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="#f0fdf4" compact />
           </View>
           <View style={{ flex: 1 }}>
-            <StatCard title="Groups" value={String(stats.groupCount)} icon="layers-outline" iconColor="#f59e0b" iconBg="#fffbeb" compact />
+            <StatCard title={rs("statGroups")} value={String(stats.groupCount)} icon="layers-outline" iconColor="#f59e0b" iconBg="#fffbeb" compact />
           </View>
         </View>
 
         <View style={{ marginBottom: 12 }}>
-          <FilterChipGroup options={TAB_OPTIONS} selected={tab} onSelect={setTab} />
+          <FilterChipGroup options={tabOptions} selected={tab} onSelect={setTab} />
         </View>
 
         {tab === "resources" ? (
           <>
-            <SearchBar value={search} onChangeText={setSearch} placeholder="Search resources..." />
+            <SearchBar value={search} onChangeText={setSearch} placeholder={rs("searchPlaceholder")} />
             <View style={{ marginVertical: 12 }}>
               <FilterChipGroup
-                options={[
-                  { label: "All", value: "all" },
-                  ...RESOURCE_TYPES.map((t) => ({ label: t.label, value: t.value })),
-                ]}
+                options={typeFilterOptions}
                 selected={typeFilter}
                 onSelect={setTypeFilter}
               />
@@ -300,7 +315,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             {loading && !resources ? (
               <SkeletonList rows={4} />
             ) : filteredResources.length === 0 ? (
-              <EmptyState icon="construct-outline" title="No resources" description="Add rooms, chairs, and equipment" />
+              <EmptyState icon="construct-outline" title={rs("emptyResourcesTitle")} description={rs("emptyResourcesBody")} />
             ) : (
               <FlatList
                 {...verticalFlatListPerf}
@@ -326,21 +341,21 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                       >
                         <Ionicons name={ti.icon} size={18} color={res.calendar_color ?? ti.color} />
                       </View>
-                      <View style={{ marginLeft: 12, flex: 1 }}>
+                      <View style={{ marginStart: 12, flex: 1 }}>
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginRight: 8 }}>{res.name}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginEnd: 8 }}>{res.name}</Text>
                           <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: res.is_active ? "#f0fdf4" : Colors.gray[100] }}>
                             <Text style={{ fontSize: 10, fontWeight: "500", color: res.is_active ? "#15803d" : Colors.gray[500] }}>
-                              {res.is_active ? "Active" : "Inactive"}
+                              {res.is_active ? rs("active") : rs("inactive")}
                             </Text>
                           </View>
                         </View>
                         <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
-                          <View style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], paddingHorizontal: 8, paddingVertical: 2, marginRight: 8 }}>
-                            <Text style={{ fontSize: 10, color: Colors.gray[600] }}>{ti.label}</Text>
+                          <View style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], paddingHorizontal: 8, paddingVertical: 2, marginEnd: 8 }}>
+                            <Text style={{ fontSize: 10, color: Colors.gray[600] }}>{rs(ti.labelKey)}</Text>
                           </View>
                           {res.capacity && (
-                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginRight: 8 }}>Cap: {res.capacity}</Text>
+                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginEnd: 8 }}>{rs("capacity", { count: res.capacity })}</Text>
                           )}
                           {res.group_name && (
                             <View
@@ -373,7 +388,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
           {loadingGroups && !groups ? (
             <SkeletonList rows={3} />
           ) : !groups?.length ? (
-            <EmptyState icon="layers-outline" title="No groups" description="Create groups to organize resources" />
+            <EmptyState icon="layers-outline" title={rs("emptyGroupsTitle")} description={rs("emptyGroupsBody")} />
           ) : (
             <FlatList
               {...verticalFlatListPerf}
@@ -396,10 +411,10 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                   >
                     <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: group.color }} />
                   </View>
-                  <View style={{ marginLeft: 12, flex: 1 }}>
+                  <View style={{ marginStart: 12, flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{group.name}</Text>
                     {group.resource_count != null && (
-                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{group.resource_count} resources</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rs("resourceCount", { count: group.resource_count })}</Text>
                     )}
                   </View>
                   <TouchableOpacity onPress={() => handleDeleteGroup(group)} hitSlop={8}>
@@ -414,18 +429,18 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
       </View>
 
       {/* Resource form */}
-      <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editing ? "Edit Resource" : "New Resource"}>
+      <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editing ? rs("editResource") : rs("newResource")}>
         <View>
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("nameLabel")}</Text>
           <TextInput
             style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Treatment Room 1"
+            placeholder={rs("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("typeLabel")}</Text>
           <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {RESOURCE_TYPES.map((t) => (
               <TouchableOpacity
@@ -436,54 +451,54 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                   borderRadius: 8,
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  marginRight: 8,
+                  marginEnd: 8,
                   marginBottom: 8,
                   backgroundColor: form.resource_type === t.value ? "#4f46e5" : Colors.gray[100],
                 }}
                 onPress={() => setForm((p) => ({ ...p, resource_type: t.value }))}
               >
-                <Ionicons name={t.icon} size={14} color={form.resource_type === t.value ? "#fff" : t.color} style={{ marginRight: 6 }} />
+                <Ionicons name={t.icon} size={14} color={form.resource_type === t.value ? "#fff" : t.color} style={{ marginEnd: 6 }} />
                 <Text style={{ fontSize: 12, fontWeight: "500", color: form.resource_type === t.value ? Colors.white : Colors.gray[700] }}>
-                  {t.label}
+                  {rs(t.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("descriptionLabel")}</Text>
           <TextInput
             style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional description"
+            placeholder={rs("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
           <View style={{ marginBottom: 12, flexDirection: "row" }}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Capacity</Text>
+            <View style={{ flex: 1, marginEnd: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("capacityLabel")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.capacity}
                 onChangeText={(t) => setForm((p) => ({ ...p, capacity: t }))}
-                placeholder="1"
+                placeholder={rs("capacityPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="number-pad"
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Group</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("groupLabel")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                 <TouchableOpacity
-                  style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginRight: 6, marginBottom: 6, backgroundColor: !form.group_id ? "#4f46e5" : Colors.gray[100] }}
+                  style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginEnd: 6, marginBottom: 6, backgroundColor: !form.group_id ? "#4f46e5" : Colors.gray[100] }}
                   onPress={() => setForm((p) => ({ ...p, group_id: "" }))}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: "500", color: !form.group_id ? Colors.white : Colors.gray[600] }}>None</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: !form.group_id ? Colors.white : Colors.gray[600] }}>{rs("none")}</Text>
                 </TouchableOpacity>
                 {(groups ?? []).map((g) => (
                   <TouchableOpacity
                     key={g.id}
-                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginRight: 6, marginBottom: 6, backgroundColor: form.group_id === g.id ? "#4f46e5" : Colors.gray[100] }}
+                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginEnd: 6, marginBottom: 6, backgroundColor: form.group_id === g.id ? "#4f46e5" : Colors.gray[100] }}
                     onPress={() => setForm((p) => ({ ...p, group_id: g.id }))}
                   >
                     <Text style={{ fontSize: 12, fontWeight: "500", color: form.group_id === g.id ? Colors.white : Colors.gray[600] }}>
@@ -495,7 +510,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             </View>
           </View>
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Calendar Color</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("calendarColor")}</Text>
           <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {COLOR_PALETTE.map((c) => (
               <TouchableOpacity
@@ -509,7 +524,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                   borderWidth: form.calendar_color === c ? 2 : 0,
                   borderColor: Colors.gray[900],
                   backgroundColor: c,
-                  marginRight: 8,
+                  marginEnd: 8,
                   marginBottom: 8,
                 }}
                 onPress={() => setForm((p) => ({ ...p, calendar_color: c }))}
@@ -520,7 +535,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
           </View>
 
           <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Active</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("activeLabel")}</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -529,22 +544,22 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             />
           </View>
 
-          <ActionButton label={editing ? "Update" : "Create"} onPress={handleSave} loading={creating || updating} fullWidth />
+          <ActionButton label={editing ? rs("update") : rs("create")} onPress={handleSave} loading={creating || updating} fullWidth />
         </View>
       </BottomSheet>
 
       {/* Group form */}
-      <BottomSheet visible={showGroupForm} onClose={() => setShowGroupForm(false)} title={editingGroup ? "Edit Group" : "New Group"}>
+      <BottomSheet visible={showGroupForm} onClose={() => setShowGroupForm(false)} title={editingGroup ? rs("editGroup") : rs("newGroup")}>
         <View>
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Group Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("groupNameLabel")}</Text>
           <TextInput
             style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={groupForm.name}
             onChangeText={(t) => setGroupForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Treatment Rooms"
+            placeholder={rs("groupNamePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Color</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rs("colorLabel")}</Text>
           <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap" }}>
             {COLOR_PALETTE.map((c) => (
               <TouchableOpacity
@@ -558,7 +573,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                   borderWidth: groupForm.color === c ? 2 : 0,
                   borderColor: Colors.gray[900],
                   backgroundColor: c,
-                  marginRight: 8,
+                  marginEnd: 8,
                   marginBottom: 8,
                 }}
                 onPress={() => setGroupForm((p) => ({ ...p, color: c }))}
@@ -567,7 +582,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
               </TouchableOpacity>
             ))}
           </View>
-          <ActionButton label={editingGroup ? "Update Group" : "Create Group"} onPress={handleSaveGroup} loading={creatingGroup || updatingGroup} fullWidth />
+          <ActionButton label={editingGroup ? rs("updateGroup") : rs("createGroup")} onPress={handleSaveGroup} loading={creatingGroup || updatingGroup} fullWidth />
         </View>
       </BottomSheet>
     </>
@@ -586,9 +601,9 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Resources"
+        title={rs("title")}
         showBack
-        subtitle={`${stats.total} resources · ${stats.groupCount} groups`}
+        subtitle={rs("subtitle", { resources: stats.total, groups: stats.groupCount })}
         rightAction={
           <TouchableOpacity
             style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: Colors.gray[900] }}

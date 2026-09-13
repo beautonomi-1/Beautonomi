@@ -18,6 +18,29 @@ import {
 
 export { setInMemoryCsrfToken };
 
+/**
+ * Salon iframes often cannot store SameSite=Lax auth cookies (Safari ITP /
+ * Chrome third-party partitioning). The browser client still has the session
+ * in memory after OTP — send it as Bearer so consume and /api/me/* succeed.
+ * csrfCheck already exempts Authorization: Bearer mutations.
+ */
+async function attachBrowserAccessToken(headers: Record<string, string>): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (headers.Authorization || headers.authorization) return;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  if (!supabaseUrl || supabaseUrl.includes("placeholder")) return;
+  try {
+    const { getSupabaseClient } = await import("@/lib/supabase/client");
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token?.trim();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    // Cookie session still works on first-party Beautonomi pages.
+  }
+}
+
 export interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: Record<string, unknown> | FormData;
   timeoutMs?: number;
@@ -167,6 +190,7 @@ function isScopedAdminCustomizationUrl(url: string): boolean {
     adminPathMatchesPrefix(url, "/api/admin/mapbox/config") ||
     adminPathMatchesPrefix(url, "/api/admin/maintenance") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/gemini") ||
+    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/ai") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/aura") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/didit") ||
     adminPathMatchesPrefix(url, "/api/admin/subscription-plans") ||
@@ -248,6 +272,7 @@ export function isTransientNetworkFetchError(error: unknown): boolean {
   if (!error) return false;
   if (isFetchTimeoutLike(error)) return true;
   if (error instanceof FetchError) {
+    if (error.code === "NOT_FOUND_HTML" || error.code === "HTML_ERROR_RESPONSE") return true;
     if (error.code === "NETWORK_ERROR") return true;
     if (error.status === 0 && error.code === "UNKNOWN_ERROR") {
       const m = (error.message || "").toLowerCase();
@@ -299,6 +324,7 @@ export async function fetchJson<T = unknown>(
   url: string,
   options: FetchOptions = {},
   csrfRetried = false,
+  htmlRoutingRetried = false,
 ): Promise<T> {
   const {
     method = 'GET',
@@ -332,6 +358,8 @@ export async function fetchJson<T = unknown>(
         (requestHeaders as Record<string, string>)["x-csrf-token"] = token;
       }
     }
+
+    await attachBrowserAccessToken(requestHeaders as Record<string, string>);
 
     // Prepare body
     let requestBody: BodyInit | undefined;
@@ -466,7 +494,20 @@ export async function fetchJson<T = unknown>(
       ) {
         setInMemoryCsrfToken(null);
         await ensureCsrfToken();
-        return fetchJson<T>(url, options, true);
+        return fetchJson<T>(url, options, true, htmlRoutingRetried);
+      }
+
+      // Turbopack first-hit: dynamic /api/.../[id] often returns the HTML 404
+      // page until the route finishes compiling. One short retry avoids the
+      // Next.js 16 "Console FetchError" overlay on public web.
+      if (
+        !htmlRoutingRetried &&
+        typeof window !== "undefined" &&
+        process.env.NODE_ENV === "development" &&
+        (errorData.code === "NOT_FOUND_HTML" || errorData.code === "HTML_ERROR_RESPONSE")
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        return fetchJson<T>(url, options, csrfRetried, true);
       }
 
       throw new FetchError(

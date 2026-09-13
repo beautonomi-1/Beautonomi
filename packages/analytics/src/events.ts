@@ -32,6 +32,13 @@ export const EVENT_BOOKING_CANCELLED = "booking_cancelled";
 
 // Retention & Loyalty
 export const EVENT_BOOKING_RESCHEDULED = "booking_rescheduled";
+export const EVENT_PENDING_REQUEST_EXPIRED = "pending_request_expired";
+export const EVENT_PENDING_REQUEST_NUDGE_SENT = "pending_request_nudge_sent";
+export const EVENT_BOOKING_CLOSEOUT_PROMPTED = "booking_closeout_prompted";
+export const EVENT_BOOKING_CLOSEOUT_BULK_COMPLETED = "booking_closeout_bulk_completed";
+export const EVENT_BOOKING_RUNNING_LATE_REPORTED = "booking_running_late_reported";
+export const EVENT_BOOKING_RUNNING_LATE_ACKED = "booking_running_late_acked";
+export const EVENT_SALON_RUNNING_BEHIND_BROADCAST = "salon_running_behind_broadcast";
 export const EVENT_REVIEW_SUBMITTED = "review_submitted";
 export const EVENT_LOYALTY_POINTS_EARNED = "loyalty_points_earned";
 export const EVENT_LOYALTY_REDEEMED = "loyalty_redeemed";
@@ -181,6 +188,10 @@ export const EVENT_USER_REPORT_RESOLVED = "user_report_resolved";
 export const EVENT_SYSTEM_HEALTH_VIEW = "system_health_view";
 export const EVENT_MONITORING_ERROR_VIEW = "monitoring_error_view";
 
+// Locale preferences
+export const EVENT_LOCALE_LANGUAGE_CHANGED = "locale_language_changed";
+export const EVENT_LOCALE_DISPLAY_CURRENCY_CHANGED = "locale_display_currency_changed";
+
 // Market routing
 export const EVENT_MARKET_AUTO_SWITCH_ATTEMPTED = "market_auto_switch_attempted";
 export const EVENT_MARKET_AUTO_SWITCH_SUPPRESSED = "market_auto_switch_suppressed";
@@ -228,6 +239,13 @@ export type AnalyticsEventProperties = {
   [EVENT_BOOKING_CONFIRMED]: { booking_id: string; total?: number; services_count?: number; payment_method?: string };
   [EVENT_BOOKING_CANCELLED]: { booking_id: string; reason?: string; cancelled_by?: "customer" | "provider" };
   [EVENT_BOOKING_RESCHEDULED]: { booking_id: string; new_date?: string; rescheduled_by?: "customer" | "provider"; notify_customer?: boolean };
+  [EVENT_PENDING_REQUEST_EXPIRED]: { booking_id: string; provider_id?: string; reason?: string };
+  [EVENT_PENDING_REQUEST_NUDGE_SENT]: { booking_id: string; provider_id?: string; hours_until_slot?: number };
+  [EVENT_BOOKING_CLOSEOUT_PROMPTED]: { booking_id: string; provider_id?: string; portal?: "provider" };
+  [EVENT_BOOKING_CLOSEOUT_BULK_COMPLETED]: { provider_id: string; count: number; portal?: "provider" };
+  [EVENT_BOOKING_RUNNING_LATE_REPORTED]: { booking_id: string; minutes_late: number; portal?: "client" };
+  [EVENT_BOOKING_RUNNING_LATE_ACKED]: { booking_id: string; provider_id?: string; portal?: "provider" };
+  [EVENT_SALON_RUNNING_BEHIND_BROADCAST]: { provider_id: string; minutes_behind: number; booking_ids?: string[]; portal?: "provider" };
   [EVENT_REVIEW_SUBMITTED]: { booking_id?: string; provider_id: string; rating: number };
   [EVENT_WALLET_TOPUP]: MoneyEventProperties & { wallet_id?: string };
   [EVENT_GIFT_CARD_PURCHASED]: MoneyEventProperties & { gift_card_id: string };
@@ -245,6 +263,18 @@ export type AnalyticsEventProperties = {
   [EVENT_PROVIDER_JOURNEY_STARTED]: { booking_id: string; eta_minutes?: number | null; portal: "provider" };
   [EVENT_PROVIDER_ETA_UPDATED]: { booking_id: string; eta_minutes: number; previous_eta_minutes?: number | null; running_late: boolean; portal: "provider" };
   [EVENT_PROVIDER_ARRIVED]: { booking_id: string; portal: "provider" };
+  [EVENT_LOCALE_LANGUAGE_CHANGED]: {
+    from: string;
+    to: string;
+    surface: "header" | "footer" | "account" | "navbar" | "mobile";
+    authenticated: boolean;
+  };
+  [EVENT_LOCALE_DISPLAY_CURRENCY_CHANGED]: {
+    from: string;
+    to: string;
+    surface: "header" | "footer" | "account" | "navbar" | "mobile";
+    authenticated: boolean;
+  };
 };
 
 export type AnalyticsEventName = keyof AnalyticsEventProperties | string;

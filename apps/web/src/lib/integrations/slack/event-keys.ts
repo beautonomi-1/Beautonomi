@@ -55,6 +55,7 @@ export const SLACK_EVENT_KEYS = {
   FINANCE_PAYMENT_FAILED: "finance.payment.failed",
   FINANCE_REFUND_HIGH_VALUE: "finance.refund.high_value",
   FINANCE_UNRECOGNIZED_PAYMENTS: "finance.unrecognized_payments",
+  FINANCE_FX_STALE: "finance.fx.stale",
   SUBSCRIPTION_CHURNED: "subscription.churned",
   OPS_WORKFLOW_FAILED: "ops.workflow.failed",
   OPS_DEPLOY_COMPLETED: "ops.deploy.completed",

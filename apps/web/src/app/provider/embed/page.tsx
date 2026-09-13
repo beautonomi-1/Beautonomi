@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 /**
  * Embed entry for provider app in-app WebView.
  * Waits for session to be injected by the app (window.__providerAppSession), then sets session and redirects to path.
@@ -17,6 +19,7 @@ declare global {
 }
 
 export default function ProviderEmbedPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const path = searchParams.get("path") || "/provider/dashboard";
   const [status, setStatus] = useState<"waiting" | "setting" | "redirecting" | "error">("waiting");
@@ -27,7 +30,7 @@ export default function ProviderEmbedPage() {
     const supabase = getSupabaseClient();
     if (!supabase) {
       setStatus("error");
-      setErrorMsg("Client not available");
+setErrorMsg(t("web.provider.pages.embed.clientUnavailable"));
       return;
     }
 
@@ -66,7 +69,7 @@ export default function ProviderEmbedPage() {
       } catch (e) {
         if (!cancelled) {
           setStatus("error");
-          setErrorMsg(e instanceof Error ? e.message : "Failed to set session");
+setErrorMsg(e instanceof Error ? e.message : t("web.provider.pages.embed.sessionFailed"));
         }
         return true;
       }
@@ -76,7 +79,7 @@ export default function ProviderEmbedPage() {
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
       setStatus("error");
-      setErrorMsg("Session not received. Open this from the provider app while signed in, or use the link below.");
+setErrorMsg(t("web.provider.pages.embed.sessionTimeout"));
     }, timeoutMs);
 
     let checkId: ReturnType<typeof setTimeout>;
@@ -99,25 +102,25 @@ export default function ProviderEmbedPage() {
       {status === "waiting" && (
         <>
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="mt-4 text-gray-600">Loading session from app…</p>
+<p className="mt-4 text-gray-600">{t("web.provider.pages.embed.loadingSession")}</p>
         </>
       )}
       {status === "setting" && (
         <>
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="mt-4 text-gray-600">Signing you in…</p>
+<p className="mt-4 text-gray-600">{t("web.provider.pages.embed.signingIn")}</p>
         </>
       )}
       {status === "redirecting" && (
         <>
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="mt-4 text-gray-600">Redirecting…</p>
+<p className="mt-4 text-gray-600">{t("web.provider.pages.embed.redirecting")}</p>
         </>
       )}
       {status === "error" && (
         <>
-          <p className="text-red-600">{errorMsg || "Something went wrong."}</p>
-          <a href="/provider" className="mt-4 text-primary underline">Open provider portal</a>
+<p className="text-red-600">{errorMsg || t("web.provider.pages.embed.genericError")}</p>
+<a href="/provider" className="mt-4 text-primary underline">{t("web.provider.pages.embed.openPortal")}</a>
         </>
       )}
     </div>

@@ -17,6 +17,7 @@ import {
   type TextInputKeyPressEventData,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { coerceChipMultiValue, coerceChipSingleRow } from "@beautonomi/utils";
 
 export interface SuggestionItem {
@@ -85,6 +86,7 @@ function rankScore(
 }
 
 export function ChipCombobox(props: ChipComboboxProps) {
+  const { t } = useTranslation();
   const {
     staticSuggestions = [],
     fetchSuggestions,
@@ -92,12 +94,13 @@ export function ChipCombobox(props: ChipComboboxProps) {
     maxSuggestions = 5,
     debounceMs = 250,
     normalizeValue = defaultNormalize,
-    placeholder = "Type or select…",
+    placeholder: placeholderProp,
     accessibilityLabel,
     accessibilityHint,
     allowFreeForm = true,
     onCreateNew,
   } = props;
+  const placeholder = placeholderProp ?? t("provider.mobile.components.chipCombobox.typeOrSelect");
 
   const isSingle = props.singleSelect === true;
   const value = props.value;
@@ -199,12 +202,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
       rows.push({
         type: "freeform" as const,
         value: inputValue.trim(),
-        label: "Add \"" + inputValue.trim() + "\"",
+        label: t("provider.mobile.components.chipCombobox.addQuoted", { value: inputValue.trim() }),
         isFreeForm: true as const,
       });
     }
     return rows;
-  }, [filteredAndRanked, canAddFreeForm, inputValue]);
+  }, [filteredAndRanked, canAddFreeForm, inputValue, t]);
 
   const getLabelForValue = useCallback(
     (v: string): string => {
@@ -379,7 +382,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
           {loading && (
             <View style={styles.dropdownRow}>
               <ActivityIndicator size="small" color="#6366f1" />
-              <Text style={styles.dropdownLoadingText}>Loading…</Text>
+              <Text style={styles.dropdownLoadingText}>{t("provider.mobile.components.chipCombobox.loading")}</Text>
             </View>
           )}
           {error && (
@@ -390,7 +393,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
           {!loading && !error && options.length === 0 && (
             <View style={styles.dropdownRow}>
               <Text style={styles.dropdownEmpty}>
-                {inputValue.trim() ? "No matches" : "Type to search"}
+                {inputValue.trim() ? t("provider.mobile.components.chipCombobox.noMatches") : t("provider.mobile.components.chipCombobox.typeToSearch")}
               </Text>
               {canAddFreeForm && (
                 <TouchableOpacity
@@ -398,7 +401,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
                   onPress={() => addValue(inputValue.trim())}
                 >
                   <Text style={styles.addRowText}>
-                    {"Add \"" + inputValue.trim() + "\""}
+                    {t("provider.mobile.components.chipCombobox.addQuoted", { value: inputValue.trim() })}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -473,15 +476,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#e5e7eb",
     borderRadius: 9999,
-    paddingLeft: 10,
-    paddingRight: 4,
+    paddingStart: 10,
+    paddingEnd: 4,
     paddingVertical: 4,
     maxWidth: 160,
   },
   chipText: {
     fontSize: 14,
     color: "#374151",
-    marginRight: 4,
+    marginEnd: 4,
   },
   input: {
     flex: 1,
@@ -515,7 +518,7 @@ const styles = StyleSheet.create({
   dropdownLoadingText: {
     fontSize: 14,
     color: "#6b7280",
-    marginLeft: 8,
+    marginStart: 8,
   },
   dropdownError: {
     fontSize: 14,

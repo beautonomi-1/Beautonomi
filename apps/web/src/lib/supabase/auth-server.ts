@@ -6,6 +6,7 @@
  */
 
 import { getSupabaseServer } from './server';
+import { getServerUserSafe } from './auth-errors';
 import type { UserRole } from '@/types/beautonomi';
 import { resolveEffectiveProviderRole } from '@/lib/auth/effective-provider-role';
 import type { UsersRoleFromDb } from '@/lib/auth/role';
@@ -24,10 +25,9 @@ import type { UsersRoleFromDb } from '@/lib/auth/role';
 export async function getSessionServer() {
   const supabase = await getSupabaseServer();
   
-  // First validate user authentication using getUser() (secure)
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  
-  if (userError || !user) {
+  const user = await getServerUserSafe(supabase);
+
+  if (!user) {
     return null;
   }
   
@@ -47,13 +47,7 @@ export async function getSessionServer() {
  */
 export async function getCurrentUserServer() {
   const supabase = await getSupabaseServer();
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return user;
+  return getServerUserSafe(supabase);
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/marketing/automation-mapping";
 import { AutomationMessageEditor } from "@/components/marketing/AutomationMessageEditor";
 import { AutomationExecutionHistory } from "@/components/marketing/AutomationExecutionHistory";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface AutomationRow {
   id: string;
@@ -65,14 +67,21 @@ type MappedAutomation = {
   raw: AutomationRow;
 };
 
-const TAB_ITEMS: { key: AutomationTabKey; label: string }[] = [
-  { key: "reminders", label: "Reminders" },
-  { key: "updates", label: "Updates" },
-  { key: "bookings", label: "Bookings" },
-  { key: "milestones", label: "Milestones" },
+const TAB_ITEMS: { key: AutomationTabKey; labelKey: "tabReminders" | "tabUpdates" | "tabBookings" | "tabMilestones" }[] = [
+  { key: "reminders", labelKey: "tabReminders" },
+  { key: "updates", labelKey: "tabUpdates" },
+  { key: "bookings", labelKey: "tabBookings" },
+  { key: "milestones", labelKey: "tabMilestones" },
 ];
 
-function buildMapped(rows: AutomationRow[]): MappedAutomation[] {
+const EMPTY_TITLE_KEYS: Record<AutomationTabKey, "emptyReminders" | "emptyUpdates" | "emptyBookings" | "emptyMilestones"> = {
+  reminders: "emptyReminders",
+  updates: "emptyUpdates",
+  bookings: "emptyBookings",
+  milestones: "emptyMilestones",
+};
+
+function buildMapped(rows: AutomationRow[], automatedMessage: string): MappedAutomation[] {
   return rows.map((auto) => {
     const isTemplate = auto.is_template === true;
     const category = mapTriggerToCategory(auto.trigger_type);
@@ -81,7 +90,7 @@ function buildMapped(rows: AutomationRow[]): MappedAutomation[] {
       category,
       triggerLabel: formatTriggerLabel(auto.trigger_type, auto.trigger_config),
       name: auto.name,
-      description: (auto.description && String(auto.description).trim()) || "Automated message",
+      description: (auto.description && String(auto.description).trim()) || automatedMessage,
       displayActive: isTemplate ? false : !!auto.is_active,
       is_template: isTemplate,
       raw: auto,
@@ -96,6 +105,12 @@ function actionConfigString(cfg: Record<string, unknown> | null | undefined, key
 }
 
 export default function AutomationsScreen() {
+  const { t } = useTranslation();
+  const au = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.automations.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<AutomationTabKey>("reminders");
@@ -118,7 +133,10 @@ export default function AutomationsScreen() {
   const { execute: updateAutomation } = useApiMutation("patch");
   const { execute: createAutomationFromTemplate, loading: creatingFromTemplate } = useApiMutation("post");
 
-  const mapped = useMemo(() => (automations?.length ? buildMapped(automations) : []), [automations]);
+  const mapped = useMemo(
+    () => (automations?.length ? buildMapped(automations, au("automatedMessage")) : []),
+    [automations, au],
+  );
 
   const filtered = useMemo(
     () => mapped.filter((m) => categoryToTabKey(m.category) === activeTab),
@@ -161,7 +179,7 @@ export default function AutomationsScreen() {
       if (isPlanGateErrorCode(errorCode)) {
         showPlanGateAlert({ message: err, errorCode, router });
       } else {
-        Alert.alert("Error", err);
+        Alert.alert(au("errorTitle"), err);
       }
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -182,7 +200,7 @@ export default function AutomationsScreen() {
       if (isPlanGateErrorCode(toggleCode)) {
         showPlanGateAlert({ message: err, errorCode: toggleCode, router });
       } else {
-        Alert.alert("Error", err);
+        Alert.alert(au("errorTitle"), err);
       }
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -193,7 +211,7 @@ export default function AutomationsScreen() {
   if (loading && !automations) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading automations..." />
+        <LoadingState message={au("loading")} />
       </ScreenContainer>
     );
   }
@@ -201,15 +219,15 @@ export default function AutomationsScreen() {
   if (subscriptionBlocked && !automations) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Automations" showBack subtitle="Automated messages" />
+        <ScreenHeader title={au("title")} showBack subtitle={au("subtitleShort")} />
         <View style={twStyle("flex-1 justify-center px-6")}>
           <Text style={twStyle("mb-2 text-center text-base text-gray-800")}>
-            Marketing automations require a subscription that includes this feature.
+            {au("planRequired")}
           </Text>
           <Text style={twStyle("mb-6 text-center text-sm text-gray-600")}>
-            Upgrade your platform plan under Subscription to use marketing automations.
+            {au("planUpgradeHint")}
           </Text>
-          <ActionButton label="View plans & billing" onPress={openSubscriptionHelp} fullWidth />
+          <ActionButton label={au("viewPlans")} onPress={openSubscriptionHelp} fullWidth />
         </View>
       </ScreenContainer>
     );
@@ -218,7 +236,7 @@ export default function AutomationsScreen() {
   if (error && !automations && !subscriptionBlocked) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Automations" showBack />
+        <ScreenHeader title={au("title")} showBack />
         <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -227,9 +245,9 @@ export default function AutomationsScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Automations"
+        title={au("title")}
         showBack
-        subtitle="Set up automated messages and reminders"
+        subtitle={au("subtitle")}
         rightAction={
           <TouchableOpacity
             onPress={() => {
@@ -238,15 +256,15 @@ export default function AutomationsScreen() {
             }}
             style={twStyle("flex-row items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2")}
           >
-            <Ionicons name="add" size={16} color="#4338ca" style={{ marginRight: 6 }} />
-            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>Create</Text>
+            <Ionicons name="add" size={16} color="#4338ca" style={{ marginEnd: 6 }} />
+            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>{au("create")}</Text>
           </TouchableOpacity>
         }
       />
 
       <View style={twStyle("mb-4 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2.5")}>
         <Text style={twStyle("text-xs text-gray-700 leading-5")}>
-          SMS is included with your platform subscription; volume follows your plan limits.
+          {au("smsIncluded")}
         </Text>
       </View>
 
@@ -254,12 +272,12 @@ export default function AutomationsScreen() {
       <View style={twStyle("mb-4 gap-3")}>
         <View style={twStyle("flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white p-4")}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-xs text-gray-500")}>Text messages remaining</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{au("smsRemaining")}</Text>
             {balanceLoading ? (
               <ActivityIndicator style={twStyle("mt-2")} />
             ) : (
               <Text style={twStyle("mt-1 text-2xl font-semibold text-gray-900")}>
-                {smsRemaining !== null ? smsRemaining.toLocaleString() : "N/A"}
+                {smsRemaining !== null ? smsRemaining.toLocaleString() : au("notAvailable")}
               </Text>
             )}
           </View>
@@ -270,7 +288,7 @@ export default function AutomationsScreen() {
             }}
             style={twStyle("rounded-lg border border-gray-200 px-3 py-2")}
           >
-            <Text style={twStyle("text-xs font-semibold text-gray-700")}>Refresh</Text>
+            <Text style={twStyle("text-xs font-semibold text-gray-700")}>{au("refresh")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -278,41 +296,41 @@ export default function AutomationsScreen() {
           onPress={() => router.push("/(app)/(tabs)/more/express-booking" as never)}
           style={twStyle("flex-row items-center justify-between rounded-2xl border border-blue-100 bg-sky-50/80 p-4")}
         >
-          <View style={twStyle("flex-1 pr-2")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-800")}>Express booking links</Text>
-            <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>Quick links for clients</Text>
+          <View style={twStyle("flex-1 pe-2")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-800")}>{au("expressLinks")}</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>{au("expressLinksHint")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#2563eb" />
+          <DirectionalIcon name="chevron-forward" size={20} color="#2563eb" />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/marketing-hub" as never)}
           style={twStyle("flex-row items-center justify-between rounded-2xl border border-purple-100 bg-purple-50/80 p-4")}
         >
-          <View style={twStyle("flex-1 pr-2")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-800")}>Marketing campaigns</Text>
-            <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>Email & SMS campaigns</Text>
+          <View style={twStyle("flex-1 pe-2")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-800")}>{au("marketingCampaigns")}</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>{au("marketingCampaignsHint")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#7c3aed" />
+          <DirectionalIcon name="chevron-forward" size={20} color="#7c3aed" />
         </TouchableOpacity>
       </View>
 
       {/* Category tabs */}
-      <Text style={twStyle("mb-2 text-xs font-medium uppercase tracking-wide text-gray-500")}>Category</Text>
+      <Text style={twStyle("mb-2 text-xs font-medium uppercase tracking-wide text-gray-500")}>{au("category")}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={twStyle("gap-2 pb-4")}
         style={twStyle("mb-2 max-h-11")}
       >
-        {TAB_ITEMS.map((t) => {
-          const active = activeTab === t.key;
+        {TAB_ITEMS.map((tab) => {
+          const active = activeTab === tab.key;
           return (
             <TouchableOpacity
-              key={t.key}
+              key={tab.key}
               onPress={() => {
                 Haptics.selectionAsync();
-                setActiveTab(t.key);
+                setActiveTab(tab.key);
               }}
               style={
                 active
@@ -327,7 +345,7 @@ export default function AutomationsScreen() {
                     : twStyle("text-sm font-medium text-gray-700")
                 }
               >
-                {t.label}
+                {au(tab.labelKey)}
               </Text>
             </TouchableOpacity>
           );
@@ -338,21 +356,21 @@ export default function AutomationsScreen() {
         <>
           <EmptyState
             icon="flash-outline"
-            title={`No ${TAB_ITEMS.find((x) => x.key === activeTab)?.label.toLowerCase() ?? "tab"} yet`}
-            description="Templates normally appear here automatically. Reload the list or open Marketing campaigns for a one-off send."
+            title={au(EMPTY_TITLE_KEYS[activeTab] ?? "emptyFallback")}
+            description={au("emptyDescription")}
           />
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
             <TouchableOpacity
               onPress={() => refresh()}
               style={twStyle("rounded-xl border border-gray-200 px-4 py-2.5")}
             >
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Reload automations</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{au("reload")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/marketing-hub" as never)}
               style={twStyle("rounded-xl bg-[#FF0077] px-4 py-2.5")}
             >
-              <Text style={twStyle("text-sm font-semibold text-white")}>Create a campaign</Text>
+              <Text style={twStyle("text-sm font-semibold text-white")}>{au("createCampaign")}</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -384,14 +402,14 @@ export default function AutomationsScreen() {
                 onPress={() => setMessageEditRow(row)}
                 style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 py-2.5")}
               >
-                <Ionicons name="create-outline" size={18} color="#374151" style={{ marginRight: 6 }} />
-                <Text style={twStyle("text-sm font-medium text-gray-800")}>Edit message</Text>
+                <Ionicons name="create-outline" size={18} color="#374151" style={{ marginEnd: 6 }} />
+                <Text style={twStyle("text-sm font-medium text-gray-800")}>{au("editMessage")}</Text>
               </TouchableOpacity>
               {!row.is_template ? (
                 <TouchableOpacity
                   onPress={() => setHistoryRow(row)}
                   style={twStyle("rounded-xl border border-gray-200 px-3 py-2.5")}
-                  accessibilityLabel="Execution history"
+                  accessibilityLabel={au("historyA11y")}
                 >
                   <Ionicons name="time-outline" size={20} color="#374151" />
                 </TouchableOpacity>

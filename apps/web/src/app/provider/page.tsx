@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,7 @@ import { Building2, Calendar, DollarSign, Users, Sparkles } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 
 export default function ProviderPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -36,7 +38,7 @@ export default function ProviderPage() {
   if (isLoading || (user && role !== "provider_owner" && role !== "provider_staff")) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <LoadingTimeout loadingMessage="Loading..." timeoutMs={5000} />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.common.loading")} timeoutMs={5000} />
       </div>
     );
   }
@@ -51,7 +53,7 @@ export default function ProviderPage() {
             <Link href="/" className="flex items-center gap-2">
               <Image
                 src="/images/logo.svg"
-                alt="Beautonomi"
+                alt={t("web.provider.settings.pages.integrations/email.beautonomi")}
                 width={150}
                 height={40}
                 className="h-8 w-auto"
@@ -65,7 +67,7 @@ export default function ProviderPage() {
                   setIsLoginModalOpen(true);
                 }}
               >
-                Sign In
+                {t("web.provider.pages.home.signIn")}
               </Button>
               <Button
                 onClick={() => {
@@ -74,7 +76,7 @@ export default function ProviderPage() {
                 }}
                 className="bg-gradient-to-r from-primary to-primary-hover"
               >
-                Get Started
+                {t("web.provider.rewardsCard.getStarted")}
               </Button>
             </div>
           </div>
@@ -89,10 +91,10 @@ export default function ProviderPage() {
             <div className="space-y-8">
               <div>
                 <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-                  Grow Your Beauty Business
+                  {t("web.provider.pages.home.growTitle")}
                 </h1>
                 <p className="text-xl text-gray-600 mb-8">
-                  Join thousands of beauty professionals who are growing their business with Beautonomi.
+                  {t("web.provider.pages.home.growSubtitle")}
                 </p>
               </div>
 
@@ -103,9 +105,9 @@ export default function ProviderPage() {
                     <Calendar className="w-6 h-6 text-pink-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">Smart Booking System</h3>
+                    <h3 className="font-semibold text-lg mb-1">{t("web.provider.pages.home.smartBooking")}</h3>
                     <p className="text-gray-600">
-                      Manage appointments, availability, and client bookings all in one place.
+                      {t("web.provider.pages.home.smartBookingBody")}
                     </p>
                   </div>
                 </div>
@@ -115,9 +117,9 @@ export default function ProviderPage() {
                     <DollarSign className="w-6 h-6 text-purple-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">Increase Revenue</h3>
+                    <h3 className="font-semibold text-lg mb-1">{t("web.provider.pages.home.increaseRevenue")}</h3>
                     <p className="text-gray-600">
-                      Reach more customers and grow your business with our powerful platform.
+                      {t("web.provider.pages.home.increaseRevenueBody")}
                     </p>
                   </div>
                 </div>
@@ -127,9 +129,9 @@ export default function ProviderPage() {
                     <Users className="w-6 h-6 text-blue-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">Client Management</h3>
+                    <h3 className="font-semibold text-lg mb-1">{t("web.provider.pages.home.clientManagement")}</h3>
                     <p className="text-gray-600">
-                      Keep track of your clients, their preferences, and booking history.
+                      {t("web.provider.pages.home.clientManagementBody")}
                     </p>
                   </div>
                 </div>
@@ -139,9 +141,9 @@ export default function ProviderPage() {
                     <Sparkles className="w-6 h-6 text-yellow-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">Professional Tools</h3>
+                    <h3 className="font-semibold text-lg mb-1">{t("web.provider.pages.home.professionalTools")}</h3>
                     <p className="text-gray-600">
-                      Access analytics, marketing tools, and business insights to grow faster.
+                      {t("web.provider.pages.home.professionalToolsBody")}
                     </p>
                   </div>
                 </div>
@@ -157,8 +159,8 @@ export default function ProviderPage() {
                   }}
                   className="bg-gradient-to-r from-primary to-primary-hover text-white hover:opacity-90"
                 >
-                  <Building2 className="w-5 h-5 mr-2" />
-                  Create Provider Account
+                  <Building2 className="w-5 h-5 me-2" />
+                  {t("web.provider.pages.home.createAccount")}
                 </Button>
                 <Button
                   size="lg"
@@ -168,7 +170,7 @@ export default function ProviderPage() {
                     setIsLoginModalOpen(true);
                   }}
                 >
-                  Sign In to Your Account
+                  {t("web.provider.pages.home.signInToAccount")}
                 </Button>
               </div>
             </div>
@@ -183,26 +185,26 @@ export default function ProviderPage() {
                         <Building2 className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold">Provider Dashboard</h3>
-                        <p className="text-sm text-gray-500">Manage everything from one place</p>
+                        <h3 className="font-semibold">{t("web.provider.pages.home.dashboard")}</h3>
+                        <p className="text-sm text-gray-500">{t("web.provider.pages.home.dashboardHint")}</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-pink-50 rounded-lg p-4">
                         <div className="text-2xl font-bold text-pink-600">1,234</div>
-                        <div className="text-sm text-gray-600">Total Bookings</div>
+                        <div className="text-sm text-gray-600">{t("web.provider.pages.home.totalBookings")}</div>
                       </div>
                       <div className="bg-purple-50 rounded-lg p-4">
                         <div className="text-2xl font-bold text-purple-600">R45,678</div>
-                        <div className="text-sm text-gray-600">Revenue</div>
+                        <div className="text-sm text-gray-600">{t("web.provider.pages.home.revenue")}</div>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-4">
                         <div className="text-2xl font-bold text-blue-600">4.8</div>
-                        <div className="text-sm text-gray-600">Rating</div>
+                        <div className="text-sm text-gray-600">{t("web.provider.pages.home.rating")}</div>
                       </div>
                       <div className="bg-yellow-50 rounded-lg p-4">
                         <div className="text-2xl font-bold text-yellow-600">89%</div>
-                        <div className="text-sm text-gray-600">Satisfaction</div>
+                        <div className="text-sm text-gray-600">{t("web.provider.pages.home.satisfaction")}</div>
                       </div>
                     </div>
                   </div>

@@ -30,6 +30,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, Shadows } from "@/constants/colors";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Tab = "providers" | "products" | "posts";
 
@@ -512,7 +513,7 @@ export function SavedTabContent({
   const compactTabs = width < 400;
 
   const rowGapStyle = (index: number) =>
-    (index + 1) % gridColumns !== 0 ? { marginRight: COLUMN_GAP } : undefined;
+    (index + 1) % gridColumns !== 0 ? { marginEnd: COLUMN_GAP } : undefined;
 
   const showHeroHeader = layoutVariant === "tabs";
 
@@ -656,7 +657,7 @@ export function SavedTabContent({
                     {(p.avatar_url || p.thumbnail_url) ? (
                       <Image
                         source={{ uri: p.avatar_url || p.thumbnail_url }}
-                        style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }}
+                        style={{ width: 48, height: 48, borderRadius: 8, marginEnd: 12 }}
                         contentFit="cover"
                         cachePolicy="memory-disk"
                         transition={200}
@@ -667,7 +668,7 @@ export function SavedTabContent({
                           width: 48,
                           height: 48,
                           borderRadius: 8,
-                          marginRight: 12,
+                          marginEnd: 12,
                           backgroundColor: "#f3f4f6",
                           alignItems: "center",
                           justifyContent: "center",
@@ -681,7 +682,7 @@ export function SavedTabContent({
                         {p.business_name}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                    <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -730,7 +731,7 @@ export function SavedTabContent({
                     {(p.avatar_url || p.thumbnail_url) ? (
                       <Image
                         source={{ uri: p.avatar_url || p.thumbnail_url }}
-                        style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }}
+                        style={{ width: 48, height: 48, borderRadius: 8, marginEnd: 12 }}
                         contentFit="cover"
                         cachePolicy="memory-disk"
                         transition={200}
@@ -741,7 +742,7 @@ export function SavedTabContent({
                           width: 48,
                           height: 48,
                           borderRadius: 8,
-                          marginRight: 12,
+                          marginEnd: 12,
                           backgroundColor: "#f3f4f6",
                           alignItems: "center",
                           justifyContent: "center",
@@ -755,7 +756,7 @@ export function SavedTabContent({
                         {p.business_name}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                    <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -851,7 +852,7 @@ export function SavedTabContent({
                   }}
                 >
                   <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, marginLeft: 6 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, marginStart: 6 }}>
                     {tr("newBoard")}
                   </Text>
                 </TouchableOpacity>
@@ -860,7 +861,7 @@ export function SavedTabContent({
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingRight: contentPadding }}
+                  contentContainerStyle={{ paddingEnd: contentPadding }}
                 >
                   {collections.map((c, idx) => (
                     <TouchableOpacity
@@ -880,18 +881,18 @@ export function SavedTabContent({
                         borderWidth: 1,
                         borderColor: Colors.gray[200],
                         backgroundColor: Colors.gray[50],
-                        marginLeft: idx === 0 ? 0 : 10,
+                        marginStart: idx === 0 ? 0 : 10,
                       }}
                     >
-                      <Ionicons name="grid-outline" size={18} color={Colors.gray[500]} style={{ marginRight: 8 }} />
+                      <Ionicons name="grid-outline" size={18} color={Colors.gray[500]} style={{ marginEnd: 8 }} />
                       <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{c.name}</Text>
-                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 6 }}>({c.post_count})</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 6 }}>({c.post_count})</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               ) : (
                 <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                  Create a board to organize saved posts.
+                  {tr("boardsEmptyHint")}
                 </Text>
               )}
             </View>
@@ -1203,7 +1204,7 @@ function TabButton({
         name={icon}
         size={17}
         color={active ? Colors.primary : Colors.gray[500]}
-        style={{ marginRight: 5 }}
+        style={{ marginEnd: 5 }}
       />
       <Text
         style={{
@@ -1321,7 +1322,7 @@ function SavedPostTile({
                   height: 32,
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 6,
+                  marginEnd: 6,
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >

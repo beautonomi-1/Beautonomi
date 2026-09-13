@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Loader2, Package, X } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -57,6 +58,39 @@ const PayCloudPaymentDialog = dynamic(
   { ssr: false },
 );
 
+const ORDER_STATUS_I18N: Record<string, string> = {
+  pending: "web.provider.productOrderViewSheet.statusPending",
+  confirmed: "web.provider.productOrderViewSheet.statusConfirmed",
+  processing: "web.provider.productOrderViewSheet.statusProcessing",
+  ready_for_collection: "web.provider.productOrderViewSheet.statusReadyForCollection",
+  shipped: "web.provider.productOrderViewSheet.statusShipped",
+  delivered: "web.provider.productOrderViewSheet.statusDelivered",
+  cancelled: "web.provider.productOrderViewSheet.statusCancelled",
+  refunded: "web.provider.productOrderViewSheet.statusRefunded",
+};
+
+const LINE_STATUS_I18N: Record<string, string> = {
+  pending: "web.provider.productOrderViewSheet.linePending",
+  packed: "web.provider.productOrderViewSheet.linePacked",
+  shipped: "web.provider.productOrderViewSheet.lineShipped",
+  delivered: "web.provider.productOrderViewSheet.lineDelivered",
+  cancelled: "web.provider.productOrderViewSheet.lineCancelled",
+};
+
+function productOrderActionKey(currentStatus: string, next: string): string | null {
+  if (next === "confirmed") return "web.provider.productOrderViewSheet.actionConfirm";
+  if (next === "cancelled") return "web.provider.productOrderViewSheet.actionCancel";
+  if (next === "processing") return "web.provider.productOrderViewSheet.actionStartProcessing";
+  if (next === "shipped") return "web.provider.productOrderViewSheet.actionMarkShipped";
+  if (next === "ready_for_collection") return "web.provider.productOrderViewSheet.actionReadyForCollection";
+  if (next === "delivered") {
+    return currentStatus === "ready_for_collection"
+      ? "web.provider.productOrderViewSheet.actionCollected"
+      : "web.provider.productOrderViewSheet.actionMarkDelivered";
+  }
+  return null;
+}
+
 interface ProductOrderViewSheetProps {
   open: boolean;
   orderId: string | null;
@@ -70,6 +104,7 @@ export function ProductOrderViewSheet({
   onOpenChange,
   onUpdated,
 }: ProductOrderViewSheetProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
@@ -103,12 +138,12 @@ export function ProductOrderViewSheet({
       );
       setOrder(res?.data?.order ?? null);
     } catch {
-      toast.error("Failed to load order");
+      toast.error(t("web.provider.productOrderViewSheet.loadFailed"));
       setOrder(null);
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, t]);
 
   useEffect(() => {
     if (!open || !orderId) return;
@@ -131,7 +166,7 @@ export function ProductOrderViewSheet({
       onUpdated?.();
       return updated;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Update failed");
+      toast.error(err instanceof Error ? err.message : t("web.provider.productOrderViewSheet.updateFailed"));
       return null;
     } finally {
       setBusy(false);
@@ -149,9 +184,9 @@ export function ProductOrderViewSheet({
       return;
     }
     if (newStatus === "cancelled" && order.payment_status === "paid") {
-      const reason = window.prompt("Cancellation reason for this paid order");
+      const reason = window.prompt(t("web.provider.productOrderViewSheet.cancellationReasonPrompt"));
       if (!reason?.trim()) {
-        toast.error("Cancellation reason is required for paid orders");
+        toast.error(t("web.provider.productOrderViewSheet.cancellationReasonRequired"));
         return;
       }
       await patchOrder({ status: newStatus, cancellation_reason: reason.trim() });
@@ -178,9 +213,9 @@ export function ProductOrderViewSheet({
       clearFetcherCache();
       await load();
       onUpdated?.();
-      toast.success("Line updated");
+      toast.success(t("web.provider.productOrderViewSheet.lineUpdated"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not update this line");
+      toast.error(err instanceof Error ? err.message : t("web.provider.productOrderViewSheet.lineUpdateFailed"));
     } finally {
       setBusy(false);
     }
@@ -190,7 +225,7 @@ export function ProductOrderViewSheet({
     if (!order || !pendingShipStatus) return;
     const urlTrim = trackingUrl.trim();
     if (urlTrim && !/^https?:\/\//i.test(urlTrim)) {
-      toast.error("Tracking URL must start with http:// or https://");
+      toast.error(t("web.provider.productOrderViewSheet.trackingUrlInvalid"));
       return;
     }
     await patchOrder({
@@ -207,7 +242,7 @@ export function ProductOrderViewSheet({
     if (!order) return;
     const amount = Number(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("Enter a valid refund amount");
+      toast.error(t("web.provider.productOrderViewSheet.invalidRefundAmount"));
       return;
     }
     const ok = await patchOrder({
@@ -217,7 +252,7 @@ export function ProductOrderViewSheet({
       refund_reason: refundReason.trim() || undefined,
     });
     if (ok) {
-      toast.success("Refund processed");
+      toast.success(t("web.provider.productOrderViewSheet.refundProcessed"));
       setRefundOpen(false);
     }
   };
@@ -234,9 +269,9 @@ export function ProductOrderViewSheet({
       await load();
       onUpdated?.();
       setYocoOpen(false);
-      toast.success("Payment recorded");
+      toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
     } catch {
-      toast.error("Card charged but recording failed — retry with same reference");
+      toast.error(t("web.provider.productOrderViewSheet.chargeRecordFailed"));
     }
   };
 
@@ -263,7 +298,7 @@ export function ProductOrderViewSheet({
     <div className="flex items-center gap-2">
       <div className="flex-1 min-w-0">
         <h2 className="text-lg font-semibold text-gray-900 truncate">
-          {order?.order_number ?? "Product order"}
+          {order?.order_number ?? t("web.provider.productOrderViewSheet.productOrder")}
         </h2>
         {order?.status ? (
           <div className="mt-1 flex flex-wrap gap-1">
@@ -277,8 +312,8 @@ export function ProductOrderViewSheet({
       <button
         type="button"
         onClick={() => onOpenChange(false)}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t("web.provider.productOrderViewSheet.closeA11y")}
       >
         <X className="h-5 w-5" />
       </button>
@@ -297,19 +332,19 @@ export function ProductOrderViewSheet({
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                 <Package className="h-4 w-4" />
-                Customer
+                {t("web.provider.productOrderViewSheet.customer")}
               </BookingSectionLabel>
               <BookingSummaryRow
-                label="Name"
-                value={order.customer?.full_name || order.customer_name || "Walk-in customer"}
+                label={t("web.provider.productOrderViewSheet.name")}
+                value={order.customer?.full_name || order.customer_name || t("web.provider.productOrderViewSheet.walkInCustomer")}
               />
               {order.customer?.email ? (
-                <BookingSummaryRow label="Email" value={order.customer.email} />
+                <BookingSummaryRow label={t("web.provider.productOrderViewSheet.email")} value={order.customer.email} />
               ) : null}
             </BookingSectionCard>
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Items</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.items")}</BookingSectionLabel>
               <ul className="space-y-3 text-sm">
                 {order.items?.map((item) => {
                   const from = normalizeLineStatus(item.fulfilment_status);
@@ -329,14 +364,14 @@ export function ProductOrderViewSheet({
                           value={from}
                           disabled={lineLocked || from === "delivered" || from === "cancelled"}
                           onChange={(e) => void handleLineFulfilment(item.id, e.target.value)}
-                          aria-label={`Fulfilment for ${item.product_name}`}
+                          aria-label={t("web.provider.productOrderViewSheet.fulfilmentA11y", { name: item.product_name })}
                           className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 disabled:opacity-50"
                         >
                           {LINE_FULFILMENT_STATUSES.filter(
                             (status) => status === from || isValidLineTransition(from, status),
                           ).map((status) => (
                             <option key={status} value={status}>
-                              {status.replace(/_/g, " ")}
+                              {t(LINE_STATUS_I18N[status] ?? status)}
                             </option>
                           ))}
                         </select>
@@ -351,27 +386,27 @@ export function ProductOrderViewSheet({
             </BookingSectionCard>
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Totals</BookingSectionLabel>
-              <BookingSummaryRow label="Total" value={formatMoney(totalAmount)} emphasize />
+              <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.totals")}</BookingSectionLabel>
+              <BookingSummaryRow label={t("web.provider.productOrderViewSheet.total")} value={formatMoney(totalAmount)} emphasize />
               {Number(order.gift_card_amount ?? 0) > 0 ? (
                 <BookingSummaryRow
-                  label="Paid from gift card"
+                  label={t("web.provider.productOrderViewSheet.paidFromGiftCard")}
                   value={formatMoney(Number(order.gift_card_amount))}
                 />
               ) : null}
               {order.promotion_code ? (
-                <BookingSummaryRow label="Promotion" value={order.promotion_code} />
+                <BookingSummaryRow label={t("web.provider.productOrderViewSheet.promotion")} value={order.promotion_code} />
               ) : null}
               {!isAppointmentOrder ? (
-                <BookingSummaryRow label="Your earnings" value={formatMoney(providerEarnings)} />
+                <BookingSummaryRow label={t("web.provider.productOrderViewSheet.yourEarnings")} value={formatMoney(providerEarnings)} />
               ) : (
-                <p className="text-xs text-gray-500 mt-1">Included in booking total</p>
+                <p className="text-xs text-gray-500 mt-1">{t("web.provider.productOrderViewSheet.includedInBooking")}</p>
               )}
             </BookingSectionCard>
 
             {canCollect ? (
               <BookingSectionCard>
-                <BookingSectionLabel className="mb-2">Collect payment</BookingSectionLabel>
+                <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.collectPayment")}</BookingSectionLabel>
                 <div className="flex flex-col gap-2">
                   {canCollectPaycloud ? (
                     <PaycloudCollectButton
@@ -388,7 +423,7 @@ export function ProductOrderViewSheet({
                   ) : null}
                   {canCollectYoco ? (
                     <BookingActionButton variant="outline" onClick={() => setYocoOpen(true)}>
-                      Collect with Yoco
+                      {t("web.provider.productOrderViewSheet.collectWithYoco")}
                     </BookingActionButton>
                   ) : null}
                   <BookingActionButton
@@ -404,22 +439,22 @@ export function ProductOrderViewSheet({
                         clearFetcherCache();
                         await load();
                         onUpdated?.();
-                        toast.success("Payment recorded");
+                        toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
                       } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Payment failed");
+                        toast.error(err instanceof Error ? err.message : t("web.provider.productOrderViewSheet.paymentFailed"));
                       } finally {
                         setBusy(false);
                       }
                     }}
                   >
-                    Mark paid (cash)
+                    {t("web.provider.productOrderViewSheet.markPaidCash")}
                   </BookingActionButton>
                 </div>
               </BookingSectionCard>
             ) : null}
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Status</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.status")}</BookingSectionLabel>
               <select
                 value={order.status}
                 onChange={(e) => void handleStatusChange(e.target.value)}
@@ -430,7 +465,7 @@ export function ProductOrderViewSheet({
                   (s) => s !== "refunded" || canRefund || order.status === "refunded",
                 ).map((status) => (
                   <option key={status} value={status}>
-                    {status.replace(/_/g, " ")}
+                    {t(ORDER_STATUS_I18N[status] ?? status)}
                   </option>
                 ))}
               </select>
@@ -443,7 +478,7 @@ export function ProductOrderViewSheet({
                     disabled={busy}
                     onClick={() => void handleStatusChange(a.next)}
                   >
-                    {a.label}
+                    {t(productOrderActionKey(order.status, a.next) ?? a.label)}
                   </BookingActionButton>
                 ))}
                 {canRefund ? (
@@ -453,13 +488,13 @@ export function ProductOrderViewSheet({
                     variant="outline"
                     onClick={() => void handleStatusChange("refunded")}
                   >
-                    Refund
+                    {t("web.provider.productOrderViewSheet.refund")}
                   </BookingActionButton>
                 ) : null}
                 <ShareReceiptButton
                   kind="provider-order"
                   subjectId={order.id}
-                  label="Share receipt"
+                  label={t("web.provider.productOrderViewSheet.shareReceipt")}
                   className="text-xs"
                 />
                 <a
@@ -468,7 +503,7 @@ export function ProductOrderViewSheet({
                   rel="noopener noreferrer"
                   className="text-xs font-semibold underline self-center"
                 >
-                  Download PDF
+                  {t("web.provider.productOrderViewSheet.downloadPdf")}
                 </a>
               </div>
             </BookingSectionCard>
@@ -481,25 +516,25 @@ export function ProductOrderViewSheet({
           open={refundOpen}
           onOpenChange={setRefundOpen}
           mode="view"
-          header={<h2 className="text-lg font-semibold">Refund order</h2>}
+          header={<h2 className="text-lg font-semibold">{t("web.provider.productOrderViewSheet.refundOrder")}</h2>}
         >
           <div className="space-y-3 pb-4">
-            <label className="text-sm font-medium">Amount</label>
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.amount")}</label>
             <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
-            <label className="text-sm font-medium">Method</label>
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.method")}</label>
             <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as typeof refundMethod)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="store_credit">Store credit</SelectItem>
+                <SelectItem value="cash">{t("web.provider.productOrderViewSheet.cash")}</SelectItem>
+                <SelectItem value="store_credit">{t("web.provider.productOrderViewSheet.storeCredit")}</SelectItem>
               </SelectContent>
             </Select>
-            <label className="text-sm font-medium">Reason</label>
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.reason")}</label>
             <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} />
             <BookingActionButton disabled={busy} onClick={() => void handleRefund()}>
-              Process refund
+              {t("web.provider.productOrderViewSheet.processRefund")}
             </BookingActionButton>
           </div>
         </BookingBottomSheet>
@@ -535,17 +570,17 @@ export function ProductOrderViewSheet({
           open={trackingOpen}
           onOpenChange={setTrackingOpen}
           mode="view"
-          header={<h2 className="text-lg font-semibold">Shipping details</h2>}
+          header={<h2 className="text-lg font-semibold">{t("web.provider.productOrderViewSheet.shippingDetails")}</h2>}
         >
           <div className="space-y-3 pb-4">
-            <label className="text-sm font-medium">Tracking number</label>
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.trackingNumber")}</label>
             <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} />
-            <label className="text-sm font-medium">Carrier</label>
-            <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Aramex, DHL…" />
-            <label className="text-sm font-medium">Tracking URL</label>
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.carrier")}</label>
+            <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder={t("web.provider.productOrderViewSheet.carrierPlaceholder")} />
+            <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.trackingUrl")}</label>
             <Input value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} type="url" />
             <BookingActionButton disabled={busy} onClick={() => void submitTracking()}>
-              Mark shipped
+              {t("web.provider.productOrderViewSheet.markShipped")}
             </BookingActionButton>
           </div>
         </BookingBottomSheet>

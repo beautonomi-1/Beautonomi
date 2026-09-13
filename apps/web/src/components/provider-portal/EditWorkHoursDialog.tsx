@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { format, addDays, startOfWeek } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface WorkHours {
   [key: string]: {
@@ -49,6 +50,7 @@ export function EditWorkHoursDialog({
   staffMember,
   onSuccess,
 }: EditWorkHoursDialogProps) {
+  const { t } = useTranslation();
   const [workHours, setWorkHours] = useState<WorkHours>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -119,7 +121,7 @@ export function EditWorkHoursDialog({
   const handleApplyToAll = () => {
     const firstEnabledDay = DAYS.find((day) => workHours[day.key]?.enabled);
     if (!firstEnabledDay) {
-      toast.error("Please enable at least one day first");
+      toast.error(t("web.provider.portal.editWorkHours.enableOneDay"));
       return;
     }
 
@@ -133,12 +135,12 @@ export function EditWorkHoursDialog({
       };
     });
     setWorkHours(updated);
-    toast.success("Applied to all days");
+    toast.success(t("web.provider.portal.editWorkHours.appliedToAll"));
   };
 
   const handleSave = async () => {
     if (!staffMember) {
-      toast.error("No staff member selected");
+      toast.error(t("web.provider.portal.editWorkHours.noStaff"));
       return;
     }
 
@@ -160,7 +162,7 @@ export function EditWorkHoursDialog({
             const date = addDays(weekStart, week * 7 + dayIndex);
             timeBlocksToCreate.push({
               staff_id: staffMember.id,
-              name: "Work Hours",
+              name: t("web.provider.portal.editWorkHours.workHoursName"),
               date: format(date, "yyyy-MM-dd"),
               start_time: dayHours.start,
               end_time: dayHours.end,
@@ -179,12 +181,12 @@ export function EditWorkHoursDialog({
         }
       }
 
-      toast.success(`Work hours updated for ${staffMember.name}`);
+      toast.success(t("web.provider.portal.editWorkHours.success", { name: staffMember.name }));
       onOpenChange(false);
       onSuccess?.();
     } catch (error: unknown) {
       console.error("Failed to save work hours:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save work hours");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.editWorkHours.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -194,21 +196,21 @@ export function EditWorkHoursDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Work Hours</DialogTitle>
+          <DialogTitle>{t("web.provider.portal.editWorkHours.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label>Staff Member</Label>
+            <Label>{t("web.provider.portal.editWorkHours.staffMember")}</Label>
             <div className="text-sm text-gray-600 font-medium">
-              {staffMember?.name || "No staff member selected"}
+              {staffMember?.name || t("web.provider.portal.editWorkHours.noStaff")}
             </div>
           </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Weekly Schedule</Label>
+              <Label className="text-base font-semibold">{t("web.provider.portal.editWorkHours.weeklySchedule")}</Label>
               <Button variant="outline" size="sm" onClick={handleApplyToAll}>
-                Apply to All Days
+                {t("web.provider.portal.editWorkHours.applyToAll")}
               </Button>
             </div>
 
@@ -223,7 +225,7 @@ export function EditWorkHoursDialog({
                       onCheckedChange={() => handleDayToggle(day.key)}
                     />
                     <Label htmlFor={day.key} className="font-medium cursor-pointer">
-                      {day.label}
+                      {t(`web.provider.portal.editWorkHours.${day.key}`)}
                     </Label>
                   </div>
 
@@ -239,7 +241,7 @@ export function EditWorkHoursDialog({
                           disabled={!dayHours.enabled}
                         />
                       </div>
-                      <span className="text-gray-400">to</span>
+                      <span className="text-gray-400">{t("web.provider.portal.editWorkHours.to")}</span>
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-gray-400" />
                         <Input
@@ -254,7 +256,7 @@ export function EditWorkHoursDialog({
                   )}
 
                   {!dayHours.enabled && (
-                    <div className="text-sm text-gray-400">Day off</div>
+                    <div className="text-sm text-gray-400">{t("web.provider.portal.editWorkHours.dayOff")}</div>
                   )}
                 </div>
               );
@@ -263,10 +265,10 @@ export function EditWorkHoursDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={isSaving || isLoading}>
-            {isSaving ? "Saving..." : "Save Work Hours"}
+            {isSaving ? t("web.provider.portal.editWorkHours.saving") : t("web.provider.portal.editWorkHours.saveWorkHours")}
           </Button>
         </DialogFooter>
       </DialogContent>

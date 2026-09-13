@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -19,6 +20,7 @@ interface TaxSettingsData {
 }
 
 export default function TaxesSettings() {
+  const { t } = useTranslation();
   const [isVatRegistered, setIsVatRegistered] = useState<boolean>(false);
   const [vatNumber, setVatNumber] = useState<string>("");
   const [taxRate, setTaxRate] = useState<number>(0);
@@ -37,7 +39,7 @@ export default function TaxesSettings() {
         setVatNumber(data.vat_number || "");
         setTaxRate(Number(data.tax_rate_percent || 0));
       } catch {
-        toast.error("Failed to load tax settings");
+        toast.error(t("web.provider.settings.pages.sales/taxes.failedToLoadTaxSettings"));
       } finally {
         setIsLoading(false);
       }
@@ -51,7 +53,7 @@ export default function TaxesSettings() {
       
       // Validate VAT number if VAT registered
       if (isVatRegistered && !vatNumber.trim()) {
-        toast.error("VAT number is required when VAT registered");
+        toast.error(t("web.provider.settings.pages.sales/taxes.vatNumberIsRequiredWhenVat"));
         return;
       }
       
@@ -59,7 +61,7 @@ export default function TaxesSettings() {
       if (isVatRegistered && vatNumber.trim()) {
         const vatRegex = /^4\d{9}$/;
         if (!vatRegex.test(vatNumber.trim())) {
-          toast.error("Invalid VAT number format. Must be 10 digits starting with 4 (e.g., 4123456789)");
+          toast.error(t("web.provider.settings.pages.sales/taxes.invalidVatNumberFormatMustBe"));
           return;
         }
       }
@@ -78,9 +80,9 @@ export default function TaxesSettings() {
       setVatNumber(data.vat_number || "");
       setTaxRate(Number(data.tax_rate_percent || 0));
       
-      toast.success("Tax settings saved successfully");
+      toast.success(t("web.provider.settings.pages.sales/taxes.taxSettingsSavedSuccessfully"));
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save tax settings");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/taxes.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -97,18 +99,18 @@ export default function TaxesSettings() {
   }, [isVatRegistered]);
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-    { label: "Taxes" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.sales/taxes.sales"), href: "/provider/settings/sales/yoco-integration" },
+    { label: t("web.provider.settings.pages.sales/taxes.taxes") },
   ];
 
   if (isLoading) {
     return (
-      <SettingsDetailLayout title="Taxes" subtitle="Set up tax rates" onSave={onSave} isSaving={isSaving} breadcrumbs={breadcrumbs}>
+      <SettingsDetailLayout title={t("web.provider.settings.categories.sales.items.taxes.title")} subtitle={t("web.provider.settings.categories.sales.items.taxes.description")} onSave={onSave} isSaving={isSaving} breadcrumbs={breadcrumbs}>
         <SectionCard>
-          <div className="text-center py-8 text-gray-500">Loading tax settings...</div>
+          <div className="text-center py-8 text-gray-500">{t("web.provider.settings.pages.sales/taxes.loading")}</div>
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -116,8 +118,8 @@ export default function TaxesSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Taxes & VAT"
-      subtitle="Configure your tax registration status"
+      title={t("web.provider.settings.pages.sales/taxes.taxesVat")}
+      subtitle={t("web.provider.settings.pages.sales/taxes.configureYourTaxRegistrationStatus")}
       onSave={onSave}
       isSaving={isSaving}
       breadcrumbs={breadcrumbs}
@@ -135,11 +137,10 @@ export default function TaxesSettings() {
               />
               <div className="flex-1 space-y-1">
                 <Label htmlFor="vat-registered" className="text-base font-semibold cursor-pointer">
-                  I am VAT registered with SARS
+                  {t("web.provider.settings.pages.sales/taxes.vatRegisteredSars")}
                 </Label>
                 <p className="text-sm text-gray-600">
-                  VAT registration is mandatory for businesses with annual turnover of R1 million or more.
-                  If you make less than R1 million per year, you don't need to be VAT registered.
+                  {t("web.provider.settings.pages.sales/taxes.vatRegistrationHint")}
                 </p>
               </div>
             </div>
@@ -148,7 +149,7 @@ export default function TaxesSettings() {
               <Alert className="bg-blue-50 border-blue-200">
                 <CheckCircle2 className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-sm text-blue-800">
-                  <strong>VAT Registered:</strong> You will collect 15% VAT from customers and are responsible for remitting it to SARS bi-monthly.
+                  <strong>{t("web.provider.settings.pages.sales/taxes.vatRegisteredStrong")}</strong> {t("web.provider.settings.pages.sales/taxes.vatRegisteredBody")}
                 </AlertDescription>
               </Alert>
             )}
@@ -157,7 +158,7 @@ export default function TaxesSettings() {
               <Alert className="bg-green-50 border-green-200">
                 <Info className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-sm text-green-800">
-                  <strong>Not VAT Registered:</strong> No tax will be collected from customers. This is suitable for small businesses making less than R1 million per year.
+                  <strong>{t("web.provider.settings.pages.sales/taxes.notVatRegisteredStrong")}</strong> {t("web.provider.settings.pages.sales/taxes.notVatRegisteredBody")}
                 </AlertDescription>
               </Alert>
             )}
@@ -169,12 +170,12 @@ export default function TaxesSettings() {
           <SectionCard>
             <div className="space-y-2">
               <Label htmlFor="vat-number">
-                VAT Number (SARS) <span className="text-red-500">*</span>
+                {t("web.provider.settings.pages.sales/taxes.vatNumberSars")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="vat-number"
                 type="text"
-                placeholder="4123456789"
+                placeholder={t("web.provider.settings.pages.sales/taxes.n4123456789")}
                 value={vatNumber}
                 onChange={(e) => {
                   // Only allow digits
@@ -187,11 +188,11 @@ export default function TaxesSettings() {
                 required
               />
               <p className="text-sm text-gray-600">
-                Your 10-digit SARS VAT registration number (must start with 4)
+                {t("web.provider.settings.pages.sales/taxes.vatNumberHint")}
               </p>
               {vatNumber && vatNumber.length === 10 && !vatNumber.startsWith('4') && (
                 <p className="text-sm text-red-600">
-                  South African VAT numbers must start with 4
+                  {t("web.provider.settings.pages.sales/taxes.vatMustStartWith4")}
                 </p>
               )}
             </div>
@@ -201,7 +202,7 @@ export default function TaxesSettings() {
         {/* Tax Rate Display (read-only, auto-calculated) */}
         <SectionCard>
           <div className="space-y-2">
-            <Label>Tax Rate</Label>
+            <Label>{t("web.provider.settings.pages.sales/taxes.taxRate")}</Label>
             <Input
               type="number"
               value={taxRate}
@@ -210,8 +211,8 @@ export default function TaxesSettings() {
             />
             <p className="text-sm text-gray-600">
               {isVatRegistered 
-                ? "Tax rate is automatically set to 15% (South African standard VAT rate) when VAT registered."
-                : "Tax rate is 0% for non-VAT registered providers. No tax will be collected from customers."}
+                ? t("web.provider.settings.pages.sales/taxes.taxRateVatHint")
+                : t("web.provider.settings.pages.sales/taxes.taxRateNonVatHint")}
             </p>
           </div>
         </SectionCard>
@@ -222,13 +223,13 @@ export default function TaxesSettings() {
             <div className="flex items-start gap-2">
               <Info className="h-5 w-5 text-gray-400 mt-0.5" />
               <div className="space-y-2 text-sm text-gray-600">
-                <p className="font-semibold text-gray-900">About VAT in South Africa:</p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>VAT registration is <strong>mandatory</strong> if your annual turnover is R1 million or more</li>
-                  <li>VAT registration is <strong>optional</strong> if your annual turnover is less than R1 million</li>
-                  <li>Standard VAT rate in South Africa is <strong>15%</strong></li>
-                  <li>VAT must be remitted to SARS <strong>bi-monthly</strong> (every 2 months)</li>
-                  <li>Tax collected is a <strong>pass-through</strong> - excluded from platform commission</li>
+                <p className="font-semibold text-gray-900">{t("web.provider.settings.pages.sales/taxes.aboutVat")}</p>
+                <ul className="list-disc list-inside space-y-1 ms-2">
+                  <li>{t("web.provider.settings.pages.sales/taxes.vatMandatory")} <strong>{t("web.provider.settings.pages.sales/taxes.mandatory")}</strong> {t("web.provider.settings.pages.sales/taxes.ifTurnoverMillionPlus")}</li>
+                  <li>{t("web.provider.settings.pages.sales/taxes.vatMandatory")} <strong>{t("web.provider.settings.pages.sales/taxes.optional")}</strong> {t("web.provider.settings.pages.sales/taxes.ifTurnoverUnderMillion")}</li>
+                  <li>{t("web.provider.settings.pages.sales/taxes.standardRateIs")} <strong>15%</strong></li>
+                  <li>{t("web.provider.settings.pages.sales/taxes.mustRemit")} <strong>{t("web.provider.settings.pages.sales/taxes.biMonthly")}</strong> {t("web.provider.settings.pages.sales/taxes.everyTwoMonths")}</li>
+                  <li>{t("web.provider.settings.pages.sales/taxes.taxCollectedIs")} <strong>{t("web.provider.settings.pages.sales/taxes.passThrough")}</strong> {t("web.provider.settings.pages.sales/taxes.excludedFromCommission")}</li>
                 </ul>
                 <p className="mt-3">
                   <a 
@@ -237,7 +238,7 @@ export default function TaxesSettings() {
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"
                   >
-                    Learn more about VAT registration on SARS website →
+                    {t("web.provider.settings.pages.sales/taxes.learnMoreSars")}
                   </a>
                 </p>
               </div>

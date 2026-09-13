@@ -23,23 +23,27 @@ import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import QRCode from "qrcode";
+import { useTranslation } from "@beautonomi/i18n";
 
 // §Yoco-synergy 2026-05: compact relative-time string ("3m ago", "2h ago",
 // "Yesterday"-style "1d ago"). Keeps the dialog from depending on date-fns
 // just for one label and matches the mobile picker's formatter.
-function formatYocoLastUsed(iso: string): string {
+function formatYocoLastUsed(
+  iso: string,
+  t: (key: string, options?: { count?: number }) => string,
+): string {
   const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "recently";
+  if (!Number.isFinite(ms)) return t("web.provider.portal.yocoPaymentDialog.recently");
   const diff = Math.max(0, Date.now() - ms);
   const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("web.provider.portal.yocoPaymentDialog.justNow");
+  if (mins < 60) return t("web.provider.portal.yocoPaymentDialog.minutesAgo", { count: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("web.provider.portal.yocoPaymentDialog.hoursAgo", { count: hours });
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return t("web.provider.portal.yocoPaymentDialog.daysAgo", { count: days });
   const months = Math.round(days / 30);
-  return `${months}mo ago`;
+  return t("web.provider.portal.yocoPaymentDialog.monthsAgo", { count: months });
 }
 
 interface YocoPaymentDialogProps {
@@ -70,6 +74,7 @@ export function YocoPaymentDialog({
   bookingLocationId,
   onSuccess,
 }: YocoPaymentDialogProps) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
@@ -121,7 +126,7 @@ export function YocoPaymentDialog({
       }
     } catch (error) {
       console.error("Failed to load devices:", error);
-      toast.error("Failed to load payment devices");
+      toast.error(t("web.provider.portal.yocoPaymentDialog.loadDevicesFailed"));
     }
   };
 
@@ -130,13 +135,13 @@ export function YocoPaymentDialog({
 
   const handleProcessPayment = async () => {
     if (!selectedDeviceId) {
-      toast.error("Please select a payment device");
+      toast.error(t("web.provider.portal.yocoPaymentDialog.selectDevice"));
       return;
     }
 
     const amount = parseFloat(customAmount);
     if (isNaN(amount) || amount <= 0) {
-      toast.error("Please enter a valid amount");
+      toast.error(t("web.provider.portal.yocoPaymentDialog.invalidAmount"));
       return;
     }
 
@@ -166,7 +171,7 @@ export function YocoPaymentDialog({
       // the booking/sale paid after the customer completes Yoco's page.
       if (isVirtualCheckout) {
         setPaymentResult(payment);
-        toast.success("Yoco checkout link created. Ask the customer to pay from the link.");
+        toast.success(t("web.provider.portal.yocoPaymentDialog.checkoutLinkCreated"));
         return;
       }
 
@@ -190,19 +195,19 @@ export function YocoPaymentDialog({
       setPaymentResult(payment);
 
       if (payment.status === "successful") {
-        toast.success("Payment processed successfully!");
+        toast.success(t("web.provider.portal.yocoPaymentDialog.paymentProcessed"));
         onSuccess?.(payment);
         setTimeout(() => {
           onOpenChange(false);
         }, 2000);
       } else if (payment.status === "pending") {
-        toast.error("Payment timed out. You can try again.");
+        toast.error(t("web.provider.portal.yocoPaymentDialog.paymentTimedOut"));
       } else {
-        toast.error(payment.error_message || "Payment failed");
+        toast.error(payment.error_message || t("web.provider.portal.yocoPaymentDialog.paymentFailed"));
       }
     } catch (error) {
       console.error("Payment processing failed:", error);
-      toast.error("Failed to process payment");
+      toast.error(t("web.provider.portal.yocoPaymentDialog.processFailed"));
     } finally {
       setIsProcessing(false);
     }
@@ -235,10 +240,10 @@ export function YocoPaymentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
-            Process Yoco Payment
+            {t("web.provider.portal.yocoPaymentDialog.title")}
           </DialogTitle>
           <DialogDescription>
-            Process a card payment through your Yoco device
+            {t("web.provider.portal.yocoPaymentDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -248,14 +253,14 @@ export function YocoPaymentDialog({
               <Alert className="bg-blue-50 border-blue-200">
                 <QrCode className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-blue-900">
-                  <div className="font-semibold mb-1">Yoco Checkout Ready</div>
+                  <div className="font-semibold mb-1">{t("web.provider.portal.yocoPaymentDialog.checkoutReady")}</div>
                   <div className="text-sm space-y-2">
                     <div>
-                      Open this hosted checkout link or share it with the customer. The booking or sale updates automatically after Yoco sends the payment webhook.
+                      {t("web.provider.portal.yocoPaymentDialog.checkoutReadyBody")}
                     </div>
                     {qrCodeUrl && (
                       <div className="flex justify-center rounded-lg bg-white p-3">
-                        <img src={qrCodeUrl} alt="Yoco checkout QR code" className="h-44 w-44" />
+                        <img src={qrCodeUrl} alt={t("web.provider.portal.yocoPaymentDialog.qrAlt")} className="h-44 w-44" />
                       </div>
                     )}
                     <a
@@ -264,7 +269,7 @@ export function YocoPaymentDialog({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-blue-700 hover:underline font-medium"
                     >
-                      Open Yoco checkout
+                      {t("web.provider.portal.yocoPaymentDialog.openCheckout")}
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                     <div className="break-all rounded-md bg-white/70 p-2 text-xs text-blue-800">
@@ -276,10 +281,10 @@ export function YocoPaymentDialog({
                       size="sm"
                       onClick={() => {
                         void navigator.clipboard.writeText(paymentResult.checkout_url || "");
-                        toast.success("Checkout link copied");
+                        toast.success(t("web.provider.portal.yocoPaymentDialog.checkoutLinkCopied"));
                       }}
                     >
-                      Copy checkout link
+                      {t("web.provider.portal.yocoPaymentDialog.copyCheckoutLink")}
                     </Button>
                   </div>
                 </AlertDescription>
@@ -288,11 +293,11 @@ export function YocoPaymentDialog({
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  <div className="font-semibold mb-1">Payment Successful!</div>
+                  <div className="font-semibold mb-1">{t("web.provider.portal.yocoPaymentDialog.paymentSuccessful")}</div>
                   <div className="text-sm space-y-1">
-                    <div>Payment ID: {paymentResult.yoco_payment_id}</div>
-                    <div>Amount: <Money amount={paymentResult.amount / 100} /></div>
-                    <div>Device: {paymentResult.device_name}</div>
+                    <div>{t("web.provider.portal.yocoPaymentDialog.paymentIdLabel")} {paymentResult.yoco_payment_id}</div>
+                    <div>{t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={paymentResult.amount / 100} /></div>
+                    <div>{t("web.provider.portal.yocoPaymentDialog.deviceLabel")} {paymentResult.device_name}</div>
                     {paymentResult.receipt_url && (
                       <div>
                         <a
@@ -301,7 +306,7 @@ export function YocoPaymentDialog({
                           rel="noopener noreferrer"
                           className="text-pink-600 hover:underline font-medium"
                         >
-                          View receipt
+                          {t("web.provider.portal.yocoPaymentDialog.viewReceipt")}
                         </a>
                       </div>
                     )}
@@ -312,9 +317,9 @@ export function YocoPaymentDialog({
               <Alert className="bg-red-50 border-red-200">
                 <XCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
-                  <div className="font-semibold mb-1">Payment Failed</div>
+                  <div className="font-semibold mb-1">{t("web.provider.portal.yocoPaymentDialog.paymentFailedTitle")}</div>
                   <div className="text-sm">
-                    {paymentResult.error_message || "Payment could not be processed"}
+                    {paymentResult.error_message || t("web.provider.portal.yocoPaymentDialog.paymentNotProcessed")}
                   </div>
                 </AlertDescription>
               </Alert>
@@ -323,15 +328,17 @@ export function YocoPaymentDialog({
         ) : (
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="device">Payment Device</Label>
+              <Label htmlFor="device">{t("web.provider.portal.yocoPaymentDialog.paymentDevice")}</Label>
               {devices.length === 0 ? (
                 <p id="device" className="mt-1 text-sm text-gray-500 rounded-md border border-input bg-background px-3 py-2">
-                  {allDevices.length > 0 ? "No active devices available" : "No devices available"}
+                  {allDevices.length > 0
+                    ? t("web.provider.portal.yocoPaymentDialog.noActiveDevices")
+                    : t("web.provider.portal.yocoPaymentDialog.noDevices")}
                 </p>
               ) : (
                 <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
                   <SelectTrigger id="device" className="mt-1">
-                    <SelectValue placeholder="Select a device" />
+                    <SelectValue placeholder={t("web.provider.portal.yocoPaymentDialog.selectADevice")} />
                   </SelectTrigger>
                   <SelectContent>
                     {devices.map((device) => {
@@ -347,14 +354,14 @@ export function YocoPaymentDialog({
                           {device.location_name
                             ? ` (${device.location_name})`
                             : isPortable
-                              ? " (All locations)"
+                              ? ` ${t("web.provider.portal.yocoPaymentDialog.allLocations")}`
                               : ""}
                           {matchesBookingLocation
-                            ? "  •  matches booking location"
+                            ? `  ${t("web.provider.portal.yocoPaymentDialog.matchesBookingLocation")}`
                             : isPortable
-                              ? "  •  portable"
+                              ? `  ${t("web.provider.portal.yocoPaymentDialog.portable")}`
                               : ""}
-                          {isVirtualCheckout ? "  •  hosted checkout" : ""}
+                          {isVirtualCheckout ? `  ${t("web.provider.portal.yocoPaymentDialog.hostedCheckout")}` : ""}
                         </SelectItem>
                       );
                     })}
@@ -380,25 +387,25 @@ export function YocoPaymentDialog({
                 if (!bookingLocationId) {
                   return portable ? (
                     <p className="mt-2 text-xs text-emerald-700">
-                      Mobile booking · using your portable Yoco terminal.
+                      {t("web.provider.portal.yocoPaymentDialog.mobileUsingPortable")}
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-amber-700">
-                      Mobile booking · no portable device set up. Mark a device as &quot;All Locations&quot; in Yoco settings so it follows you on-site.
+                      {t("web.provider.portal.yocoPaymentDialog.mobileNoPortable")}
                     </p>
                   );
                 }
                 if (!hasExactMatch && !portable) {
                   return (
                     <p className="mt-2 text-xs text-amber-700">
-                      None of your active devices are assigned to this booking&apos;s location. The selected device will still process the payment.
+                      {t("web.provider.portal.yocoPaymentDialog.noDeviceForLocation")}
                     </p>
                   );
                 }
                 if (!hasExactMatch && portable) {
                   return (
                     <p className="mt-2 text-xs text-indigo-700">
-                      Using your portable device — no terminal is assigned to this salon yet.
+                      {t("web.provider.portal.yocoPaymentDialog.usingPortableNoSalon")}
                     </p>
                   );
                 }
@@ -406,20 +413,22 @@ export function YocoPaymentDialog({
               })()}
               {devices.length === 0 && (
                 <p className="text-xs text-gray-500 mt-1">
-                  {allDevices.length > 0 ? "You have devices but they are inactive. " : ""}
+                  {allDevices.length > 0 ? `${t("web.provider.portal.yocoPaymentDialog.devicesInactive")} ` : ""}
                   <a
                     href="/provider/settings/sales/yoco-devices"
                     className="text-pink-600 hover:underline"
                   >
-                    {allDevices.length > 0 ? "Activate a device" : "Add a device"}
+                    {allDevices.length > 0
+                      ? t("web.provider.portal.yocoPaymentDialog.activateDevice")
+                      : t("web.provider.portal.yocoPaymentDialog.addDevice")}
                   </a>{" "}
-                  to process payments
+                  {t("web.provider.portal.yocoPaymentDialog.toProcessPayments")}
                 </p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="amount">Amount ({tenantCurrency})</Label>
+              <Label htmlFor="amount">{t("web.provider.portal.yocoPaymentDialog.amountWithCurrency", { currency: tenantCurrency })}</Label>
               <Input
                 id="amount"
                 type="number"
@@ -431,27 +440,27 @@ export function YocoPaymentDialog({
                 disabled={isProcessing}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Amount: <Money amount={amountInCents / 100} />
+                {t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={amountInCents / 100} />
               </p>
             </div>
 
             {selectedDevice && (
               <div className="p-3 bg-gray-50 rounded-lg text-sm">
                 <div className="flex justify-between mb-1">
-                  <span className="text-gray-600">Device:</span>
+                  <span className="text-gray-600">{t("web.provider.portal.yocoPaymentDialog.device")}</span>
                   <span className="font-medium">{selectedDevice.name}</span>
                 </div>
                 {selectedDevice.location_name && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Location:</span>
+                    <span className="text-gray-600">{t("web.provider.portal.yocoPaymentDialog.location")}</span>
                     <span>{selectedDevice.location_name}</span>
                   </div>
                 )}
                 {(selectedDevice.credential_mode === "virtual_checkout" ||
                   selectedDevice.device_type === "virtual_checkout") && (
                   <div className="flex justify-between text-blue-700">
-                    <span>Payment flow:</span>
-                    <span className="font-medium">Hosted checkout link</span>
+                    <span>{t("web.provider.portal.yocoPaymentDialog.paymentFlow")}</span>
+                    <span className="font-medium">{t("web.provider.portal.yocoPaymentDialog.hostedCheckoutLink")}</span>
                   </div>
                 )}
                 {/* §Yoco-synergy 2026-05: surface the same Last used / total
@@ -464,13 +473,15 @@ export function YocoPaymentDialog({
                   const txns =
                     (selectedDevice as { total_transactions?: number }).total_transactions ?? 0;
                   if (!lastUsed && !txns) return null;
-                  const lastUsedLabel = lastUsed ? `Last used ${formatYocoLastUsed(lastUsed)}` : "Never used yet";
+                  const lastUsedLabel = lastUsed
+                    ? t("web.provider.portal.yocoPaymentDialog.lastUsed", { when: formatYocoLastUsed(lastUsed, t) })
+                    : t("web.provider.portal.yocoPaymentDialog.neverUsed");
                   return (
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>Activity:</span>
+                      <span>{t("web.provider.portal.yocoPaymentDialog.activity")}</span>
                       <span>
                         {lastUsedLabel}
-                        {txns > 0 ? ` · ${txns} txn${txns === 1 ? "" : "s"}` : ""}
+                        {txns > 0 ? ` · ${t("web.provider.portal.yocoPaymentDialog.txnCount", { count: txns })}` : ""}
                       </span>
                     </div>
                   );
@@ -483,12 +494,12 @@ export function YocoPaymentDialog({
         <DialogFooter>
           {paymentResult ? (
             <Button onClick={() => onOpenChange(false)}>
-              Close
+              {t("web.provider.portal.yocoPaymentDialog.close")}
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
-                Cancel
+                {t("web.provider.portal.yocoPaymentDialog.cancel")}
               </Button>
               <Button
                 onClick={handleProcessPayment}
@@ -496,13 +507,13 @@ export function YocoPaymentDialog({
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
+                    <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                    {t("web.provider.portal.yocoPaymentDialog.processing")}
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Process Payment
+                    <CreditCard className="w-4 h-4 me-2" />
+                    {t("web.provider.portal.yocoPaymentDialog.processPayment")}
                   </>
                 )}
               </Button>

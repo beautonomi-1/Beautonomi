@@ -4,6 +4,7 @@ import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -12,6 +13,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Row = {
   id: string;
@@ -37,6 +39,8 @@ function expired(data?: Record<string, unknown>): boolean {
 }
 
 export default function ProviderAnnouncementsScreen() {
+  const { t } = useTranslation();
+  const an = (key: string) => t(`provider.mobile.screens.announcements.${key}`) as string;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Row[]>([]);
@@ -50,12 +54,12 @@ export default function ProviderAnnouncementsScreen() {
       "/api/me/notifications?type=admin_broadcast&limit=50&offset=0",
     );
     if (res.error) {
-      setErr(res.error.message || "Could not load announcements");
+      setErr(res.error.message || an("loadFailed"));
       setRows([]);
       return;
     }
     setRows(Array.isArray(res.data?.notifications) ? res.data!.notifications! : []);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +82,7 @@ export default function ProviderAnnouncementsScreen() {
   return (
     <ScreenContainer scrollable={false} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScreenHeader title="Announcements" showBack />
+      <ScreenHeader title={an("title")} showBack />
       {loading ? (
         <LoadingState />
       ) : err ? (
@@ -99,10 +103,10 @@ export default function ProviderAnnouncementsScreen() {
             <View style={{ alignItems: "center", paddingTop: 48 }}>
               <Ionicons name="megaphone-outline" size={40} color={Colors.gray[300]} />
               <Text style={{ marginTop: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[700] }}>
-                No announcements yet
+                {an("emptyTitle")}
               </Text>
               <Text style={{ marginTop: 6, fontSize: 14, color: Colors.gray[500], textAlign: "center" }}>
-                When Beautonomi sends an update or promotion, it will show up here.
+                {an("emptyBody")}
               </Text>
             </View>
           }
@@ -129,23 +133,23 @@ export default function ProviderAnnouncementsScreen() {
                     </View>
                   )}
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginStart: 12 }}>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Text numberOfLines={1} style={{ flex: 1, fontWeight: "700", fontSize: 16, color: Colors.gray[900] }}>
                       {item.title}
                     </Text>
                     {!item.is_read ? (
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#6366f1", marginLeft: 6 }} />
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#6366f1", marginStart: 6 }} />
                     ) : null}
                   </View>
                   <Text numberOfLines={2} style={{ marginTop: 4, fontSize: 13, color: Colors.gray[600] }}>
                     {item.message}
                   </Text>
                   {isExpired ? (
-                    <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400] }}>Expired</Text>
+                    <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400] }}>{an("expired")}</Text>
                   ) : null}
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} style={{ alignSelf: "center" }} />
+                <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} style={{ alignSelf: "center" }} />
               </Pressable>
             );
           }}

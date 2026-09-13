@@ -15,10 +15,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import GiftCardsSection from "./components/GiftCardsSection";
 import type { PaymentMethodRow, PaymentsPageInitial } from "./payments-initial-types";
+import { useTranslation } from "@beautonomi/i18n";
 
 type PaymentMethod = PaymentMethodRow;
 
 const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("payments");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,8 +35,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   const [error, setError] = useState<string | null>(null);
   const [addingCard, setAddingCard] = useState(false);
 
-  const SAVE_CARD_INFO =
-    "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
+  const SAVE_CARD_INFO = t("web.accountSettings.payments.saveCardInfo");
 
   // Only show payouts tab for providers
   const isProvider = user?.role === "provider_owner" || user?.role === "provider_staff";
@@ -84,14 +85,14 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
 
   const handleRedeemCoupon = async () => {
     if (!couponCode.trim()) {
-      toast.error("Please enter a coupon code");
+      toast.error(t("web.accountSettings.payments.enterCouponCode"));
       return;
     }
 
     try {
       setIsRedeemingCoupon(true);
       await fetcher.post("/api/me/coupons/redeem", { code: couponCode.trim() });
-      toast.success("Coupon redeemed successfully!");
+      toast.success(t("web.accountSettings.payments.couponRedeemed"));
       setCouponCode("");
       setShowCouponInput(false);
       loadCouponCount();
@@ -99,7 +100,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to redeem coupon. Please check the code and try again."
+          : t("web.accountSettings.payments.couponRedeemFailed")
       );
     } finally {
       setIsRedeemingCoupon(false);
@@ -117,10 +118,10 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.accountSettings.payments.requestTimeout")
           : err instanceof FetchError
             ? err.message
-            : "Failed to load payment methods";
+            : t("web.accountSettings.payments.loadMethodsFailed");
       setError(errorMessage);
       console.error("Error loading payment methods:", err);
     } finally {
@@ -129,14 +130,14 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   };
 
   const handleDeletePaymentMethod = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this payment method?")) return;
+    if (!confirm(t("web.accountSettings.payments.removeConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/me/payment-methods/${id}`);
-      toast.success("Payment method removed");
+      toast.success(t("web.accountSettings.payments.methodRemoved"));
       loadPaymentMethods();
     } catch (err) {
-      toast.error("Failed to remove payment method");
+      toast.error(t("web.accountSettings.payments.removeFailed"));
       console.error("Error deleting payment method:", err);
     }
   };
@@ -148,13 +149,13 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
         { is_default: true }
       );
       if (res?.error) {
-        toast.error(res.error.message || "Failed to set default");
+        toast.error(res.error.message || t("web.accountSettings.payments.setDefaultFailed"));
         return;
       }
-      toast.success("Default card updated");
+      toast.success(t("web.accountSettings.payments.defaultCardUpdated"));
       loadPaymentMethods();
     } catch {
-      toast.error("Failed to set default card");
+      toast.error(t("web.accountSettings.payments.setDefaultCardFailed"));
     }
   };
 
@@ -169,13 +170,13 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
       });
       const url = res?.data?.authorization_url;
       if (!url) {
-        toast.error(res?.error?.message || "Could not start card verification");
+        toast.error(res?.error?.message || t("web.accountSettings.payments.startVerificationFailed"));
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
-      toast.info("Complete verification in the new tab, then refresh this page.");
+      toast.info(t("web.accountSettings.payments.completeVerification"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Could not add card");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.payments.addCardFailed"));
     } finally {
       setAddingCard(false);
     }
@@ -212,16 +213,16 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
         <BackButton href="/account-settings" />
         <Breadcrumb
-          items={[{ label: "Account", href: "/account-settings" }, { label: "Payments & payouts" }]}
+          items={[{ label: t("web.accountSettings.payments.breadcrumbAccount"), href: "/account-settings" }, { label: t("web.accountSettings.payments.breadcrumbTitle") }]}
         />
 
         {/* Page Header - Glass Card Style */}
         <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">
-            Payments & payouts
+            {t("web.accountSettings.payments.title")}
           </h1>
           <p className="text-sm md:text-base text-gray-600 font-light">
-            Manage your payment methods, coupons, and gift cards
+            {t("web.accountSettings.payments.subtitle")}
           </p>
         </div>
 
@@ -236,7 +237,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                     : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
                 }`}
               >
-                Payments
+                {t("web.accountSettings.payments.tabPayments")}
               </TabsTrigger>
               {isProvider && (
                 <TabsTrigger
@@ -247,7 +248,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                       : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
                   }`}
                 >
-                  Payouts
+                  {t("web.accountSettings.payments.tabPayouts")}
                 </TabsTrigger>
               )}
             </TabsList>
@@ -259,17 +260,17 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 {/* Payment History Section */}
                 <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
                   <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
-                    Your payments
+                    {t("web.accountSettings.payments.yourPayments")}
                   </h2>
                   <p className="text-base font-light mb-6 text-gray-600">
-                    Keep track of all your payments and refunds.
+                    {t("web.accountSettings.payments.yourPaymentsDesc")}
                   </p>
                   <Link href="/account-settings/bookings">
                     <button
                       type="button"
                       className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl mb-6 md:mb-8 font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                     >
-                      View booking payments
+                      {t("web.accountSettings.payments.viewBookingPayments")}
                     </button>
                   </Link>
                 </div>
@@ -278,26 +279,24 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
-                      Payment methods
+                      {t("web.accountSettings.payments.paymentMethods")}
                     </h2>
                     <button
                       type="button"
                       onClick={() => toast.info(SAVE_CARD_INFO, { duration: 8000 })}
                       className="p-1 rounded-full hover:bg-gray-100 text-[#FF0077]"
-                      aria-label="Info about saving card"
+                      aria-label={t("web.accountSettings.payments.saveCardAria")}
                     >
                       <Info className="w-5 h-5" />
                     </button>
                   </div>
                   <p className="text-base mb-3 font-light text-gray-600">
-                    We'll save your card securely when you pay. To verify your card, a small
-                    temporary charge (e.g. R1) may be placed and reversed—this confirms your card
-                    for future use.
+                    {SAVE_CARD_INFO}
                   </p>
 
                   {isLoading ? (
                     <div className="mb-6">
-                      <LoadingTimeout loadingMessage="Loading payment methods..." />
+                      <LoadingTimeout loadingMessage={t("web.accountSettings.payments.loadingMethods")} />
                     </div>
                   ) : error ? (
                     <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -308,22 +307,22 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                         onClick={loadPaymentMethods}
                         className="mt-2"
                       >
-                        Retry
+                        {t("web.accountSettings.payments.retry")}
                       </Button>
                     </div>
                   ) : paymentMethods.length === 0 ? (
                     <div className="mb-6 p-6 border border-gray-200 rounded-xl text-center backdrop-blur-sm bg-white/60">
                       <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-600 mb-2 font-medium">No payment methods saved</p>
+                      <p className="text-gray-600 mb-2 font-medium">{t("web.accountSettings.payments.noMethodsTitle")}</p>
                       <p className="text-sm text-gray-500 mb-4">
-                        Cards are saved automatically when you pay with a card
+                        {t("web.accountSettings.payments.noMethodsDesc")}
                       </p>
                       <Link href="/">
                         <button
                           type="button"
                           className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                         >
-                          Book a service to save a card
+                          {t("web.accountSettings.payments.bookToSaveCard")}
                         </button>
                       </Link>
                     </div>
@@ -342,13 +341,13 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                                   {method.card_type
                                     ? method.card_type.charAt(0).toUpperCase() +
                                       method.card_type.slice(1)
-                                    : "Card"}
+                                    : t("web.accountSettings.payments.cardFallback")}
                                   {method.last4 && ` •••• ${method.last4}`}
                                 </span>
                                 {method.is_default ? (
                                   <span className="px-2 py-1 bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white text-xs rounded-full flex items-center gap-1">
                                     <Star className="w-3 h-3 fill-white" />
-                                    Default
+                                    {t("web.accountSettings.payments.default")}
                                   </span>
                                 ) : (
                                   <button
@@ -356,7 +355,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                                     onClick={() => handleSetDefault(method.id)}
                                     className="text-xs font-medium text-[#FF0077] hover:text-[#E6006A] underline"
                                   >
-                                    Set default
+                                    {t("web.accountSettings.payments.setDefault")}
                                   </button>
                                 )}
                               </div>
@@ -367,7 +366,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                                 <p
                                   className={`text-xs ${method.is_expired ? "font-semibold text-red-600" : "text-gray-500"}`}
                                 >
-                                  {method.is_expired ? "Expired" : "Expires"}{" "}
+                                  {method.is_expired ? t("web.accountSettings.payments.expired") : t("web.accountSettings.payments.expires")}{" "}
                                   {method.expiry_label ??
                                     `${String(method.expiry_month).padStart(2, "0")}/${String(method.expiry_year).slice(-2)}`}
                                 </p>
@@ -393,11 +392,11 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                     className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#FF0077] text-gray-600 hover:text-[#FF0077] transition-all mt-3 disabled:opacity-60"
                   >
                     {addingCard ? (
-                      <span className="text-sm font-medium">Opening...</span>
+                      <span className="text-sm font-medium">{t("web.accountSettings.payments.opening")}</span>
                     ) : (
                       <>
                         <Plus className="w-4 h-4" />
-                        <span className="text-sm font-medium">Add card</span>
+                        <span className="text-sm font-medium">{t("web.accountSettings.payments.addCard")}</span>
                       </>
                     )}
                   </button>
@@ -408,10 +407,10 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 {/* Coupons Section */}
                 <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
                   <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
-                    Coupons
+                    {t("web.accountSettings.payments.coupons")}
                   </h2>
                   <div className="flex justify-between items-center mb-4 font-medium text-gray-700">
-                    <span>Your coupons</span>
+                    <span>{t("web.accountSettings.payments.yourCoupons")}</span>
                     <span className="text-[#FF0077] font-semibold">{couponCount}</span>
                   </div>
 
@@ -421,7 +420,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                       onClick={handleAddCouponClick}
                       className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                     >
-                      Add coupon
+                      {t("web.accountSettings.payments.addCoupon")}
                     </button>
                   ) : (
                     <div className="space-y-4">
@@ -431,14 +430,14 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                             htmlFor="coupon"
                             className="absolute top-1 left-3 text-xs text-gray-500"
                           >
-                            Enter a coupon code
+                            {t("web.accountSettings.payments.couponCodeLabel")}
                           </Label>
                         )}
                         <Input
                           id="coupon"
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                          placeholder={!focusField.coupon ? "Enter a coupon code" : ""}
+                          placeholder={!focusField.coupon ? t("web.accountSettings.payments.couponCodeLabel") : ""}
                           className="px-3 py-2 border-none bg-transparent"
                           onFocus={() => handleFocus("coupon")}
                           onBlur={(e) => handleBlur("coupon", e)}
@@ -451,14 +450,14 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                           disabled={isRedeemingCoupon || !couponCode.trim()}
                           className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
                         >
-                          {isRedeemingCoupon ? "Redeeming..." : "Redeem Coupon"}
+                          {isRedeemingCoupon ? t("web.accountSettings.payments.redeeming") : t("web.accountSettings.payments.redeemCoupon")}
                         </Button>
                         <Button
                           onClick={handleCancelCoupon}
                           variant="outline"
                           disabled={isRedeemingCoupon}
                         >
-                          Cancel
+                          {t("web.accountSettings.payments.cancel")}
                         </Button>
                       </div>
                     </div>
@@ -471,18 +470,18 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6">
                   <div className="flex items-center mb-4">
                     <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
-                      {paymentSafetyCopy?.title ?? "Make all payments through Beautonomi"}
+                      {paymentSafetyCopy?.title ?? t("web.accountSettings.payments.safetyTitle")}
                     </h2>
                   </div>
                   <p className="mb-4 text-sm font-light text-gray-600 leading-relaxed">
                     {paymentSafetyCopy?.body ??
-                      "Always pay and communicate through Beautonomi to ensure you're protected under our Terms of Service, Payments Terms of Service, cancellation, and other safeguards."}
+                      t("web.accountSettings.payments.safetyBody")}
                   </p>
                   <Link
                     href={paymentSafetyCopy?.learn_more_url ?? "/terms-and-condition"}
                     className="text-[#FF0077] hover:text-[#E6006A] text-sm font-medium underline transition-colors inline-flex items-center gap-1.5 group"
                   >
-                    <span>{paymentSafetyCopy?.learn_more_label ?? "Learn more"}</span>
+                    <span>{paymentSafetyCopy?.learn_more_label ?? t("web.accountSettings.payments.learnMore")}</span>
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                 </div>
@@ -496,18 +495,17 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 <div className="w-full md:w-2/3">
                   <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6">
                     <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
-                      How you&apos;ll get paid
+                      {t("web.accountSettings.payments.howYoullGetPaid")}
                     </h2>
                     <p className="text-base mb-6 font-light text-gray-600">
-                      Add at least one payout method so we know where to send your money via
-                      Paystack.
+                      {t("web.accountSettings.payments.payoutSetupDesc")}
                     </p>
                     <Link href="/provider/settings/payout-accounts">
                       <button
                         type="button"
                         className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
                       >
-                        Set up payouts
+                        {t("web.accountSettings.payments.setUpPayouts")}
                       </button>
                     </Link>
                   </div>
@@ -515,7 +513,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                 <div className="w-full md:w-1/3">
                   <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6">
                     <h2 className="text-lg font-semibold tracking-tighter mb-4 text-gray-900">
-                      Need help?
+                      {t("web.accountSettings.payments.needHelp")}
                     </h2>
                     <ul className="space-y-3">
                       <li>
@@ -523,7 +521,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                           href="/help"
                           className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
                         >
-                          When you&apos;ll get your payout <span>&gt;</span>
+                          {t("web.accountSettings.payments.whenYoullGetPayout")} <span>&gt;</span>
                         </a>
                       </li>
                       <li>
@@ -531,7 +529,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                           href="/help"
                           className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
                         >
-                          How payouts work <span>&gt;</span>
+                          {t("web.accountSettings.payments.howPayoutsWork")} <span>&gt;</span>
                         </a>
                       </li>
                       <li>
@@ -539,7 +537,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                           href="/provider/finance"
                           className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
                         >
-                          Go to your transaction history <span>&gt;</span>
+                          {t("web.accountSettings.payments.transactionHistory")} <span>&gt;</span>
                         </Link>
                       </li>
                     </ul>

@@ -15,6 +15,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/format";
 
 interface PayStub {
@@ -36,6 +37,9 @@ interface PayStub {
 }
 
 export function MyEarningsContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const me = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.myEarnings.${key}`, opts) as string;
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -95,10 +99,12 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
     >
         {live ? (
           <View style={twStyle("rounded-2xl border border-teal-100 bg-teal-50/60 p-4 mb-4 mt-4")}>
-            <Text style={twStyle("text-sm font-semibold text-teal-900 mb-2")}>Live earnings</Text>
+            <Text style={twStyle("text-sm font-semibold text-teal-900 mb-2")}>{me("liveEarnings")}</Text>
             {(["today", "week", "month"] as const).map((period) => (
               <View key={period} style={twStyle("flex-row justify-between py-1")}>
-                <Text style={twStyle("text-sm text-teal-800 capitalize")}>{period}</Text>
+                <Text style={twStyle("text-sm text-teal-800")}>
+                  {period === "today" ? me("periodToday") : period === "week" ? me("periodWeek") : me("periodMonth")}
+                </Text>
                 <Text style={twStyle("text-sm font-medium text-teal-900")}>
                   {formatCurrency(Number(live[period]?.total ?? 0), currency)}
                 </Text>
@@ -110,10 +116,10 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center mt-4")}>
             <Ionicons name="wallet-outline" size={48} color="#9ca3af" />
             <Text style={twStyle("mt-4 text-base font-semibold text-gray-900 text-center")}>
-              No pay stubs yet
+              {me("emptyTitle")}
             </Text>
             <Text style={twStyle("mt-2 text-sm text-gray-500 text-center")}>
-              When your employer runs payroll, your pay stubs will appear here.
+              {me("emptyDesc")}
             </Text>
           </View>
         ) : (
@@ -140,12 +146,20 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                       {format(new Date(stub.pay_period_end), "MMM d, yyyy")}
                     </Text>
                     <Text style={twStyle("text-sm text-gray-500 mt-0.5")}>
-                      Net: {formatCurrency(Number(stub.net_pay), currency)}
+                      {me("net", { amount: formatCurrency(Number(stub.net_pay), currency) })}
                     </Text>
                   </View>
                   <View style={twStyle("flex-row items-center gap-2")}>
                     <View style={[twStyle("rounded-full px-2.5 py-1"), statusStyle(stub.status)]}>
-                      <Text style={twStyle("text-xs font-medium capitalize")}>{stub.status}</Text>
+                      <Text style={twStyle("text-xs font-medium")}>
+                        {stub.status === "draft"
+                          ? me("statusDraft")
+                          : stub.status === "approved"
+                            ? me("statusApproved")
+                            : stub.status === "paid"
+                              ? me("statusPaid")
+                              : stub.status}
+                      </Text>
                     </View>
                     <Ionicons
                       name={isExpanded ? "chevron-up" : "chevron-down"}
@@ -157,14 +171,14 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                 {isExpanded && (
                   <View style={twStyle("border-t border-gray-100 px-4 pb-4 pt-2")}>
                     <View style={twStyle("gap-2")}>
-                      <Row label="Gross pay" value={formatCurrency(Number(stub.gross_pay), currency)} />
-                      <Row label="Commission" value={formatCurrency(Number(stub.commission_amount), currency)} />
-                      <Row label="Hourly" value={formatCurrency(Number(stub.hourly_amount), currency)} />
-                      <Row label="Salary" value={formatCurrency(Number(stub.salary_amount), currency)} />
-                      <Row label="Tips" value={formatCurrency(Number(stub.tips_amount), currency)} />
+                      <Row label={me("grossPay")} value={formatCurrency(Number(stub.gross_pay), currency)} />
+                      <Row label={me("commission")} value={formatCurrency(Number(stub.commission_amount), currency)} />
+                      <Row label={me("hourly")} value={formatCurrency(Number(stub.hourly_amount), currency)} />
+                      <Row label={me("salary")} value={formatCurrency(Number(stub.salary_amount), currency)} />
+                      <Row label={me("tips")} value={formatCurrency(Number(stub.tips_amount), currency)} />
                       <View style={twStyle("flex-row justify-between py-1")}>
                         <Text style={twStyle("text-sm text-red-600")}>
-                          Deductions (Tax, UIF, Other)
+                          {me("deductions")}
                         </Text>
                         <Text style={twStyle("text-sm font-medium text-red-600")}>
                           -{formatCurrency(deductions, currency)}
@@ -172,7 +186,7 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                       </View>
                     </View>
                     <View style={twStyle("flex-row justify-between pt-3 mt-2 border-t border-gray-200")}>
-                      <Text style={twStyle("font-semibold text-gray-900")}>Net pay</Text>
+                      <Text style={twStyle("font-semibold text-gray-900")}>{me("netPay")}</Text>
                       <Text style={twStyle("font-semibold text-gray-900")}>
                         {formatCurrency(Number(stub.net_pay), currency)}
                       </Text>

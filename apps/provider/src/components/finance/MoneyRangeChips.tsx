@@ -43,7 +43,7 @@ export function MoneyRangeChips({ value, onChange }: MoneyRangeChipsProps) {
           accessibilityLabel={moneyRangeCaption(opt.value)}
           style={[
             twStyle(`rounded-full px-3.5 py-2 ${value === opt.value ? "bg-emerald-600" : "bg-gray-100"}`),
-            { marginRight: 8, marginBottom: 8 },
+            { marginEnd: 8, marginBottom: 8 },
           ]}
         >
           <Text

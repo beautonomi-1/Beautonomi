@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BulkBookingActionsProps {
   selectedIds: Set<string>;
@@ -45,6 +46,7 @@ export function BulkBookingActions({
   totalCount,
   visibleIds,
 }: BulkBookingActionsProps) {
+  const { t } = useTranslation();
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ action: string; label: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -61,15 +63,12 @@ export function BulkBookingActions({
       onSelectionChange(new Set(visibleIds));
       return;
     }
-    // Parent didn't pass the visible booking IDs — fall back to the legacy
-    // advisory toast so behaviour is unchanged for callers that haven't
-    // migrated. Any caller wanting real bulk-select should pass `visibleIds`.
-    toast.info("Select all is unavailable until the bookings list supplies IDs.");
+    toast.info(t("web.provider.bookings.bulkActions.selectAllUnavailable"));
   };
 
   const handleBulkAction = async (action: string, label: string) => {
     if (selectedIds.size === 0) {
-      toast.error("Please select at least one booking");
+      toast.error(t("web.provider.bookings.bulkActions.selectAtLeastOne"));
       return;
     }
 
@@ -83,12 +82,21 @@ export function BulkBookingActions({
     try {
       setIsProcessing(true);
       await onBulkAction(pendingAction.action, Array.from(selectedIds));
-      toast.success(`${pendingAction.label} completed for ${selectedIds.size} booking(s)`);
+      toast.success(
+        t("web.provider.bookings.bulkActions.actionCompleted", {
+          action: pendingAction.label,
+          count: selectedIds.size,
+        }),
+      );
       onSelectionChange(new Set());
       setIsConfirmDialogOpen(false);
       setPendingAction(null);
     } catch {
-      toast.error(`Failed to ${pendingAction.label.toLowerCase()}`);
+      toast.error(
+        t("web.provider.bookings.bulkActions.actionFailed", {
+          action: pendingAction.label.toLowerCase(),
+        }),
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -114,12 +122,14 @@ export function BulkBookingActions({
               <Square className="w-4 h-4" />
             )}
             <span className="text-sm">
-              {isAllSelected ? "Deselect All" : "Select All"}
+              {isAllSelected
+                ? t("web.provider.bookings.bulkActions.deselectAll")
+                : t("web.provider.bookings.bulkActions.selectAll")}
             </span>
           </Button>
           {selectedCount > 0 && (
             <Badge variant="secondary" className="text-sm">
-              {selectedCount} selected
+              {t("web.provider.bookings.bulkActions.selected", { count: selectedCount })}
             </Badge>
           )}
         </div>
@@ -128,40 +138,48 @@ export function BulkBookingActions({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                <MoreVertical className="w-4 h-4 mr-2" />
-                Bulk Actions ({selectedCount})
+                <MoreVertical className="w-4 h-4 me-2" />
+                {t("web.provider.bookings.bulkActions.bulkActions", { count: selectedCount })}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() => handleBulkAction("confirm", "Confirm")}
+                onClick={() =>
+                  handleBulkAction("confirm", t("web.provider.bookings.bulkActions.confirmSelected"))
+                }
                 className="flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
-                Confirm Selected
+                {t("web.provider.bookings.bulkActions.confirmSelected")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => handleBulkAction("cancel", "Cancel")}
+                onClick={() =>
+                  handleBulkAction("cancel", t("web.provider.bookings.bulkActions.cancelSelected"))
+                }
                 className="flex items-center gap-2"
               >
                 <XCircle className="w-4 h-4 text-red-600" />
-                Cancel Selected
+                {t("web.provider.bookings.bulkActions.cancelSelected")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => handleBulkAction("complete", "Mark Complete")}
+                onClick={() =>
+                  handleBulkAction("complete", t("web.provider.bookings.bulkActions.markComplete"))
+                }
                 className="flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                Mark Complete
+                {t("web.provider.bookings.bulkActions.markComplete")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => handleBulkAction("delete", "Delete")}
+                onClick={() =>
+                  handleBulkAction("delete", t("web.provider.bookings.bulkActions.deleteSelected"))
+                }
                 className="flex items-center gap-2 text-red-600"
               >
                 <Trash2 className="w-4 h-4" />
-                Delete Selected
+                {t("web.provider.bookings.bulkActions.deleteSelected")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -171,20 +189,26 @@ export function BulkBookingActions({
       <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Bulk Action</AlertDialogTitle>
+            <AlertDialogTitle>{t("web.provider.bookings.bulkActions.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to {pendingAction?.label.toLowerCase()} {selectedCount} booking(s)?
-              This action cannot be undone.
+              {t("web.provider.bookings.bulkActions.confirmBody", {
+                action: pendingAction?.label.toLowerCase() ?? "",
+                count: selectedCount,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing}>
+              {t("web.provider.common.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmBulkAction}
               disabled={isProcessing}
               className={pendingAction?.action === "delete" ? "bg-red-600 hover:bg-red-700" : ""}
             >
-              {isProcessing ? "Processing..." : "Confirm"}
+              {isProcessing
+                ? t("web.provider.bookings.bulkActions.processing")
+                : t("web.provider.bookings.bulkActions.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

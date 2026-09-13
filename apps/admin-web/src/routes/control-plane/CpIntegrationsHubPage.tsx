@@ -65,9 +65,9 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: Settings,
   },
   {
-    title: "Gemini AI",
+    title: "AI providers",
     description: "API key, models, safety",
-    to: adminSpaTo("/admin/control-plane/integrations/gemini"),
+    to: adminSpaTo("/admin/control-plane/integrations/ai"),
     icon: Sparkles,
   },
   {

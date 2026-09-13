@@ -16,6 +16,7 @@ import { isCompleteE164 } from "@/lib/phone";
 import { toast } from "sonner";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface StepGroupParticipantsProps {
   bookingState: BookingState;
@@ -39,6 +40,8 @@ export default function StepGroupParticipants({
   maxGroupSize: initialMaxGroupSize,
   availableServices,
 }: StepGroupParticipantsProps) {
+  const { t } = useTranslation();
+  const gp = "web.booking.steps.groupParticipants";
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [maxGroupSize, setMaxGroupSize] = useState(initialMaxGroupSize);
@@ -48,7 +51,7 @@ export default function StepGroupParticipants({
         id: "1",
         name: bookingState.clientInfo?.firstName 
           ? `${bookingState.clientInfo.firstName} ${bookingState.clientInfo.lastName}`.trim()
-          : "You",
+          : t(`${gp}.you`),
         email: bookingState.clientInfo?.email || "",
         phone: bookingState.clientInfo?.phone || "",
         serviceIds: bookingState.selectedServices.map(s => s.id),
@@ -125,7 +128,7 @@ export default function StepGroupParticipants({
     }
 
     if (participantForm.phone?.trim() && !isCompleteE164(participantForm.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t(`${gp}.invalidPhone`));
       return;
     }
 
@@ -186,10 +189,10 @@ export default function StepGroupParticipants({
     <div className="px-4 py-6 space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-          Add Participants
+          {t(`${gp}.title`)}
         </h2>
         <p className="text-gray-600">
-          Add people to your group booking ({participants.length}/{maxGroupSize})
+          {t(`${gp}.subtitle`, { current: participants.length, max: maxGroupSize })}
         </p>
       </div>
 
@@ -238,7 +241,7 @@ export default function StepGroupParticipants({
               {/* Services for this participant */}
               <div className="mt-3">
                 <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Services for {participant.name}
+                  {t(`${gp}.servicesFor`, { name: participant.name })}
                 </Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {availableServices.map((service) => (
@@ -246,7 +249,7 @@ export default function StepGroupParticipants({
                       key={service.id}
                       type="button"
                       onClick={() => toggleServiceForParticipant(participant.id, service.id)}
-                      className={`p-3 border-2 rounded-lg text-left transition-all touch-target ${
+                      className={`p-3 border-2 rounded-lg text-start transition-all touch-target ${
                         participant.serviceIds.includes(service.id)
                           ? "border-primary bg-pink-50"
                           : "border-gray-200 hover:border-gray-300"
@@ -270,7 +273,7 @@ export default function StepGroupParticipants({
                 </div>
                 {participantServices.length > 0 && (
                   <p className="text-sm text-gray-600 mt-2">
-                    {participantServices.length} service(s) • {formatCurrency(participantTotal, currency)}
+                    {t(`${gp}.serviceCount`, { count: participantServices.length, amount: formatCurrency(participantTotal, currency) })}
                   </p>
                 )}
               </div>
@@ -281,7 +284,7 @@ export default function StepGroupParticipants({
                 onClick={() => handleEditParticipant(participant.id)}
                 className="w-full mt-3 touch-target"
               >
-                Edit Details
+                {t(`${gp}.editDetails`)}
               </Button>
             </motion.div>
           );
@@ -295,8 +298,8 @@ export default function StepGroupParticipants({
           variant="outline"
           className="w-full touch-target"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Participant
+          <Plus className="w-4 h-4 me-2" />
+          {t(`${gp}.addParticipant`)}
         </Button>
       )}
 
@@ -305,14 +308,14 @@ export default function StepGroupParticipants({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-gray-600" />
-            <span className="font-medium text-gray-900">Total</span>
+            <span className="font-medium text-gray-900">{t(`${gp}.total`)}</span>
           </div>
-          <div className="text-right">
+          <div className="text-end">
             <p className="text-2xl font-bold text-primary">
               {formatCurrency(calculateTotal(), currency)}
             </p>
             <p className="text-sm text-gray-600">
-              {participants.length} participant{participants.length !== 1 ? "s" : ""}
+              {t(`${gp}.participantCount`, { count: participants.length })}
             </p>
           </div>
         </div>
@@ -323,29 +326,29 @@ export default function StepGroupParticipants({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {editingParticipant ? "Edit Participant" : "Add Participant"}
+              {editingParticipant ? t(`${gp}.editTitle`) : t(`${gp}.addTitle`)}
             </DialogTitle>
             <DialogDescription>
-              Enter participant information for the group booking
+              {t(`${gp}.dialogDescription`)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="participant-name">Name *</Label>
+              <Label htmlFor="participant-name">{t(`${gp}.nameRequired`)}</Label>
               <Input
                 id="participant-name"
                 value={participantForm.name}
                 onChange={(e) =>
                   setParticipantForm({ ...participantForm, name: e.target.value })
                 }
-                placeholder="Participant name"
+                placeholder={t("web.booking.steps.participantName")}
                 required
                 className="touch-target"
               />
             </div>
 
             <div>
-              <Label htmlFor="participant-email">Email (Optional)</Label>
+              <Label htmlFor="participant-email">{t(`${gp}.emailOptional`)}</Label>
               <Input
                 id="participant-email"
                 type="email"
@@ -353,7 +356,7 @@ export default function StepGroupParticipants({
                 onChange={(e) =>
                   setParticipantForm({ ...participantForm, email: e.target.value })
                 }
-                placeholder="participant@example.com"
+                placeholder={t(`${gp}.emailPlaceholder`)}
                 className="touch-target"
               />
             </div>
@@ -361,25 +364,25 @@ export default function StepGroupParticipants({
             <div>
               <PhoneInput
                 inputId="booking-step-group-participant-phone"
-                label="Phone (Optional)"
+                label={t(`${gp}.phoneOptional`)}
                 value={participantForm.phone}
                 onChange={(e164) =>
                   setParticipantForm({ ...participantForm, phone: e164 })
                 }
-                placeholder="Phone number"
+                placeholder={t(`${gp}.phonePlaceholder`)}
                 className="touch-target"
               />
             </div>
 
             <div>
-              <Label htmlFor="participant-notes">Special Notes (Optional)</Label>
+              <Label htmlFor="participant-notes">{t(`${gp}.notesOptional`)}</Label>
               <Textarea
                 id="participant-notes"
                 value={participantForm.notes}
                 onChange={(e) =>
                   setParticipantForm({ ...participantForm, notes: e.target.value })
                 }
-                placeholder="Any special requirements or notes..."
+                placeholder={t("web.booking.steps.participantNotes")}
                 rows={3}
                 className="touch-target"
               />
@@ -391,14 +394,14 @@ export default function StepGroupParticipants({
                 onClick={() => setShowParticipantDialog(false)}
                 className="touch-target"
               >
-                Cancel
+                {t(`${gp}.cancel`)}
               </Button>
               <Button
                 onClick={handleSaveParticipant}
                 disabled={!participantForm.name.trim()}
                 className="touch-target"
               >
-                {editingParticipant ? "Update" : "Add"} Participant
+                {editingParticipant ? t(`${gp}.updateParticipant`) : t(`${gp}.addParticipantSubmit`)}
               </Button>
             </div>
           </div>

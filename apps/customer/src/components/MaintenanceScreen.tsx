@@ -145,7 +145,7 @@ export default function MaintenanceScreen({
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.thanks}>Thanks! We will notify you when we are back.</Text>
+              <Text style={styles.thanks}>{t("customer.mobile.screens.maintenance.thanksMessage")}</Text>
             )}
           </View>
         )}

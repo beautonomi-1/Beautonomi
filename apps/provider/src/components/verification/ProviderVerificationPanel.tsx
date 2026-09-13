@@ -37,6 +37,7 @@ import { LegalDetailsConfirmForm } from "@/components/verification/LegalDetailsC
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { webPrivacyPolicyUrl } from "@/lib/legal-web";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type NormalizedVerificationStatus =
   | "not_started" | "session_created" | "in_progress" | "pending_review"
@@ -53,24 +54,24 @@ export interface ProviderVerificationPanelProps {
 
 const STATUS_CONFIG: Record<
   NormalizedVerificationStatus,
-  { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }
+  { labelKey: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }
 > = {
-  not_started:    { label: "Not started",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
-  session_created:{ label: "Not started",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
-  in_progress:    { label: "In progress",      icon: "hourglass-outline",      color: "#f59e0b", bg: "bg-amber-100" },
-  pending_review: { label: "Under review",     icon: "hourglass-outline",      color: "#3b82f6", bg: "bg-blue-100" },
-  approved:       { label: "Verified",         icon: "checkmark-circle",       color: "#22c55e", bg: "bg-green-100" },
-  rejected:       { label: "Not verified",     icon: "close-circle",           color: "#ef4444", bg: "bg-red-100" },
-  expired:        { label: "Session expired",  icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
-  abandoned:      { label: "Not completed",    icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
-  requires_retry: { label: "Retry required",   icon: "refresh-outline",        color: "#6366f1", bg: "bg-indigo-100" },
-  errored:        { label: "Unavailable",      icon: "alert-circle-outline",   color: "#6b7280", bg: "bg-gray-100" },
+  not_started:    { labelKey: "statusNotStarted",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
+  session_created:{ labelKey: "statusNotStarted",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
+  in_progress:    { labelKey: "statusInProgress",      icon: "hourglass-outline",      color: "#f59e0b", bg: "bg-amber-100" },
+  pending_review: { labelKey: "statusUnderReview",     icon: "hourglass-outline",      color: "#3b82f6", bg: "bg-blue-100" },
+  approved:       { labelKey: "statusVerified",         icon: "checkmark-circle",       color: "#22c55e", bg: "bg-green-100" },
+  rejected:       { labelKey: "statusNotVerified",     icon: "close-circle",           color: "#ef4444", bg: "bg-red-100" },
+  expired:        { labelKey: "statusSessionExpired",  icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
+  abandoned:      { labelKey: "statusNotCompleted",    icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
+  requires_retry: { labelKey: "statusRetryRequired",   icon: "refresh-outline",        color: "#6366f1", bg: "bg-indigo-100" },
+  errored:        { labelKey: "statusUnavailable",      icon: "alert-circle-outline",   color: "#6b7280", bg: "bg-gray-100" },
 };
 
 const DOC_TYPES = [
-  { value: "license", label: "Driver's license" },
-  { value: "passport", label: "Passport" },
-  { value: "identity", label: "Identity card" },
+  { value: "license", labelKey: "docLicense" },
+  { value: "passport", labelKey: "docPassport" },
+  { value: "identity", labelKey: "docIdentity" },
 ] as const;
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
@@ -80,6 +81,9 @@ export function ProviderVerificationPanel({
   onStatusChange,
   onApproved,
 }: ProviderVerificationPanelProps) {
+  const { t } = useTranslation();
+  const vp = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.providerVerificationPanel.${key}`, opts) as string;
   const router = useRouter();
   const { bundle } = useConfigBundle();
   const [refreshing, setRefreshing] = useState(false);
@@ -165,7 +169,7 @@ export function ProviderVerificationPanel({
 
       if (!result.ok && result.error) {
         Alert.alert(
-          "Verification unavailable",
+          vp("unavailableTitle"),
           formatDiditLaunchError(result.error, { manualAvailable }),
         );
         return;
@@ -176,7 +180,7 @@ export function ProviderVerificationPanel({
       startPolling();
       await refreshStatus();
     } catch {
-      Alert.alert("Error", "Could not start verification. Please try again.");
+      Alert.alert(vp("errorTitle"), vp("startFailed"));
     } finally {
       setLaunching(false);
     }
@@ -200,28 +204,28 @@ export function ProviderVerificationPanel({
   const displayConfig =
     businessVerificationPending && effectiveStatus !== "rejected"
       ? {
-          label: "Business verification pending",
+          labelKey: "statusBusinessPending",
           icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
           color: "#3b82f6",
           bg: "bg-blue-100",
         }
       : config;
-  const statusLabel = displayConfig.label;
+  const statusLabel = vp(displayConfig.labelKey);
   const statusMessage = businessVerificationPending
     ? legacyStatus?.verification_plan?.effective_summary
-      ? `Your personal identity is verified. ${legacyStatus.verification_plan.effective_summary}`
-      : "Your personal identity is verified. Complete business verification to finish setup and go live."
+      ? vp("identityVerifiedWithSummary", { summary: legacyStatus.verification_plan.effective_summary })
+      : vp("identityVerifiedFinishBusiness")
     : isApproved
-      ? "Your identity is verified."
+      ? vp("identityVerified")
       : isUnderReview
-        ? "Your verification is under review. We'll notify you once it's confirmed."
+        ? vp("underReviewMessage")
         : effectiveStatus === "rejected"
-          ? "Verification was not approved. Please try again."
+          ? vp("rejectedMessage")
           : effectiveStatus === "expired" || effectiveStatus === "abandoned"
-            ? "Your session ended. Start a new verification."
+            ? vp("sessionEnded")
             : verificationRequired
-              ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
-              : "Optional — verify with your government ID or passport to earn the Verified trust badge.";
+              ? vp("requiredMessage")
+              : vp("optionalMessage");
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -235,13 +239,13 @@ export function ProviderVerificationPanel({
       setSelectedFile({ uri: asset.uri, fileName: asset.fileName ?? `verification-${Date.now()}.jpg` });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch {
-      Alert.alert("Error", "Failed to pick image.");
+      Alert.alert(vp("errorTitle"), vp("pickImageFailed"));
     }
   };
 
   const submitManual = async () => {
     if (!selectedFile || !manualCountry) {
-      Alert.alert("Missing info", "Please select a document photo and choose the country of issue.");
+      Alert.alert(vp("missingInfoTitle"), vp("missingInfoBody"));
       return;
     }
     setUploading(true);
@@ -252,16 +256,16 @@ export function ProviderVerificationPanel({
       formData.append("country", manualCountry);
       const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData);
       if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload document."));
+        Alert.alert(vp("uploadFailedTitle"), getApiErrorMessage(res.error, vp("uploadFailedFallback")));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Document submitted", "Our team will review it within 1–2 business days and notify you.");
+      Alert.alert(vp("documentSubmittedTitle"), vp("documentSubmittedBody"));
       setSelectedFile(null);
       setManualCountry("");
       await refreshStatus();
     } catch {
-      Alert.alert("Error", "Upload failed. Please try again.");
+      Alert.alert(vp("errorTitle"), vp("uploadFailedRetry"));
     } finally {
       setUploading(false);
     }
@@ -297,7 +301,7 @@ export function ProviderVerificationPanel({
             <View style={twStyle("flex-row items-start gap-2")}>
               <Ionicons name="warning-outline" size={18} color="#d97706" style={{ marginTop: 1 }} />
               <Text style={twStyle("flex-1 text-sm text-amber-800 leading-snug")}>
-                Use your real legal name and details exactly as they appear on your ID or passport. Nicknames or mismatched details will cause verification to fail.
+                {vp("legalNameNotice")}
               </Text>
             </View>
           </View>
@@ -309,7 +313,7 @@ export function ProviderVerificationPanel({
             <View style={twStyle("flex-row items-start gap-2")}>
               <Ionicons name="information-circle-outline" size={18} color="#3b82f6" style={{ marginTop: 1 }} />
               <Text style={twStyle("flex-1 text-sm text-blue-700 leading-snug")}>
-                You&apos;re verifying your own identity as the owner or representative. If your salon is a registered business, your payout account can be in the business name — that&apos;s expected.
+                {vp("ownerIdentityNotice")}
               </Text>
             </View>
           </View>
@@ -335,7 +339,7 @@ export function ProviderVerificationPanel({
             <View style={twStyle("flex-row items-start gap-2")}>
               <Ionicons name="alert-circle-outline" size={18} color="#ef4444" style={{ marginTop: 1 }} />
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-sm font-semibold text-red-800 mb-1")}>Why it was declined</Text>
+                <Text style={twStyle("text-sm font-semibold text-red-800 mb-1")}>{vp("whyDeclined")}</Text>
                 <Text style={twStyle("text-sm text-red-700")}>{rejectionReason}</Text>
               </View>
             </View>
@@ -346,7 +350,7 @@ export function ProviderVerificationPanel({
         {diditAvailable && (canAct || needsRetry) && !showConfirmDetails && (
           <View style={twStyle("mt-6")}>
             <ActionButton
-              label={launching ? "Starting…" : (needsRetry ? "Try again" : "Start verification")}
+              label={launching ? vp("starting") : (needsRetry ? vp("tryAgain") : vp("startVerification"))}
               variant="secondary"
               onPress={() => {
                 setShowConfirmDetails(true);
@@ -358,7 +362,7 @@ export function ProviderVerificationPanel({
               disabled={launching}
             />
             <Text style={twStyle("mt-3 text-center text-xs text-gray-500")}>
-              Powered by Didit · runs fully in-app · takes about 2 minutes
+              {vp("poweredByDidit")}
             </Text>
           </View>
         )}
@@ -366,14 +370,14 @@ export function ProviderVerificationPanel({
         {/* Consent disclosure */}
         {diditAvailable && (canAct || needsRetry) && (
           <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
-            By proceeding you agree to our{" "}
+            {vp("consentBeforePolicy")}
             <Text
               style={twStyle("font-semibold text-gray-600 underline")}
-              onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+              onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), vp("privacyPolicy"))}
             >
-              Privacy Policy
-            </Text>{" "}
-            and Didit&apos;s end-user terms.
+              {vp("privacyPolicy")}
+            </Text>
+            {vp("consentAfterPolicy")}
           </Text>
         )}
 
@@ -382,10 +386,10 @@ export function ProviderVerificationPanel({
           <View style={twStyle("mt-6 rounded-2xl bg-gray-50 p-5")}>
             <View style={twStyle("flex-row items-center gap-2 mb-2")}>
               <Ionicons name="ban-outline" size={18} color="#6b7280" />
-              <Text style={twStyle("text-sm font-semibold text-gray-700")}>Verification unavailable</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-700")}>{vp("verificationOffTitle")}</Text>
             </View>
             <Text style={twStyle("text-sm text-gray-600")}>
-              Identity verification is currently unavailable. Contact support if you need assistance.
+              {vp("verificationOffBody")}
             </Text>
           </View>
         )}
@@ -394,7 +398,7 @@ export function ProviderVerificationPanel({
         {diditAvailable && canAct && manualAvailable && (
           <View style={twStyle("flex-row items-center mt-6 mb-2")}>
             <View style={twStyle("flex-1 h-px bg-gray-200")} />
-            <Text style={twStyle("mx-3 text-xs font-medium text-gray-400")}>OR UPLOAD MANUALLY</Text>
+            <Text style={twStyle("mx-3 text-xs font-medium text-gray-400")}>{vp("orUploadManually")}</Text>
             <View style={twStyle("flex-1 h-px bg-gray-200")} />
           </View>
         )}
@@ -406,24 +410,24 @@ export function ProviderVerificationPanel({
               <View style={twStyle("flex-row items-start gap-3")}>
                 <Ionicons name="information-circle-outline" size={20} color="#3b82f6" />
                 <Text style={twStyle("flex-1 text-sm text-blue-700")}>
-                  Upload a copy of your ID and our team will review it within 1–2 business days.
+                  {vp("manualUploadHint")}
                 </Text>
               </View>
             </View>
 
-            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>Document type</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>{vp("documentType")}</Text>
             <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
               {DOC_TYPES.map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => { setDocType(opt.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Document type ${opt.label}`}
+                  accessibilityLabel={vp("docTypeA11y", { label: vp(opt.labelKey) })}
                   accessibilityState={{ selected: docType === opt.value }}
                   style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: docType === opt.value ? Colors.primary : Colors.gray[100] }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: "600", color: docType === opt.value ? "#fff" : Colors.gray[700] }}>
-                    {opt.label}
+                    {vp(opt.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -436,7 +440,7 @@ export function ProviderVerificationPanel({
               tenantRegionName={bundle?.meta?.tenant_region?.name}
             />
 
-            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2 mt-4")}>Document photo</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2 mt-4")}>{vp("documentPhoto")}</Text>
             <TouchableOpacity
               onPress={pickDocument}
               accessibilityRole="button"
@@ -446,13 +450,13 @@ export function ProviderVerificationPanel({
                 <>
                   <Ionicons name="document-attach" size={32} color={Colors.primary} style={{ marginBottom: 8 }} />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{selectedFile.fileName}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4 }}>Tap to change</Text>
+                  <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4 }}>{vp("tapToChange")}</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={32} color={Colors.gray[400]} style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>Tap to select your ID photo</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>JPEG or PNG · max 10 MB</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>{vp("tapToSelectId")}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>{vp("photoHint")}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -464,7 +468,7 @@ export function ProviderVerificationPanel({
               style={{ backgroundColor: uploading || !selectedFile || !manualCountry ? Colors.gray[300] : Colors.primary, paddingVertical: 16, borderRadius: 14, alignItems: "center" }}
             >
               {uploading ? <ActivityIndicator color="#fff" size="small" /> : (
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Submit for verification</Text>
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{vp("submitForVerification")}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -476,13 +480,13 @@ export function ProviderVerificationPanel({
             <View style={twStyle("flex-row items-center gap-2 mb-2")}>
               <Ionicons name="hourglass-outline" size={18} color="#3b82f6" />
               <Text style={twStyle("text-sm font-semibold text-blue-800")}>
-                {effectiveStatus === "pending_review" ? "Under review" : "Document under review"}
+                {effectiveStatus === "pending_review" ? vp("statusUnderReview") : vp("documentUnderReview")}
               </Text>
             </View>
             <Text style={twStyle("text-sm text-blue-700")}>
               {effectiveStatus === "pending_review"
-                ? "We're reviewing your documents — this can take a few minutes if additional checks are running. You can continue setup; we'll notify you when verification is complete."
-                : "Your verification is being reviewed. We'll notify you once it's confirmed — no action needed."}
+                ? vp("pendingReviewBody")
+                : vp("inProgressReviewBody")}
             </Text>
           </View>
         )}
@@ -491,10 +495,10 @@ export function ProviderVerificationPanel({
         <View style={twStyle("mt-8 rounded-2xl bg-slate-50 p-4")}>
           <View style={twStyle("flex-row items-center mb-2")}>
             <Ionicons name="shield-checkmark-outline" size={18} color="#475569" />
-            <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>Why we verify</Text>
+            <Text style={twStyle("ms-2 text-sm font-semibold text-gray-700")}>{vp("whyWeVerify")}</Text>
           </View>
           <Text style={twStyle("text-sm text-gray-600 leading-5")}>
-            Identity verification helps us prevent fraud and meet regulatory requirements. Your information is processed securely.
+            {vp("whyWeVerifyBody")}
           </Text>
         </View>
 

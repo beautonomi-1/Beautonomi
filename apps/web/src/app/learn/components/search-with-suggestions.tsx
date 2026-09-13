@@ -188,7 +188,7 @@ export function SearchWithSuggestions({
                   type="button"
                   role="option"
                   aria-selected={false}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-all duration-200 ease-in-out hover:bg-zinc-100 active:scale-[0.99]"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-start text-sm transition-all duration-200 ease-in-out hover:bg-zinc-100 active:scale-[0.99]"
                   onClick={() => goToArticle(r.slug)}
                 >
                   <span className="flex-1 font-medium text-black truncate">{r.title}</span>
@@ -203,7 +203,7 @@ export function SearchWithSuggestions({
               <div className="border-t border-zinc-200/50 pt-1">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-medium text-[#ff0077] hover:bg-zinc-100 transition-all duration-200 ease-in-out active:scale-[0.99]"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-start text-sm font-medium text-[#ff0077] hover:bg-zinc-100 transition-all duration-200 ease-in-out active:scale-[0.99]"
                   onClick={goToSearch}
                 >
                   View all results for &quot;{value.trim()}&quot;

@@ -36,6 +36,7 @@ import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import Link from "next/link";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface PayCloudPaymentDialogProps {
   open: boolean;
@@ -98,6 +99,7 @@ export function PayCloudPaymentDialog({
   amountEditable = false,
   onSuccess,
 }: PayCloudPaymentDialogProps) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const paycloudEnabled = bundle?.flags?.payment_paycloud?.enabled === true;
@@ -131,21 +133,21 @@ export function PayCloudPaymentDialog({
       setIsPolling(false);
 
       if (isPaycloudCaptureUnderReview(payment)) {
-        toast.warning("Card machine took a different amount — flagged for review.");
+        toast.warning(t("web.provider.portal.payCloudPaymentDialog.captureUnderReview"));
         return;
       }
       if (payment.status === "successful") {
-        toast.success("Payment received on card machine");
+        toast.success(t("web.provider.portal.payCloudPaymentDialog.paymentReceived"));
         onSuccess?.(payment);
       } else if (payment.status === "pending" || payment.status === "processing") {
-        toast.error("Payment timed out — check the card machine or tap Resume.");
+        toast.error(t("web.provider.portal.payCloudPaymentDialog.paymentTimedOut"));
       } else {
         toast.error(
-          humanizePaycloudPaymentError(undefined, payment.error_message || "Payment was not completed").message,
+          humanizePaycloudPaymentError(undefined, payment.error_message || t("web.provider.portal.payCloudPaymentDialog.paymentNotCompleted")).message,
         );
       }
     },
-    [onSuccess],
+    [onSuccess, t],
   );
 
   const startPolling = useCallback(
@@ -168,7 +170,7 @@ export function PayCloudPaymentDialog({
           if (controller.signal.aborted) return;
           const code = err instanceof Error && err.message === "POLL_TIMEOUT" ? "POLL_TIMEOUT" : undefined;
           if (code === "POLL_TIMEOUT") {
-            toast.error("Still waiting on the card machine — tap Resume when the customer has paid.");
+            toast.error(t("web.provider.portal.payCloudPaymentDialog.stillWaiting"));
           }
           setIsPolling(false);
         }
@@ -195,9 +197,9 @@ export function PayCloudPaymentDialog({
       }
     } catch (error) {
       console.error("Failed to load card machines:", error);
-      toast.error("Failed to load card machines");
+      toast.error(t("web.provider.portal.payCloudPaymentDialog.loadTerminalsFailed"));
     }
-  }, [bookingLocationId, cashbackFlagEnabled, qrFlagEnabled, resumePaymentId]);
+  }, [bookingLocationId, cashbackFlagEnabled, qrFlagEnabled, resumePaymentId, t]);
 
   useEffect(() => {
     if (!open || !paycloudEnabled) return;
@@ -274,19 +276,19 @@ export function PayCloudPaymentDialog({
 
   const offerCloudFallback = useCallback((message: string) => {
     const tryCloud = window.confirm(
-      `${message}\n\nSend this charge to the card machine instead (cloud mode)?`,
+      t("web.provider.portal.payCloudPaymentDialog.cloudFallbackConfirm", { message }),
     );
     if (tryCloud) {
       setPayOnThisDevice(false);
       return true;
     }
     return false;
-  }, []);
+  }, [t]);
 
   const handleResumeInFlight = async (overridePaymentId?: string | null) => {
     const paymentId = resolveInFlightPaymentId(overridePaymentId);
     if (!paymentId) {
-      toast.error("No in-flight payment to resume");
+      toast.error(t("web.provider.portal.payCloudPaymentDialog.noInFlight"));
       return;
     }
     setIsProcessing(true);
@@ -305,9 +307,9 @@ export function PayCloudPaymentDialog({
     if (!paymentId) return;
     try {
       await paycloudApi.closePayment(paymentId);
-      toast.success("Charge cancelled on card machine");
+      toast.success(t("web.provider.portal.payCloudPaymentDialog.chargeCancelled"));
     } catch {
-      toast.error("Could not cancel charge — check card machine settings");
+      toast.error(t("web.provider.portal.payCloudPaymentDialog.cancelChargeFailed"));
     }
     setActivePaymentId(null);
     setIsPolling(false);
@@ -332,7 +334,7 @@ export function PayCloudPaymentDialog({
 
     const paymentId = paymentRowId(created);
     if (created.reused) {
-      toast.info("Resuming payment already in progress on this card machine");
+      toast.info(t("web.provider.portal.payCloudPaymentDialog.resumingInProgress"));
     }
 
     if (isPaycloudPaymentTerminal(created.status)) {
@@ -348,7 +350,7 @@ export function PayCloudPaymentDialog({
     const captureNeedsReview = paymentResult ? isPaycloudCaptureUnderReview(paymentResult) : false;
     if (activePaymentId && !paymentResult && !captureNeedsReview) {
       const keepOpen = window.confirm(
-        "A charge may still be open on the card machine.\n\nOK = keep it open (you can resume later)\nCancel = try to cancel the charge",
+        t("web.provider.portal.payCloudPaymentDialog.closeConfirm"),
       );
       if (keepOpen) {
         onOpenChange(false);
@@ -361,12 +363,12 @@ export function PayCloudPaymentDialog({
 
   const handleProcessPayment = async () => {
     if (!selectedTerminalId) {
-      toast.error("Please select a card machine");
+      toast.error(t("web.provider.portal.payCloudPaymentDialog.selectTerminal"));
       return;
     }
     const chargeAmount = amountEditable ? parseFloat(customAmount) : amount;
     if (isNaN(chargeAmount) || chargeAmount <= 0) {
-      toast.error("Please enter a valid amount");
+      toast.error(t("web.provider.portal.payCloudPaymentDialog.invalidAmount"));
       return;
     }
 
@@ -403,7 +405,7 @@ export function PayCloudPaymentDialog({
 
       const paymentId = paymentRowId(created);
       if (created.reused) {
-        toast.info("Resuming payment already in progress on this card machine");
+        toast.info(t("web.provider.portal.payCloudPaymentDialog.resumingInProgress"));
       }
 
       if (isPaycloudPaymentTerminal(created.status)) {
@@ -413,7 +415,7 @@ export function PayCloudPaymentDialog({
 
       if (channel === "same_terminal" && created.intent_payload && bridge) {
         setActivePaymentId(paymentId);
-        toast.message("Opening card machine on this device…");
+        toast.message(t("web.provider.portal.payCloudPaymentDialog.openingOnDevice"));
         try {
           const intentResult = await bridge.startSale(created.intent_payload as Record<string, unknown>);
           const approved =
@@ -443,7 +445,7 @@ export function PayCloudPaymentDialog({
             const declineMessage =
               intentResult?.message ??
               (typeof intentResult?.resultMsg === "string" ? intentResult.resultMsg : undefined) ??
-              "Payment not completed on this device.";
+              t("web.provider.portal.payCloudPaymentDialog.paymentNotCompletedOnDevice");
             if (offerCloudFallback(declineMessage)) {
               await pushCloudCharge(chargeAmount);
             } else {
@@ -463,8 +465,8 @@ export function PayCloudPaymentDialog({
           const intentMessage =
             intentErr instanceof Error
               ? intentErr.message
-              : "Could not open WiseCashier on this device.";
-          if (offerCloudFallback(`${intentMessage}\n\nTry Send to card machine instead.`)) {
+              : t("web.provider.portal.payCloudPaymentDialog.couldNotOpenWiseCashier");
+          if (offerCloudFallback(`${intentMessage}\n\n${t("web.provider.portal.payCloudPaymentDialog.trySendToMachine")}`)) {
             await pushCloudCharge(chargeAmount);
           } else {
             toast.error(intentMessage);
@@ -483,14 +485,14 @@ export function PayCloudPaymentDialog({
         const resumeId =
           extractPaycloudInFlightPaymentId(error, terminals, selectedTerminalId) ?? activePaymentId;
         const resume = window.confirm(
-          `${paycloudToastMessage(error, "Payment in progress")}\n\nResume waiting on the card machine?`,
+          t("web.provider.portal.payCloudPaymentDialog.resumeConfirm", { message: paycloudToastMessage(error, t("web.provider.portal.payCloudPaymentDialog.paymentInProgress")) }),
         );
         if (resume && resumeId) {
           setActivePaymentId(resumeId);
           void handleResumeInFlight(resumeId);
         }
       } else {
-        toast.error(paycloudToastMessage(error, "Could not reach the card machine — check it is online."));
+        toast.error(paycloudToastMessage(error, t("web.provider.portal.payCloudPaymentDialog.couldNotReachMachine")));
       }
     } finally {
       setIsProcessing(false);
@@ -503,14 +505,14 @@ export function PayCloudPaymentDialog({
       setVoiding(true);
       const voidRow = await paycloudApi.voidPayment(paymentResult.id);
       if (voidRow.status === "processing" || voidRow.status === "successful") {
-        toast.success("Void sent to card machine — follow prompts on the device.");
+        toast.success(t("web.provider.portal.payCloudPaymentDialog.voidSent"));
       } else {
         toast.error(
-          humanizePaycloudPaymentError(undefined, voidRow.error_message || "Could not void on the card machine.").message,
+          humanizePaycloudPaymentError(undefined, voidRow.error_message || t("web.provider.portal.payCloudPaymentDialog.couldNotVoid")).message,
         );
       }
     } catch (error: unknown) {
-      toast.error(paycloudToastMessage(error, "Could not void on the card machine."));
+      toast.error(paycloudToastMessage(error, t("web.provider.portal.payCloudPaymentDialog.couldNotVoid")));
     } finally {
       setVoiding(false);
     }
@@ -531,10 +533,10 @@ export function PayCloudPaymentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
-            Beautonomi card machine
+            {t("web.provider.portal.payCloudPaymentDialog.title")}
           </DialogTitle>
           <DialogDescription>
-            Send the amount to your card machine — the customer pays by card or wallet QR on the device.
+            {t("web.provider.portal.payCloudPaymentDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -544,25 +546,24 @@ export function PayCloudPaymentDialog({
               <Alert className="border-amber-200 bg-amber-50">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-900">
-                  <div className="mb-1 font-semibold">Payment needs review</div>
+                  <div className="mb-1 font-semibold">{t("web.provider.portal.payCloudPaymentDialog.needsReview")}</div>
                   <div className="text-sm">
-                    <Money amount={paymentResult.amount} /> captured
+                    <Money amount={paymentResult.amount} /> {t("web.provider.portal.payCloudPaymentDialog.captured")}
                     {typeof paymentResult.expected_amount === "number" ? (
                       <>
                         {" · "}
-                        <Money amount={paymentResult.expected_amount} /> was due
+                        <Money amount={paymentResult.expected_amount} /> {t("web.provider.portal.payCloudPaymentDialog.wasDue")}
                       </>
                     ) : null}
                   </div>
                   <p className="mt-2 text-xs">
-                    The card machine took a different amount than the balance due, so it was not applied
-                    automatically. Resolve in card machine settings before marking the balance paid.
+                    {t("web.provider.portal.payCloudPaymentDialog.reviewExplanation")}
                   </p>
                   <Link
                     href="/provider/settings/sales/card-machines"
                     className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
                   >
-                    Review in card machine settings
+                    {t("web.provider.portal.payCloudPaymentDialog.reviewInSettings")}
                   </Link>
                 </AlertDescription>
               </Alert>
@@ -570,9 +571,9 @@ export function PayCloudPaymentDialog({
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  <div className="font-semibold mb-1">Payment successful</div>
+                  <div className="font-semibold mb-1">{t("web.provider.portal.payCloudPaymentDialog.paymentSuccessful")}</div>
                   <div className="text-sm">
-                    <Money amount={paymentResult.amount} /> received
+                    <Money amount={paymentResult.amount} /> {t("web.provider.portal.payCloudPaymentDialog.received")}
                   </div>
                 </AlertDescription>
               </Alert>
@@ -580,7 +581,7 @@ export function PayCloudPaymentDialog({
               <Alert className="bg-red-50 border-red-200">
                 <XCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-800">
-                  {paymentResult.error_message || "Payment was not completed on the card machine."}
+                  {paymentResult.error_message || t("web.provider.portal.payCloudPaymentDialog.paymentNotCompletedOnMachine")}
                 </AlertDescription>
               </Alert>
             )}
@@ -593,8 +594,8 @@ export function PayCloudPaymentDialog({
           <div className="space-y-4 py-4">
             <Alert className="border-amber-200 bg-amber-50">
               <AlertDescription className="text-amber-900">
-                <div className="font-semibold mb-1">Card machines not ready</div>
-                <div className="text-sm">Complete setup before charging on a card machine.</div>
+                <div className="font-semibold mb-1">{t("web.provider.portal.payCloudPaymentDialog.notReadyTitle")}</div>
+                <div className="text-sm">{t("web.provider.portal.payCloudPaymentDialog.notReadyBody")}</div>
               </AlertDescription>
             </Alert>
             <ul className="space-y-2">
@@ -612,7 +613,7 @@ export function PayCloudPaymentDialog({
               ))}
             </ul>
             <Button variant="outline" className="w-full" asChild>
-              <Link href="/provider/settings/sales/card-machines">Open card machine settings</Link>
+              <Link href="/provider/settings/sales/card-machines">{t("web.provider.portal.payCloudPaymentDialog.openSettings")}</Link>
             </Button>
           </div>
         ) : (
@@ -620,10 +621,9 @@ export function PayCloudPaymentDialog({
             {showInFlightBanner ? (
               <Alert className="border-blue-200 bg-blue-50" data-testid="paycloud-in-flight-banner">
                 <AlertDescription className="text-blue-900 text-sm">
-                  <p className="font-semibold">Payment in progress on card machine</p>
+                  <p className="font-semibold">{t("web.provider.portal.payCloudPaymentDialog.inFlightTitle")}</p>
                   <p className="mt-1 text-xs">
-                    A charge is still open. Resume when the customer has paid, or cancel if they did not.
-                    Returning to this tab also auto-checks status.
+                    {t("web.provider.portal.payCloudPaymentDialog.inFlightBody")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -634,15 +634,15 @@ export function PayCloudPaymentDialog({
                     >
                       {waitingOnTerminal ? (
                         <>
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          Waiting…
+                          <Loader2 className="me-1 h-3 w-3 animate-spin" />
+                          {t("web.provider.portal.payCloudPaymentDialog.waiting")}
                         </>
                       ) : (
-                        "Resume payment"
+                        t("web.provider.portal.payCloudPaymentDialog.resumePayment")
                       )}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => void handleCancelCharge()}>
-                      Cancel charge
+                      {t("web.provider.portal.payCloudPaymentDialog.cancelCharge")}
                     </Button>
                   </div>
                 </AlertDescription>
@@ -652,9 +652,9 @@ export function PayCloudPaymentDialog({
             {sameTerminalAvailable && payMethod === "card" ? (
               <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Pay on this device</p>
+                  <p className="text-sm font-medium text-gray-900">{t("web.provider.portal.payCloudPaymentDialog.payOnThisDevice")}</p>
                   <p className="text-xs text-gray-500">
-                    Opens WiseCashier on this terminal (same as mobile app)
+                    {t("web.provider.portal.payCloudPaymentDialog.payOnThisDeviceHint")}
                   </p>
                 </div>
                 <Switch
@@ -665,12 +665,11 @@ export function PayCloudPaymentDialog({
               </div>
             ) : sameTerminalAvailable && payMethod === "qr" ? (
               <p className="text-xs text-gray-500 rounded-md border bg-gray-50 px-3 py-2">
-                QR payments are sent to the card machine in cloud mode.
+                {t("web.provider.portal.payCloudPaymentDialog.qrCloudMode")}
               </p>
             ) : (
               <p className="text-xs text-gray-500 rounded-md border bg-gray-50 px-3 py-2">
-                Send to card machine uses cloud ECR. Same-device WiseCashier is available in the
-                Beautonomi Provider app on Android POS terminals.
+                {t("web.provider.portal.payCloudPaymentDialog.cloudEcrHint")}
               </p>
             )}
 
@@ -678,32 +677,32 @@ export function PayCloudPaymentDialog({
               <Alert className="border-amber-200 bg-amber-50">
                 <AlertDescription className="text-amber-900">
                   <div className="mb-1 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
-                    TEST
+                    {t("web.provider.portal.payCloudPaymentDialog.testBadge")}
                   </div>
                   <p className="mt-2 text-xs">
-                    Test card machine — void charges when finished testing.
+                    {t("web.provider.portal.payCloudPaymentDialog.testHint")}
                   </p>
                 </AlertDescription>
               </Alert>
             ) : null}
 
             <div>
-              <Label htmlFor="terminal">Card machine</Label>
+              <Label htmlFor="terminal">{t("web.provider.portal.payCloudPaymentDialog.cardMachine")}</Label>
               {terminals.length === 0 ? (
                 <p className="mt-1 text-sm text-gray-500 rounded-md border px-3 py-2">
-                  No active card machines — add one in Settings → Card machines.
+                  {t("web.provider.portal.payCloudPaymentDialog.noActiveMachines")}
                 </p>
               ) : (
                 <Select value={selectedTerminalId} onValueChange={setSelectedTerminalId}>
                   <SelectTrigger id="terminal" className="mt-1">
-                    <SelectValue placeholder="Select a card machine" />
+                    <SelectValue placeholder={t("web.provider.portal.payCloudPaymentDialog.selectACardMachine")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {terminals.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.display_name}
-                        {t.location_name ? ` (${t.location_name})` : " (Portable)"}
-                        {t.in_flight_payment_id ? " · in progress" : ""}
+                    {terminals.map((terminal) => (
+                      <SelectItem key={terminal.id} value={terminal.id}>
+                        {terminal.display_name}
+                        {terminal.location_name ? ` (${terminal.location_name})` : ` (${t("web.provider.portal.payCloudPaymentDialog.portable")})`}
+                        {terminal.in_flight_payment_id ? ` · ${t("web.provider.portal.payCloudPaymentDialog.inProgress")}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -713,14 +712,14 @@ export function PayCloudPaymentDialog({
                 <p className="mt-1 text-xs text-amber-700">
                   {locationWarning}{" "}
                   <Link href="/provider/settings/sales/card-machines" className="font-medium underline underline-offset-2">
-                    Card machine settings
+                    {t("web.provider.portal.payCloudPaymentDialog.cardMachineSettings")}
                   </Link>
                 </p>
               ) : null}
             </div>
 
             <div>
-              <Label htmlFor="amount">Amount</Label>
+              <Label htmlFor="amount">{t("web.provider.portal.payCloudPaymentDialog.amount")}</Label>
               {amountEditable ? (
                 <Input
                   id="amount"
@@ -744,11 +743,11 @@ export function PayCloudPaymentDialog({
 
             {tipIncludedInAmount ? (
               <p className="rounded-md border bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                Tip from checkout is already included in this amount.
+                {t("web.provider.portal.payCloudPaymentDialog.tipIncluded")}
               </p>
             ) : (
               <div>
-                <Label htmlFor="tip">Tip (optional)</Label>
+                <Label htmlFor="tip">{t("web.provider.portal.payCloudPaymentDialog.tipOptional")}</Label>
                 <Input
                   id="tip"
                   type="number"
@@ -757,14 +756,14 @@ export function PayCloudPaymentDialog({
                   value={tipAmount}
                   onChange={(e) => setTipAmount(e.target.value)}
                   className="mt-1"
-                  placeholder="0.00"
+                  placeholder={t("web.provider.portal.payCloudPaymentDialog.amountPlaceholder")}
                 />
               </div>
             )}
 
             {cashbackEnabled ? (
               <div>
-                <Label htmlFor="cashback">Cashback (optional)</Label>
+                <Label htmlFor="cashback">{t("web.provider.portal.payCloudPaymentDialog.cashbackOptional")}</Label>
                 <Input
                   id="cashback"
                   type="number"
@@ -773,7 +772,7 @@ export function PayCloudPaymentDialog({
                   value={cashbackAmount}
                   onChange={(e) => setCashbackAmount(e.target.value)}
                   className="mt-1"
-                  placeholder="0.00"
+                  placeholder={t("web.provider.portal.payCloudPaymentDialog.amountPlaceholder")}
                 />
               </div>
             ) : null}
@@ -782,7 +781,7 @@ export function PayCloudPaymentDialog({
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div className="flex items-center gap-2">
                   <QrCode className="h-4 w-4 text-gray-600" />
-                  <span className="text-sm font-medium">Wallet QR payment</span>
+                  <span className="text-sm font-medium">{t("web.provider.portal.payCloudPaymentDialog.walletQr")}</span>
                 </div>
                 <Switch checked={payMethod === "qr"} onCheckedChange={(v) => setPayMethod(v ? "qr" : "card")} />
               </div>
@@ -790,14 +789,14 @@ export function PayCloudPaymentDialog({
 
             {selectedTerminal?.last_error ? (
               <Alert variant="destructive">
-                <AlertDescription className="text-sm">Last error: {selectedTerminal.last_error}</AlertDescription>
+                <AlertDescription className="text-sm">{t("web.provider.portal.payCloudPaymentDialog.lastError", { error: selectedTerminal.last_error })}</AlertDescription>
               </Alert>
             ) : null}
 
             {waitingOnTerminal && !showInFlightBanner ? (
               <p className="text-xs text-gray-500 flex items-center gap-2">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Waiting on card machine (polls every {PAYCLOUD_POLL_INTERVAL_MS / 1000}s)…
+                {t("web.provider.portal.payCloudPaymentDialog.waitingPoll", { seconds: PAYCLOUD_POLL_INTERVAL_MS / 1000 })}
               </p>
             ) : null}
           </div>
@@ -807,7 +806,7 @@ export function PayCloudPaymentDialog({
           {!paymentResult ? (
             <>
               <Button variant="outline" onClick={() => void handleRequestClose()} disabled={isProcessing && !isPolling}>
-                {activePaymentId ? "Close" : "Cancel"}
+                {activePaymentId ? t("web.provider.portal.payCloudPaymentDialog.close") : t("web.provider.portal.payCloudPaymentDialog.cancel")}
               </Button>
               <Button
                 onClick={handleProcessPayment}
@@ -816,11 +815,11 @@ export function PayCloudPaymentDialog({
               >
                 {waitingOnTerminal ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Waiting on card machine…
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                    {t("web.provider.portal.payCloudPaymentDialog.waitingOnMachine")}
                   </>
                 ) : (
-                  "Charge card machine"
+                  t("web.provider.portal.payCloudPaymentDialog.chargeCardMachine")
                 )}
               </Button>
             </>
@@ -831,15 +830,15 @@ export function PayCloudPaymentDialog({
                 <Button variant="outline" onClick={() => void handleVoidOnTerminal()} disabled={voiding}>
                   {voiding ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Sending void…
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                      {t("web.provider.portal.payCloudPaymentDialog.sendingVoid")}
                     </>
                   ) : (
-                    "Void on card machine"
+                    t("web.provider.portal.payCloudPaymentDialog.voidOnMachine")
                   )}
                 </Button>
               ) : null}
-              <Button onClick={() => onOpenChange(false)}>Close</Button>
+              <Button onClick={() => onOpenChange(false)}>{t("web.provider.portal.payCloudPaymentDialog.close")}</Button>
             </div>
           )}
         </DialogFooter>

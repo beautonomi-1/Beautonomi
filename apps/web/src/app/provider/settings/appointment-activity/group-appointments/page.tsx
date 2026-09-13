@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -24,6 +25,7 @@ interface Location {
 }
 
 export default function GroupAppointmentsSettings() {
+  const { t } = useTranslation();
   const [_isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -58,7 +60,7 @@ export default function GroupAppointmentsSettings() {
       setSettings(response.data);
     } catch (error) {
       console.error("Failed to load settings:", error);
-      toast.error("Failed to load settings");
+      toast.error(t("web.provider.settings.pages.appointment-activity/group-appointments.failedToLoadSettings"));
       // Keep defaults on error
       setSettings({
         enableGroupBooking: false,
@@ -102,10 +104,10 @@ export default function GroupAppointmentsSettings() {
         enabled_locations: settings.enabledLocations,
         excluded_services: settings.excludedServices,
       });
-      toast.success("Group booking settings saved successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/group-appointments.groupBookingSettingsSavedSuccessfully"));
     } catch (error: any) {
       console.error("Failed to save settings:", error);
-      toast.error(error.message || "Failed to save settings");
+      toast.error(error.message || t("web.provider.settings.pages.appointment-activity/group-appointments.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -128,13 +130,13 @@ export default function GroupAppointmentsSettings() {
   return (
     <div>
       <PageHeader
-        title="Group Appointments"
-        subtitle="Configure group booking settings for your business"
+        title={t("web.provider.settings.categories.appointmentActivity.items.groupAppointments.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.groupAppointments.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Group Appointments" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.appointment-activity/group-appointments.groupAppointments") },
         ]}
       />
 
@@ -143,15 +145,15 @@ export default function GroupAppointmentsSettings() {
         <SectionCard>
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold mb-2">Group Booking Settings</h3>
+              <h3 className="text-lg font-semibold mb-2">{t("web.provider.settings.pages.appointment-activity/group-appointments.settingsTitle")}</h3>
               <p className="text-sm text-gray-600">
-                Enable group appointments to allow multiple clients to be scheduled together
+                {t("web.provider.settings.pages.appointment-activity/group-appointments.settingsHint")}
               </p>
             </div>
 
             <Separator />
 
-            {/* Enable scheduling of group appointments */}
+            {/* {t("web.provider.settings.pages.appointment-activity/group-appointments.enableScheduling")} */}
             <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
               <Switch
                 checked={settings.enableGroupBooking}
@@ -162,15 +164,15 @@ export default function GroupAppointmentsSettings() {
               />
               <div className="flex-1">
                 <Label className="text-base font-medium cursor-pointer">
-                  Enable scheduling of group appointments
+                  {t("web.provider.settings.pages.appointment-activity/group-appointments.enableScheduling")}
                 </Label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Allow staff members to create and manage group appointments from the calendar
+                  {t("web.provider.settings.pages.appointment-activity/group-appointments.enableSchedulingHint")}
                 </p>
               </div>
             </div>
 
-            {/* Allow clients to book group appointments online */}
+            {/* {t("web.provider.settings.pages.appointment-activity/group-appointments.allowOnline")} */}
             {settings.enableGroupBooking && (
               <>
                 <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
@@ -183,20 +185,20 @@ export default function GroupAppointmentsSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-base font-medium cursor-pointer">
-                      Allow clients to book group appointments online
+                      {t("web.provider.settings.pages.appointment-activity/group-appointments.allowOnline")}
                     </Label>
                     <p className="text-sm text-gray-500 mt-1">
-                      Enable group booking in your online booking page for clients
+                      {t("web.provider.settings.pages.appointment-activity/group-appointments.allowOnlineHint")}
                     </p>
                   </div>
                 </div>
 
                 {settings.allowOnlineGroupBooking && (
-                  <div className="ml-0 sm:ml-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    {/* Maximum Group Size */}
+                  <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    {/* {t("web.provider.settings.pages.appointment-activity/group-appointments.maxGroupSize")} */}
                     <div>
                       <Label htmlFor="maxGroupSize" className="text-sm font-medium">
-                        Maximum Group Size
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.maxGroupSize")}
                       </Label>
                       <Input
                         id="maxGroupSize"
@@ -213,17 +215,17 @@ export default function GroupAppointmentsSettings() {
                         className="mt-1.5 max-w-[120px]"
                       />
                       <p className="text-xs text-gray-500 mt-1.5">
-                        Maximum number of clients that can be added to a group appointment via online booking (2-10). This limit does not apply to group appointments created from the calendar by staff members.
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.maxGroupSizeHint")}
                       </p>
                     </div>
 
                     {/* Location Support */}
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        Enable Group Booking for Locations
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.enableForLocations")}
                       </Label>
                       <p className="text-xs text-gray-500 mb-3">
-                        Select which locations support group bookings in online booking
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.enableForLocationsHint")}
                       </p>
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 p-2 bg-white rounded border">
@@ -233,7 +235,7 @@ export default function GroupAppointmentsSettings() {
                           />
                           <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">All Locations</span>
+                            <span className="text-sm">{t("web.provider.common.allLocations")}</span>
                           </div>
                         </div>
                         {/* Location selector */}
@@ -274,15 +276,15 @@ export default function GroupAppointmentsSettings() {
                     {/* Excluded Services */}
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        Exclude Services from Online Group Booking
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.excludeServices")}
                       </Label>
                       <p className="text-xs text-gray-500 mb-3">
-                        Select services that should not be available for group booking online. This only excludes them from group appointments, not individual bookings.
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.excludeServicesHint")}
                       </p>
                       <div className="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2 bg-white">
                         {services.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-4">
-                            No services available
+                            {t("web.provider.settings.pages.appointment-activity/group-appointments.noServicesAvailable")}
                           </p>
                         ) : (
                           services.map((service) => (
@@ -318,8 +320,8 @@ export default function GroupAppointmentsSettings() {
             disabled={isSaving}
             className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Save className="w-4 h-4 mr-2" />
-            {isSaving ? "Saving..." : "Save Settings"}
+            <Save className="w-4 h-4 me-2" />
+            {isSaving ? t("web.provider.common.saving") : t("web.provider.common.saveSettings")}
           </Button>
         </div>
       </div>

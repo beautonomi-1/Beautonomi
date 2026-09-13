@@ -7,6 +7,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { View, Text, Switch, ScrollView, Alert } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -27,77 +28,77 @@ interface TeamAccessPayload {
 
 /** All permissions grouped by category to match web. Order and keys align with backend StaffPermissions. */
 const PERMISSION_CATEGORIES: {
-  title: string;
-  permissions: { id: string; label: string }[];
+  titleKey: string;
+  permissions: { id: string; labelKey: string }[];
 }[] = [
   {
-    title: "Calendar & Appointments",
+    titleKey: "catCalendar",
     permissions: [
-      { id: "view_calendar", label: "View calendar" },
-      { id: "create_appointments", label: "Create appointments" },
-      { id: "edit_appointments", label: "Edit appointments" },
-      { id: "cancel_appointments", label: "Cancel appointments" },
-      { id: "delete_appointments", label: "Delete appointments" },
+      { id: "view_calendar", labelKey: "viewCalendar" },
+      { id: "create_appointments", labelKey: "createAppointments" },
+      { id: "edit_appointments", labelKey: "editAppointments" },
+      { id: "cancel_appointments", labelKey: "cancelAppointments" },
+      { id: "delete_appointments", labelKey: "deleteAppointments" },
     ],
   },
   {
-    title: "Sales & Payments",
+    titleKey: "catSales",
     permissions: [
-      { id: "view_sales", label: "View sales" },
-      { id: "create_sales", label: "Create sales" },
-      { id: "process_payments", label: "Process payments" },
-      { id: "view_reports", label: "View reports" },
+      { id: "view_sales", labelKey: "viewSales" },
+      { id: "create_sales", labelKey: "createSales" },
+      { id: "process_payments", labelKey: "processPayments" },
+      { id: "view_reports", labelKey: "viewReports" },
     ],
   },
   {
-    title: "Services & Products",
+    titleKey: "catServices",
     permissions: [
-      { id: "view_services", label: "View services" },
-      { id: "edit_services", label: "Edit services" },
-      { id: "view_products", label: "View products" },
-      { id: "edit_products", label: "Edit products" },
+      { id: "view_services", labelKey: "viewServices" },
+      { id: "edit_services", labelKey: "editServices" },
+      { id: "view_products", labelKey: "viewProducts" },
+      { id: "edit_products", labelKey: "editProducts" },
     ],
   },
   {
-    title: "Team",
+    titleKey: "catTeam",
     permissions: [
-      { id: "view_team", label: "View team" },
-      { id: "manage_team", label: "Manage team" },
+      { id: "view_team", labelKey: "viewTeam" },
+      { id: "manage_team", labelKey: "manageTeam" },
     ],
   },
   {
-    title: "Settings",
+    titleKey: "catSettings",
     permissions: [
-      { id: "view_settings", label: "View settings" },
-      { id: "edit_settings", label: "Edit settings" },
+      { id: "view_settings", labelKey: "viewSettings" },
+      { id: "edit_settings", labelKey: "editSettings" },
     ],
   },
   {
-    title: "Clients",
+    titleKey: "catClients",
     permissions: [
-      { id: "view_clients", label: "View clients" },
-      { id: "edit_clients", label: "Edit clients" },
+      { id: "view_clients", labelKey: "viewClients" },
+      { id: "edit_clients", labelKey: "editClients" },
     ],
   },
   {
-    title: "Reviews",
+    titleKey: "catReviews",
     permissions: [
-      { id: "view_reviews", label: "View reviews" },
-      { id: "edit_reviews", label: "Edit / respond to reviews" },
-      { id: "view_client_ratings", label: "View client ratings" },
-      { id: "rate_clients", label: "Rate clients" },
+      { id: "view_reviews", labelKey: "viewReviews" },
+      { id: "edit_reviews", labelKey: "editReviews" },
+      { id: "view_client_ratings", labelKey: "viewClientRatings" },
+      { id: "rate_clients", labelKey: "rateClients" },
     ],
   },
   {
-    title: "Messages",
+    titleKey: "catMessages",
     permissions: [
-      { id: "view_messages", label: "View messages" },
-      { id: "send_messages", label: "Send messages" },
+      { id: "view_messages", labelKey: "viewMessages" },
+      { id: "send_messages", labelKey: "sendMessages" },
     ],
   },
   {
-    title: "Explore",
-    permissions: [{ id: "create_explore_posts", label: "Create Explore posts" }],
+    titleKey: "catExplore",
+    permissions: [{ id: "create_explore_posts", labelKey: "createExplorePosts" }],
   },
 ];
 
@@ -107,6 +108,8 @@ const ALL_PERMISSION_IDS = PERMISSION_CATEGORIES.flatMap((c) =>
 );
 
 export default function StaffPermissionEditScreen() {
+  const { t } = useTranslation();
+  const pe = (key: string) => t(`provider.mobile.screens.staffPermissionsEdit.${key}`) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
@@ -115,9 +118,9 @@ export default function StaffPermissionEditScreen() {
   const isSelf = Boolean(id && access?.staff_id === id);
   const canEdit = canManageTeam;
   const readOnlyReason = !canEdit && isSelf
-    ? "You can view your permissions here, but only owners/managers with Manage team can change them."
+    ? pe("readOnlySelf")
     : !canEdit
-      ? "You do not have permission to edit this staff member's permissions."
+      ? pe("readOnlyOther")
       : null;
   const { data, loading, error, refresh } = useApi<PermissionsResponse>(
     id ? `/api/provider/staff/${id}/permissions` : "",
@@ -139,7 +142,7 @@ export default function StaffPermissionEditScreen() {
   const handleSave = useCallback(async () => {
     if (!id) return;
     if (!canEdit) {
-      Alert.alert("Read only", readOnlyReason ?? "You do not have permission to edit permissions.");
+      Alert.alert(pe("readOnlyTitle"), readOnlyReason ?? pe("readOnlyFallback"));
       return;
     }
     const { error } = await updatePerms(
@@ -148,7 +151,7 @@ export default function StaffPermissionEditScreen() {
     );
     if (error) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Could not save", error);
+      Alert.alert(pe("couldNotSave"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -157,8 +160,8 @@ export default function StaffPermissionEditScreen() {
     // success, so staff owners pressing Save saw no visible confirmation and
     // repeatedly re-tapped. Surface a short confirmation alert mirroring the
     // feedback pattern used across the provider app.
-    Alert.alert("Permissions updated", "Changes saved successfully.");
-  }, [id, local, updatePerms, refresh, canEdit, readOnlyReason]);
+    Alert.alert(pe("updatedTitle"), pe("updatedBody"));
+  }, [id, local, updatePerms, refresh, canEdit, readOnlyReason, t]);
 
   function setPermission(key: string, value: boolean) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -168,8 +171,8 @@ export default function StaffPermissionEditScreen() {
   if (!id) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Permissions" showBack />
-        <LoadingState message="No staff selected" />
+        <ScreenHeader title={pe("title")} showBack />
+        <LoadingState message={pe("noStaffSelected")} />
       </ScreenContainer>
     );
   }
@@ -177,7 +180,7 @@ export default function StaffPermissionEditScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading permissions..." />
+        <LoadingState message={pe("loading")} />
       </ScreenContainer>
     );
   }
@@ -185,7 +188,7 @@ export default function StaffPermissionEditScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Permissions" showBack />
+        <ScreenHeader title={pe("title")} showBack />
         <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -194,9 +197,9 @@ export default function StaffPermissionEditScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Permissions"
+        title={pe("title")}
         showBack
-        subtitle="Toggle what this team member can access"
+        subtitle={pe("subtitle")}
       />
       <ScrollView
         style={twStyle("flex-1")}
@@ -204,8 +207,8 @@ export default function StaffPermissionEditScreen() {
         contentContainerStyle={twStyle("pb-8")}
       >
         {PERMISSION_CATEGORIES.map((group) => (
-          <View key={group.title} style={twStyle("mb-6")}>
-            <SectionHeader title={group.title} />
+          <View key={group.titleKey} style={twStyle("mb-6")}>
+            <SectionHeader title={pe(group.titleKey)} />
             <View
               style={twStyle(
                 "rounded-2xl border border-gray-100 bg-white overflow-hidden"
@@ -223,7 +226,7 @@ export default function StaffPermissionEditScreen() {
                     style={twStyle("text-sm text-gray-700 flex-1")}
                     numberOfLines={2}
                   >
-                    {perm.label}
+                    {pe(perm.labelKey)}
                   </Text>
                   <Switch
                     value={local[perm.id] ?? false}
@@ -241,7 +244,7 @@ export default function StaffPermissionEditScreen() {
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>{readOnlyReason}</Text>
         ) : null}
         <ActionButton
-          label={canEdit ? "Save permissions" : "Permissions are read only"}
+          label={canEdit ? pe("save") : pe("readOnlyCta")}
           onPress={handleSave}
           loading={saving}
           fullWidth

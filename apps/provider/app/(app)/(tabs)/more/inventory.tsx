@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -51,6 +52,12 @@ interface InventoryResponse {
 
 /** Content-only for use in Products hub (Inventory tab). */
 export function InventoryContent() {
+  const { t } = useTranslation();
+  const inv = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.inventory.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -80,12 +87,12 @@ export function InventoryContent() {
     (p: InventoryProduct) => {
       if (p.has_variants) {
         Alert.alert(
-          "Variants product",
-          "Stock is tracked per variant. Open the full product editor to change quantities and prices for each variant.",
+          inv("variantsTitle"),
+          inv("variantsBody"),
           [
-            { text: "Cancel", style: "cancel" },
+            { text: inv("cancel"), style: "cancel" },
             {
-              text: "Open editor",
+              text: inv("openEditor"),
               onPress: () =>
                 router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: p.id } } as never),
             },
@@ -95,7 +102,7 @@ export function InventoryContent() {
       }
       setAdjustProduct(p as ProductItem);
     },
-    [router]
+    [inv, router]
   );
 
   const closeAdjust = useCallback(() => {
@@ -134,25 +141,25 @@ export function InventoryContent() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ marginBottom: 24, flexDirection: "row" }}>
-          <View style={{ flex: 1, marginRight: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+          <View style={{ flex: 1, marginEnd: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#d1fae5" }}>
               <Ionicons name="cube-outline" size={18} color="#059669" />
             </View>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{totalProducts}</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Total products</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{inv("totalProducts")}</Text>
           </View>
           <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#dbeafe" }}>
               <Ionicons name="cash-outline" size={18} color="#2563eb" />
             </View>
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(Number(totalStockValue))}</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Stock value</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{inv("stockValue")}</Text>
           </View>
         </View>
 
         {outOfStock.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b91c1c" }}>Out of stock</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b91c1c" }}>{inv("outOfStock")}</Text>
             <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "rgba(254,242,242,0.5)", padding: 12 }}>
               {outOfStock.slice(0, 10).map((p, idx) => (
                 <TouchableOpacity
@@ -170,13 +177,13 @@ export function InventoryContent() {
                 >
                   <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ fontSize: 12, color: "#dc2626", marginRight: 6 }}>0 left</Text>
+                    <Text style={{ fontSize: 12, color: "#dc2626", marginEnd: 6 }}>{inv("zeroLeft")}</Text>
                     <Ionicons name="create-outline" size={14} color="#6b7280" />
                   </View>
                 </TouchableOpacity>
               ))}
               {outOfStock.length > 10 && (
-                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>+{outOfStock.length - 10} more</Text>
+                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>{inv("moreCount", { count: outOfStock.length - 10 })}</Text>
               )}
             </View>
           </View>
@@ -184,7 +191,7 @@ export function InventoryContent() {
 
         {lowStock.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b45309" }}>Low stock</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b45309" }}>{inv("lowStock")}</Text>
             <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fef3c7", backgroundColor: "rgba(255,251,235,0.5)", padding: 12 }}>
               {lowStock.slice(0, 10).map((p, idx) => (
                 <TouchableOpacity
@@ -202,15 +209,15 @@ export function InventoryContent() {
                 >
                   <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ fontSize: 12, color: "#b45309", marginRight: 6 }}>
-                      {Number(p.quantity ?? 0)} (alert ≤{Number(p.low_stock_level ?? 5)})
+                    <Text style={{ fontSize: 12, color: "#b45309", marginEnd: 6 }}>
+                      {inv("lowStockAlert", { quantity: Number(p.quantity ?? 0), level: Number(p.low_stock_level ?? 5) })}
                     </Text>
                     <Ionicons name="create-outline" size={14} color="#6b7280" />
                   </View>
                 </TouchableOpacity>
               ))}
               {lowStock.length > 10 && (
-                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>+{lowStock.length - 10} more</Text>
+                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>{inv("moreCount", { count: lowStock.length - 10 })}</Text>
               )}
             </View>
           </View>
@@ -218,7 +225,7 @@ export function InventoryContent() {
 
         {categories.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>By category</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{inv("byCategory")}</Text>
             <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}>
               {categories.slice(0, 15).map((c, idx) => (
                 <View
@@ -235,7 +242,7 @@ export function InventoryContent() {
                 >
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{c.category}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{c.count} items</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginEnd: 12 }}>{inv("itemsCount", { count: c.count })}</Text>
                     <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{formatCurrency(Number(c.stockValue))}</Text>
                   </View>
                 </View>
@@ -249,9 +256,9 @@ export function InventoryContent() {
             <View style={{ marginBottom: 12, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#d1fae5" }}>
               <Ionicons name="archive-outline" size={28} color="#059669" />
             </View>
-            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>No inventory data</Text>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>{inv("emptyTitle")}</Text>
             <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Add products in Products & Inventory to track stock here.
+              {inv("emptyBody")}
             </Text>
           </View>
         )}
@@ -271,9 +278,14 @@ export function InventoryContent() {
 }
 
 export default function InventoryScreen() {
+  const { t } = useTranslation();
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Inventory Manager" showBack subtitle="Stock levels & alerts" />
+      <ScreenHeader
+        title={t("provider.mobile.screens.inventory.title") as string}
+        showBack
+        subtitle={t("provider.mobile.screens.inventory.subtitle") as string}
+      />
       <InventoryContent />
     </ScreenContainer>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import * as Haptics from "expo-haptics";
 import { useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -22,6 +23,12 @@ type AuthSecurityState = {
 };
 
 export default function SettingsChangePasswordScreen() {
+  const { t } = useTranslation();
+  const cp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.settingsChangePassword.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -59,23 +66,23 @@ export default function SettingsChangePasswordScreen() {
     const conf = confirmPassword.trim();
     const nonce = passwordNonce.trim();
     if (!isSettingFirstPassword && !cur) {
-      Alert.alert("Validation", "Current password is required.");
+      Alert.alert(cp("validationTitle"), cp("currentRequired"));
       return;
     }
     if (isSettingFirstPassword && !nonce) {
-      Alert.alert("Validation", "Enter the verification code before setting a password.");
+      Alert.alert(cp("validationTitle"), cp("nonceRequired"));
       return;
     }
     if (!newP) {
-      Alert.alert("Validation", "New password is required.");
+      Alert.alert(cp("validationTitle"), cp("newRequired"));
       return;
     }
     if (newP.length < minimumPasswordLength) {
-      Alert.alert("Validation", `New password must be at least ${minimumPasswordLength} characters long.`);
+      Alert.alert(cp("validationTitle"), cp("minLength", { count: minimumPasswordLength }));
       return;
     }
     if (newP !== conf) {
-      Alert.alert("Validation", "New password and confirmation do not match.");
+      Alert.alert(cp("validationTitle"), cp("mismatch"));
       return;
     }
 
@@ -86,50 +93,50 @@ export default function SettingsChangePasswordScreen() {
       newPassword: newP,
     }) as { error?: string };
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(cp("errorTitle"), res.error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Success", isSettingFirstPassword ? "Password set successfully." : "Password updated successfully.", [
-        { text: "OK", onPress: () => router.back() },
+      Alert.alert(cp("successTitle"), isSettingFirstPassword ? cp("passwordSet") : cp("passwordUpdated"), [
+        { text: cp("ok"), onPress: () => router.back() },
       ]);
     }
-  }, [currentPassword, newPassword, confirmPassword, passwordNonce, isSettingFirstPassword, minimumPasswordLength, putPassword, router]);
+  }, [currentPassword, newPassword, confirmPassword, passwordNonce, isSettingFirstPassword, minimumPasswordLength, putPassword, router, cp]);
 
   const requestPasswordNonce = useCallback(async () => {
     if (!canVerifyPasswordAction) {
-      Alert.alert("Add contact method", "Add and verify an email or phone number before setting a password.");
+      Alert.alert(cp("addContactTitle"), cp("addContactBody"));
       return;
     }
     setRequestingNonce(true);
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", "Enter the verification code below to set your password.");
+      Alert.alert(cp("codeSentTitle"), cp("codeSentBody"));
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification code."));
+      Alert.alert(cp("errorTitle"), getApiErrorMessage(e, cp("sendFailed")));
     } finally {
       setRequestingNonce(false);
     }
-  }, [canVerifyPasswordAction]);
+  }, [canVerifyPasswordAction, cp]);
 
   return (
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
-        title={isSettingFirstPassword ? "Set password" : "Change password"}
-        subtitle={isSettingFirstPassword ? "Add password sign-in to this account" : "Update your account password"}
+        title={isSettingFirstPassword ? cp("titleSet") : cp("titleChange")}
+        subtitle={isSettingFirstPassword ? cp("subtitleSet") : cp("subtitleChange")}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
             style={{ minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#4f46e6", paddingHorizontal: 16 }}
-            accessibilityLabel="Save new password"
+            accessibilityLabel={cp("saveA11y")}
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "500", color: Colors.white }}>Save</Text>
+              <Text style={{ fontWeight: "500", color: Colors.white }}>{cp("save")}</Text>
             )}
           </TouchableOpacity>
         }
@@ -151,11 +158,11 @@ export default function SettingsChangePasswordScreen() {
             {isSettingFirstPassword ? (
               <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: "#EEF2FF", padding: 12 }}>
                 <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>
-                  Your account uses one-time codes or social login. Send a verification code, then choose a password.
+                  {cp("firstPasswordHint")}
                 </Text>
                 {!canVerifyPasswordAction ? (
                   <Text style={{ marginTop: 8, fontSize: 13, color: "#b91c1c" }}>
-                    Add and verify an email or phone number before setting a password.
+                    {cp("addContactInline")}
                   </Text>
                 ) : null}
                 <TouchableOpacity
@@ -163,16 +170,16 @@ export default function SettingsChangePasswordScreen() {
                   disabled={requestingNonce || !canVerifyPasswordAction}
                   style={{ marginTop: 12, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
                   accessibilityRole="button"
-                  accessibilityLabel="Send password verification code"
+                  accessibilityLabel={cp("sendCodeA11y")}
                 >
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
-                    {requestingNonce ? "Sending..." : "Send verification code"}
+                    {requestingNonce ? cp("sending") : cp("sendCode")}
                   </Text>
                 </TouchableOpacity>
-                <Text style={{ marginTop: 12, marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Verification code</Text>
+                <Text style={{ marginTop: 12, marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("verificationCode")}</Text>
                 <TextInput
                   style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                  placeholder="Enter code"
+                  placeholder={cp("codePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   value={passwordNonce}
                   onChangeText={(value) => setPasswordNonce(value.replace(/\D/g, ""))}
@@ -183,10 +190,10 @@ export default function SettingsChangePasswordScreen() {
               </View>
             ) : (
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Current password</Text>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("currentPassword")}</Text>
                 <TextInput
                   style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                  placeholder="Enter current password"
+                  placeholder={cp("currentPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   value={currentPassword}
                   onChangeText={setCurrentPassword}
@@ -198,17 +205,17 @@ export default function SettingsChangePasswordScreen() {
                   onPress={() => router.push("/(auth)/forgot-password" as never)}
                   style={{ marginTop: 8 }}
                   accessibilityRole="link"
-                  accessibilityLabel="Forgot password"
+                  accessibilityLabel={cp("forgotA11y")}
                 >
-                  <Text style={{ color: "#4f46e5", fontWeight: "600" }}>Forgot password?</Text>
+                  <Text style={{ color: "#4f46e5", fontWeight: "600" }}>{cp("forgot")}</Text>
                 </TouchableOpacity>
               </View>
             )}
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>New password</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("newPassword")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder={`At least ${minimumPasswordLength} characters`}
+                placeholder={cp("minLengthPlaceholder", { count: minimumPasswordLength })}
                 placeholderTextColor="#9ca3af"
                 value={newPassword}
                 onChangeText={setNewPassword}
@@ -218,10 +225,10 @@ export default function SettingsChangePasswordScreen() {
               />
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Confirm new password</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("confirmPassword")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="Confirm new password"
+                placeholder={cp("confirmPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -232,7 +239,7 @@ export default function SettingsChangePasswordScreen() {
             </View>
             <View style={{ marginTop: 16 }}>
               <ActionButton
-                label={saving ? (isSettingFirstPassword ? "Setting..." : "Updating...") : (isSettingFirstPassword ? "Set password" : "Update password")}
+                label={saving ? (isSettingFirstPassword ? cp("setting") : cp("updating")) : (isSettingFirstPassword ? cp("setPassword") : cp("updatePassword"))}
                 onPress={handleSave}
                 fullWidth
                 disabled={saving}

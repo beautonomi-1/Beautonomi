@@ -8,23 +8,30 @@ import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking, A
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useTranslation } from "@beautonomi/i18n";
 import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function InAppBrowserScreen() {
   const { t } = useTranslation();
+  const ib = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.inAppBrowser.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ url?: string; title?: string; intent?: string }>();
   let rawUrl = "";
-  let displayTitle = "Link";
+  let displayTitle = ib("defaultTitle");
   try { rawUrl = params.url ? decodeURIComponent(params.url) : ""; } catch { rawUrl = params.url ?? ""; }
-  try { displayTitle = params.title ? decodeURIComponent(params.title) : "Link"; } catch { displayTitle = params.title ?? "Link"; }
+  try { displayTitle = params.title ? decodeURIComponent(params.title) : ib("defaultTitle"); } catch { displayTitle = params.title ?? ib("defaultTitle"); }
   const isPaymentIntent = params.intent === "payment";
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastWebUrl, setLastWebUrl] = useState(rawUrl);
@@ -72,15 +79,15 @@ export default function InAppBrowserScreen() {
               router.back();
             }}
             style={styles.backBtn}
-            accessibilityLabel="Go back"
+            accessibilityLabel={ib("goBack")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
         </View>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Invalid or missing link.</Text>
+          <Text style={styles.errorText}>{ib("invalidLink")}</Text>
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -88,7 +95,7 @@ export default function InAppBrowserScreen() {
             }}
             style={styles.backLink}
           >
-            <Text style={styles.backLinkText}>Go back</Text>
+            <Text style={styles.backLinkText}>{ib("goBack")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -105,16 +112,16 @@ export default function InAppBrowserScreen() {
               router.back();
             }}
             style={styles.backBtn}
-            accessibilityLabel="Go back"
+            accessibilityLabel={ib("goBack")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
         </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={[styles.errorText, { marginTop: 16 }]}>Opening in your browser…</Text>
+          <Text style={[styles.errorText, { marginTop: 16 }]}>{ib("openingInBrowser")}</Text>
         </View>
       </View>
     );
@@ -129,10 +136,10 @@ export default function InAppBrowserScreen() {
             router.back();
           }}
           style={styles.backBtn}
-          accessibilityLabel="Go back"
+          accessibilityLabel={ib("goBack")}
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
       </View>
@@ -194,21 +201,21 @@ export default function InAppBrowserScreen() {
           onNavigationStateChange={(state) => {
             if (state?.url) setLastWebUrl(state.url);
           }}
-          onError={(e: any) => setLoadError(e.nativeEvent.description || "Failed to load")}
-          onHttpError={(e: any) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
+          onError={(e: any) => setLoadError(e.nativeEvent.description || ib("failedToLoad"))}
+          onHttpError={(e: any) => setLoadError(ib("httpError", { statusCode: e.nativeEvent.statusCode }))}
           startInLoadingState
           renderLoading={() => (
             <View style={styles.loading}>
               <ActivityIndicator size="large" color={Colors.primary} />
               {isPaymentIntent ? (
                 <>
-                  <Text style={styles.loadingTitle}>Please wait</Text>
+                  <Text style={styles.loadingTitle}>{ib("pleaseWait")}</Text>
                   <Text style={styles.loadingText}>
                     {t("customer.mobile.screens.customOfferCheckout.openingSecurePayment", {
                       defaultValue: "Opening secure payment…",
                     })}
                     {"\n"}
-                    Do not close this screen.
+                    {ib("doNotClose")}
                   </Text>
                 </>
               ) : (
@@ -221,7 +228,7 @@ export default function InAppBrowserScreen() {
           <View style={styles.loadError}>
             <Text style={styles.errorText}>{loadError}</Text>
             <TouchableOpacity onPress={() => router.back()} style={styles.backLink}>
-              <Text style={styles.backLinkText}>Go back</Text>
+              <Text style={styles.backLinkText}>{ib("goBack")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -240,7 +247,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.gray[200],
   },
-  backBtn: { padding: 8, marginRight: 8 },
+  backBtn: { padding: 8, marginEnd: 8 },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: "600", color: Colors.gray[900] },
   webviewWrap: { flex: 1 },
   webview: { flex: 1 },

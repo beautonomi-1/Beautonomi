@@ -8,8 +8,10 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   registerNotificationsRealtimeCallback,
   type NewNotificationRow,
@@ -43,6 +45,7 @@ function thumbUrl(data?: Record<string, unknown>): string | null {
 }
 
 export function AnnouncementBanner() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [row, setRow] = useState<NotifRow | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -140,13 +143,13 @@ export function AnnouncementBanner() {
             </View>
           )}
         </View>
-        <View style={{ flex: 1, marginLeft: 10 }}>
+        <View style={{ flex: 1, marginStart: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
             <View style={{ backgroundColor: accent.badge, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
               <Text style={{ fontSize: 9, fontWeight: "800", color: "#fff" }}>{accent.label}</Text>
             </View>
             {endsIn != null ? (
-              <Text style={{ marginLeft: 8, fontSize: 11, color: Colors.gray[600] }}>Ends in ~{endsIn}h</Text>
+              <Text style={{ marginStart: 8, fontSize: 11, color: Colors.gray[600] }}>Ends in ~{endsIn}h</Text>
             ) : null}
           </View>
           <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
@@ -156,7 +159,7 @@ export function AnnouncementBanner() {
             {row.message}
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
       </TouchableOpacity>
       <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 8, paddingBottom: 8 }}>
         <TouchableOpacity
@@ -173,9 +176,9 @@ export function AnnouncementBanner() {
           }}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss announcement banner"
+          accessibilityLabel={t("customer.mobile.screens.announcementBanner.dismissA11y")}
         >
-          <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "600" }}>Dismiss</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "600" }}>{t("common.dismiss")}</Text>
         </TouchableOpacity>
       </View>
     </View>

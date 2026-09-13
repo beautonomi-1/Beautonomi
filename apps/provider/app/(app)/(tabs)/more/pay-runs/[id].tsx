@@ -31,6 +31,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PayRunItem {
   id: string;
@@ -90,11 +91,27 @@ function unwrap<T>(raw: unknown): T | null {
 }
 
 export default function PayRunDetailScreen() {
+  const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.payRunDetail.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useProvider();
   const { screenPadding } = useResponsive();
   const isOwner = isPayrollOwnerRole(role);
+
+  const statusLabel = useCallback(
+    (status: string) => {
+      if (status === "paid") return pr("statusPaid");
+      if (status === "approved") return pr("statusApproved");
+      if (status === "draft") return pr("statusDraft");
+      return status;
+    },
+    [pr],
+  );
 
   const apiPath = id ? `/api/provider/pay-runs/${id}` : "/api/provider/pay-runs/__missing__";
   const { data: rawData, loading, error: loadError, refresh } = useApi<PayRunDetail>(apiPath, {
@@ -166,28 +183,28 @@ export default function PayRunDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error: err } = await patchItem(`/api/provider/pay-runs/${id}`, payload);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(pr("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setEditItem(null);
     refresh();
-  }, [editItem, id, manualInput, taxInput, uifInput, notesInput, patchItem, refresh]);
+  }, [editItem, id, manualInput, taxInput, uifInput, notesInput, patchItem, refresh, pr]);
 
   const handleApprove = useCallback(() => {
     if (!data || data.status !== "draft" || !isOwner) return;
     Alert.alert(
-      "Approve pay run?",
-      "This will lock the pay run for payment. This cannot be undone.",
+      pr("approveTitle"),
+      pr("approveBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: pr("cancel"), style: "cancel" },
         {
-          text: "Approve",
+          text: pr("approve"),
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const { error: err } = await approveRun(`/api/provider/pay-runs/${data.id}/approve`, {});
             if (err) {
-              Alert.alert("Error", err);
+              Alert.alert(pr("errorTitle"), err);
               return;
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -196,22 +213,22 @@ export default function PayRunDetailScreen() {
         },
       ]
     );
-  }, [data, isOwner, approveRun, refresh]);
+  }, [data, isOwner, approveRun, refresh, pr]);
 
   const handleMarkPaid = useCallback(() => {
     if (!data || data.status !== "approved" || !isOwner) return;
     Alert.alert(
-      "Mark as paid?",
-      "Confirm that this pay run has been paid out to staff.",
+      pr("markPaidTitle"),
+      pr("markPaidBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: pr("cancel"), style: "cancel" },
         {
-          text: "Mark paid",
+          text: pr("markPaidAction"),
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const { error: err } = await markPaidRun(`/api/provider/pay-runs/${data.id}/mark-paid`, {});
             if (err) {
-              Alert.alert("Error", err);
+              Alert.alert(pr("errorTitle"), err);
               return;
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -220,12 +237,12 @@ export default function PayRunDetailScreen() {
         },
       ]
     );
-  }, [data, isOwner, markPaidRun, refresh]);
+  }, [data, isOwner, markPaidRun, refresh, pr]);
 
   if (loading && !data && !loadError) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Pay run" onBack={() => router.back()} />
+        <ScreenHeader title={pr("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -236,7 +253,7 @@ export default function PayRunDetailScreen() {
   if (loadError && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Pay run" onBack={() => router.back()} />
+        <ScreenHeader title={pr("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={loadError} onRetry={refresh} />
         </View>
@@ -247,9 +264,9 @@ export default function PayRunDetailScreen() {
   if (!data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Pay run" onBack={() => router.back()} />
+        <ScreenHeader title={pr("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message="Pay run not found" onRetry={refresh} />
+          <ErrorState message={pr("notFound")} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );
@@ -263,7 +280,7 @@ export default function PayRunDetailScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Pay run"
+        title={pr("title")}
         onBack={() => router.back()}
         subtitle={`${formatDateSafe(data.pay_period_start)} – ${formatDateSafe(data.pay_period_end)}`}
       />
@@ -275,7 +292,7 @@ export default function PayRunDetailScreen() {
       >
         <View style={twStyle("mb-4 rounded-2xl border border-gray-200 bg-white p-4")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-500")}>Status</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-500")}>{pr("status")}</Text>
             <View
               style={twStyle(`rounded-full px-2.5 py-1 ${
                 data.status === "paid"
@@ -294,31 +311,31 @@ export default function PayRunDetailScreen() {
                       : "text-blue-800"
                 }`)}
               >
-                {data.status}
+                {statusLabel(data.status)}
               </Text>
             </View>
           </View>
           <View style={twStyle("mt-3 flex-row flex-wrap")}>
-            <View style={twStyle("w-1/2 pr-2 pb-2")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Gross</Text>
+            <View style={twStyle("w-1/2 pe-2 pb-2")}>
+              <Text style={twStyle("text-xs text-gray-500")}>{pr("gross")}</Text>
               <Text style={twStyle("text-base font-semibold text-gray-900")}>
                 {formatMoneySafe(totalGross)}
               </Text>
             </View>
-            <View style={twStyle("w-1/2 pl-2 pb-2")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Net</Text>
+            <View style={twStyle("w-1/2 ps-2 pb-2")}>
+              <Text style={twStyle("text-xs text-gray-500")}>{pr("net")}</Text>
               <Text style={twStyle("text-base font-semibold text-emerald-700")}>
                 {formatMoneySafe(totalNet)}
               </Text>
             </View>
-            <View style={twStyle("w-1/2 pr-2")}>
-              <Text style={twStyle("text-xs text-gray-500")}>PAYE / Tax</Text>
+            <View style={twStyle("w-1/2 pe-2")}>
+              <Text style={twStyle("text-xs text-gray-500")}>{pr("payeTax")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {formatMoneySafe(totalTax)}
               </Text>
             </View>
-            <View style={twStyle("w-1/2 pl-2")}>
-              <Text style={twStyle("text-xs text-gray-500")}>UIF</Text>
+            <View style={twStyle("w-1/2 ps-2")}>
+              <Text style={twStyle("text-xs text-gray-500")}>{pr("uif")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {formatMoneySafe(totalUif)}
               </Text>
@@ -327,8 +344,7 @@ export default function PayRunDetailScreen() {
           {canEdit && (
             <View style={twStyle("mt-3 rounded-xl bg-blue-50 p-3")}>
               <Text style={twStyle("text-xs text-blue-900")}>
-                Tap any row below to adjust manual deductions, PAYE, UIF, or notes while this run is
-                still a draft.
+                {pr("draftHint")}
               </Text>
             </View>
           )}
@@ -338,7 +354,7 @@ export default function PayRunDetailScreen() {
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-6 items-center")}>
             <Ionicons name="people-outline" size={32} color="#9ca3af" />
             <Text style={twStyle("mt-2 text-sm text-gray-500 text-center")}>
-              No staff items are included in this pay run.
+              {pr("emptyItems")}
             </Text>
           </View>
         ) : (
@@ -349,37 +365,37 @@ export default function PayRunDetailScreen() {
               activeOpacity={canEdit ? 0.7 : 1}
               style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}
               accessibilityRole="button"
-              accessibilityLabel={`Pay run item for ${item.staff_name}`}
+              accessibilityLabel={pr("itemA11y", { name: item.staff_name })}
               accessibilityState={{ disabled: !canEdit }}
             >
               <View style={twStyle("flex-row items-start justify-between")}>
-                <View style={twStyle("flex-1 pr-3")}>
+                <View style={twStyle("flex-1 pe-3")}>
                   <Text style={twStyle("text-base font-semibold text-gray-900")}>
                     {item.staff_name}
                   </Text>
                   {Number(item.commission_amount ?? 0) > 0 && (
                     <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      Commission {formatMoneySafe(item.commission_amount)}
+                      {pr("commission", { amount: formatMoneySafe(item.commission_amount) })}
                     </Text>
                   )}
                   {Number(item.hourly_amount ?? 0) > 0 && (
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      Hourly {formatMoneySafe(item.hourly_amount)}
+                      {pr("hourly", { amount: formatMoneySafe(item.hourly_amount) })}
                     </Text>
                   )}
                   {Number(item.salary_amount ?? 0) > 0 && (
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      Salary {formatMoneySafe(item.salary_amount)}
+                      {pr("salary", { amount: formatMoneySafe(item.salary_amount) })}
                     </Text>
                   )}
                   {Number(item.tips_amount ?? 0) > 0 && (
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      Tips {formatMoneySafe(item.tips_amount)}
+                      {pr("tips", { amount: formatMoneySafe(item.tips_amount) })}
                     </Text>
                   )}
                 </View>
                 <View style={twStyle("items-end")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Gross</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{pr("gross")}</Text>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {formatMoneySafe(item.gross_pay)}
                   </Text>
@@ -387,26 +403,26 @@ export default function PayRunDetailScreen() {
               </View>
 
               <View style={twStyle("mt-3 flex-row flex-wrap")}>
-                <View style={twStyle("w-1/2 pr-2 pb-1")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Manual deductions</Text>
+                <View style={twStyle("w-1/2 pe-2 pb-1")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>{pr("manualDeductions")}</Text>
                   <Text style={twStyle("text-sm font-medium text-gray-900")}>
                     {formatMoneySafe(item.manual_deductions)}
                   </Text>
                 </View>
-                <View style={twStyle("w-1/2 pl-2 pb-1")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>PAYE / Tax</Text>
+                <View style={twStyle("w-1/2 ps-2 pb-1")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>{pr("payeTax")}</Text>
                   <Text style={twStyle("text-sm font-medium text-gray-900")}>
                     {formatMoneySafe(item.tax_deduction)}
                   </Text>
                 </View>
-                <View style={twStyle("w-1/2 pr-2")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>UIF</Text>
+                <View style={twStyle("w-1/2 pe-2")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>{pr("uif")}</Text>
                   <Text style={twStyle("text-sm font-medium text-gray-900")}>
                     {formatMoneySafe(item.uif_contribution)}
                   </Text>
                 </View>
-                <View style={twStyle("w-1/2 pl-2")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Net pay</Text>
+                <View style={twStyle("w-1/2 ps-2")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>{pr("netPay")}</Text>
                   <Text style={twStyle("text-sm font-semibold text-emerald-700")}>
                     {formatMoneySafe(item.net_pay)}
                   </Text>
@@ -427,10 +443,10 @@ export default function PayRunDetailScreen() {
             onPress={handleApprove}
             style={twStyle("mt-2 flex-row items-center justify-center rounded-xl bg-emerald-600 py-3.5")}
             accessibilityRole="button"
-            accessibilityLabel="Approve pay run"
+            accessibilityLabel={pr("approveA11y")}
           >
             <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-            <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Approve pay run</Text>
+            <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("approveCta")}</Text>
           </TouchableOpacity>
         )}
         {data.status === "approved" && isOwner && (
@@ -438,10 +454,10 @@ export default function PayRunDetailScreen() {
             onPress={handleMarkPaid}
             style={twStyle("mt-2 flex-row items-center justify-center rounded-xl bg-gray-800 py-3.5")}
             accessibilityRole="button"
-            accessibilityLabel="Mark pay run as paid"
+            accessibilityLabel={pr("markPaidA11y")}
           >
             <Ionicons name="cash-outline" size={18} color="#fff" />
-            <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Mark as paid</Text>
+            <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("markPaidCta")}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -449,61 +465,61 @@ export default function PayRunDetailScreen() {
       <BottomSheet
         visible={!!editItem}
         onClose={closeEdit}
-        title={editItem?.staff_name ?? "Pay run item"}
-        subtitle="Adjust deductions and notes"
+        title={editItem?.staff_name ?? pr("itemFallbackTitle")}
+        subtitle={pr("editSubtitle")}
       >
         <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
-          Manual deductions
+          {pr("manualDeductions")}
         </Text>
         <TextInput
           value={manualInput}
           onChangeText={setManualInput}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={pr("moneyPlaceholder")}
           editable={!saving}
           style={twStyle(
             "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
           )}
-          accessibilityLabel="Manual deductions amount"
+          accessibilityLabel={pr("manualDeductionsA11y")}
         />
-        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>PAYE / Tax</Text>
+        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{pr("payeTax")}</Text>
         <TextInput
           value={taxInput}
           onChangeText={setTaxInput}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={pr("moneyPlaceholder")}
           editable={!saving}
           style={twStyle(
             "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
           )}
-          accessibilityLabel="Tax deduction amount"
+          accessibilityLabel={pr("taxA11y")}
         />
-        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>UIF contribution</Text>
+        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{pr("uifContribution")}</Text>
         <TextInput
           value={uifInput}
           onChangeText={setUifInput}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={pr("moneyPlaceholder")}
           editable={!saving}
           style={twStyle(
             "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
           )}
-          accessibilityLabel="UIF contribution amount"
+          accessibilityLabel={pr("uifA11y")}
         />
-        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Notes</Text>
+        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{pr("notes")}</Text>
         <TextInput
           value={notesInput}
           onChangeText={setNotesInput}
-          placeholder="Optional notes for this line item"
+          placeholder={pr("notesPlaceholder")}
           editable={!saving}
           multiline
           style={twStyle(
             "mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[80px]"
           )}
-          accessibilityLabel="Line item notes"
+          accessibilityLabel={pr("notesA11y")}
         />
         <ActionButton
-          label={saving ? "Saving…" : "Save changes"}
+          label={saving ? pr("saving") : pr("saveChanges")}
           onPress={handleSaveItem}
           loading={saving}
           fullWidth

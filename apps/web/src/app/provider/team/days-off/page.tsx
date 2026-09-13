@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
@@ -49,6 +51,7 @@ export default function DaysOffPage() {
   const [reason, setReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const todayStart = startOfDay(new Date());
 
@@ -81,7 +84,7 @@ export default function DaysOffPage() {
       setDaysOff(allDaysOff);
     } catch (error) {
       console.error("Failed to load data:", error);
-      toast.error("Failed to load data");
+      toast.error(t("web.provider.pages.team/days-off.failedToLoadData"));
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +100,7 @@ export default function DaysOffPage() {
 
   const handleSaveDayOff = async () => {
     if (!selectedDate || selectedMembers.length === 0) {
-      toast.error("Please select at least one team member and a date");
+      toast.error(t("web.provider.pages.team/days-off.selectMemberAndDate"));
       return;
     }
 
@@ -125,11 +128,9 @@ export default function DaysOffPage() {
       }, 0);
 
       if (ok === selectedMembers.length) {
-        toast.success(`Day off set for ${ok} team member(s)`);
+        toast.success(t("web.provider.pages.team/days-off.dayOffSetFor", { count: ok }));
         if (overlapCount > 0) {
-          toast.warning(
-            `${overlapCount} upcoming booking${overlapCount === 1 ? "" : "s"} fall on this day. Reassign or reschedule them.`,
-          );
+          toast.warning(t("web.provider.pages.team/days-off.overlappingBookings", { count: overlapCount }));
         }
         setIsDialogOpen(false);
         loadData();
@@ -138,7 +139,7 @@ export default function DaysOffPage() {
 
       if (ok > 0) {
         toast.warning(
-          `Saved for ${ok} of ${selectedMembers.length}. ${failed.length} failed (e.g. duplicate date or network).`
+          t("web.provider.pages.team/days-off.savedPartial", { ok, total: selectedMembers.length, failed: failed.length })
         );
         loadData();
         return;
@@ -150,33 +151,33 @@ export default function DaysOffPage() {
           ? firstErr.message
           : firstErr instanceof Error
             ? firstErr.message
-            : "Failed to save day off";
+            : t("web.provider.pages.team/days-off.failedToSaveDayOff");
       toast.error(msg);
     } catch (error: unknown) {
       console.error("Failed to save day off:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save day off");
+      toast.error(error instanceof Error ? error.message : t("web.provider.pages.team/days-off.failedToSaveDayOff"));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleRemoveDayOff = async (dayOff: DayOff) => {
-    if (!confirm("Are you sure you want to remove this day off?")) return;
+    if (!confirm(t("web.provider.pages.team/days-off.confirmRemoveDayOff"))) return;
 
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.delete(`/api/provider/staff/${dayOff.team_member_id}/days-off/${dayOff.id}`);
-      toast.success("Day off removed");
+      toast.success(t("web.provider.pages.team/days-off.dayOffRemoved"));
       loadData();
     } catch (error: any) {
       console.error("Failed to remove day off:", error);
-      toast.error(error?.message || "Failed to remove day off");
+      toast.error(error?.message || t("web.provider.pages.team/days-off.failedToRemoveDayOff"));
     }
   };
 
   const handleReviewTimeOff = async (dayOff: DayOff, status: "approved" | "denied") => {
     if (!dayOff.time_off_id) {
-      toast.error("This request is not ready to review yet. Refresh and try again.");
+      toast.error(t("web.provider.pages.team/days-off.requestNotReady"));
       return;
     }
     setReviewingId(dayOff.id);
@@ -185,10 +186,10 @@ export default function DaysOffPage() {
       await fetcher.patch(`/api/provider/staff/${dayOff.team_member_id}/time-off/${dayOff.time_off_id}`, {
         status,
       });
-      toast.success(status === "approved" ? "Time off approved" : "Time off denied");
+      toast.success(status === "approved" ? t("web.provider.pages.team/days-off.timeOffApproved") : t("web.provider.pages.team/days-off.timeOffDenied"));
       loadData();
     } catch (error: unknown) {
-      toast.error(error instanceof FetchError ? error.message : "Failed to update time off");
+      toast.error(error instanceof FetchError ? error.message : t("web.provider.pages.team/days-off.failedToUpdateTimeOff"));
     } finally {
       setReviewingId(null);
     }
@@ -213,20 +214,18 @@ export default function DaysOffPage() {
   return (
     <div>
       <PageHeader
-        title="Days Off"
-        subtitle="Manage team member days off and time off requests"
+        title={t("web.provider.sidebar.items.daysOff")}
+        subtitle={t("web.provider.pages.team/days-off.subtitle")}
         primaryAction={{
-          label: "Set Day Off",
+          label: t("web.provider.pages.team/days-off.setDayOff"),
           onClick: handleAddDayOff,
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
       <div className="mt-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
         <p className="text-sm text-emerald-800">
-          <strong>How days off work:</strong> Days off fully block a staff member&apos;s availability for the entire day.
-          Customers will not see any bookable slots for that staff member on their day off.
-          For partial-day blocks, use <a href="/provider/time-blocks" className="underline font-medium">Time Blocks</a> instead.
+          <strong>{t("web.provider.pages.team/days-off.howDaysOffWork")}</strong> {t("web.provider.pages.team/days-off.howDaysOffBody")} <a href="/provider/time-blocks" className="underline font-medium">{t("web.provider.pages.team/days-off.timeBlocks")}</a> {t("web.provider.pages.team/days-off.instead")}
         </p>
       </div>
 
@@ -238,7 +237,7 @@ export default function DaysOffPage() {
               <CalendarIcon2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Total Days Off</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/days-off.totalDaysOff")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {daysOff.length}
               </div>
@@ -251,7 +250,7 @@ export default function DaysOffPage() {
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">This Month</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.common.statsRange.thisMonth")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {daysOff.filter((d) => {
                   const date = new Date(d.date);
@@ -268,7 +267,7 @@ export default function DaysOffPage() {
               <CalendarIcon2 className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Upcoming</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/days-off.upcoming")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {daysOff.filter((d) => new Date(d.date) >= new Date()).length}
               </div>
@@ -285,10 +284,10 @@ export default function DaysOffPage() {
       ) : daysOff.length === 0 ? (
         <SectionCard className="p-8 sm:p-12 text-center">
           <CalendarIcon2 className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-600 mb-4">No days off scheduled</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.pages.team/days-off.noDaysOffScheduled")}</p>
           <Button onClick={handleAddDayOff} className="min-h-[44px] touch-manipulation">
-            <Plus className="w-4 h-4 mr-2" />
-            Set Day Off
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.pages.team/days-off.setDayOff")}
           </Button>
         </SectionCard>
       ) : (
@@ -297,11 +296,11 @@ export default function DaysOffPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Team Member</th>
-                  <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Date</th>
-                  <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Reason</th>
-                  <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-right text-xs sm:text-sm font-medium text-gray-700">Actions</th>
+                  <th className="px-4 py-3 text-start text-xs sm:text-sm font-medium text-gray-700">{t("web.provider.pages.team/days-off.teamMember")}</th>
+                  <th className="px-4 py-3 text-start text-xs sm:text-sm font-medium text-gray-700">{t("web.provider.pages.team/days-off.date")}</th>
+                  <th className="px-4 py-3 text-start text-xs sm:text-sm font-medium text-gray-700">{t("web.provider.pages.team/days-off.reason")}</th>
+                  <th className="px-4 py-3 text-start text-xs sm:text-sm font-medium text-gray-700">{t("web.provider.common.statusLabel")}</th>
+                  <th className="px-4 py-3 text-end text-xs sm:text-sm font-medium text-gray-700">{t("web.provider.pages.team/days-off.actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -326,9 +325,9 @@ export default function DaysOffPage() {
                             {format(new Date(dayOff.date), "MMM d, yyyy")}
                           </span>
                           {isPast ? (
-                            <Badge variant="outline" className="text-xs">Past</Badge>
+                            <Badge variant="outline" className="text-xs">{t("web.provider.pages.team/days-off.past")}</Badge>
                           ) : (
-                            <Badge className="bg-green-100 text-green-800 text-xs">Upcoming</Badge>
+                            <Badge className="bg-green-100 text-green-800 text-xs">{t("web.provider.pages.team/days-off.upcoming")}</Badge>
                           )}
                         </div>
                       </td>
@@ -337,12 +336,12 @@ export default function DaysOffPage() {
                       </td>
                       <td className="px-4 py-3">
                         {dayOff.time_off_status === "pending" || dayOff.is_approved === false ? (
-                          <Badge className="bg-amber-100 text-amber-800 text-xs">Pending</Badge>
+                          <Badge className="bg-amber-100 text-amber-800 text-xs">{t("web.provider.common.status.pending")}</Badge>
                         ) : (
-                          <Badge className="bg-green-100 text-green-800 text-xs">Approved</Badge>
+                          <Badge className="bg-green-100 text-green-800 text-xs">{t("web.provider.pages.team/days-off.approved")}</Badge>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-end">
                         <div className="flex justify-end gap-2">
                           {(dayOff.time_off_status === "pending" || dayOff.is_approved === false) &&
                           dayOff.time_off_id ? (
@@ -353,7 +352,7 @@ export default function DaysOffPage() {
                                 disabled={reviewingId === dayOff.id}
                                 onClick={() => void handleReviewTimeOff(dayOff, "approved")}
                               >
-                                Approve
+                                {t("web.provider.pages.team/payroll/[id].approve")}
                               </Button>
                               <Button
                                 variant="outline"
@@ -361,7 +360,7 @@ export default function DaysOffPage() {
                                 disabled={reviewingId === dayOff.id}
                                 onClick={() => void handleReviewTimeOff(dayOff, "denied")}
                               >
-                                Deny
+                                {t("web.provider.pages.team/days-off.deny")}
                               </Button>
                             </>
                           ) : null}
@@ -389,10 +388,10 @@ export default function DaysOffPage() {
         <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-base sm:text-lg font-semibold">
-              Set Day Off
+              {t("web.provider.pages.team/days-off.setDayOff")}
             </DialogTitle>
             <p className="text-xs sm:text-sm text-gray-500 mt-1">
-              Set a day off for one or multiple team members
+              {t("web.provider.pages.team/days-off.setDayOffHint")}
             </p>
           </DialogHeader>
 
@@ -400,7 +399,7 @@ export default function DaysOffPage() {
             {/* Team Member Selection */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <Label className="text-sm sm:text-base font-medium">Select Team Members</Label>
+                <Label className="text-sm sm:text-base font-medium">{t("web.provider.pages.team/days-off.selectTeamMembers")}</Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -408,7 +407,7 @@ export default function DaysOffPage() {
                   onClick={toggleSelectAll}
                   className="text-xs min-h-[32px] touch-manipulation"
                 >
-                  {selectedMembers.length === teamMembers.length ? "Deselect All" : "Select All"}
+                  {selectedMembers.length === teamMembers.length ? t("web.provider.bookings.bulkActions.deselectAll") : t("web.provider.bookings.bulkActions.selectAll")}
                 </Button>
               </div>
               <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3">
@@ -441,13 +440,13 @@ export default function DaysOffPage() {
 
             {/* Date — inline calendar avoids popover z-index / focus issues inside Dialog */}
             <div>
-              <Label className="text-sm sm:text-base font-medium mb-2 block">Date *</Label>
+              <Label className="text-sm sm:text-base font-medium mb-2 block">{t("web.provider.pages.team/days-off.dateRequired")}</Label>
               <p className="text-xs text-muted-foreground mb-3">
-                Tap a day to select. Past dates are disabled; use{" "}
+                {t("web.provider.pages.team/days-off.datePickerHint")}{" "}
                 <a href="/provider/time-blocks" className="underline font-medium text-foreground">
-                  Time blocks
+                  {t("web.provider.pages.team/days-off.timeBlocksLower")}
                 </a>{" "}
-                for partial days.
+                {t("web.provider.pages.team/days-off.forPartialDays")}
               </p>
               <div
                 className={cn(
@@ -455,7 +454,7 @@ export default function DaysOffPage() {
                   "flex flex-col items-center sm:items-stretch"
                 )}
               >
-                <div className="mb-2 w-full text-center sm:text-left">
+                <div className="mb-2 w-full text-center sm:text-start">
                   <span
                     className={cn(
                       "text-sm font-medium tabular-nums",
@@ -463,7 +462,7 @@ export default function DaysOffPage() {
                     )}
                     aria-live="polite"
                   >
-                    {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : "Choose a date below"}
+                    {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : t("web.provider.pages.team/days-off.chooseADateBelow")}
                   </span>
                 </div>
                 <Calendar
@@ -485,10 +484,10 @@ export default function DaysOffPage() {
             {/* Reason */}
             <div>
               <Label htmlFor="reason" className="text-sm sm:text-base font-medium">
-                Reason (optional)
+                {t("web.provider.pages.team/days-off.reasonOptional")}
               </Label>
               <div className="flex flex-wrap gap-2 mt-2">
-                {["Vacation", "Sick leave", "Personal", "Public holiday"].map((preset) => (
+                {[{ value: "Vacation", key: "vacation" }, { value: "Sick leave", key: "sickLeave" }, { value: "Personal", key: "personal" }, { value: "Public holiday", key: "publicHoliday" }].map(({ value: preset, key }) => (
                   <Button
                     key={preset}
                     type="button"
@@ -497,7 +496,7 @@ export default function DaysOffPage() {
                     className="h-8 rounded-full text-xs touch-manipulation"
                     onClick={() => setReason(preset)}
                   >
-                    {preset}
+                    {t(`web.provider.pages.team/days-off.${key}`)}
                   </Button>
                 ))}
               </div>
@@ -505,7 +504,7 @@ export default function DaysOffPage() {
                 id="reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Or type your own…"
+                placeholder={t("web.provider.pages.team/days-off.orTypeYourOwn")}
                 className="mt-2 min-h-[44px] touch-manipulation"
               />
             </div>
@@ -519,7 +518,7 @@ export default function DaysOffPage() {
               disabled={isSaving}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="button"
@@ -529,7 +528,7 @@ export default function DaysOffPage() {
               }
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {isSaving ? "Saving…" : "Set Day Off"}
+              {isSaving ? t("web.provider.pages.team/days-off.savingEllipsis") : t("web.provider.pages.team/days-off.setDayOff")}
             </Button>
           </DialogFooter>
         </DialogContent>

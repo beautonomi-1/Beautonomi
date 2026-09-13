@@ -2,6 +2,7 @@
  * Product & inventory: catalogue snapshot from products (+ product_variants), aligned with web API.
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -38,16 +39,20 @@ function isInventoryPayload(data: unknown): data is {
   return data != null && typeof data === "object" && !Array.isArray(data) && "totalProducts" in data;
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  scope: "Scope",
-  quantityRule: "Quantity",
-  valueRule: "Stock value",
-  alertsRule: "Alerts",
-  categoryRule: "By category",
-  previews: "Lists",
+const BASIS_LABEL_KEYS: Record<string, string> = {
+  scope: "basisScope",
+  quantityRule: "basisQuantity",
+  valueRule: "basisStockValue",
+  alertsRule: "basisAlerts",
+  categoryRule: "basisCategory",
+  previews: "basisPreviews",
 };
 
 export function InventoryReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const ir = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.inventoryReport.${key}`, opts) as string;
+
   if (!isInventoryPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -72,78 +77,80 @@ export function InventoryReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {ir("factsDefinitions")}
       </Text>
 
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>
-            What this report counts
+            {ir("whatThisCounts")}
           </Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-sky-950")}>{basis}</Text>
-          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
-          {asOf ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Generated · {asOf}</Text> : null}
+          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{ir("timezone", { tz })}</Text> : null}
+          {asOf ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{ir("generated", { asOf })}</Text> : null}
         </View>
       ) : null}
 
       {basisEntries.length > 0 ? (
         <View style={twStyle("rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>Definitions</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>{ir("definitions")}</Text>
           {basisEntries.map(([k, v]) => (
             <Text key={k} style={twStyle("mt-2 text-sm leading-5 text-violet-950")}>
-              <Text style={twStyle("font-medium")}>{BASIS_LABELS[k] ?? k} · </Text>
+              <Text style={twStyle("font-medium")}>
+                {ir("basisItem", { label: BASIS_LABEL_KEYS[k] ? ir(BASIS_LABEL_KEYS[k]) : k })}
+              </Text>
               {v}
             </Text>
           ))}
         </View>
       ) : null}
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Catalogue</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{ir("catalogue")}</Text>
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-gray-600")}>Catalogue SKUs</Text>
+          <Text style={twStyle("text-xs font-medium text-gray-600")}>{ir("catalogueSkus")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-gray-900")}>{data.totalProducts}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Active</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{ir("active")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>{data.activeProducts}</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>is_active true</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>{ir("isActiveTrue")}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-gray-100 bg-gray-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-gray-700")}>Inactive</Text>
+          <Text style={twStyle("text-xs font-medium text-gray-700")}>{ir("inactive")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-gray-900")}>{data.inactiveProducts}</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-gray-600")}>is_active not true</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-gray-600")}>{ir("isActiveNotTrue")}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-indigo-900")}>Tracking stock</Text>
+          <Text style={twStyle("text-xs font-medium text-indigo-900")}>{ir("trackingStock")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>{tracking}</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-indigo-900/85")}>track not false</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-indigo-900/85")}>{ir("trackNotFalse")}</Text>
         </View>
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Value & alerts</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{ir("valueAndAlerts")}</Text>
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[160px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Retail stock value</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{ir("retailStockValue")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
             {formatCurrency(data.totalStockValue)}
           </Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>
-            Untracked SKUs contribute 0 to this sum.
+            {ir("untrackedContributeZero")}
           </Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-amber-900")}>Low stock</Text>
+          <Text style={twStyle("text-xs font-medium text-amber-900")}>{ir("lowStock")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-amber-950")}>{lowN}</Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-amber-900/85")}>
-            Preview up to {limLow} · full count {lowN}
+            {ir("previewUpTo", { limit: limLow, count: lowN })}
           </Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-red-100 bg-red-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-red-900")}>Out of stock</Text>
+          <Text style={twStyle("text-xs font-medium text-red-900")}>{ir("outOfStock")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-red-950")}>{outN}</Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-red-900/85")}>
-            Preview up to {limOut} · full count {outN}
+            {ir("previewUpTo", { limit: limOut, count: outN })}
           </Text>
         </View>
       </View>
@@ -151,10 +158,10 @@ export function InventoryReportView({ data }: { data: unknown }) {
       {(data.lowStockProducts ?? []).length > 0 ? (
         <>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-amber-900")}>
-            Low stock (preview)
+            {ir("lowStockPreview")}
           </Text>
           <Text style={twStyle("text-xs leading-5 text-amber-950/90")}>
-            Tracked products with quantity between 1 and low_stock_level (default 5).
+            {ir("lowStockPreviewHint")}
           </Text>
           {(data.lowStockProducts ?? []).map((p) => (
             <View
@@ -163,19 +170,19 @@ export function InventoryReportView({ data }: { data: unknown }) {
                 "rounded-2xl border border-amber-200/90 bg-white px-4 py-3",
               )}
             >
-              <Text style={twStyle("font-medium text-gray-900")}>{p.name ?? "Product"}</Text>
-              <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.category ?? "Uncategorized"}</Text>
+              <Text style={twStyle("font-medium text-gray-900")}>{p.name ?? ir("productFallback")}</Text>
+              <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.category ?? ir("uncategorized")}</Text>
               {p.has_variants ? (
-                <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>Has variants</Text>
+                <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{ir("hasVariants")}</Text>
               ) : null}
               <View style={twStyle("mt-2 flex-row flex-wrap justify-between gap-2")}>
                 <Text style={twStyle("text-sm font-semibold tabular-nums text-amber-900")}>
-                  {Number(p.stock_quantity ?? 0)} on hand
+                  {ir("onHand", { count: Number(p.stock_quantity ?? 0) })}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-600")}>
-                  From {formatCurrency(Number(p.price ?? 0))}
+                  {ir("fromPrice", { amount: formatCurrency(Number(p.price ?? 0)) })}
                   {typeof p.retail_line_value === "number"
-                    ? ` · line ${formatCurrency(p.retail_line_value)}`
+                    ? ir("lineValue", { amount: formatCurrency(p.retail_line_value) })
                     : ""}
                 </Text>
               </View>
@@ -187,20 +194,20 @@ export function InventoryReportView({ data }: { data: unknown }) {
       {(data.outOfStockProducts ?? []).length > 0 ? (
         <>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-red-900")}>
-            Out of stock (preview)
+            {ir("outOfStockPreview")}
           </Text>
-          <Text style={twStyle("text-xs leading-5 text-red-950/90")}>Tracked products with effective quantity 0.</Text>
+          <Text style={twStyle("text-xs leading-5 text-red-950/90")}>{ir("outOfStockPreviewHint")}</Text>
           {(data.outOfStockProducts ?? []).map((p) => (
             <View
               key={String(p.id ?? p.name)}
               style={twStyle("rounded-2xl border border-red-200/90 bg-white px-4 py-3")}
             >
-              <Text style={twStyle("font-medium text-gray-900")}>{p.name ?? "Product"}</Text>
-              <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.category ?? "Uncategorized"}</Text>
+              <Text style={twStyle("font-medium text-gray-900")}>{p.name ?? ir("productFallback")}</Text>
+              <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.category ?? ir("uncategorized")}</Text>
               <View style={twStyle("mt-2 flex-row flex-wrap justify-between gap-2")}>
-                <Text style={twStyle("text-sm font-semibold tabular-nums text-red-800")}>0 on hand</Text>
+                <Text style={twStyle("text-sm font-semibold tabular-nums text-red-800")}>{ir("zeroOnHand")}</Text>
                 <Text style={twStyle("text-xs text-gray-600")}>
-                  From {formatCurrency(Number(p.price ?? 0))}
+                  {ir("fromPrice", { amount: formatCurrency(Number(p.price ?? 0)) })}
                 </Text>
               </View>
             </View>
@@ -209,10 +216,10 @@ export function InventoryReportView({ data }: { data: unknown }) {
       ) : null}
 
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Retail value by category
+        {ir("retailValueByCategory")}
       </Text>
       <Text style={twStyle("text-xs leading-5 text-gray-600 mb-1")}>
-        Count = products in category; value sums retail stock value (untracked adds 0).
+        {ir("categoryValueHint")}
       </Text>
       {(data.categoryBreakdown ?? []).map((c) => (
         <View
@@ -221,7 +228,7 @@ export function InventoryReportView({ data }: { data: unknown }) {
         >
           <View>
             <Text style={twStyle("font-medium text-gray-900")}>{c.category}</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>{c.count} products</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{ir("productsCount", { count: c.count })}</Text>
           </View>
           <Text style={twStyle("font-semibold tabular-nums text-gray-900")}>{formatCurrency(c.stockValue)}</Text>
         </View>

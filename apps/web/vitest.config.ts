@@ -42,8 +42,14 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
     },
     setupFiles: ["./vitest.setup.ts"],
+    server: {
+      deps: {
+        inline: ["@beautonomi/i18n", "i18next", "react-i18next"],
+      },
+    },
   },
   resolve: {
+    dedupe: ["i18next", "react-i18next"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       // Real `server-only` throws outside Next RSC; API tests import server modules that use it.

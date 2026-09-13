@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { z } from "zod";
 
 const _clockInSchema = z.object({
@@ -231,6 +233,16 @@ export async function GET(
 
     const { data: timeCards, error } = await query;
 
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tenantRegion = await getTenantRegionConfig(
+      (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    );
+    const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+
     if (error) {
       if (isMissingRelationError(error)) {
         return migrationRequiredResponse("Staff time tracking");
@@ -244,8 +256,8 @@ export async function GET(
       team_member_id: card.staff_id,
       team_member_name: staff.name,
       date: card.date,
-      clock_in_time: card.clock_in_time ? new Date(card.clock_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
-      clock_out_time: card.clock_out_time ? new Date(card.clock_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
+      clock_in_time: card.clock_in_time ? new Date(card.clock_in_time).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' }) : null,
+      clock_out_time: card.clock_out_time ? new Date(card.clock_out_time).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' }) : null,
       total_hours: card.total_hours || null,
       status: card.clock_out_time ? "clocked_out" : "clocked_in",
     }));

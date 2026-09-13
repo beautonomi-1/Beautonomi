@@ -48,11 +48,26 @@ type WaitlistResponse = { entries: WaitlistEntry[]; total?: number };
 type ServiceRow = { id: string; title: string };
 type TeamMember = { id: string; name?: string };
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString();
+}
+
+function waitlistStatusLabel(status: string, label: (key: string) => string): string {
+  switch (status) {
+    case "waiting":
+      return label("statusWaiting");
+    case "contacted":
+      return label("statusContacted");
+    case "booked":
+      return label("statusBooked");
+    case "cancelled":
+      return label("statusCancelled");
+    default:
+      return status;
+  }
 }
 
 function staffLabel(staff: WaitlistEntry["staff"]): string {
@@ -97,7 +112,11 @@ const STATUS_OPTIONS = ["waiting", "contacted", "booked", "cancelled"] as const;
 
 type StatusFilter = "all" | (typeof STATUS_OPTIONS)[number];
 
-function alertWaitlistActionError(kind: "notify" | "quickBook", err: string) {
+function alertWaitlistActionError(
+  kind: "notify" | "quickBook",
+  err: string,
+  wl: (key: string) => string,
+) {
   const lower = err.toLowerCase();
   const looksLikePermission =
     lower.includes("permission") ||
@@ -108,17 +127,19 @@ function alertWaitlistActionError(kind: "notify" | "quickBook", err: string) {
   const title =
     kind === "notify"
       ? looksLikePermission
-        ? "Messaging permission required"
-        : "Could not notify"
+        ? wl("notifyPermissionTitle")
+        : wl("notifyFailedTitle")
       : looksLikePermission
-        ? "Cannot create booking"
-        : "Quick book failed";
+        ? wl("quickBookPermissionTitle")
+        : wl("quickBookFailedTitle");
   Alert.alert(title, err);
 }
 
 export default function WaitlistScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const wl = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.waitlist.${key}`, opts) as string;
   const { selectedLocationId, setSelectedLocationId, provider } = useProvider();
   const locations = useMemo(() => provider?.locations ?? [], [provider?.locations]);
 
@@ -189,7 +210,7 @@ export default function WaitlistScreen() {
     async (entryId: string, status: (typeof STATUS_OPTIONS)[number]) => {
       const { error: err } = await patchWaitlist(`/api/provider/waitlist/${entryId}`, { status });
       if (err) {
-        Alert.alert("Could not update", err);
+        Alert.alert(wl("updateFailed"), err);
         return;
       }
       await refresh();
@@ -202,7 +223,7 @@ export default function WaitlistScreen() {
     async (entryId: string) => {
       const { error: err } = await postNotify(`/api/provider/waitlist/${entryId}/notify`, {});
       if (err) {
-        alertWaitlistActionError("notify", err);
+        alertWaitlistActionError("notify", err, wl);
         return;
       }
       Alert.alert(t("provider.waitlistScreen.notifySentTitle"), t("provider.waitlistScreen.notifyQueued"));
@@ -214,18 +235,18 @@ export default function WaitlistScreen() {
   const quickBook = useCallback(
     async (entry: WaitlistEntry) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(qbDate)) {
-        Alert.alert("Date", "Use YYYY-MM-DD.");
+        Alert.alert(wl("dateTitle"), wl("dateFormatHint"));
         return;
       }
       if (!/^\d{2}:\d{2}$/.test(qbTime)) {
-        Alert.alert("Time", "Use HH:MM (24h).");
+        Alert.alert(wl("timeTitle"), wl("timeFormatHint"));
         return;
       }
       const body: { date: string; time: string; staff_id?: string } = { date: qbDate, time: qbTime };
       if (entry.staff_id) body.staff_id = entry.staff_id;
       const { error: err } = await postQuickBook(`/api/provider/waitlist/${entry.id}/quick-book`, body);
       if (err) {
-        alertWaitlistActionError("quickBook", err);
+        alertWaitlistActionError("quickBook", err, wl);
         return;
       }
       Alert.alert(t("provider.waitlistScreen.quickBookSuccessTitle"), t("provider.waitlistScreen.quickBookSuccessHint"));
@@ -238,14 +259,14 @@ export default function WaitlistScreen() {
   const removeEntry = useCallback(
     (entry: WaitlistEntry) => {
       Alert.alert(t("provider.waitlistScreen.deleteConfirmTitle"), t("provider.waitlistScreen.deleteConfirmMessage"), [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel") as string, style: "cancel" },
         {
-          text: "Delete",
+          text: t("common.delete") as string,
           style: "destructive",
           onPress: async () => {
             const { error: err } = await deleteWaitlist(`/api/provider/waitlist/${entry.id}`);
             if (err) {
-              Alert.alert("Error", err);
+              Alert.alert(wl("errorTitle"), err);
               return;
             }
             setSelected(null);
@@ -296,7 +317,7 @@ export default function WaitlistScreen() {
 
     const { error: err } = await postWaitlist(body);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(wl("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -404,7 +425,7 @@ export default function WaitlistScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setAddOpen(true);
               }}
-              style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", marginLeft: 4 }}
+              style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", marginStart: 4 }}
               accessibilityRole="button"
               accessibilityLabel={t("provider.waitlistScreen.addWalkInA11y")}
             >
@@ -418,7 +439,7 @@ export default function WaitlistScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={{ marginBottom: 12 }}
-        contentContainerStyle={{ paddingRight: 16, gap: 8, flexDirection: "row", alignItems: "center" }}
+        contentContainerStyle={{ paddingEnd: 16, gap: 8, flexDirection: "row", alignItems: "center" }}
       >
         {filterChips.map((c) => {
           const active = statusFilter === c.id;
@@ -521,14 +542,14 @@ export default function WaitlistScreen() {
                   padding: 16,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Waitlist ${entry.customer_name || "entry"}`}
+                accessibilityLabel={wl("entryA11y", { name: entry.customer_name || wl("entryFallback") })}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                    {entry.customer_name || "—"}
+                    {entry.customer_name || wl("emptyValue")}
                   </Text>
                   <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(entry.status) }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{entry.status}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{waitlistStatusLabel(entry.status, wl)}</Text>
                   </View>
                 </View>
                 {entry.service ? <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{entry.service.title}</Text> : null}
@@ -539,7 +560,7 @@ export default function WaitlistScreen() {
                 ) : null}
                 {(entry.preferred_date || entry.customer_phone) && (
                   <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-                    {entry.preferred_date ? formatDateSafe(entry.preferred_date) : ""}
+                    {entry.preferred_date ? formatDateSafe(entry.preferred_date, wl("emptyValue")) : ""}
                     {entry.preferred_date && entry.customer_phone ? " · " : ""}
                     {entry.customer_phone ?? ""}
                   </Text>
@@ -557,12 +578,12 @@ export default function WaitlistScreen() {
             style={inputStyle}
             value={addName}
             onChangeText={setAddName}
-            placeholder="Jane Doe"
+            placeholder={wl("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
           <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 12, marginBottom: 6 }}>{t("provider.waitlistScreen.fieldPhone")}</Text>
-          <TextInput style={inputStyle} value={addPhone} onChangeText={setAddPhone} keyboardType="phone-pad" placeholder="+27…" placeholderTextColor="#9ca3af" />
+          <TextInput style={inputStyle} value={addPhone} onChangeText={setAddPhone} keyboardType="phone-pad" placeholder={wl("phonePlaceholder")} placeholderTextColor="#9ca3af" />
 
           <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 12, marginBottom: 6 }}>{t("provider.waitlistScreen.fieldEmail")}</Text>
           <TextInput
@@ -571,7 +592,7 @@ export default function WaitlistScreen() {
             onChangeText={setAddEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            placeholder="client@email.com"
+            placeholder={wl("emailPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
@@ -580,7 +601,7 @@ export default function WaitlistScreen() {
             style={inputStyle}
             value={addPreferredDate}
             onChangeText={setAddPreferredDate}
-            placeholder="YYYY-MM-DD"
+            placeholder={wl("datePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
@@ -590,7 +611,7 @@ export default function WaitlistScreen() {
             value={addNotes}
             onChangeText={setAddNotes}
             multiline
-            placeholder="…"
+            placeholder={wl("notesPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
@@ -625,7 +646,7 @@ export default function WaitlistScreen() {
                 {team.map((m) => (
                   <TouchableOpacity key={m.id} onPress={() => setAddStaffId(m.id)} style={chipStyle(addStaffId === m.id)}>
                     <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[800] }} numberOfLines={1}>
-                      {m.name ?? "—"}
+                      {m.name ?? wl("emptyValue")}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -675,12 +696,12 @@ export default function WaitlistScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                     borderRadius: 8,
-                    marginRight: 8,
+                    marginEnd: 8,
                     marginBottom: 8,
                     backgroundColor: selected.status === st ? "#4f46e6" : Colors.gray[100],
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: selected.status === st ? Colors.white : Colors.gray[800] }}>{st}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: selected.status === st ? Colors.white : Colors.gray[800] }}>{waitlistStatusLabel(st, wl)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -696,10 +717,10 @@ export default function WaitlistScreen() {
               style={inputStyle}
               value={qbDate}
               onChangeText={setQbDate}
-              placeholder="YYYY-MM-DD"
+              placeholder={wl("datePlaceholder")}
               placeholderTextColor="#9ca3af"
             />
-            <TextInput style={[inputStyle, { marginBottom: 12 }]} value={qbTime} onChangeText={setQbTime} placeholder="HH:MM" placeholderTextColor="#9ca3af" />
+            <TextInput style={[inputStyle, { marginBottom: 12 }]} value={qbTime} onChangeText={setQbTime} placeholder={wl("timePlaceholder")} placeholderTextColor="#9ca3af" />
             <ActionButton
               label={t("provider.waitlistScreen.quickBookButton")}
               onPress={() => quickBook(selected)}
@@ -740,7 +761,7 @@ function chipStyle(active: boolean) {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    marginRight: 8,
+    marginEnd: 8,
     backgroundColor: active ? "#e0f2fe" : Colors.gray[100],
     borderWidth: 1,
     borderColor: active ? "#0891b2" : Colors.gray[200],

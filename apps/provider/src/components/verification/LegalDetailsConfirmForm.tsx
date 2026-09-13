@@ -11,9 +11,9 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   formatLegalDobDisplay,
-  parseLegalDobIso,
   composeLegalDobIso,
 } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import type { LegalDetails, LegalDetailsErrors } from "@/lib/identity-verification/useIdentityVerification";
@@ -57,8 +57,11 @@ export function LegalDetailsConfirmForm({
   tenantRegionCode,
   tenantRegionName,
   isProvider = false,
-  countryLabel = "Country on ID",
+  countryLabel: countryLabelProp,
 }: LegalDetailsConfirmFormProps) {
+  const { t } = useTranslation();
+  const lf = (key: string) => t(`provider.mobile.components.legalDetailsConfirm.${key}`) as string;
+  const countryLabel = countryLabelProp ?? lf("countryLabelDefault");
   const lastNameRef = useRef<TextInput>(null);
   const [showDobPicker, setShowDobPicker] = useState(false);
   const dobDate = useMemo(() => defaultDobDate(values.dateOfBirth), [values.dateOfBirth]);
@@ -68,64 +71,64 @@ export function LegalDetailsConfirmForm({
 
   return (
     <View style={twStyle("mt-4 rounded-2xl bg-white border border-gray-200 p-4")}>
-      <Text style={twStyle("text-base font-semibold text-gray-900 mb-1")}>Confirm your legal details</Text>
+      <Text style={twStyle("text-base font-semibold text-gray-900 mb-1")}>{lf("confirmTitle")}</Text>
       <Text style={twStyle("text-sm text-gray-600 mb-4 leading-5")}>
-        Enter your details exactly as they appear on your government-issued ID or passport. Nicknames or abbreviations will cause a mismatch.
+        {lf("confirmBody")}
       </Text>
 
       {isProvider && (
         <View style={twStyle("mb-4 rounded-xl bg-blue-50 p-3")}>
           <Text style={twStyle("text-sm text-blue-700 leading-5")}>
-            You&apos;re verifying your own identity as the owner or representative. Business payout accounts can use your salon name — that&apos;s expected.
+            {lf("providerNotice")}
           </Text>
         </View>
       )}
 
       <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>
-        Legal first name <Text style={{ color: "#ef4444" }}>*</Text>
+        {lf("firstNameLabel")} <Text style={{ color: "#ef4444" }}>*</Text>
       </Text>
       <TextInput
         style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("firstName") }]}
         value={values.firstName ?? ""}
         onChangeText={(v) => onChange({ ...values, firstName: v })}
-        placeholder="As on your ID"
+        placeholder={lf("firstNamePlaceholder")}
         placeholderTextColor="#9ca3af"
         autoCapitalize="words"
         autoCorrect={false}
         returnKeyType="next"
         onSubmitEditing={() => lastNameRef.current?.focus()}
-        accessibilityLabel="Legal first name"
+        accessibilityLabel={lf("firstNameLabel")}
       />
       {errors.firstName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.firstName}</Text>}
 
       <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>
-        Legal last name <Text style={{ color: "#ef4444" }}>*</Text>
+        {lf("lastNameLabel")} <Text style={{ color: "#ef4444" }}>*</Text>
       </Text>
       <TextInput
         ref={lastNameRef}
         style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("lastName") }]}
         value={values.lastName ?? ""}
         onChangeText={(v) => onChange({ ...values, lastName: v })}
-        placeholder="Surname as on your ID"
+        placeholder={lf("lastNamePlaceholder")}
         placeholderTextColor="#9ca3af"
         autoCapitalize="words"
         autoCorrect={false}
         returnKeyType="done"
-        accessibilityLabel="Legal last name"
+        accessibilityLabel={lf("lastNameLabel")}
       />
       {errors.lastName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.lastName}</Text>}
 
       <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>
-        Date of birth <Text style={{ color: "#ef4444" }}>*</Text>
+        {lf("dobLabel")} <Text style={{ color: "#ef4444" }}>*</Text>
       </Text>
       <TouchableOpacity
         onPress={() => setShowDobPicker(true)}
         style={[twStyle("rounded-xl border px-4 py-3 mb-1"), { borderColor: borderFor("dateOfBirth") }]}
         accessibilityRole="button"
-        accessibilityLabel="Select date of birth"
+        accessibilityLabel={lf("dobPlaceholder")}
       >
         <Text style={twStyle(values.dateOfBirth ? "text-base text-gray-900" : "text-base text-gray-400")}>
-          {values.dateOfBirth ? formatLegalDobDisplay(values.dateOfBirth) : "Select date of birth"}
+          {values.dateOfBirth ? formatLegalDobDisplay(values.dateOfBirth) : lf("dobPlaceholder")}
         </Text>
       </TouchableOpacity>
       {errors.dateOfBirth && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.dateOfBirth}</Text>}
@@ -135,9 +138,9 @@ export function LegalDetailsConfirmForm({
           <Pressable style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setShowDobPicker(false)}>
             <Pressable style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24 }} onPress={(e) => e.stopPropagation()}>
               <View style={twStyle("flex-row items-center justify-between px-4 py-3 border-b border-gray-100")}>
-                <Text style={twStyle("text-base font-semibold text-gray-900")}>Date of birth</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{lf("dobPickerTitle")}</Text>
                 <TouchableOpacity onPress={() => setShowDobPicker(false)} accessibilityRole="button">
-                  <Text style={twStyle("text-base font-semibold text-primary")}>Done</Text>
+                  <Text style={twStyle("text-base font-semibold text-primary")}>{lf("done")}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -190,17 +193,17 @@ export function LegalDetailsConfirmForm({
         onPress={onSubmit}
         style={twStyle("bg-primary rounded-full py-4 items-center mt-2")}
         accessibilityRole="button"
-        accessibilityLabel="Start verification"
+        accessibilityLabel={lf("startVerification")}
       >
-        <Text style={twStyle("text-white font-semibold text-base")}>Start verification</Text>
+        <Text style={twStyle("text-white font-semibold text-base")}>{lf("startVerification")}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onCancel}
         style={twStyle("mt-3 items-center py-2")}
         accessibilityRole="button"
-        accessibilityLabel="Cancel"
+        accessibilityLabel={lf("cancel")}
       >
-        <Text style={twStyle("text-sm text-gray-500")}>Cancel</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>{lf("cancel")}</Text>
       </TouchableOpacity>
     </View>
   );

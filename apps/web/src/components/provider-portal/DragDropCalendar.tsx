@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 
 import { format, addMinutes } from "date-fns";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import type { Appointment, AvailabilityBlockDisplay, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
 import { 
   isMangomintModeEnabled, 
@@ -145,6 +146,7 @@ export function DragDropProvider({
   locationOperatingHours,
   onReschedule,
 }: DragDropProviderProps) {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -278,8 +280,8 @@ export function DragDropProvider({
         const validation = validatePlacement(currentDrag.appointment, effectiveTarget);
 
         if (!validation.valid) {
-          setConflictError(validation.reason || "Cannot place appointment here");
-          toast.error(validation.reason || "Cannot place appointment here - conflicts detected");
+          setConflictError(validation.reason || t("web.provider.portal.dragDropCalendar.cannotPlace"));
+          toast.error(validation.reason || t("web.provider.portal.dragDropCalendar.cannotPlaceConflicts"));
         } else {
           const newStaff = teamMembers.find((m) => m.id === effectiveTarget.staffId);
           confirmation = {
@@ -287,7 +289,7 @@ export function DragDropProvider({
             newDate: effectiveTarget.date,
             newTime: snappedTime,
             newStaffId: effectiveTarget.staffId,
-            newStaffName: newStaff?.name || currentDrag.appointment.team_member_name || "Same staff",
+            newStaffName: newStaff?.name || currentDrag.appointment.team_member_name || t("web.provider.portal.dragDropCalendar.sameStaff"),
           };
         }
       }
@@ -303,7 +305,7 @@ export function DragDropProvider({
     setDragState(null);
     setDropTarget(null);
     setConflictError(null);
-  }, [teamMembers, validatePlacement, timeIncrement]);
+  }, [teamMembers, validatePlacement, timeIncrement, t]);
 
   const confirmReschedule = useCallback(async () => {
     if (!rescheduleConfirmation) return;
@@ -327,12 +329,12 @@ export function DragDropProvider({
       const message =
         error instanceof Error && error.message
           ? error.message
-          : "Couldn't reschedule this booking. Please try a different time.";
+          : t("web.provider.portal.dragDropCalendar.rescheduleFailed");
       toast.error(message);
     } finally {
       setIsRescheduling(false);
     }
-  }, [rescheduleConfirmation, onReschedule]);
+  }, [rescheduleConfirmation, onReschedule, t]);
 
   const cancelReschedule = useCallback(() => {
     setRescheduleConfirmation(null);
@@ -383,7 +385,7 @@ export function DragDropProvider({
       });
       
       if (!validation.valid) {
-        toast.error(validation.reason || "Cannot move to this slot");
+        toast.error(validation.reason || t("web.provider.portal.dragDropCalendar.cannotMove"));
         return;
       }
     }
@@ -396,13 +398,13 @@ export function DragDropProvider({
         newTime,
         newStaffId
       ).then(() => {
-        toast.success("Appointment moved");
+        toast.success(t("web.provider.portal.dragDropCalendar.appointmentMoved"));
       }).catch((error) => {
         console.error("Failed to move appointment:", error);
-        toast.error("Failed to move appointment");
+        toast.error(t("web.provider.portal.dragDropCalendar.moveFailed"));
       });
     }
-  }, [focusedAppointmentId, allAppointments, teamMembers, enableConflictValidation, onReschedule, timeIncrement]);
+  }, [focusedAppointmentId, allAppointments, teamMembers, enableConflictValidation, onReschedule, timeIncrement, t]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -437,9 +439,7 @@ export function DragDropProvider({
 
   const formatTime12h = (time: string) => {
     const { hour, minute } = parseTimeParts(time);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
+    return format(new Date(2000, 0, 1, hour, minute), "h:mm a");
   };
 
   const formatDate = (dateStr: string) => {
@@ -476,9 +476,9 @@ export function DragDropProvider({
       <Dialog open={!!rescheduleConfirmation} onOpenChange={() => cancelReschedule()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm Reschedule</DialogTitle>
+            <DialogTitle>{t("web.provider.portal.dragDropCalendar.confirmTitle")}</DialogTitle>
             <DialogDescription>
-              Review the changes before confirming.
+              {t("web.provider.portal.dragDropCalendar.confirmDescription")}
             </DialogDescription>
           </DialogHeader>
 
@@ -504,7 +504,7 @@ export function DragDropProvider({
                 {/* Date Change */}
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <p className="text-xs text-gray-500 mb-1">From</p>
+                    <p className="text-xs text-gray-500 mb-1">{t("web.provider.portal.dragDropCalendar.from")}</p>
                     <p className="font-medium">
                       {formatDate(rescheduleConfirmation.appointment.scheduled_date)}
                     </p>
@@ -519,8 +519,8 @@ export function DragDropProvider({
                     </p>
                   </div>
                   <ArrowRight className="w-5 h-5 text-gray-400" />
-                  <div className="flex-1 text-right">
-                    <p className="text-xs text-gray-500 mb-1">To</p>
+                  <div className="flex-1 text-end">
+                    <p className="text-xs text-gray-500 mb-1">{t("web.provider.portal.dragDropCalendar.to")}</p>
                     <p className="font-medium text-primary">
                       {formatDate(rescheduleConfirmation.newDate)}
                     </p>
@@ -543,7 +543,7 @@ export function DragDropProvider({
                     <User className="w-5 h-5 text-blue-600" />
                     <div className="flex-1">
                       <p className="text-sm text-blue-600">
-                        Assigned to: <span className="font-semibold">{rescheduleConfirmation.newStaffName}</span>
+                        {t("web.provider.portal.dragDropCalendar.assignedTo", { name: rescheduleConfirmation.newStaffName })}
                       </p>
                     </div>
                   </div>
@@ -554,7 +554,7 @@ export function DragDropProvider({
               <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800">
-                  The client will be notified about this schedule change.
+                  {t("web.provider.portal.dragDropCalendar.clientNotified")}
                 </p>
               </div>
             </div>
@@ -562,14 +562,14 @@ export function DragDropProvider({
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={cancelReschedule}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={confirmReschedule}
               disabled={isRescheduling}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isRescheduling ? "Rescheduling..." : "Confirm Reschedule"}
+              {isRescheduling ? t("web.provider.portal.dragDropCalendar.rescheduling") : t("web.provider.portal.dragDropCalendar.confirmReschedule")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -630,6 +630,7 @@ export function DraggableAppointment({
     focusedAppointmentId,
     setFocusedAppointmentId,
   } = useDragDrop();
+  const { t } = useTranslation();
   const isDraggingThis = isDragging && dragState?.appointment.id === appointment.id;
   const isFocused = focusedAppointmentId === appointment.id;
 
@@ -766,14 +767,18 @@ export function DraggableAppointment({
         isFocused && "ring-2 ring-primary ring-offset-1",
         className
       )}
-      aria-label={`Appointment: ${appointment.client_name} for ${appointment.service_name} at ${appointment.scheduled_time}`}
+      aria-label={t("web.provider.portal.dragDropCalendar.appointmentAria", {
+        client: appointment.client_name,
+        service: appointment.service_name,
+        time: appointment.scheduled_time,
+      })}
     >
       {children}
       
       {/* Keyboard navigation hint */}
       {isFocused && enableKeyboardNav && (
         <div className="absolute -bottom-6 left-0 right-0 text-[10px] text-center text-gray-400 whitespace-nowrap z-50 pointer-events-none">
-          Use arrow keys to move • Esc to deselect
+          {t("web.provider.portal.dragDropCalendar.keyboardHint")}
         </div>
       )}
     </div>
@@ -799,6 +804,7 @@ export function DroppableTimeSlot({
   style,
 }: DroppableTimeSlotProps) {
   const { isDragging, updateDropTarget, dropTarget, validationState, snapTime } = useDragDrop();
+  const { t } = useTranslation();
   const [_isOver, setIsOver] = useState(false);
 
   const isCurrentDropTarget =
@@ -880,7 +886,7 @@ export function DroppableTimeSlot({
         <div className="absolute top-1 left-1 right-1 z-50 pointer-events-none">
           <div className="bg-red-600 text-white text-xs px-2 py-1 rounded shadow-lg flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
-            <span className="truncate">{validationState.reason || "Cannot place here"}</span>
+            <span className="truncate">{validationState.reason || t("web.provider.portal.dragDropCalendar.cannotPlaceHere")}</span>
           </div>
         </div>
       )}
@@ -905,6 +911,7 @@ interface DragIndicatorProps {
 }
 
 export function DragIndicator({ time, duration, className }: DragIndicatorProps) {
+  const { t } = useTranslation();
   const parseTimeParts = (timeStr?: string): { hour: number; minute: number } => {
     if (typeof timeStr !== "string") return { hour: 0, minute: 0 };
     const [hourRaw, minuteRaw] = timeStr.split(":").map(Number);
@@ -916,9 +923,7 @@ export function DragIndicator({ time, duration, className }: DragIndicatorProps)
 
   const formatTime12h = (timeStr: string) => {
     const { hour, minute } = parseTimeParts(timeStr);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
+    return format(new Date(2000, 0, 1, hour, minute), "h:mm a");
   };
 
   return (
@@ -935,7 +940,7 @@ export function DragIndicator({ time, duration, className }: DragIndicatorProps)
         <p className="text-xs font-medium text-primary">
           {formatTime12h(time)}
         </p>
-        <p className="text-[10px] text-primary/70">{duration} min</p>
+        <p className="text-[10px] text-primary/70">{t("web.provider.portal.dragDropCalendar.durationMin", { count: duration })}</p>
       </div>
     </div>
   );
@@ -957,6 +962,7 @@ export function DragGhostOverlay({
   startHour = 8 
 }: DragGhostOverlayProps) {
   const { isDragging, dragState, dropTarget, validationState, snapTime } = useDragDrop();
+  const { t } = useTranslation();
 
   if (!isDragging || !dragState || !dropTarget) {
     return null;
@@ -980,9 +986,7 @@ export function DragGhostOverlay({
 
   const formatTime12h = (timeStr: string) => {
     const { hour: h, minute: m } = parseTimeParts(timeStr);
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hour12 = h % 12 || 12;
-    return `${hour12}:${m.toString().padStart(2, "0")} ${ampm}`;
+    return format(new Date(2000, 0, 1, h, m), "h:mm a");
   };
 
   const isValid = validationState?.valid ?? true;
@@ -1020,7 +1024,10 @@ export function DragGhostOverlay({
         "text-[10px]",
         isValid ? "text-green-600" : "text-red-600"
       )}>
-        {formatTime12h(displayTime)} • {appointment.duration_minutes}min
+        {t("web.provider.portal.dragDropCalendar.timeDuration", {
+          time: formatTime12h(displayTime),
+          minutes: appointment.duration_minutes,
+        })}
       </span>
       {!isValid && validationState?.reason && (
         <span className="text-[9px] text-red-600 mt-1 truncate">

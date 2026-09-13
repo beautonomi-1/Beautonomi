@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -53,6 +55,7 @@ interface ProfileData {
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation();
   const refreshIdentify = useRefreshAmplitudeIdentify("provider");
   const [formData, setFormData] = useState<ProfileData>({
     email: "",
@@ -126,7 +129,7 @@ export default function ProfilePage() {
       };
     } catch (error) {
       console.error("Error loading profile:", error);
-      toast.error("Failed to load profile");
+      toast.error(t("web.provider.pages.account/profile.failedToLoadProfile"));
     } finally {
       setIsLoading(false);
     }
@@ -137,14 +140,14 @@ export default function ProfilePage() {
     if (!file) return;
 
     if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-      toast.error("Invalid file type. Only JPEG, PNG, and WebP are allowed.");
+      toast.error(t("web.provider.settings.pages.gallery.invalidFileTypeOnlyJpegPng"));
       return;
     }
     
     // Check file size (2MB max for profile pictures)
     const maxSize = 2 * 1024 * 1024; // 2MB
     if (!validateFileSize(file, maxSize)) {
-      toast.error("File too large. Maximum size is 2MB.");
+      toast.error(t("web.provider.pages.account/profile.fileTooLarge2mb"));
       return;
     }
 
@@ -172,7 +175,7 @@ export default function ProfilePage() {
       const userId = userResponse.data?.id;
 
       if (!userId) {
-        throw new Error("User ID not found");
+        throw new Error(t("web.provider.pages.account/profile.userIdNotFound"));
       }
 
       // Compress image if needed (skip for files < 2MB)
@@ -199,7 +202,7 @@ export default function ProfilePage() {
       // Upload avatar with timeout
       const uploadPromise = uploadAvatar(userId, fileToUpload);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Upload timeout - please try again")), 30000)
+        setTimeout(() => reject(new Error(t("web.provider.pages.account/profile.uploadTimeout"))), 30000)
       );
       
       const result = await Promise.race([uploadPromise, timeoutPromise]) as Awaited<ReturnType<typeof uploadAvatar>>;
@@ -221,12 +224,12 @@ export default function ProfilePage() {
         }
       }).catch((error) => {
         console.error("Failed to save avatar to database:", error);
-        toast.error("Uploaded but failed to save. Please refresh the page.");
+        toast.error(t("web.provider.pages.account/profile.uploadedButFailedToSave"));
         // Reload profile to get correct state
         loadProfile();
       });
 
-      toast.success("Profile picture updated successfully");
+      toast.success(t("web.provider.pages.account/profile.pictureUpdated"));
 
       // Reset input
       if (fileInputRef.current) {
@@ -239,7 +242,7 @@ export default function ProfilePage() {
         stack: error instanceof Error ? error.stack : undefined,
       });
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to upload profile picture";
+        error instanceof Error ? error.message : t("web.provider.pages.account/profile.failedToUploadPicture");
       toast.error(`Profile picture upload failed: ${errorMessage}. Please check console for details.`);
       // Revert optimistic update on error
       setAvatarPreview(null);
@@ -253,7 +256,7 @@ export default function ProfilePage() {
   const handleSave = async () => {
     const trimmedPhone = formData.phone?.trim() || "";
     if (trimmedPhone && !isCompleteE164(trimmedPhone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.pages.account/profile.enterValidPhone"));
       return;
     }
 
@@ -267,7 +270,7 @@ export default function ProfilePage() {
 
     if (emailChanged) {
       if (!isMailableEmail(trimmedEmail)) {
-        toast.error("Enter a valid email address.");
+        toast.error(t("web.provider.pages.account/profile.enterValidEmail"));
         return;
       }
       try {
@@ -278,9 +281,9 @@ export default function ProfilePage() {
         setPendingEmail(trimmedEmail);
         setEmailOtp("");
         setEmailOtpOpen(true);
-        toast.success("Verification code sent to your email.");
+        toast.success(t("web.provider.pages.account/profile.codeSentEmail"));
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+        toast.error(error instanceof Error ? error.message : t("web.provider.pages.account/profile.failedToSendCode"));
       } finally {
         setIsSaving(false);
       }
@@ -297,9 +300,9 @@ export default function ProfilePage() {
         setPendingPhone(normalized);
         setPhoneOtp("");
         setPhoneOtpOpen(true);
-        toast.success("Verification code sent to your phone.");
+        toast.success(t("web.provider.pages.account/profile.codeSentPhone"));
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+        toast.error(error instanceof Error ? error.message : t("web.provider.pages.account/profile.failedToSendCode"));
       } finally {
         setIsSaving(false);
       }
@@ -317,7 +320,7 @@ export default function ProfilePage() {
         ...(addressToSend && { address: addressToSend }),
       });
 
-      toast.success("Profile updated successfully");
+      toast.success(t("web.provider.pages.account/profile.profileUpdated"));
       await loadProfile();
       refreshIdentify();
     } catch (error) {
@@ -325,7 +328,7 @@ export default function ProfilePage() {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to update profile. Please try again.";
+          : t("web.provider.pages.account/profile.failedToUpdate");
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);
@@ -346,10 +349,10 @@ export default function ProfilePage() {
       if (error) throw error;
       await fetcher.post("/api/me/email/verify", { email: pendingEmail });
       setEmailOtpOpen(false);
-      toast.success("Email address updated successfully.");
+      toast.success(t("web.provider.pages.account/profile.emailUpdated"));
       await loadProfile();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Verification failed");
+      toast.error(error instanceof Error ? error.message : t("web.provider.pages.account/profile.verificationFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -369,10 +372,10 @@ export default function ProfilePage() {
       if (error) throw error;
       await fetcher.patch("/api/me/profile", { phone: pendingPhone });
       setPhoneOtpOpen(false);
-      toast.success("Phone number updated successfully.");
+      toast.success(t("web.provider.pages.account/profile.phoneUpdated"));
       await loadProfile();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Verification failed");
+      toast.error(error instanceof Error ? error.message : t("web.provider.pages.account/profile.verificationFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -394,29 +397,29 @@ export default function ProfilePage() {
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Profile"
-        subtitle="Manage your personal information"
+        title={t("web.provider.breadcrumb.profile")}
+        subtitle={t("web.provider.pages.account/profile.managePersonalInfo")}
       >
-        <LoadingTimeout loadingMessage="Loading profile..." />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.account/profile.loadingProfile")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Profile"
-      subtitle="Manage your personal information"
+      title={t("web.provider.breadcrumb.profile")}
+      subtitle={t("web.provider.pages.account/profile.managePersonalInfo")}
       onSave={handleSave}
       saveDisabled={isSaving}
       isSaving={isSaving}
     >
       {/* Profile Picture */}
-      <SectionCard title="Profile Picture">
+      <SectionCard title={t("web.provider.pages.account/profile.profilePicture")}>
         <div className="flex items-center gap-6">
           <Avatar className="w-24 h-24">
             <AvatarImage 
               src={avatarPreview || formData.avatar_url || ""} 
-              alt="Profile" 
+              alt={t("web.provider.pages.account/profile.profileAlt")} 
               onError={(_e) => {
                 console.error("Failed to load avatar:", avatarPreview || formData.avatar_url);
                 // Don't set a fallback src, let AvatarFallback handle it
@@ -442,26 +445,26 @@ export default function ProfilePage() {
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Uploading...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                  {t("web.provider.settings.pages.gallery.uploading")}
                 </>
               ) : (
                 <>
-                  <Camera className="w-4 h-4 mr-2" />
-                  Upload Photo
+                  <Camera className="w-4 h-4 me-2" />
+                  {t("web.provider.pages.account/profile.uploadPhoto")}
                 </>
               )}
             </Button>
-            <p className="text-xs text-gray-500 mt-2">JPG, PNG or GIF. Max size 2MB</p>
+            <p className="text-xs text-gray-500 mt-2">{t("web.provider.pages.account/profile.jpgPngGifMax")}</p>
           </div>
         </div>
       </SectionCard>
 
       {/* Personal Info */}
-      <SectionCard title="Personal Information">
+      <SectionCard title={t("web.provider.pages.account/profile.personalInformation")}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("web.provider.common.email")}</Label>
             <Input
               id="email"
               type="email"
@@ -472,20 +475,20 @@ export default function ProfilePage() {
           <div>
             <PhoneInput
               inputId="provider-account-profile-phone"
-              label="Phone"
+              label={t("web.provider.common.phone")}
               value={formData.phone}
               onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-              placeholder="Phone number"
+              placeholder={t("web.provider.settings.pages.locations.phoneNumber")}
             />
           </div>
         </div>
       </SectionCard>
 
       {/* Address */}
-      <SectionCard title="Address">
+      <SectionCard title={t("web.provider.pages.account/profile.address")}>
         <div className="space-y-4">
           <div>
-            <Label htmlFor="provider-profile-address">Address</Label>
+            <Label htmlFor="provider-profile-address">{t("web.provider.pages.account/profile.address")}</Label>
             <AddressAutocomplete
               inputId="provider-profile-address"
               value={formData.address?.line1 || ""}
@@ -516,17 +519,17 @@ export default function ProfilePage() {
                   } as any,
                 });
               }}
-              placeholder="Start typing your address..."
+              placeholder={t("web.provider.pages.account/profile.startTypingAddress")}
               country={formData.address?.country?.length === 2 ? formData.address.country : "ZA"}
             />
             <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setMapPickerOpen(true)}>
-              <MapPin className="w-4 h-4 mr-2" />
-              Drop pin on map
+              <MapPin className="w-4 h-4 me-2" />
+              {t("web.provider.pages.account/profile.dropPinOnMap")}
             </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="country">Country</Label>
+              <Label htmlFor="country">{t("web.provider.pages.account/profile.country")}</Label>
               <Input
                 id="country"
                 value={formData.address?.country || ""}
@@ -544,7 +547,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <Label htmlFor="state">State/Province</Label>
+              <Label htmlFor="state">{t("web.provider.pages.account/profile.stateProvince")}</Label>
               <Input
                 id="state"
                 value={formData.address?.state || ""}
@@ -562,7 +565,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="city">{t("web.provider.pages.account/profile.city")}</Label>
               <Input
                 id="city"
                 value={formData.address?.city || ""}
@@ -580,7 +583,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <Label htmlFor="zipcode">Zip/Postal Code</Label>
+              <Label htmlFor="zipcode">{t("web.provider.pages.account/profile.zipPostalCode")}</Label>
               <Input
                 id="zipcode"
                 value={formData.address?.postal_code || ""}
@@ -602,24 +605,24 @@ export default function ProfilePage() {
       </SectionCard>
 
       {/* Plan */}
-      <SectionCard title="Plan">
+      <SectionCard title={t("web.provider.pages.account/profile.plan")}>
         <div>
-          <Label htmlFor="plan">Current Plan</Label>
+          <Label htmlFor="plan">{t("web.provider.pages.account/profile.currentPlan")}</Label>
           <Input
             id="plan"
-            value={formData.plan || "Free"}
+            value={formData.plan || t("web.provider.pages.account/profile.free")}
             readOnly
             className="bg-gray-50"
           />
           <div className="flex items-center gap-2 mt-2">
-            <p className="text-xs text-gray-500">Manage your plan under Subscription.</p>
+            <p className="text-xs text-gray-500">{t("web.provider.pages.account/profile.managePlanUnderSubscription")}</p>
             <Button
               variant="link"
               size="sm"
               className="h-auto p-0 text-xs text-primary"
               onClick={() => window.location.assign("/provider/subscription")}
             >
-              View plans
+              {t("web.provider.pages.account/profile.viewPlans")}
             </Button>
           </div>
         </div>
@@ -648,9 +651,9 @@ export default function ProfilePage() {
       <Dialog open={emailOtpOpen} onOpenChange={setEmailOtpOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Verify email</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.account/profile.verifyEmail")}</DialogTitle>
             <DialogDescription>
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmail}.
+              {t("web.provider.pages.account/profile.enterCodeSentTo", { count: SUPABASE_AUTH_OTP_LENGTH, target: pendingEmail })}
             </DialogDescription>
           </DialogHeader>
           <OtpDigitInput
@@ -663,20 +666,20 @@ export default function ProfilePage() {
             }}
             disabled={isSaving}
             autoFocus
-            label="Email verification code"
+            label={t("web.provider.pages.account/profile.emailVerificationCode")}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEmailOtpOpen(false)}>Cancel</Button>
-            <Button onClick={() => void verifyEmailOtp()} disabled={isSaving}>Verify & save</Button>
+            <Button variant="outline" onClick={() => setEmailOtpOpen(false)}>{t("web.provider.common.cancel")}</Button>
+            <Button onClick={() => void verifyEmailOtp()} disabled={isSaving}>{t("web.provider.pages.account/profile.verifyAndSave")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={phoneOtpOpen} onOpenChange={setPhoneOtpOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Verify phone</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.account/profile.verifyPhone")}</DialogTitle>
             <DialogDescription>
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingPhone}.
+              {t("web.provider.pages.account/profile.enterCodeSentTo", { count: SUPABASE_AUTH_OTP_LENGTH, target: pendingPhone })}
             </DialogDescription>
           </DialogHeader>
           <OtpDigitInput
@@ -689,11 +692,11 @@ export default function ProfilePage() {
             }}
             disabled={isSaving}
             autoFocus
-            label="Phone verification code"
+            label={t("web.provider.pages.account/profile.phoneVerificationCode")}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPhoneOtpOpen(false)}>Cancel</Button>
-            <Button onClick={() => void verifyPhoneOtp()} disabled={isSaving}>Verify & save</Button>
+            <Button variant="outline" onClick={() => setPhoneOtpOpen(false)}>{t("web.provider.common.cancel")}</Button>
+            <Button onClick={() => void verifyPhoneOtp()} disabled={isSaving}>{t("web.provider.pages.account/profile.verifyAndSave")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

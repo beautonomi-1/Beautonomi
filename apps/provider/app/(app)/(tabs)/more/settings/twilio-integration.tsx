@@ -23,6 +23,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface TwilioIntegration {
   id?: string;
@@ -81,14 +82,23 @@ const EMPTY_FORM: Form = {
   whatsappEnabled: false,
 };
 
-function templateTypeLabel(type: string) {
+function templateTypeLabel(type: string, ti: (key: string) => string) {
   switch (type) {
-    case "booking_confirmation": return "Booking Confirmation";
-    case "booking_reminder": return "Booking Reminder";
-    case "cancellation": return "Cancellation";
-    case "follow_up": return "Follow Up";
-    case "custom": return "Custom";
+    case "booking_confirmation": return ti("typeBookingConfirmation");
+    case "booking_reminder": return ti("typeBookingReminder");
+    case "cancellation": return ti("typeCancellation");
+    case "follow_up": return ti("typeFollowUp");
+    case "custom": return ti("typeCustom");
     default: return type;
+  }
+}
+
+function templateChannelLabel(channel: string, ti: (key: string) => string) {
+  switch (channel) {
+    case "sms": return ti("channelSms");
+    case "whatsapp": return ti("channelWhatsapp");
+    case "both": return ti("channelBoth");
+    default: return channel;
   }
 }
 
@@ -102,14 +112,17 @@ function templateTypeIcon(type: string): { icon: keyof typeof Ionicons.glyphMap;
   }
 }
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, fallback: string): string {
+  if (typeof value !== "string" || !value) return fallback;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return fallback;
   return parsed.toLocaleDateString();
 }
 
 export default function TwilioIntegrationScreen() {
+  const { t } = useTranslation();
+  const ti = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.twilioIntegration.${key}`, opts) as string;
   const router = useRouter();
   const [form, setForm] = useState<Form>(EMPTY_FORM);
   const [dirty, setDirty] = useState(false);
@@ -150,17 +163,17 @@ export default function TwilioIntegrationScreen() {
 
   async function handleSave() {
     if (!form.accountSid || (form.accountSid === "••••••••" ? !integration?.account_sid : false)) {
-      Alert.alert("Required", "Account SID is required");
+      Alert.alert(ti("requiredTitle"), ti("accountSidRequired"));
       return;
     }
     const smsErr = form.smsFrom.trim() ? validateE164Phone(form.smsFrom.trim()) : null;
     if (smsErr) {
-      Alert.alert("SMS number", smsErr);
+      Alert.alert(ti("smsNumberTitle"), smsErr);
       return;
     }
     const waErr = form.whatsappFrom.trim() ? validateE164Phone(form.whatsappFrom.trim()) : null;
     if (waErr) {
-      Alert.alert("WhatsApp number", waErr);
+      Alert.alert(ti("whatsappNumberTitle"), waErr);
       return;
     }
     const payload = {
@@ -173,7 +186,7 @@ export default function TwilioIntegrationScreen() {
     };
     const { error, errorCode } = await saveConfig("/api/provider/twilio-integration", payload);
     if (error) {
-      showPlanGateAlert({ title: "Could not save", message: error, errorCode, router });
+      showPlanGateAlert({ title: ti("couldNotSave"), message: error, errorCode, router });
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -184,23 +197,23 @@ export default function TwilioIntegrationScreen() {
   async function handleTest(channel: "sms" | "whatsapp") {
     const tp = testPhone.trim();
     if (!tp) {
-      Alert.alert("Required", "Enter a phone number to test");
+      Alert.alert(ti("requiredTitle"), ti("enterTestPhone"));
       return;
     }
     const testErr = validateE164Phone(tp);
     if (testErr) {
-      Alert.alert("Invalid number", testErr);
+      Alert.alert(ti("invalidNumber"), testErr);
       return;
     }
     setTestingChannel(channel);
     const { error } = await sendTest({ test_phone: tp, channel });
     setTestingChannel(null);
     if (error) {
-      Alert.alert("Test Failed", error);
+      Alert.alert(ti("testFailed"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Success", `Test ${channel.toUpperCase()} sent!`);
+    Alert.alert(ti("successTitle"), ti("testSent", { channel: channel.toUpperCase() }));
     refresh();
   }
 
@@ -210,7 +223,7 @@ export default function TwilioIntegrationScreen() {
       { enabled: !template.enabled }
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ti("errorTitle"), error);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -224,7 +237,7 @@ export default function TwilioIntegrationScreen() {
       { template: templateText.trim() }
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ti("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -235,21 +248,21 @@ export default function TwilioIntegrationScreen() {
   if (loading)
     return (
       <ScreenContainer>
-        <ScreenHeader title="SMS & WhatsApp" showBack />
-        <LoadingState message="Loading integration..." />
+        <ScreenHeader title={ti("title")} showBack />
+        <LoadingState message={ti("loading")} />
       </ScreenContainer>
     );
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="SMS & WhatsApp" showBack subtitle="Twilio Integration" />
+      <ScreenHeader title={ti("title")} showBack subtitle={ti("subtitle")} />
 
       {/* Connection status */}
       {integration?.connected_date && (
         <View style={twStyle("mb-4 flex-row items-center rounded-lg bg-green-50 px-3 py-2")}>
           <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
-          <Text style={twStyle("ml-2 text-xs text-green-700")}>
-            Connected since {formatDateSafe(integration.connected_date)}
+          <Text style={twStyle("ms-2 text-xs text-green-700")}>
+            {ti("connectedSince", { date: formatDateSafe(integration.connected_date, ti("dateUnavailable")) })}
           </Text>
         </View>
       )}
@@ -259,16 +272,16 @@ export default function TwilioIntegrationScreen() {
         <View style={twStyle("mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4")}>
           <View style={twStyle("flex-row items-center justify-between")}>
             <View>
-              <Text style={twStyle("text-xs text-blue-600")}>Account Balance</Text>
+              <Text style={twStyle("text-xs text-blue-600")}>{ti("accountBalance")}</Text>
               <Text style={twStyle("text-xl font-bold text-blue-700")}>
-                ${balanceInfo.balance.toFixed(2)} {balanceInfo.currency}
+                {ti("balanceValue", { amount: balanceInfo.balance.toFixed(2), currency: balanceInfo.currency })}
               </Text>
             </View>
             {balanceInfo.estimatedMessagesRemaining != null && (
               <View style={twStyle("items-end")}>
-                <Text style={twStyle("text-xs text-blue-600")}>Est. messages</Text>
+                <Text style={twStyle("text-xs text-blue-600")}>{ti("estMessages")}</Text>
                 <Text style={twStyle("text-lg font-bold text-blue-700")}>
-                  ~{balanceInfo.estimatedMessagesRemaining.toLocaleString()}
+                  {ti("estMessagesValue", { count: balanceInfo.estimatedMessagesRemaining.toLocaleString() })}
                 </Text>
               </View>
             )}
@@ -279,11 +292,11 @@ export default function TwilioIntegrationScreen() {
       {/* Message stats */}
       {messageStats && integration?.id && (
         <>
-          <SectionHeader title="Message Stats" />
+          <SectionHeader title={ti("messageStats")} />
           <View style={twStyle("mb-4 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
               <StatCard
-                title="SMS Today"
+                title={ti("smsToday")}
                 value={String(messageStats.sms_sent_today)}
                 icon="chatbubble-outline"
                 iconColor="#6366f1"
@@ -291,9 +304,9 @@ export default function TwilioIntegrationScreen() {
                 compact
               />
             </View>
-            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
               <StatCard
-                title="WA Today"
+                title={ti("waToday")}
                 value={String(messageStats.whatsapp_sent_today)}
                 icon="logo-whatsapp"
                 iconColor="#22c55e"
@@ -303,8 +316,8 @@ export default function TwilioIntegrationScreen() {
             </View>
             <View style={twStyle("flex-1")}>
               <StatCard
-                title="Delivery"
-                value={`${messageStats.delivery_rate}%`}
+                title={ti("delivery")}
+                value={ti("deliveryRate", { rate: messageStats.delivery_rate })}
                 icon="checkmark-done-outline"
                 iconColor="#3b82f6"
                 iconBg="bg-blue-50"
@@ -313,12 +326,12 @@ export default function TwilioIntegrationScreen() {
             </View>
           </View>
           <View style={twStyle("mb-4 flex-row rounded-xl bg-gray-50 p-3")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("text-[10px] text-gray-500")}>SMS this month</Text>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+              <Text style={twStyle("text-[10px] text-gray-500")}>{ti("smsThisMonth")}</Text>
               <Text style={twStyle("text-sm font-bold text-gray-900")}>{messageStats.sms_sent_month}</Text>
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-[10px] text-gray-500")}>WA this month</Text>
+              <Text style={twStyle("text-[10px] text-gray-500")}>{ti("waThisMonth")}</Text>
               <Text style={twStyle("text-sm font-bold text-gray-900")}>{messageStats.whatsapp_sent_month}</Text>
             </View>
           </View>
@@ -326,24 +339,24 @@ export default function TwilioIntegrationScreen() {
       )}
 
       {/* Credentials */}
-      <SectionHeader title="Credentials" />
+      <SectionHeader title={ti("credentials")} />
       <View style={twStyle("mb-5")}>
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Account SID</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ti("accountSid")}</Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={form.accountSid}
           onChangeText={(t) => update("accountSid", t)}
-          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          placeholder={ti("accountSidPlaceholder")}
           placeholderTextColor="#9ca3af"
           autoCapitalize="none"
         />
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Auth Token</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ti("authToken")}</Text>
         <TextInput
           style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={form.authToken}
           onChangeText={(t) => update("authToken", t)}
-          placeholder="Auth token"
+          placeholder={ti("authTokenPlaceholder")}
           placeholderTextColor="#9ca3af"
           secureTextEntry
           autoCapitalize="none"
@@ -351,10 +364,10 @@ export default function TwilioIntegrationScreen() {
       </View>
 
       {/* SMS */}
-      <SectionHeader title="SMS" />
+      <SectionHeader title={ti("sms")} />
       <View style={twStyle("mb-5")}>
         <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable SMS</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-900")}>{ti("enableSms")}</Text>
           <Switch
             value={form.smsEnabled}
             onValueChange={(v) => update("smsEnabled", v)}
@@ -364,12 +377,12 @@ export default function TwilioIntegrationScreen() {
         </View>
         {form.smsEnabled && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>SMS From Number</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ti("smsFromNumber")}</Text>
             <TextInput
               style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={form.smsFrom}
               onChangeText={(t) => update("smsFrom", t)}
-              placeholder="+27..."
+              placeholder={ti("smsFromPlaceholder")}
               placeholderTextColor="#9ca3af"
               keyboardType="phone-pad"
             />
@@ -378,10 +391,10 @@ export default function TwilioIntegrationScreen() {
       </View>
 
       {/* WhatsApp */}
-      <SectionHeader title="WhatsApp" />
+      <SectionHeader title={ti("whatsapp")} />
       <View style={twStyle("mb-5")}>
         <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable WhatsApp</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-900")}>{ti("enableWhatsapp")}</Text>
           <Switch
             value={form.whatsappEnabled}
             onValueChange={(v) => update("whatsappEnabled", v)}
@@ -391,17 +404,17 @@ export default function TwilioIntegrationScreen() {
         </View>
         {form.whatsappEnabled && (
           <E164PhoneField
-            label="WhatsApp From Number"
+            label={ti("whatsappFromNumber")}
             valueE164={form.whatsappFrom}
             onChangeE164={(v) => update("whatsappFrom", v)}
-            placeholderNational="Phone number"
+            placeholderNational={ti("phoneNumberPlaceholder")}
             showHint
           />
         )}
       </View>
 
       <ActionButton
-        label="Save Configuration"
+        label={ti("saveConfiguration")}
         onPress={handleSave}
         loading={saving}
         disabled={!dirty}
@@ -411,10 +424,10 @@ export default function TwilioIntegrationScreen() {
       {/* Notification Templates */}
       {integration?.id && templates && templates.length > 0 && (
         <>
-          <SectionHeader title="Notification Templates" />
+          <SectionHeader title={ti("notificationTemplates")} />
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
             {templates.map((tmpl, idx) => {
-              const ti = templateTypeIcon(tmpl.type);
+              const typeIcon = templateTypeIcon(tmpl.type);
               return (
                 <View
                   key={tmpl.id}
@@ -422,21 +435,21 @@ export default function TwilioIntegrationScreen() {
                     idx < templates.length - 1 ? "border-b border-gray-50" : ""
                   }`)}
                 >
-                  <View style={twStyle(`h-9 w-9 items-center justify-center rounded-lg ${ti.bg}`)}>
-                    <Ionicons name={ti.icon} size={16} color={ti.color} />
+                  <View style={twStyle(`h-9 w-9 items-center justify-center rounded-lg ${typeIcon.bg}`)}>
+                    <Ionicons name={typeIcon.icon} size={16} color={typeIcon.color} />
                   </View>
                   <TouchableOpacity
-                    style={twStyle("ml-3 flex-1")}
+                    style={twStyle("ms-3 flex-1")}
                     onPress={() => {
                       setSelectedTemplate(tmpl);
                       setTemplateText(tmpl.template);
                     }}
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                      {tmpl.name || templateTypeLabel(tmpl.type)}
+                      {tmpl.name || templateTypeLabel(tmpl.type, ti)}
                     </Text>
                     <Text style={twStyle("text-[11px] text-gray-400 capitalize")}>
-                      {tmpl.channel} • {templateTypeLabel(tmpl.type)}
+                      {templateChannelLabel(tmpl.channel, ti)} • {templateTypeLabel(tmpl.type, ti)}
                     </Text>
                   </TouchableOpacity>
                   <Switch
@@ -455,20 +468,20 @@ export default function TwilioIntegrationScreen() {
       {/* Test section */}
       {integration?.id && (
         <View style={twStyle("mt-2")}>
-          <SectionHeader title="Test Integration" />
+          <SectionHeader title={ti("testIntegration")} />
           <View style={twStyle("mb-3")}>
             <E164PhoneField
-              label="Test destination"
+              label={ti("testDestination")}
               valueE164={testPhone}
               onChangeE164={setTestPhone}
-              placeholderNational="Phone number"
+              placeholderNational={ti("phoneNumberPlaceholder")}
               showHint
             />
           </View>
           <View style={twStyle("flex-row")}>
             {form.smsEnabled && (
               <TouchableOpacity
-                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginRight: 12 }]}
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginEnd: 12 }]}
                 onPress={() => handleTest("sms")}
                 disabled={!!testingChannel || !testPhone.trim() || !!validateE164Phone(testPhone.trim())}
               >
@@ -477,8 +490,8 @@ export default function TwilioIntegrationScreen() {
                 ) : (
                   <Ionicons name="chatbubble-outline" size={16} color="#6366f1" />
                 )}
-                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-                  Send Test SMS
+                <Text style={twStyle("ms-2 text-sm font-medium text-indigo-700")}>
+                  {ti("sendTestSms")}
                 </Text>
               </TouchableOpacity>
             )}
@@ -493,8 +506,8 @@ export default function TwilioIntegrationScreen() {
                 ) : (
                   <Ionicons name="logo-whatsapp" size={16} color="#22c55e" />
                 )}
-                <Text style={twStyle("ml-2 text-sm font-medium text-green-700")}>
-                  Send Test WhatsApp
+                <Text style={twStyle("ms-2 text-sm font-medium text-green-700")}>
+                  {ti("sendTestWhatsapp")}
                 </Text>
               </TouchableOpacity>
             )}
@@ -508,7 +521,7 @@ export default function TwilioIntegrationScreen() {
       <BottomSheet
         visible={!!selectedTemplate}
         onClose={() => setSelectedTemplate(null)}
-        title="Edit Template"
+        title={ti("editTemplate")}
       >
         {selectedTemplate && (
           <View>
@@ -520,33 +533,32 @@ export default function TwilioIntegrationScreen() {
                   color={templateTypeIcon(selectedTemplate.type).color}
                 />
               </View>
-              <View style={twStyle("ml-3")}>
+              <View style={twStyle("ms-3")}>
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                  {selectedTemplate.name || templateTypeLabel(selectedTemplate.type)}
+                  {selectedTemplate.name || templateTypeLabel(selectedTemplate.type, ti)}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-400 capitalize")}>
-                  {selectedTemplate.channel}
+                  {templateChannelLabel(selectedTemplate.channel, ti)}
                 </Text>
               </View>
             </View>
 
             <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-              Available variables: {"{client_name}"}, {"{service_name}"}, {"{date}"},{" "}
-              {"{time}"}, {"{provider_name}"}
+              {ti("availableVariables")}
             </Text>
 
             <TextInput
               style={twStyle("mb-4 min-h-[120px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={templateText}
               onChangeText={setTemplateText}
-              placeholder="Message template..."
+              placeholder={ti("templatePlaceholder")}
               placeholderTextColor="#9ca3af"
               multiline
               textAlignVertical="top"
             />
 
             <ActionButton
-              label="Save Template"
+              label={ti("saveTemplate")}
               onPress={handleSaveTemplate}
               loading={savingTemplate}
               fullWidth

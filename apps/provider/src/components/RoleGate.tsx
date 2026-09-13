@@ -9,6 +9,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { UserRole } from "@beautonomi/types";
 import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
+import { useTranslation } from "@beautonomi/i18n";
 
 /** provider_onboarding: explicit DB role or legacy; same app access as owner/staff until onboarding completes */
 const ALLOWED_ROLES: UserRole[] = ["provider_owner", "provider_staff", "provider_onboarding"];
@@ -25,6 +26,8 @@ function isNetworkishProfileError(message: string | null): boolean {
 }
 
 export function RoleGate({ children }: RoleGateProps) {
+  const { t } = useTranslation();
+  const rg = (key: string) => t(`provider.mobile.components.roleGate.${key}`) as string;
   const router = useRouter();
   const pathname = usePathname();
   const { user, signOut } = useAuth();
@@ -94,7 +97,7 @@ export function RoleGate({ children }: RoleGateProps) {
 
   if (!user) return null;
   if (loading) {
-    return <GateLoadingScreen message="Checking access…" />;
+    return <GateLoadingScreen message={rg("checkingAccess")} />;
   }
   if (blocked) {
     const isNetwork = blockReason === "network";
@@ -102,16 +105,16 @@ export function RoleGate({ children }: RoleGateProps) {
     const canRetry = isNetwork || isVerify || (blockReason === "role" && role === "customer");
 
     const title = isNetwork
-      ? "Can't reach server"
+      ? rg("cantReachServer")
       : isVerify
-        ? "Couldn't verify access"
-        : "Provider access only";
+        ? rg("couldntVerifyAccess")
+        : rg("providerAccessOnly");
 
     const description = isNetwork
-      ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
+      ? rg("networkBody")
       : isVerify
-        ? "We couldn't refresh your provider session. This often happens after the app was in the background. Tap Retry to continue."
-        : "Your account is not set up for the provider app. Please use the customer app or contact support.";
+        ? rg("verifyBody")
+        : rg("roleBody");
 
     return (
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
@@ -119,7 +122,7 @@ export function RoleGate({ children }: RoleGateProps) {
           icon={isNetwork ? "cloud-offline-outline" : isVerify ? "refresh-outline" : "lock-closed-outline"}
           title={title}
           description={description}
-          actionLabel={canRetry ? "Retry" : "Sign out"}
+          actionLabel={canRetry ? rg("retry") : rg("signOut")}
           onAction={() => {
             if (canRetry) {
               void refresh();
@@ -133,7 +136,7 @@ export function RoleGate({ children }: RoleGateProps) {
             <TouchableOpacity
               onPress={() => handleSignOut()}
               accessibilityRole="button"
-              accessibilityLabel="Sign out"
+              accessibilityLabel={rg("signOut")}
               style={{
                 paddingHorizontal: 24,
                 paddingVertical: 10,
@@ -141,7 +144,7 @@ export function RoleGate({ children }: RoleGateProps) {
               }}
             >
               <Text style={{ color: Colors.gray[600], fontSize: 14, fontWeight: "500" }}>
-                Sign out
+                {rg("signOut")}
               </Text>
             </TouchableOpacity>
           </View>

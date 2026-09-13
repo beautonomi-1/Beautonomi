@@ -2,6 +2,8 @@
  * Collect-or-setup rule: when `payment_paycloud` is on, surfaces must show
  * PaycloudCollectButton (collect when ready/in-flight, else setup link) — never hide.
  */
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
+
 export type PaycloudCollectContext =
   | "booking"
   | "booking_addons"
@@ -13,7 +15,7 @@ export type PaycloudCollectContext =
 function formatAmount(amount: number, currency: string): string {
   const safe = Number.isFinite(amount) ? amount : 0;
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(getDefaultMoneyLocale(), {
       style: "currency",
       currency: currency || "ZAR",
       minimumFractionDigits: 2,

@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -44,6 +45,12 @@ interface StaffCommission {
 }
 
 export default function TeamCommissionsScreen() {
+  const { t } = useTranslation();
+  const tc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamCommissions.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<StaffCommission | null>(null);
   const [serviceRate, setServiceRate] = useState("");
@@ -115,8 +122,8 @@ export default function TeamCommissionsScreen() {
     value: string
   ) {
     setTiers((prev) =>
-      prev.map((t, i) =>
-        i === index ? { ...t, [field]: Number(value) || 0 } : t
+      prev.map((tier, i) =>
+        i === index ? { ...tier, [field]: Number(value) || 0 } : tier
       )
     );
   }
@@ -125,7 +132,7 @@ export default function TeamCommissionsScreen() {
     setTiers((prev) =>
       prev
         .filter((_, i) => i !== index)
-        .map((t, i) => ({ ...t, tierOrder: i }))
+        .map((tier, i) => ({ ...tier, tierOrder: i }))
     );
   }
 
@@ -137,7 +144,7 @@ export default function TeamCommissionsScreen() {
       isNaN(svc) || svc < 0 || svc > 100 ||
       isNaN(prod) || prod < 0 || prod > 100
     ) {
-      Alert.alert("Invalid", "Commission rates must be between 0 and 100%");
+      Alert.alert(tc("invalidTitle"), tc("invalidRates"));
       return;
     }
     const { error } = await saveCommission(
@@ -146,15 +153,15 @@ export default function TeamCommissionsScreen() {
         staffId: selected.staffId,
         serviceCommissionRate: svc,
         productCommissionRate: prod,
-        tiers: tiers.map((t, i) => ({
-          minRevenue: t.minRevenue,
-          commissionRate: t.commissionRate,
+        tiers: tiers.map((tier, i) => ({
+          minRevenue: tier.minRevenue,
+          commissionRate: tier.commissionRate,
           tierOrder: i,
         })),
       }
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(tc("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -171,27 +178,27 @@ export default function TeamCommissionsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Team Commissions"
+        title={tc("title")}
         showBack
-        subtitle="Commission rates per staff member"
+        subtitle={tc("subtitle")}
       />
 
       {staff && staff.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Average"
-              value={`${avgCommission}%`}
+              title={tc("statAverage")}
+              value={tc("percentValue", { value: avgCommission })}
               icon="trending-up-outline"
               iconColor="#6366f1"
               iconBg="bg-indigo-50"
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Highest"
-              value={`${maxCommission}%`}
+              title={tc("statHighest")}
+              value={tc("percentValue", { value: maxCommission })}
               icon="arrow-up-outline"
               iconColor="#22c55e"
               iconBg="bg-green-50"
@@ -200,7 +207,7 @@ export default function TeamCommissionsScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Tiered"
+              title={tc("statTiered")}
               value={String(tieredCount)}
               icon="layers-outline"
               iconColor="#f59e0b"
@@ -216,7 +223,7 @@ export default function TeamCommissionsScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search staff..."
+            placeholder={tc("searchPlaceholder")}
           />
         </View>
       )}
@@ -226,11 +233,11 @@ export default function TeamCommissionsScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="trending-up-outline"
-          title={search ? "No matches" : "No staff"}
+          title={search ? tc("emptyMatches") : tc("emptyTitle")}
           description={
             search
-              ? "Try a different search"
-              : "Add team members to configure commissions"
+              ? tc("emptyMatchesHint")
+              : tc("emptyHint")
           }
         />
       ) : (
@@ -253,7 +260,7 @@ export default function TeamCommissionsScreen() {
               >
                 <View style={twStyle("flex-row items-center")}>
                   <Avatar name={member.name} size="sm" />
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                       {member.name}
                     </Text>
@@ -265,12 +272,11 @@ export default function TeamCommissionsScreen() {
                     <Text
                       style={[twStyle("text-lg font-bold"), { color: commColor }]}
                     >
-                      {member.commissionPercentage}%
+                      {tc("percentValue", { value: member.commissionPercentage })}
                     </Text>
                     {member.tiers.length > 0 && (
                       <Text style={twStyle("text-[10px] text-gray-400")}>
-                        +{member.tiers.length} tier
-                        {member.tiers.length > 1 ? "s" : ""}
+                        {tc("tierCount", { count: member.tiers.length })}
                       </Text>
                     )}
                   </View>
@@ -293,10 +299,14 @@ export default function TeamCommissionsScreen() {
                       .map((tier: CommissionTier, idx: number) => (
                         <View
                           key={idx}
-                          style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 4, marginBottom: 4 }]}
+                          style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginEnd: 4, marginBottom: 4 }]}
                         >
                           <Text style={twStyle("text-[10px] text-gray-600")}>
-                            {`${getTenantDefaultCurrency()} ${tier.minRevenue}+ → ${tier.commissionRate}%`}
+                            {tc("tierChip", {
+                              currency: getTenantDefaultCurrency(),
+                              min: tier.minRevenue,
+                              rate: tier.commissionRate,
+                            })}
                           </Text>
                         </View>
                       ))}
@@ -311,13 +321,13 @@ export default function TeamCommissionsScreen() {
       <BottomSheet
         visible={!!selected}
         onClose={() => setSelected(null)}
-        title={`Commission: ${selected?.name ?? ""}`}
+        title={tc("sheetTitle", { name: selected?.name ?? "" })}
       >
         {selected && (
           <View>
             <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-gray-50 p-3")}>
               <Avatar name={selected.name} size="sm" />
-              <View style={twStyle("ml-3")}>
+              <View style={twStyle("ms-3")}>
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {selected.name}
                 </Text>
@@ -328,35 +338,35 @@ export default function TeamCommissionsScreen() {
             </View>
 
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Service commission (%)
+              {tc("serviceCommission")}
             </Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={serviceRate}
               onChangeText={setServiceRate}
               keyboardType="decimal-pad"
-              placeholder="0"
+              placeholder={tc("ratePlaceholder")}
               placeholderTextColor="#9ca3af"
             />
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Product commission (%)
+              {tc("productCommission")}
             </Text>
             <TextInput
               style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={productRate}
               onChangeText={setProductRate}
               keyboardType="decimal-pad"
-              placeholder="0"
+              placeholder={tc("ratePlaceholder")}
               placeholderTextColor="#9ca3af"
             />
 
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
-                Tiered Commissions
+                {tc("tieredCommissions")}
               </Text>
               <TouchableOpacity onPress={addTier}>
                 <Text style={twStyle("text-xs font-medium text-indigo-600")}>
-                  + Add Tier
+                  {tc("addTier")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -364,8 +374,7 @@ export default function TeamCommissionsScreen() {
             {tiers.length === 0 && (
               <View style={twStyle("mb-3 rounded-lg bg-gray-50 p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  No tiers configured. Add tiers to offer higher rates at
-                  revenue milestones.
+                  {tc("noTiersHint")}
                 </Text>
               </View>
             )}
@@ -375,9 +384,9 @@ export default function TeamCommissionsScreen() {
                 key={idx}
                 style={twStyle("mb-2 flex-row items-center rounded-lg border border-gray-100 bg-gray-50 p-3")}
               >
-                <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+                <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
                   <Text style={twStyle("text-[10px] text-gray-500")}>
-                    {`Min Revenue (${getTenantDefaultCurrency()})`}
+                    {tc("minRevenueLabel", { currency: getTenantDefaultCurrency() })}
                   </Text>
                   <TextInput
                     style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900")}
@@ -386,8 +395,8 @@ export default function TeamCommissionsScreen() {
                     keyboardType="decimal-pad"
                   />
                 </View>
-                <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-                  <Text style={twStyle("text-[10px] text-gray-500")}>Rate (%)</Text>
+                <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+                  <Text style={twStyle("text-[10px] text-gray-500")}>{tc("ratePercent")}</Text>
                   <TextInput
                     style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900")}
                     value={String(tier.commissionRate)}
@@ -408,7 +417,7 @@ export default function TeamCommissionsScreen() {
 
             <View style={twStyle("mt-4")}>
               <ActionButton
-                label="Save Commission"
+                label={tc("saveCommission")}
                 onPress={handleSave}
                 loading={saving}
                 fullWidth

@@ -7,6 +7,7 @@ import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Initial Service Listings Section
@@ -15,6 +16,7 @@ import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
  * Based on the selected category
  */
 const InitialListingsSection = () => {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { location: userLocation } = useUserLocation();
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
@@ -69,7 +71,7 @@ const InitialListingsSection = () => {
     return (
       <div className="mb-8 md:mb-12 mt-4 md:mt-6">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading services..." />
+          <LoadingTimeout loadingMessage={t("web.home.loadingServices")} />
         </div>
       </div>
     );

@@ -119,7 +119,7 @@ export default function CompleteProfilePage() {
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Complete Profile</h1>
               {isComplete && (
                 <Badge className="bg-green-100 text-green-700 border-green-300">
-                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  <CheckCircle2 className="w-4 h-4 me-1" />
                   Complete
                 </Badge>
               )}
@@ -161,7 +161,7 @@ export default function CompleteProfilePage() {
                   <button
                     key={item.id}
                     onClick={() => handleItemClick(item)}
-                    className="w-full text-left flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
+                    className="w-full text-start flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="text-2xl">{ITEM_ICONS[item.id] || "📋"}</span>
@@ -173,7 +173,7 @@ export default function CompleteProfilePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="ml-2 flex-shrink-0"
+                      className="ms-2 flex-shrink-0"
                     >
                       {item.completed ? "Edit" : "Start"}
                     </Button>
@@ -200,7 +200,7 @@ export default function CompleteProfilePage() {
                   <button
                     key={item.id}
                     onClick={() => handleItemClick(item)}
-                    className="w-full text-left flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
+                    className="w-full text-start flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Icon
@@ -228,7 +228,7 @@ export default function CompleteProfilePage() {
                     <Button
                       size="sm"
                       variant={item.completed ? "ghost" : "outline"}
-                      className="ml-2 flex-shrink-0"
+                      className="ms-2 flex-shrink-0"
                     >
                       {item.completed ? "Edit" : "Start"}
                     </Button>

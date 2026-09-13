@@ -32,6 +32,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
+import { useTranslation } from "@beautonomi/i18n";
 
 const BIOMETRIC_ENABLED_KEY = "provider_biometric_auth_enabled";
 const BACKGROUND_GRACE_MS = 60_000; // 60 seconds
@@ -39,6 +40,8 @@ const BACKGROUND_GRACE_MS = 60_000; // 60 seconds
 type GateStatus = "checking" | "locked" | "authenticating" | "unlocked" | "unavailable";
 
 export function BiometricGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
+  const bg = (key: string) => t(`provider.mobile.components.biometricGate.${key}`) as string;
   const { signOut } = useAuth();
   const [status, setStatus] = useState<GateStatus>("checking");
   const lastBackgroundedAtRef = useRef<number | null>(null);
@@ -59,8 +62,8 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
       }
 
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock Beautonomi",
-        cancelLabel: "Cancel",
+        promptMessage: bg("promptMessage"),
+        cancelLabel: t("common.cancel"),
         disableDeviceFallback: false,
       });
       if (result.success) {
@@ -73,7 +76,7 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
     } finally {
       promptInFlightRef.current = false;
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -175,7 +178,7 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
         <Ionicons name="lock-closed-outline" size={32} color={Colors.gray[600]} />
       </View>
       <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>
-        Beautonomi is locked
+        {bg("lockedTitle")}
       </Text>
       <Text
         style={{
@@ -186,8 +189,8 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
         }}
       >
         {status === "unavailable"
-          ? "We couldn't use biometrics on this device. Sign out and back in to continue."
-          : "Use Face ID, fingerprint, or your device passcode to unlock."}
+          ? bg("unavailableBody")
+          : bg("lockedBody")}
       </Text>
 
       {status !== "unavailable" ? (
@@ -206,12 +209,12 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
             alignItems: "center",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Unlock app"
+          accessibilityLabel={bg("unlockA11y")}
         >
           {status === "authenticating" ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Unlock</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{bg("unlock")}</Text>
           )}
         </TouchableOpacity>
       ) : null}
@@ -232,9 +235,9 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
           paddingVertical: 10,
         }}
         accessibilityRole="button"
-        accessibilityLabel="Sign out"
+        accessibilityLabel={t("common.signOut")}
       >
-        <Text style={{ color: Colors.gray[500], fontSize: 14 }}>Sign out</Text>
+        <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{t("common.signOut")}</Text>
       </TouchableOpacity>
     </View>
   );

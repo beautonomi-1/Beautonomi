@@ -49,6 +49,7 @@ import { formatApiErrorMessage, isLikelyUuid, subscriptionUpgradeHint } from "@/
 import { FetchError } from "@/lib/http/fetcher";
 import { useRouter } from "next/navigation";
 import { AddClientDialog } from "@/components/provider-portal/AddClientDialog";
+import { useTranslation } from "@beautonomi/i18n";
 
 /* ─────────────────────────────────────────────────────────── */
 /*  Types                                                      */
@@ -120,6 +121,7 @@ export function AppointmentDialog({
   onSuccess,
   onCheckout,
 }: AppointmentDialogProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { format: formatMoney } = useProviderMoneyFormat();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -288,7 +290,7 @@ export function AppointmentDialog({
         appt.cart_items.map((ci: any) => ({
           id: ci.id || `${ci.type}-${ci.service_id || ci.product_id}-${Date.now()}`,
           type: ci.type as "service" | "product",
-          name: ci.name || "Item",
+          name: ci.name || t("web.provider.portal.appointmentDialog.itemFallback"),
           quantity: ci.quantity || 1,
           unit_price: ci.unit_price || 0,
           total: ci.total || 0,
@@ -312,7 +314,7 @@ export function AppointmentDialog({
           items.push({
             id: `service-${bs.offering_id || bs.service_id || i}-${Date.now()}`,
             type: "service",
-            name: bs.offering_name || bs.service_name || "Service",
+            name: bs.offering_name || bs.service_name || t("web.provider.portal.appointmentDialog.serviceFallback"),
             quantity: bs.quantity || 1,
             unit_price: bs.price || 0,
             total: (bs.quantity || 1) * (bs.price || 0),
@@ -325,7 +327,7 @@ export function AppointmentDialog({
           items.push({
             id: `product-${bp.product_id || i}-${Date.now()}`,
             type: "product",
-            name: bp.product_name || bp.name || "Product",
+            name: bp.product_name || bp.name || t("web.provider.portal.appointmentDialog.productFallback"),
             quantity: bp.quantity || 1,
             unit_price: bp.unit_price || bp.retail_price || 0,
             total: (bp.quantity || 1) * (bp.unit_price || bp.retail_price || 0),
@@ -347,7 +349,7 @@ export function AppointmentDialog({
       {
         id: `service-${appt.service_id}-fallback`,
         type: "service",
-        name: appt.service_name || "Service",
+        name: appt.service_name || t("web.provider.portal.appointmentDialog.serviceFallback"),
         quantity: 1,
         unit_price: appt.price || 0,
         total: appt.price || 0,
@@ -555,13 +557,13 @@ export function AppointmentDialog({
   /* ───────────────────────────────────────────────────── */
 
   const validate = (): string | null => {
-    if (!formData.team_member_id) return "Please select a team member.";
-    if (cart.length === 0) return "Please add at least one service or product.";
-    if (!cart.some((i) => i.type === "service")) return "At least one service is required.";
-    if (!formData.client_name && !isWalkIn) return "Please select or enter a client name.";
+    if (!formData.team_member_id) return t("web.provider.portal.appointmentDialog.selectTeamMemberRequired");
+    if (cart.length === 0) return t("web.provider.portal.appointmentDialog.addServiceOrProduct");
+    if (!cart.some((i) => i.type === "service")) return t("web.provider.portal.appointmentDialog.serviceRequired");
+    if (!formData.client_name && !isWalkIn) return t("web.provider.portal.appointmentDialog.clientNameRequired");
     const phone = formData.client_phone.replace(/\s/g, "");
     if (phone && !isValidPhone(phone))
-      return "Phone number must be in E.164 format (e.g., +27821234567).";
+      return t("web.provider.portal.appointmentDialog.phoneE164");
     return null;
   };
 
@@ -570,7 +572,7 @@ export function AppointmentDialog({
   /* ───────────────────────────────────────────────────── */
 
   const buildPayload = () => {
-    const clientName = formData.client_name || (isWalkIn ? "Walk-in Client" : "");
+    const clientName = formData.client_name || (isWalkIn ? t("web.provider.portal.appointmentDialog.walkInClient") : "");
     const phone = formData.client_phone.replace(/\s/g, "") || undefined;
     const cartServices = cart.filter((i) => i.type === "service");
     const cartProducts = cart.filter((i) => i.type === "product");
@@ -647,11 +649,11 @@ export function AppointmentDialog({
       const payload = buildPayload();
       if (appointment) {
         await providerApi.updateAppointment(appointment.id, payload);
-        toast.success("Appointment updated");
+        toast.success(t("web.provider.portal.appointmentDialog.updated"));
       } else if (formData.is_recurring) {
         if (!formData.client_id?.trim() || !isLikelyUuid(formData.client_id)) {
           toast.error(
-            "Repeating visits require a saved client profile. Select the client from search."
+            t("web.provider.portal.appointmentDialog.recurringNeedsClient")
           );
           return;
         }
@@ -667,30 +669,30 @@ export function AppointmentDialog({
             client_id: formData.client_id,
             recurrence_rule: rule,
           } as any);
-          toast.success("Repeating visit series created");
+          toast.success(t("web.provider.portal.appointmentDialog.recurringCreated"));
         } catch (recErr) {
           if (recErr instanceof FetchError && recErr.code === "SUBSCRIPTION_REQUIRED") {
             setRecurringUpgradeRequired(true);
             toast.error(
-              formatApiErrorMessage(recErr, "Subscription required") +
+              formatApiErrorMessage(recErr, t("web.provider.portal.appointmentDialog.subscriptionRequired")) +
                 subscriptionUpgradeHint(recErr)
             );
             return;
           }
           // Fall back to single booking
-          const shortReason = formatApiErrorMessage(recErr, "Unknown error").slice(0, 160);
+          const shortReason = formatApiErrorMessage(recErr, t("web.provider.portal.appointmentDialog.unknownError")).slice(0, 160);
           await providerApi.createAppointment(payload);
-          toast.success(`Appointment booked once. Repeat not created: ${shortReason}`);
+          toast.success(t("web.provider.portal.appointmentDialog.bookedOnceRepeatFailed", { reason: shortReason }));
         }
       } else {
         await providerApi.createAppointment(payload);
-        toast.success("Appointment created");
+        toast.success(t("web.provider.portal.appointmentDialog.created"));
       }
       onOpenChange(false);
       setTimeout(() => onSuccess?.(), 300);
     } catch (error) {
       const msg =
-        formatApiErrorMessage(error, "Failed to save appointment") + subscriptionUpgradeHint(error);
+        formatApiErrorMessage(error, t("web.provider.portal.appointmentDialog.saveFailed")) + subscriptionUpgradeHint(error);
       toast.error(msg);
     } finally {
       setIsSaving(false);
@@ -708,7 +710,7 @@ export function AppointmentDialog({
     // Recurring series cannot be checked out in one step — create the series via Save instead.
     if (!appointment && formData.is_recurring) {
       toast.warning(
-        'Recurring series cannot be checked out directly. The first appointment will be created and checked out. Use "Save" to create the full series.',
+        t("web.provider.portal.appointmentDialog.recurringCheckoutWarning"),
         { duration: 6000 }
       );
     }
@@ -722,11 +724,11 @@ export function AppointmentDialog({
         onCheckout(created);
         onOpenChange(false);
       } else {
-        toast.success("Appointment created. Process payment from appointment details.");
+        toast.success(t("web.provider.portal.appointmentDialog.createdProcessPayment"));
         onOpenChange(false);
       }
     } catch (error) {
-      toast.error(formatApiErrorMessage(error, "Failed to create appointment"));
+      toast.error(formatApiErrorMessage(error, t("web.provider.portal.appointmentDialog.createFailed")));
     } finally {
       setIsSaving(false);
     }
@@ -755,7 +757,7 @@ export function AppointmentDialog({
       return (
         <div className="py-12 text-center">
           <Scissors className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-gray-400">No services found</p>
+          <p className="text-sm text-gray-400">{t("web.provider.portal.appointmentDialog.noServicesFound")}</p>
         </div>
       );
     }
@@ -776,7 +778,7 @@ export function AppointmentDialog({
                 type="button"
                 onClick={() => addService(v)}
                 className={cn(
-                  "w-full text-left px-4 py-3 flex items-center justify-between transition-colors hover:bg-primary/5 group",
+                  "w-full text-start px-4 py-3 flex items-center justify-between transition-colors hover:bg-primary/5 group",
                   vi < variants.length - 1 && "border-b border-gray-50"
                 )}
               >
@@ -785,7 +787,7 @@ export function AppointmentDialog({
                     {v.variant_name ?? v.name}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {v.duration_minutes} min · {formatMoney(Number(v.price))}
+                    {t("web.provider.portal.appointmentDialog.durationPrice", { duration: v.duration_minutes, price: formatMoney(Number(v.price)) })}
                   </p>
                 </div>
                 <div className="w-7 h-7 rounded-full bg-gray-100 group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-all flex-shrink-0">
@@ -801,7 +803,7 @@ export function AppointmentDialog({
             key={svc.id}
             type="button"
             onClick={() => addService(svc)}
-            className="w-full text-left px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors mb-2 flex items-center justify-between group"
+            className="w-full text-start px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors mb-2 flex items-center justify-between group"
           >
             <div>
               <div className="flex items-center gap-2">
@@ -810,17 +812,17 @@ export function AppointmentDialog({
                 </p>
                 {svc.service_type === "package" && (
                   <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
-                    PKG
+                    {t("web.provider.portal.appointmentDialog.packageBadge")}
                   </span>
                 )}
                 {svc.service_type === "addon" && (
                   <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
-                    ADD-ON
+                    {t("web.provider.portal.appointmentDialog.addonBadge")}
                   </span>
                 )}
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
-                {svc.duration_minutes} min · {formatMoney(Number(svc.price))}
+                {t("web.provider.portal.appointmentDialog.durationPrice", { duration: svc.duration_minutes, price: formatMoney(Number(svc.price)) })}
               </p>
             </div>
             <div className="w-7 h-7 rounded-full bg-gray-100 group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-all flex-shrink-0">
@@ -840,7 +842,7 @@ export function AppointmentDialog({
               key={v.id}
               type="button"
               onClick={() => addService(v)}
-              className="w-full text-left px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors mb-2 flex items-center justify-between group"
+              className="w-full text-start px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors mb-2 flex items-center justify-between group"
             >
               <div>
                 <p className="text-sm font-medium text-gray-900 group-hover:text-primary transition-colors">
@@ -848,7 +850,7 @@ export function AppointmentDialog({
                 </p>
                 {v.variant_name && <p className="text-xs text-gray-400">{v.variant_name}</p>}
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {v.duration_minutes} min · {formatMoney(Number(v.price))}
+                  {t("web.provider.portal.appointmentDialog.durationPrice", { duration: v.duration_minutes, price: formatMoney(Number(v.price)) })}
                 </p>
               </div>
               <div className="w-7 h-7 rounded-full bg-gray-100 group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-all flex-shrink-0">
@@ -882,7 +884,7 @@ export function AppointmentDialog({
               <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
                 <CalendarIcon className="w-4 h-4 text-primary" />
               </div>
-              {appointment ? "Edit Appointment" : "New Appointment"}
+              {appointment ? t("web.provider.portal.appointmentDialog.titleEdit") : t("web.provider.portal.appointmentDialog.titleNew")}
             </DialogTitle>
           </DialogHeader>
 
@@ -890,7 +892,7 @@ export function AppointmentDialog({
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
             {/* ══ 1. CLIENT ══ */}
             <section>
-              <SectionLabel icon={<User className="w-3.5 h-3.5" />} label="Client" required />
+              <SectionLabel icon={<User className="w-3.5 h-3.5" />} label={t("web.provider.portal.appointmentDialog.client")} required />
 
               {/* Selected client chip */}
               {!showClientSearch && (
@@ -901,11 +903,11 @@ export function AppointmentDialog({
                       isWalkIn ? "bg-gray-200 text-gray-600" : "bg-primary/10 text-primary"
                     )}
                   >
-                    {isWalkIn ? "W" : formData.client_name.charAt(0) || "?"}
+                    {isWalkIn ? t("web.provider.portal.appointmentDialog.walkInInitial") : formData.client_name.charAt(0) || "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm text-gray-900 truncate">
-                      {isWalkIn ? "Walk-in Client" : formData.client_name}
+                      {isWalkIn ? t("web.provider.portal.appointmentDialog.walkInClient") : formData.client_name}
                     </p>
                     {!isWalkIn && (formData.client_email || formData.client_phone) && (
                       <p className="text-xs text-gray-500 truncate">
@@ -930,10 +932,10 @@ export function AppointmentDialog({
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     <Input
                       ref={searchInputRef}
-                      placeholder="Search client name, email or phone…"
+                      placeholder={t("web.provider.portal.appointmentDialog.searchClientPlaceholder")}
                       value={clientQuery}
                       onChange={(e) => setClientQuery(e.target.value)}
-                      className="pl-9 min-h-[44px]"
+                      className="ps-9 min-h-[44px]"
                     />
                   </div>
 
@@ -945,7 +947,7 @@ export function AppointmentDialog({
                           key={c.id}
                           type="button"
                           onClick={() => selectClient(c)}
-                          className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors border-b last:border-b-0 border-gray-100"
+                          className="w-full px-4 py-3 text-start flex items-center gap-3 hover:bg-gray-50 transition-colors border-b last:border-b-0 border-gray-100"
                         >
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-bold text-primary">
@@ -972,7 +974,7 @@ export function AppointmentDialog({
                       className="flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <User className="w-4 h-4 text-gray-500" />
-                      Walk-in
+                      {t("web.provider.portal.appointmentDialog.walkIn")}
                     </button>
                     <button
                       type="button"
@@ -980,7 +982,7 @@ export function AppointmentDialog({
                       className="flex items-center justify-center gap-2 px-3 py-2.5 border border-dashed border-primary/40 rounded-xl text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
                     >
                       <UserPlus className="w-4 h-4" />
-                      New Client
+                      {t("web.provider.portal.appointmentDialog.newClient")}
                     </button>
                   </div>
                 </div>
@@ -990,20 +992,20 @@ export function AppointmentDialog({
               {isWalkIn && (
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
                   <div>
-                    <Label className="text-xs font-medium text-amber-800">Name (optional)</Label>
+                    <Label className="text-xs font-medium text-amber-800">{t("web.provider.portal.appointmentDialog.nameOptional")}</Label>
                     <Input
                       value={formData.client_name}
                       onChange={(e) => setFormData((p) => ({ ...p, client_name: e.target.value }))}
-                      placeholder="Walk-in name"
+                      placeholder={t("web.provider.portal.appointmentDialog.walkInNamePlaceholder")}
                       className="mt-1 min-h-[40px] bg-white"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs font-medium text-amber-800">Phone (optional)</Label>
+                    <Label className="text-xs font-medium text-amber-800">{t("web.provider.portal.appointmentDialog.phoneOptional")}</Label>
                     <Input
                       value={formData.client_phone}
                       onChange={(e) => setFormData((p) => ({ ...p, client_phone: e.target.value }))}
-                      placeholder="+27 82 123 4567"
+                      placeholder={t("web.provider.portal.appointmentDialog.phonePlaceholder")}
                       className="mt-1 min-h-[40px] bg-white"
                     />
                   </div>
@@ -1015,7 +1017,7 @@ export function AppointmentDialog({
             <section>
               <SectionLabel
                 icon={<Scissors className="w-3.5 h-3.5" />}
-                label="Services & Products"
+                label={t("web.provider.portal.appointmentDialog.servicesAndProducts")}
                 required
               />
 
@@ -1028,7 +1030,7 @@ export function AppointmentDialog({
                   className="flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-primary/30 rounded-xl text-sm font-medium text-primary hover:bg-primary/5 hover:border-primary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
-                  {isLoadingData ? "Loading…" : "Add Service"}
+                  {isLoadingData ? t("web.provider.portal.appointmentDialog.loading") : t("web.provider.portal.appointmentDialog.addService")}
                 </button>
                 <button
                   type="button"
@@ -1037,7 +1039,7 @@ export function AppointmentDialog({
                   className="flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Package className="w-4 h-4" />
-                  {isLoadingData ? "Loading…" : "Add Product"}
+                  {isLoadingData ? t("web.provider.portal.appointmentDialog.loading") : t("web.provider.portal.appointmentDialog.addProduct")}
                 </button>
               </div>
 
@@ -1067,7 +1069,7 @@ export function AppointmentDialog({
                           {item.type === "service" && item.duration_minutes && (
                             <span className="text-xs text-gray-400 flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              {item.duration_minutes}m
+                              {t("web.provider.portal.appointmentDialog.durationMinutesShort", { count: item.duration_minutes })}
                             </span>
                           )}
                           <span className="text-xs text-gray-500">
@@ -1075,7 +1077,7 @@ export function AppointmentDialog({
                           </span>
                           {item.quantity > 1 && (
                             <span className="text-xs text-gray-400">
-                              × {item.quantity} = {formatMoney(item.total)}
+                              {t("web.provider.portal.appointmentDialog.quantityTimesTotal", { quantity: item.quantity, total: formatMoney(item.total) })}
                             </span>
                           )}
                         </div>
@@ -1101,7 +1103,7 @@ export function AppointmentDialog({
                         <button
                           type="button"
                           onClick={() => removeItem(idx)}
-                          className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors ml-1"
+                          className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors ms-1"
                         >
                           <X className="w-3 h-3 text-red-500" />
                         </button>
@@ -1115,7 +1117,7 @@ export function AppointmentDialog({
                       {totalDuration > 0 && (
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {totalDuration} min
+                          {t("web.provider.portal.appointmentDialog.durationMinutes", { count: totalDuration })}
                         </span>
                       )}
                     </div>
@@ -1128,7 +1130,7 @@ export function AppointmentDialog({
                 !isLoadingData && (
                   <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-xl">
                     <Sparkles className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">Add a service to get started</p>
+                    <p className="text-sm text-gray-400">{t("web.provider.portal.appointmentDialog.addServiceToStart")}</p>
                   </div>
                 )
               )}
@@ -1136,7 +1138,7 @@ export function AppointmentDialog({
 
             {/* ══ 3. STAFF ══ */}
             <section>
-              <SectionLabel icon={<User className="w-3.5 h-3.5" />} label="Team Member" required />
+              <SectionLabel icon={<User className="w-3.5 h-3.5" />} label={t("web.provider.portal.appointmentDialog.teamMember")} required />
               {isLoadingData ? (
                 <div className="h-[44px] rounded-xl border border-gray-200 bg-gray-50 animate-pulse" />
               ) : (
@@ -1145,11 +1147,11 @@ export function AppointmentDialog({
                   onValueChange={(v) => setFormData((p) => ({ ...p, team_member_id: v }))}
                 >
                   <SelectTrigger className="w-full min-h-[44px] rounded-xl">
-                    <SelectValue placeholder="Select team member" />
+                    <SelectValue placeholder={t("web.provider.portal.appointmentDialog.selectTeamMember")} />
                   </SelectTrigger>
                   <SelectContent className="!z-[10000]" position="popper" sideOffset={4}>
                     {teamMembers.length === 0 ? (
-                      <div className="p-3 text-sm text-gray-500 text-center">No team members</div>
+                      <div className="p-3 text-sm text-gray-500 text-center">{t("web.provider.portal.appointmentDialog.noTeamMembers")}</div>
                     ) : (
                       teamMembers.map((m) => (
                         <SelectItem key={m.id} value={m.id} className="min-h-[44px]">
@@ -1166,7 +1168,7 @@ export function AppointmentDialog({
             <section>
               <SectionLabel
                 icon={<CalendarIcon className="w-3.5 h-3.5" />}
-                label="Date & Time"
+                label={t("web.provider.portal.appointmentDialog.dateAndTime")}
                 required
               />
               <div className="grid grid-cols-2 gap-3">
@@ -1175,9 +1177,9 @@ export function AppointmentDialog({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-full justify-start text-left font-normal min-h-[44px] rounded-xl text-sm"
+                      className="w-full justify-start text-start font-normal min-h-[44px] rounded-xl text-sm"
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
+                      <CalendarIcon className="me-2 h-4 w-4 text-gray-400" />
                       {format(formData.scheduled_date, "d MMM yyyy")}
                     </Button>
                   </PopoverTrigger>
@@ -1212,7 +1214,7 @@ export function AppointmentDialog({
                       {availableSlots && (
                         <div className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border-b flex items-center gap-1.5">
                           <Check className="w-3 h-3" />
-                          {availableSlots.length} available slots
+                          {t("web.provider.portal.appointmentDialog.availableSlots", { count: availableSlots.length })}
                         </div>
                       )}
                       {timeOptions.map((t) => (
@@ -1223,10 +1225,10 @@ export function AppointmentDialog({
                       {availableSlots && (
                         <button
                           type="button"
-                          className="w-full px-3 py-2 text-xs text-gray-500 border-t text-left hover:bg-gray-50"
+                          className="w-full px-3 py-2 text-xs text-gray-500 border-t text-start hover:bg-gray-50"
                           onClick={() => setAvailableSlots(null)}
                         >
-                          Show all times
+                          {t("web.provider.portal.appointmentDialog.showAllTimes")}
                         </button>
                       )}
                     </SelectContent>
@@ -1237,11 +1239,11 @@ export function AppointmentDialog({
 
             {/* ══ 5. NOTES ══ */}
             <section>
-              <SectionLabel label="Notes" optional />
+              <SectionLabel label={t("web.provider.portal.appointmentDialog.notes")} optional />
               <Textarea
                 value={formData.notes}
                 onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
-                placeholder="Special requests, allergies, preferences…"
+                placeholder={t("web.provider.portal.appointmentDialog.notesPlaceholder")}
                 rows={3}
                 className="rounded-xl resize-none text-sm"
               />
@@ -1252,14 +1254,14 @@ export function AppointmentDialog({
               <section>
                 {recurringUpgradeRequired && (
                   <div className="mb-3 p-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-900">
-                    <p className="font-medium">Upgrade required for repeating visits</p>
+                    <p className="font-medium">{t("web.provider.portal.appointmentDialog.upgradeRequired")}</p>
                     <Button
                       type="button"
                       size="sm"
                       className="mt-2 bg-primary hover:bg-primary-hover text-white text-xs"
                       onClick={() => router.push("/provider/subscription")}
                     >
-                      View plans
+                      {t("web.provider.portal.appointmentDialog.viewPlans")}
                     </Button>
                   </div>
                 )}
@@ -1275,9 +1277,9 @@ export function AppointmentDialog({
                         formData.is_recurring ? "text-primary" : "text-gray-400"
                       )}
                     />
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-gray-900">Repeating visit</p>
-                      <p className="text-xs text-gray-500">Schedule this appointment to repeat</p>
+                    <div className="text-start">
+                      <p className="text-sm font-medium text-gray-900">{t("web.provider.portal.appointmentDialog.repeatingVisit")}</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.portal.appointmentDialog.repeatingVisitHint")}</p>
                     </div>
                   </div>
                   <div
@@ -1293,7 +1295,7 @@ export function AppointmentDialog({
                 {formData.is_recurring && (
                   <div className="mt-2 p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-3">
                     <div>
-                      <Label className="text-xs font-semibold text-blue-800">Repeat pattern</Label>
+                      <Label className="text-xs font-semibold text-blue-800">{t("web.provider.portal.appointmentDialog.repeatPattern")}</Label>
                       <Select
                         value={formData.recurrence_pattern}
                         onValueChange={(v) =>
@@ -1305,10 +1307,10 @@ export function AppointmentDialog({
                         </SelectTrigger>
                         <SelectContent className="!z-[10000]" position="popper">
                           {[
-                            ["daily", "Daily"],
-                            ["weekly", "Weekly"],
-                            ["biweekly", "Every 2 weeks"],
-                            ["monthly", "Monthly"],
+                            ["daily", t("web.provider.portal.appointmentDialog.daily")],
+                            ["weekly", t("web.provider.portal.appointmentDialog.weekly")],
+                            ["biweekly", t("web.provider.portal.appointmentDialog.biweekly")],
+                            ["monthly", t("web.provider.portal.appointmentDialog.monthly")],
                           ].map(([v, l]) => (
                             <SelectItem key={v} value={v} className="min-h-[40px]">
                               {l}
@@ -1320,7 +1322,7 @@ export function AppointmentDialog({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs font-semibold text-blue-800">
-                          End date (optional)
+                          {t("web.provider.portal.appointmentDialog.endDateOptional")}
                         </Label>
                         <Input
                           type="date"
@@ -1333,7 +1335,7 @@ export function AppointmentDialog({
                       </div>
                       <div>
                         <Label className="text-xs font-semibold text-blue-800">
-                          Max visits (optional)
+                          {t("web.provider.portal.appointmentDialog.maxVisitsOptional")}
                         </Label>
                         <Input
                           type="number"
@@ -1345,7 +1347,7 @@ export function AppointmentDialog({
                               recurrence_occurrences: parseInt(e.target.value) || undefined,
                             }))
                           }
-                          placeholder="e.g. 10"
+                          placeholder={t("web.provider.portal.appointmentDialog.maxVisitsPlaceholder")}
                           className="mt-1 min-h-[40px] bg-white rounded-lg text-sm"
                         />
                       </div>
@@ -1366,7 +1368,7 @@ export function AppointmentDialog({
                 disabled={isSaving}
                 className="flex-1 min-h-[44px] rounded-xl border-gray-200"
               >
-                Cancel
+                {t("web.provider.portal.appointmentDialog.cancel")}
               </Button>
               <Button
                 type="button"
@@ -1376,13 +1378,13 @@ export function AppointmentDialog({
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving…
+                    <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                    {t("web.provider.portal.appointmentDialog.saving")}
                   </>
                 ) : appointment ? (
-                  "Update"
+                  t("web.provider.portal.appointmentDialog.update")
                 ) : (
-                  "Save"
+                  t("web.provider.portal.appointmentDialog.save")
                 )}
               </Button>
               {!appointment && (
@@ -1394,8 +1396,8 @@ export function AppointmentDialog({
                   onClick={handleSaveAndCheckout}
                   className="flex-1 min-h-[44px] rounded-xl bg-primary hover:bg-primary/90 text-white"
                 >
-                  <ShoppingCart className="w-4 h-4 mr-1.5" />
-                  Checkout
+                  <ShoppingCart className="w-4 h-4 me-1.5" />
+                  {t("web.provider.portal.appointmentDialog.checkout")}
                 </Button>
               )}
             </div>
@@ -1413,15 +1415,15 @@ export function AppointmentDialog({
       >
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0 !z-[10001]">
           <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
-            <DialogTitle className="text-base font-semibold mb-3">Add a Service</DialogTitle>
+            <DialogTitle className="text-base font-semibold mb-3">{t("web.provider.portal.appointmentDialog.addAService")}</DialogTitle>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
                 autoFocus
-                placeholder="Search services…"
+                placeholder={t("web.provider.portal.appointmentDialog.searchServicesPlaceholder")}
                 value={serviceSearch}
                 onChange={(e) => setServiceSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                className="w-full ps-9 pe-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
               />
             </div>
           </div>
@@ -1444,17 +1446,17 @@ export function AppointmentDialog({
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0 !z-[10001]">
           <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
             <DialogTitle className="text-base font-semibold mb-3">
-              {variantProduct ? `Select variant — ${variantProduct.name}` : "Add a Product"}
+              {variantProduct ? t("web.provider.portal.appointmentDialog.selectVariantTitle", { name: variantProduct.name }) : t("web.provider.portal.appointmentDialog.addAProduct")}
             </DialogTitle>
             {!variantProduct && (
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
                   autoFocus
-                  placeholder="Search products…"
+                  placeholder={t("web.provider.portal.appointmentDialog.searchProductsPlaceholder")}
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  className="w-full ps-9 pe-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
                 />
               </div>
             )}
@@ -1469,7 +1471,7 @@ export function AppointmentDialog({
                     type="button"
                     onClick={() => setSelectedVariantId(v.id)}
                     className={cn(
-                      "w-full text-left px-4 py-3.5 border rounded-xl transition-colors flex items-center justify-between",
+                      "w-full text-start px-4 py-3.5 border rounded-xl transition-colors flex items-center justify-between",
                       selectedVariantId === v.id
                         ? "border-primary bg-primary/5"
                         : "border-gray-100 hover:bg-gray-50"
@@ -1481,7 +1483,7 @@ export function AppointmentDialog({
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {formatMoney(Number(v.retail_price))}
-                        {v.quantity != null && ` · Stock: ${v.quantity}`}
+                        {v.quantity != null && ` · ${t("web.provider.portal.appointmentDialog.stockCount", { count: v.quantity })}`}
                         {v.sku && ` · ${v.sku}`}
                       </p>
                     </div>
@@ -1496,7 +1498,7 @@ export function AppointmentDialog({
                 {products.length === 0 ? (
                   <div className="py-12 text-center">
                     <Package className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">No products available</p>
+                    <p className="text-sm text-gray-400">{t("web.provider.portal.appointmentDialog.noProductsAvailable")}</p>
                   </div>
                 ) : (
                   products
@@ -1516,7 +1518,7 @@ export function AppointmentDialog({
                           if (p.has_variants && (p.variants ?? []).length > 0) setVariantProduct(p);
                           else addProduct(p);
                         }}
-                        className="w-full text-left px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors flex items-center justify-between group"
+                        className="w-full text-start px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors flex items-center justify-between group"
                       >
                         <div>
                           <div className="flex items-center gap-2">
@@ -1525,7 +1527,7 @@ export function AppointmentDialog({
                             </p>
                             {p.has_variants && (
                               <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">
-                                VARIANTS
+                                {t("web.provider.portal.appointmentDialog.variantsBadge")}
                               </span>
                             )}
                           </div>
@@ -1560,7 +1562,7 @@ export function AppointmentDialog({
                 }}
                 className="flex-1 rounded-xl min-h-[44px]"
               >
-                Back
+                {t("web.provider.portal.appointmentDialog.back")}
               </Button>
               <Button
                 type="button"
@@ -1573,7 +1575,7 @@ export function AppointmentDialog({
                 }}
                 className="flex-1 rounded-xl min-h-[44px] bg-primary hover:bg-primary/90"
               >
-                Add to appointment
+                {t("web.provider.portal.appointmentDialog.addToAppointment")}
               </Button>
             </div>
           )}
@@ -1616,12 +1618,13 @@ function SectionLabel({
   required?: boolean;
   optional?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1.5 mb-2">
       {icon && <span className="text-gray-400">{icon}</span>}
       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{label}</span>
       {required && <span className="text-red-400 text-xs">*</span>}
-      {optional && <span className="text-gray-400 text-xs">(optional)</span>}
+      {optional && <span className="text-gray-400 text-xs">{t("web.provider.portal.appointmentDialog.optional")}</span>}
     </div>
   );
 }

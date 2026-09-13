@@ -6,6 +6,7 @@ import {
 } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { mergeBrowseDisplayCurrencyCodes } from "@/lib/preferences/browse-display-currencies";
 
 export type CurrencyPreferenceOptionRow = {
   id: string;
@@ -60,8 +61,9 @@ function mergeLocalization(
 
 /**
  * Currencies the customer may choose for display preference: intersection of
- * (tenant/global platform_settings.localization.supported_currencies ∪ default)
- * with **active** `iso_currencies` rows. No invented ISO codes.
+ * (tenant/global platform_settings.localization.supported_currencies ∪ default
+ * ∪ browse display set) with **active** `iso_currencies` rows.
+ * Charge currency at checkout is unchanged — these codes are browse-only.
  */
 export async function getTenantScopedCurrencyPreferenceOptions(
   request: NextRequest,
@@ -112,17 +114,11 @@ export async function getTenantScopedCurrencyPreferenceOptions(
   const defaultFromSettings = merged.default_currency;
   const effectiveDefault = defaultFromSettings ?? regionDefault;
 
-  let candidateCodes: string[] = [];
-  if (Array.isArray(merged.supported_currencies) && merged.supported_currencies.length > 0) {
-    candidateCodes = [...merged.supported_currencies];
-  }
-  if (candidateCodes.length === 0) {
-    candidateCodes = [effectiveDefault];
-  } else if (!candidateCodes.includes(effectiveDefault)) {
-    candidateCodes = [effectiveDefault, ...candidateCodes];
-  }
-
-  const uniqueOrdered = [...new Set(candidateCodes)];
+  const tenantCodes =
+    Array.isArray(merged.supported_currencies) && merged.supported_currencies.length > 0
+      ? merged.supported_currencies
+      : [];
+  const uniqueOrdered = mergeBrowseDisplayCurrencyCodes(tenantCodes, effectiveDefault);
 
   const { data: isoRows, error: isoErr } = await admin
     .from("iso_currencies")

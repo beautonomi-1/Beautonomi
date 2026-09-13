@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -17,6 +18,7 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface PayoutsData {
   timezone?: string;
@@ -62,6 +64,7 @@ interface PayoutsData {
 
 export default function PayoutsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     // Default 30 days — this ledger aggregation is heavy over 90-day windows.
@@ -124,10 +127,10 @@ export default function PayoutsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payout earnings" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/payouts.title") },
         ]}
       >
         <ReportSkeleton />
@@ -139,15 +142,15 @@ export default function PayoutsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payout earnings" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/payouts.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Payout earnings" />
-          <ReportSubscriptionRequired feature="Payout earnings" />
+          <PageHeader title={t("web.provider.reports.pages.payments/payouts.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.payments/payouts.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -157,15 +160,15 @@ export default function PayoutsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payout earnings" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/payouts.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load payouts data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.payments/payouts.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -182,21 +185,21 @@ export default function PayoutsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Payout earnings" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.payments/payouts.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Payout earnings (ledger)"
-          subtitle="Platform-held provider earnings from the ledger in this settlement window — not bank transfers"
+          title={t("web.provider.reports.pages.payments/payouts.pageTitle")}
+          subtitle={t("web.provider.reports.pages.payments/payouts.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.dataTableShell.export")}
             </Button>
           }
         />
@@ -209,11 +212,11 @@ export default function PayoutsReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {tz ? <span>Timezone · {tz}</span> : null}
-              {rangeLabel ? <span>Ledger window · {rangeLabel}</span> : null}
+              {tz ? <span>{t("web.provider.reports.common.timezoneDot", { tz })}</span> : null}
+              {rangeLabel ? <span>{t("web.provider.reports.pages.payments/payouts.ledgerWindow", { range: rangeLabel })}</span> : null}
             </div>
           </div>
         ) : null}
@@ -221,36 +224,36 @@ export default function PayoutsReport() {
         {data.basis ? (
           <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+              <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-violet-950/95">
               {data.basis.headlineTotal ? (
                 <p>
-                  <span className="font-medium">Headline total · </span>
+                  <span className="font-medium">{t("web.provider.reports.pages.payments/payouts.headlineTotal")}</span>
                   {data.basis.headlineTotal}
                 </p>
               ) : null}
               {data.basis.bookedAmount ? (
                 <p>
-                  <span className="font-medium">Booked amount · </span>
+                  <span className="font-medium">{t("web.provider.reports.pages.payments/payouts.bookedAmount")}</span>
                   {data.basis.bookedAmount}
                 </p>
               ) : null}
               {data.basis.payoutAmountPerRow ? (
                 <p>
-                  <span className="font-medium">Earnings per row · </span>
+                  <span className="font-medium">{t("web.provider.reports.pages.payments/payouts.earningsPerRow")}</span>
                   {data.basis.payoutAmountPerRow}
                 </p>
               ) : null}
               {data.basis.platformFeesAndRefunds ? (
                 <p>
-                  <span className="font-medium">Fees & refunds · </span>
+                  <span className="font-medium">{t("web.provider.reports.pages.payments/payouts.feesAndRefunds")}</span>
                   {data.basis.platformFeesAndRefunds}
                 </p>
               ) : null}
               {data.basis.notIncluded ? (
                 <p className="text-violet-900/90">
-                  <span className="font-medium">Not included · </span>
+                  <span className="font-medium">{t("web.provider.reports.pages.payments/payouts.notIncluded")}</span>
                   {data.basis.notIncluded}
                 </p>
               ) : null}
@@ -262,7 +265,7 @@ export default function PayoutsReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Ledger rows</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.ledgerRows")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -270,47 +273,47 @@ export default function PayoutsReport() {
                 <Layers className="h-5 w-5 text-indigo-600" />
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Bookings or retail orders with provider earnings in this window.
+                {t("web.provider.reports.pages.payments/payouts.ledgerRowsHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Net provider earnings</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.netProviderEarnings")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalPayoutAmount)}</p>
                 <Wallet className="h-5 w-5 text-emerald-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500">Sum of provider_earnings in the settlement period.</p>
+              <p className="mt-2 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.netProviderEarningsHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Booked net of refunds</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.bookedNetOfRefunds")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(totalBookedNetOfRefunds)}</p>
                 <DollarSign className="h-5 w-5 text-blue-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500">Customer booked totals minus refund ledger rows matched here.</p>
+              <p className="mt-2 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.bookedNetHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg per row</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.avgPerRow")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.averagePayout)}</p>
                 <Percent className="h-5 w-5 text-purple-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500">Mean net earnings across rows above.</p>
+              <p className="mt-2 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.avgPerRowHint")}</p>
             </CardContent>
           </Card>
         </div>
@@ -318,32 +321,32 @@ export default function PayoutsReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Gross booked value</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.grossBookedValue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(totalBookedAmount)}</p>
-              <p className="mt-1 text-xs text-gray-500">Booking/order totals for linked ledger rows (not appointment filter).</p>
+              <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.grossBookedHint")}</p>
             </CardContent>
           </Card>
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Platform & service fees</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.platformFees")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalPlatformFees)}</p>
               <p className="mt-1 text-xs text-gray-500">
-                Ledger fees in window vs booked gross:{" "}
+                {t("web.provider.reports.pages.payments/payouts.platformFeesHint")}{" "}
                 <span className="font-medium tabular-nums">{feeRatePct.toFixed(1)}%</span>
               </p>
             </CardContent>
           </Card>
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Refunds (ledger)</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/payouts.refundsLedger")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalRefunded)}</p>
-              <p className="mt-1 text-xs text-gray-500">Refund rows matched to the same bookings or orders.</p>
+              <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.refundsLedgerHint")}</p>
             </CardContent>
           </Card>
         </div>
@@ -351,20 +354,19 @@ export default function PayoutsReport() {
         {/* Monthly Breakdown */}
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Ledger earnings by month</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.reports.pages.payments/payouts.earningsByMonth")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Amounts roll up by calendar month in your timezone from daily ledger totals. Row counts use settlement
-              month per booking or order.
+              {t("web.provider.reports.pages.payments/payouts.earningsByMonthHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.monthlyBreakdown.length === 0 ? (
-              <EmptyReportState title="No activity" description="No ledger earnings in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.payments/payouts.noActivity")} description={t("web.provider.reports.pages.payments/payouts.noActivityDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.monthlyBreakdown.map((item) => {
                   const [year, month] = item.month.split("-");
-                  const monthName = new Date(parseInt(year, 10), parseInt(month, 10) - 1).toLocaleDateString("en-US", {
+                  const monthName = new Date(parseInt(year, 10), parseInt(month, 10) - 1).toLocaleDateString(getDefaultMoneyLocale(), {
                     month: "long",
                     year: "numeric",
                   });
@@ -375,7 +377,7 @@ export default function PayoutsReport() {
                     >
                       <div>
                         <p className="font-medium text-gray-900">{monthName}</p>
-                        <p className="text-sm text-gray-600">{item.count} rows with earnings</p>
+                        <p className="text-sm text-gray-600">{t("web.provider.reports.pages.payments/payouts.rowsWithEarnings", { count: item.count })}</p>
                       </div>
                       <p className="font-semibold tabular-nums text-gray-900">{fmt(item.amount)}</p>
                     </div>
@@ -389,14 +391,14 @@ export default function PayoutsReport() {
         {/* Recent */}
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Recent rows</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.reports.pages.payments/payouts.recentRows")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Sorted by latest ledger settlement in this window (not appointment date).
+              {t("web.provider.reports.pages.payments/payouts.recentRowsHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.recentPayouts.length === 0 ? (
-              <EmptyReportState title="No rows" description="No matching ledger earnings." />
+              <EmptyReportState title={t("web.provider.reports.pages.payments/payouts.noRows")} description={t("web.provider.reports.pages.payments/payouts.noRowsDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.recentPayouts.map((payout) => {
@@ -411,21 +413,24 @@ export default function PayoutsReport() {
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900">
                           {payout.referenceLabel ??
-                            (payout.productOrderId ? "Retail order" : "Booking")}
+                            (payout.productOrderId ? t("web.provider.reports.pages.payments/payouts.retailOrder") : t("web.provider.reports.pages.payments/payouts.booking"))}
                         </p>
                         <p className="text-xs text-gray-500">
-                          Settled {format(new Date(when), "MMM d, yyyy · HH:mm")}
+                          {t("web.provider.reports.pages.payments/payouts.settled", { when: format(new Date(when), "MMM d, yyyy · HH:mm") })}
                         </p>
                         <p className="mt-1 text-sm text-gray-600">
-                          Booked {fmt(payout.bookedAmount ?? payout.grossAmount)} · Fees {fmt(payout.platformFee)}
-                          {payout.refundedAmount > 0 ? (
-                            <> · Refunds {fmt(payout.refundedAmount)}</>
-                          ) : null}
+                          {t("web.provider.reports.pages.payments/payouts.bookedFees", {
+                            booked: fmt(payout.bookedAmount ?? payout.grossAmount),
+                            fees: fmt(payout.platformFee),
+                          })}
+                          {payout.refundedAmount > 0
+                            ? t("web.provider.reports.pages.payments/payouts.refundsAmount", { amount: fmt(payout.refundedAmount) })
+                            : null}
                         </p>
                       </div>
-                      <div className="text-right sm:shrink-0">
+                      <div className="text-end sm:shrink-0">
                         <p className="font-semibold tabular-nums text-emerald-700">{fmt(payout.payoutAmount)}</p>
-                        <p className="text-xs text-gray-500">net earnings</p>
+                        <p className="text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.netEarnings")}</p>
                       </div>
                     </div>
                   );

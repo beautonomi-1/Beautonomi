@@ -21,6 +21,8 @@ import {
 } from "@/lib/seo/host-config";
 import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 import { X } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
+import { fetchDeduped } from "@/lib/client/fetch-dedupe";
 
 type AvailabilityStatus = "allowed" | "unsupported" | "restricted";
 
@@ -86,11 +88,11 @@ function normalizeHost(host: string | null | undefined): string {
   return (host ?? "").trim().toLowerCase().replace(/^https?:\/\//, "");
 }
 
-function regionDisplayName(code: string): string {
+function regionDisplayName(code: string, locale = "en"): string {
   const c = code.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(c)) return code.trim() || code;
   try {
-    return new Intl.DisplayNames(["en"], { type: "region" }).of(c) ?? c;
+    return new Intl.DisplayNames([locale], { type: "region" }).of(c) ?? c;
   } catch {
     return c;
   }
@@ -208,6 +210,7 @@ async function persistPreferredHomeTenant(tenantId: string | null | undefined): 
 }
 
 export default function MarketAvailabilityGate() {
+  const { t, i18n } = useTranslation();
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const searchString = searchParams?.toString() ?? "";
@@ -258,7 +261,7 @@ export default function MarketAvailabilityGate() {
         const currentHost = normalizeHost(window.location.hostname);
         setLiveHost(currentHost);
 
-        const res = await fetch("/api/public/tenant-context", { cache: "no-store" });
+        const res = await fetchDeduped("/api/public/tenant-context", { cache: "no-store" });
         const body = (await res.json()) as TenantContextResponse;
         const mc = body?.data?.marketCatalog;
         const tenantRow = body?.data?.tenant;
@@ -288,8 +291,8 @@ export default function MarketAvailabilityGate() {
         });
         const title =
           tenantRow?.name?.trim() ||
-          (catalogRow?.countryCode ? regionDisplayName(catalogRow.countryCode) : "") ||
-          "this region";
+          (catalogRow?.countryCode ? regionDisplayName(catalogRow.countryCode, i18n.language) : "") ||
+          t("web.global.marketAvailability.thisRegion");
         setRegionalStorefrontLabel(title);
         setTenantCurrencyCode(tenantRow?.defaultCurrency?.trim() || "");
 
@@ -410,7 +413,7 @@ export default function MarketAvailabilityGate() {
   const targetZaHost = resolvedAutoSwitchHost || defaultMarketHost;
   const defaultMarketSwitchHost = catalogDefaultMarketHost || defaultMarketHost;
 
-  const detectedCountryLabel = regionDisplayName(countryCode);
+  const detectedCountryLabel = regionDisplayName(countryCode, i18n.language);
   const goToZaMarket = () => {
     void persistPreferredHomeTenant(recommendedTenantId ?? defaultMarketTenantId);
     track("market_manual_switch", {
@@ -472,53 +475,55 @@ export default function MarketAvailabilityGate() {
     window.location.href = `https://${dest}`;
   };
 
-  const restrictedTitle = "Access unavailable in your country";
+  const restrictedTitle = t("web.global.marketAvailability.restrictedTitle");
 
   const restrictedDescription =
-    reason || "Access is unavailable in your country due to legal or regulatory restrictions.";
+    reason || t("web.global.marketAvailability.restrictedFallback");
 
   return (
     <>
       {zaSuggestVisible ? (
         <div
           role="region"
-          aria-label="Regional storefront suggestion"
+          aria-label={t("web.global.marketAvailability.zaSuggestAria")}
           className="fixed left-0 right-0 top-0 z-[120] border-b border-indigo-800 bg-indigo-950 px-3 py-2.5 text-white shadow-md sm:px-4"
         >
-          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pr-10">
+          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pe-10">
             <button
               type="button"
-              className="absolute right-0 top-0 rounded p-1 text-indigo-200 hover:bg-indigo-900 hover:text-white sm:right-0 sm:top-1/2 sm:-translate-y-1/2"
-              aria-label="Dismiss suggestion for this session"
+              className="absolute end-0 top-0 rounded p-1 text-indigo-200 hover:bg-indigo-900 hover:text-white sm:end-0 sm:top-1/2 sm:-translate-y-1/2"
+              aria-label={t("web.global.marketAvailability.dismissSessionAria")}
               onClick={dismissZaLater}
             >
               <X className="h-4 w-4" />
             </button>
-            <div className="flex items-start gap-2 pr-7 sm:pr-0">
+            <div className="flex items-start gap-2 pe-7 sm:pe-0">
               <span className="text-lg leading-none" aria-hidden>
                 {flagEmojiFromIso2(countryCode)}
               </span>
               <p className="text-sm leading-snug text-indigo-50">
-                Looks like you&apos;re in{" "}
-                <strong className="font-semibold text-white">{detectedCountryLabel}</strong>.
-                Continue on{" "}
-                <strong className="font-semibold text-white">{targetZaHost}</strong> for{" "}
-                {tenantCurrencyCode ? `${tenantCurrencyCode} pricing and ` : "local pricing and "}
-                checkout.
+                {t("web.global.marketAvailability.looksLikePrefix")}{" "}
+                <strong className="font-semibold text-white">{detectedCountryLabel}</strong>.{" "}
+                {t("web.global.marketAvailability.continueOn")}{" "}
+                <strong className="font-semibold text-white">{targetZaHost}</strong>{" "}
+                {tenantCurrencyCode
+                  ? t("web.global.marketAvailability.forCurrencyPricing", { currency: tenantCurrencyCode })
+                  : t("web.global.marketAvailability.forLocalPricing")}{" "}
+                {t("web.global.marketAvailability.checkout")}
               </p>
             </div>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
               <Button size="sm" className="bg-white text-indigo-950 hover:bg-indigo-100" onClick={goToZaMarket}>
-                Go to {targetZaHost}
+                {t("web.global.marketAvailability.goToHost", { host: targetZaHost })}
               </Button>
               <Button size="sm" variant="ghost" className="text-indigo-100 hover:bg-indigo-900 hover:text-white" onClick={stayOnGlobalEntry}>
-                Stay on {globalEntryHost}
+                {t("web.global.marketAvailability.stayOnHost", { host: globalEntryHost })}
               </Button>
               <Button size="sm" variant="ghost" className="text-indigo-200 hover:bg-indigo-900 hover:text-white" onClick={dismissZaLater}>
-                Later
+                {t("web.global.marketAvailability.later")}
               </Button>
               <Button size="sm" variant="ghost" className="text-indigo-200 hover:bg-indigo-900 hover:text-white" onClick={dismissZaLong}>
-                Don&apos;t show again
+                {t("web.global.marketAvailability.dontShowAgain")}
               </Button>
             </div>
           </div>
@@ -528,14 +533,14 @@ export default function MarketAvailabilityGate() {
       {unsupportedGlobalVisible ? (
         <div
           role="region"
-          aria-label="Market availability"
+          aria-label={t("web.global.marketAvailability.unsupportedAria")}
           className="fixed left-0 right-0 top-0 z-[120] border-b border-amber-900/40 bg-amber-950 px-3 py-2.5 text-amber-50 shadow-md sm:px-4"
         >
-          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pr-10">
+          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pe-10">
             <button
               type="button"
-              className="absolute right-0 top-0 rounded p-1 text-amber-200 hover:bg-amber-900 hover:text-white sm:right-0 sm:top-1/2 sm:-translate-y-1/2"
-              aria-label="Dismiss for this session"
+              className="absolute end-0 top-0 rounded p-1 text-amber-200 hover:bg-amber-900 hover:text-white sm:end-0 sm:top-1/2 sm:-translate-y-1/2"
+              aria-label={t("web.global.marketAvailability.dismissAria")}
               onClick={() => {
                 writeSessionDismiss(`${UNSUPPORTED_GLOBAL_DISMISS_KEY}:session`);
                 setUnsupportedGlobalVisible(false);
@@ -543,23 +548,25 @@ export default function MarketAvailabilityGate() {
             >
               <X className="h-4 w-4" />
             </button>
-            <p className="text-sm leading-snug pr-7 sm:pr-0">
+            <p className="text-sm leading-snug pe-7 sm:pe-0">
               {reason ||
                 (countryCode
-                  ? `We're not yet available in ${detectedCountryLabel} — join the waitlist to be notified when we launch.`
-                  : "We couldn't confirm your region — join the waitlist to hear when Beautonomi launches near you.")}
-              {countryCode ? ` (${countryCode})` : ""}
-              {supportedCountries.length > 0 ? ` Available: ${supportedCountries.join(", ")}.` : ""}
+                  ? t("web.global.marketAvailability.unsupportedNamed", { country: detectedCountryLabel })
+                  : t("web.global.marketAvailability.unsupportedUnknown"))}
+              {countryCode ? t("web.global.marketAvailability.countryCodeSuffix", { code: countryCode }) : ""}
+              {supportedCountries.length > 0
+                ? t("web.global.marketAvailability.availableMarkets", { markets: supportedCountries.join(", ") })
+                : ""}
             </p>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
               <Button size="sm" variant="secondary" className="bg-white text-amber-950 hover:bg-amber-100" onClick={() => setWaitlistOpen(true)}>
-                Join waitlist
+                {t("web.global.marketAvailability.joinWaitlist")}
               </Button>
               <Button size="sm" variant="outline" className="border-amber-400/60 bg-transparent text-white hover:bg-amber-900" onClick={switchToDefaultMarket}>
-                Switch to {defaultMarketSwitchHost}
+                {t("web.global.marketAvailability.switchToHost", { host: defaultMarketSwitchHost })}
               </Button>
               <Button size="sm" variant="ghost" className="text-amber-100 hover:bg-amber-900 hover:text-white" onClick={stayOnGlobalEntry}>
-                Continue browsing
+                {t("web.global.marketAvailability.continueBrowsing")}
               </Button>
             </div>
           </div>
@@ -569,14 +576,14 @@ export default function MarketAvailabilityGate() {
       {regionalForeignVisible ? (
         <div
           role="region"
-          aria-label="Regional storefront notice"
+          aria-label={t("web.global.marketAvailability.regionalAria")}
           className="fixed left-0 right-0 top-0 z-[120] border-b border-sky-900/40 bg-sky-950 px-3 py-2.5 text-sky-50 shadow-md sm:px-4"
         >
-          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pr-10">
+          <div className="relative mx-auto flex max-w-[2340px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:pe-10">
             <button
               type="button"
-              className="absolute right-0 top-0 rounded p-1 text-sky-200 hover:bg-sky-900 hover:text-white sm:right-0 sm:top-1/2 sm:-translate-y-1/2"
-              aria-label="Dismiss for this session"
+              className="absolute end-0 top-0 rounded p-1 text-sky-200 hover:bg-sky-900 hover:text-white sm:end-0 sm:top-1/2 sm:-translate-y-1/2"
+              aria-label={t("web.global.marketAvailability.dismissAria")}
               onClick={() => {
                 writeSessionDismiss(`${REGIONAL_FOREIGN_DISMISS_KEY}:session`);
                 setRegionalForeignVisible(false);
@@ -584,25 +591,27 @@ export default function MarketAvailabilityGate() {
             >
               <X className="h-4 w-4" />
             </button>
-            <p className="text-sm leading-snug pr-7 sm:pr-0">
-              You&apos;re on the <strong className="font-semibold text-white">{regionalStorefrontLabel}</strong>{" "}
-              storefront{liveHost ? ` (${liveHost})` : ""}.{" "}
+            <p className="text-sm leading-snug pe-7 sm:pe-0">
+              {t("web.global.marketAvailability.onStorefront", {
+                label: regionalStorefrontLabel,
+                host: liveHost ? t("web.global.marketAvailability.hostParen", { host: liveHost }) : "",
+              })}{" "}
               {tenantCurrencyCode
-                ? `Pricing and checkout follow ${tenantCurrencyCode}. `
-                : "Pricing and checkout follow this regional storefront. "}
+                ? t("web.global.marketAvailability.pricingFollowsCurrency", { currency: tenantCurrencyCode })
+                : t("web.global.marketAvailability.pricingFollowsRegional")}{" "}
               {countryCode
-                ? `Your connection suggests you may be in ${detectedCountryLabel} — we may not operate there yet.`
+                ? t("web.global.marketAvailability.connectionSuggests", { country: detectedCountryLabel })
                 : ""}
             </p>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
               <Button size="sm" variant="secondary" className="bg-white text-sky-950 hover:bg-sky-100" asChild>
-                <a href={globalUrl}>Open international site</a>
+                <a href={globalUrl}>{t("web.global.marketAvailability.openInternational")}</a>
               </Button>
               <Button size="sm" variant="outline" className="border-sky-400/60 bg-transparent text-white hover:bg-sky-900" onClick={() => setWaitlistOpen(true)}>
-                Join waitlist
+                {t("web.global.marketAvailability.joinWaitlist")}
               </Button>
               <Button size="sm" variant="ghost" className="text-sky-100 hover:bg-sky-900 hover:text-white" onClick={() => setRegionalForeignVisible(false)}>
-                Continue here
+                {t("web.global.marketAvailability.continueHere")}
               </Button>
             </div>
           </div>
@@ -615,14 +624,14 @@ export default function MarketAvailabilityGate() {
             <DialogTitle>{restrictedTitle}</DialogTitle>
             <DialogDescription>
               {restrictedDescription}
-              {countryCode ? ` (${countryCode})` : ""}
+              {countryCode ? t("web.global.marketAvailability.countryCodeSuffix", { code: countryCode }) : ""}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:justify-end">
             <Button variant="outline" onClick={() => setRestrictedModalOpen(false)}>
-              Close
+              {t("common.close")}
             </Button>
-            <Button onClick={switchToDefaultMarket}>Switch to available market</Button>
+            <Button onClick={switchToDefaultMarket}>{t("web.global.marketAvailability.switchToAvailable")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

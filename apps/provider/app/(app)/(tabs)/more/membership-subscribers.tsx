@@ -23,6 +23,7 @@ import { formatDate, formatDateTime, formatCurrency } from "@/lib/format";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 
 type SubStatus = "all" | "active" | "cancelled" | "expired" | "past_due";
@@ -61,21 +62,13 @@ interface SubscribersResponse {
   subscribers: SubscriberRow[];
 }
 
-const STATUS_CHIPS: { label: string; value: SubStatus }[] = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Past due", value: "past_due" },
-  { label: "Cancelled", value: "cancelled" },
-  { label: "Expired", value: "expired" },
+const STATUS_CHIP_KEYS: { labelKey: string; value: SubStatus }[] = [
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "statusActive", value: "active" },
+  { labelKey: "statusPastDue", value: "past_due" },
+  { labelKey: "statusCancelled", value: "cancelled" },
+  { labelKey: "statusExpired", value: "expired" },
 ];
-
-function statusLabel(s: string): string {
-  if (s === "active") return "Active";
-  if (s === "past_due") return "Past due";
-  if (s === "cancelled") return "Cancelled";
-  if (s === "expired") return "Expired";
-  return s;
-}
 
 function statusColor(s: string): string {
   if (s === "active") return "#059669";
@@ -101,6 +94,17 @@ function addDaysIso(days: number): string {
 }
 
 export default function MembershipSubscribersScreen() {
+  const { t } = useTranslation();
+  const ms = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.membershipSubscribers.${key}`, opts) as string;
+  const statusLabel = (s: string): string => {
+    if (s === "active") return ms("statusActive");
+    if (s === "past_due") return ms("statusPastDue");
+    if (s === "cancelled") return ms("statusCancelled");
+    if (s === "expired") return ms("statusExpired");
+    return s;
+  };
+  const statusChips = STATUS_CHIP_KEYS.map((c) => ({ label: ms(c.labelKey), value: c.value }));
   const params = useLocalSearchParams<{
     planId?: string | string[];
     planName?: string | string[];
@@ -155,12 +159,12 @@ export default function MembershipSubscribersScreen() {
   const onCancel = useCallback(
     async (row: SubscriberRow) => {
       Alert.alert(
-        "Cancel membership",
-        `End membership for ${row.user.full_name ?? "this client"}? They can rejoin by purchasing again.`,
+        ms("cancelMembershipTitle"),
+        ms("cancelMembershipBody", { name: row.user.full_name ?? ms("thisClient") }),
         [
-          { text: "Back", style: "cancel" },
+          { text: ms("back"), style: "cancel" },
           {
-            text: "Cancel membership",
+            text: ms("cancelMembershipCta"),
             style: "destructive",
             onPress: async () => {
               const { error } = await patchSub(
@@ -168,7 +172,7 @@ export default function MembershipSubscribersScreen() {
                 { status: "cancelled" },
               );
               if (error) {
-                Alert.alert("Error", getApiErrorMessage(error, "Could not update"));
+                Alert.alert(ms("errorTitle"), getApiErrorMessage(error, ms("couldNotUpdate")));
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -189,7 +193,7 @@ export default function MembershipSubscribersScreen() {
         { status: "active" },
       );
       if (error) {
-        Alert.alert("Error", getApiErrorMessage(error, "Could not update"));
+        Alert.alert(ms("errorTitle"), getApiErrorMessage(error, ms("couldNotUpdate")));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -206,22 +210,22 @@ export default function MembershipSubscribersScreen() {
       {},
     );
     if (error) {
-      Alert.alert("Could not send", getApiErrorMessage(error, "Please try again"));
+      Alert.alert(ms("couldNotSendTitle"), getApiErrorMessage(error, ms("pleaseTryAgain")));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Sent", "Membership reminder sent to the client.");
-  }, [manageRow, postWinBack]);
+    Alert.alert(ms("sentTitle"), ms("winBackSent"));
+  }, [manageRow, postWinBack, t]);
 
   const onSaveExpiry = useCallback(async () => {
     if (!manageRow) return;
     if (!extendIso.trim()) {
-      Alert.alert("Invalid date", "Pick a new end date to extend this membership.");
+      Alert.alert(ms("invalidDateTitle"), ms("pickEndDate"));
       return;
     }
     const parsed = new Date(extendIso.trim());
     if (!Number.isFinite(parsed.getTime())) {
-      Alert.alert("Invalid date", "Enter a valid date / time.");
+      Alert.alert(ms("invalidDateTitle"), ms("enterValidDate"));
       return;
     }
     const current = manageRow.subscription.expires_at
@@ -229,7 +233,7 @@ export default function MembershipSubscribersScreen() {
       : new Date();
     const days = Math.max(1, Math.round((parsed.getTime() - current.getTime()) / (24 * 60 * 60 * 1000)));
     if (days > 365) {
-      Alert.alert("Too far", "Extend by at most 365 days at a time.");
+      Alert.alert(ms("tooFarTitle"), ms("tooFarBody"));
       return;
     }
     const { error } = await postExtend(
@@ -237,26 +241,26 @@ export default function MembershipSubscribersScreen() {
       { days, note: "Manual extend from members list" },
     );
     if (error) {
-      Alert.alert("Error", getApiErrorMessage(error, "Could not extend membership"));
+      Alert.alert(ms("errorTitle"), getApiErrorMessage(error, ms("couldNotExtend")));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     closeManage();
     await refresh();
-  }, [manageRow, extendIso, postExtend, closeManage, refresh]);
+  }, [manageRow, extendIso, postExtend, closeManage, refresh, t]);
 
   const subtitle =
     planId && planNameParam
       ? String(planNameParam)
-      : "Everyone subscribed to your membership plans";
+      : ms("subtitleAll");
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Members" showBack subtitle={subtitle} />
+      <ScreenHeader title={ms("title")} showBack subtitle={subtitle} />
 
       <View style={twStyle("mb-3")}>
         <FilterChipGroup
-          options={STATUS_CHIPS}
+          options={statusChips}
           selected={statusFilter}
           onSelect={(v) => setStatusFilter(v as SubStatus)}
         />
@@ -269,11 +273,11 @@ export default function MembershipSubscribersScreen() {
       ) : subscribers.length === 0 ? (
         <EmptyState
           icon="people-outline"
-          title="No members"
+          title={ms("emptyTitle")}
           description={
             statusFilter !== "all"
-              ? "Try another status filter."
-              : "When clients buy a plan, they appear here."
+              ? ms("emptyFilter")
+              : ms("emptyAll")
           }
         />
       ) : (
@@ -303,14 +307,14 @@ export default function MembershipSubscribersScreen() {
                     imageUrl={item.user.avatar_url}
                     size="md"
                   />
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <Text style={twStyle("text-base font-semibold text-gray-900")} numberOfLines={1}>
-                      {item.user.full_name ?? "Customer"}
+                      {item.user.full_name ?? ms("customerFallback")}
                     </Text>
                     <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
                       {item.plan.name}
                       {item.plan.price_monthly != null && item.plan.currency
-                        ? ` · ${formatCurrency(item.plan.price_monthly)}/mo`
+                        ? ms("priceMonthlySuffix", { amount: formatCurrency(item.plan.price_monthly) })
                         : ""}
                     </Text>
                   </View>
@@ -329,32 +333,32 @@ export default function MembershipSubscribersScreen() {
                 {(item.subscription.auto_renew || item.subscription.next_billing_at || item.subscription.last_payment_at) && (
                   <View style={twStyle("mt-2 flex-row flex-wrap gap-x-3")}>
                     {item.subscription.auto_renew && (
-                      <Text style={twStyle("text-xs text-green-700")}>Auto-renews</Text>
+                      <Text style={twStyle("text-xs text-green-700")}>{ms("autoRenews")}</Text>
                     )}
                     {!item.subscription.auto_renew && st === "active" && (
-                      <Text style={twStyle("text-xs text-gray-400")}>Auto-renew off</Text>
+                      <Text style={twStyle("text-xs text-gray-400")}>{ms("autoRenewOff")}</Text>
                     )}
                     {item.subscription.next_billing_at && (
                       <Text style={twStyle("text-xs text-gray-500")}>
-                        Next billing: {formatDate(item.subscription.next_billing_at)}
+                        {ms("nextBilling", { date: formatDate(item.subscription.next_billing_at) })}
                       </Text>
                     )}
                     {item.subscription.last_payment_at && (
                       <Text style={twStyle("text-xs text-gray-400")}>
-                        Last paid: {formatDate(item.subscription.last_payment_at)}
+                        {ms("lastPaid", { date: formatDate(item.subscription.last_payment_at) })}
                       </Text>
                     )}
                   </View>
                 )}
                 <View style={twStyle("mt-2 flex-row flex-wrap")}>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    Started {formatDate(item.subscription.started_at)}
+                    {ms("started", { date: formatDate(item.subscription.started_at) })}
                   </Text>
                   <Text style={twStyle("mx-2 text-xs text-gray-300")}>·</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {item.subscription.expires_at
-                      ? `Renews / ends ${formatDateTime(item.subscription.expires_at)}`
-                      : "No expiry set"}
+                      ? ms("renewsEnds", { date: formatDateTime(item.subscription.expires_at) })
+                      : ms("noExpiry")}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -363,19 +367,19 @@ export default function MembershipSubscribersScreen() {
         />
       )}
 
-      <BottomSheet visible={!!manageRow} onClose={closeManage} title="Manage membership">
+      <BottomSheet visible={!!manageRow} onClose={closeManage} title={ms("manageTitle")}>
         {manageRow && (
           <View>
             <Text style={twStyle("mb-2 text-sm text-gray-600")}>
-              {manageRow.user.full_name ?? "Customer"} · {manageRow.plan.name}
+              {ms("memberPlan", { name: manageRow.user.full_name ?? ms("customerFallback"), plan: manageRow.plan.name })}
             </Text>
 
             <Text style={twStyle("mb-1 text-xs font-semibold uppercase text-gray-400")}>
-              Expiry (optional)
+              {ms("expiryOptional")}
             </Text>
             <TextInput
               style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
-              placeholder="YYYY-MM-DDTHH:mm (ISO local)"
+              placeholder={ms("expiryPlaceholder")}
               placeholderTextColor="#9ca3af"
               value={extendIso}
               onChangeText={setExtendIso}
@@ -383,9 +387,9 @@ export default function MembershipSubscribersScreen() {
             />
             <View style={twStyle("mb-4 flex-row flex-wrap gap-2")}>
               {[
-                { label: "+7 days", days: 7 },
-                { label: "+30 days", days: 30 },
-                { label: "+90 days", days: 90 },
+                { label: ms("plus7Days"), days: 7 },
+                { label: ms("plus30Days"), days: 30 },
+                { label: ms("plus90Days"), days: 90 },
               ].map((p) => (
                 <TouchableOpacity
                   key={p.label}
@@ -398,7 +402,7 @@ export default function MembershipSubscribersScreen() {
             </View>
 
             <ActionButton
-              label="Save expiry"
+              label={ms("saveExpiry")}
               onPress={onSaveExpiry}
               loading={extendLoading || patchLoading}
               fullWidth
@@ -409,12 +413,12 @@ export default function MembershipSubscribersScreen() {
                 style={twStyle("mt-3 items-center rounded-xl bg-red-50 py-3")}
                 onPress={() => onCancel(manageRow)}
               >
-                <Text style={twStyle("text-sm font-semibold text-red-700")}>Cancel membership</Text>
+                <Text style={twStyle("text-sm font-semibold text-red-700")}>{ms("cancelMembershipCta")}</Text>
               </TouchableOpacity>
             ) : manageRow.subscription.status === "cancelled" ? (
               <>
                 <ActionButton
-                  label={winBackLoading ? "Sending…" : "Send win-back offer"}
+                  label={winBackLoading ? ms("sending") : ms("sendWinBack")}
                   onPress={() => void onSendWinBack()}
                   loading={winBackLoading}
                   fullWidth
@@ -424,7 +428,7 @@ export default function MembershipSubscribersScreen() {
                   style={twStyle("mt-3 items-center rounded-xl bg-green-50 py-3")}
                   onPress={() => onReactivate(manageRow)}
                 >
-                  <Text style={twStyle("text-sm font-semibold text-green-800")}>Mark active again</Text>
+                  <Text style={twStyle("text-sm font-semibold text-green-800")}>{ms("markActiveAgain")}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -432,7 +436,7 @@ export default function MembershipSubscribersScreen() {
                 style={twStyle("mt-3 items-center rounded-xl bg-green-50 py-3")}
                 onPress={() => onReactivate(manageRow)}
               >
-                <Text style={twStyle("text-sm font-semibold text-green-800")}>Mark active again</Text>
+                <Text style={twStyle("text-sm font-semibold text-green-800")}>{ms("markActiveAgain")}</Text>
               </TouchableOpacity>
             )}
           </View>

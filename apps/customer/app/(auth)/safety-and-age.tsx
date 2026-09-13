@@ -9,6 +9,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { RADIUS_BUTTON } from "@/constants/layout";
 import { webAgeSuitabilityUrl } from "@/lib/legal-web";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
 
@@ -22,7 +23,7 @@ function ControlItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; la
         paddingHorizontal: 4,
       }}
     >
-      <Ionicons name={icon} size={18} color={Colors.gray[500]} style={{ marginRight: 10 }} />
+      <Ionicons name={icon} size={18} color={Colors.gray[500]} style={{ marginEnd: 10 }} />
       <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>{label}</Text>
     </View>
   );
@@ -90,7 +91,7 @@ export default function SafetyAndAgeScreen() {
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
           >
-            <Ionicons name="arrow-back" size={20} color="#111827" />
+            <DirectionalIcon name="arrow-back" size={20} color="#111827" />
           </TouchableOpacity>
 
           <View

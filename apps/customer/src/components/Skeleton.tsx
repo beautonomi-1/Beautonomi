@@ -73,7 +73,7 @@ export function ProviderCardSkeleton() {
         <Skeleton width="40%" height={12} style={{ marginTop: 8 }} />
         <View style={{ flexDirection: "row", marginTop: 12 }}>
           <Skeleton width={60} height={12} />
-          <Skeleton width={80} height={12} style={{ marginLeft: 8 }} />
+          <Skeleton width={80} height={12} style={{ marginStart: 8 }} />
         </View>
       </View>
     </View>
@@ -112,12 +112,12 @@ export function ExplorePostSkeleton({ width, heightRatio = 1.1 }: { width: numbe
       <View style={{ padding: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Skeleton width={20} height={20} borderRadius={10} />
-          <Skeleton width="50%" height={11} style={{ marginLeft: 6 }} />
+          <Skeleton width="50%" height={11} style={{ marginStart: 6 }} />
         </View>
         <Skeleton width="80%" height={11} style={{ marginTop: 6 }} />
         <View style={{ flexDirection: "row", marginTop: 8 }}>
           <Skeleton width={32} height={10} />
-          <Skeleton width={28} height={10} style={{ marginLeft: 10 }} />
+          <Skeleton width={28} height={10} style={{ marginStart: 10 }} />
         </View>
       </View>
     </View>
@@ -132,7 +132,7 @@ export function ConversationSkeleton() {
       accessibilityLabel="Loading conversation"
     >
       <Skeleton width={48} height={48} borderRadius={24} />
-      <View style={{ flex: 1, marginLeft: 12 }}>
+      <View style={{ flex: 1, marginStart: 12 }}>
         <Skeleton width="50%" height={14} />
         <Skeleton width="80%" height={12} style={{ marginTop: 8 }} />
       </View>
@@ -148,7 +148,7 @@ export function HomeSkeleton() {
       <Skeleton width="40%" height={20} />
       <View style={{ flexDirection: "row", marginTop: 24 }}>
         {[1, 2, 3].map((i) => (
-          <View key={i} style={{ width: 200, marginRight: 16 }}>
+          <View key={i} style={{ width: 200, marginEnd: 16 }}>
             <ProviderCardSkeleton />
           </View>
         ))}
@@ -156,7 +156,7 @@ export function HomeSkeleton() {
       <Skeleton width="50%" height={20} style={{ marginTop: 24 }} />
       <View style={{ flexDirection: "row", marginTop: 16 }}>
         {[4, 5, 6].map((i) => (
-          <View key={i} style={{ width: 200, marginRight: 16 }}>
+          <View key={i} style={{ width: 200, marginEnd: 16 }}>
             <ProviderCardSkeleton />
           </View>
         ))}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
@@ -44,6 +46,7 @@ export default function TimeClockPage() {
   const [pin, setPin] = useState("");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTimeCard, setEditingTimeCard] = useState<TimeCard | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     loadData();
@@ -64,7 +67,7 @@ export default function TimeClockPage() {
       setTimeCards(response.data || []);
     } catch (error) {
       console.error("Failed to load data:", error);
-      toast.error("Failed to load data");
+      toast.error(t("web.provider.pages.team/time-clock.failedToLoadData"));
       setTimeCards([]);
     } finally {
       setIsLoading(false);
@@ -75,11 +78,11 @@ export default function TimeClockPage() {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.post(`/api/provider/staff/${memberId}/time-clock/clock-in`, {});
-      toast.success("Clocked in successfully");
+      toast.success(t("web.provider.pages.team/time-clock.clockedInSuccessfully"));
       loadData();
     } catch (error: any) {
       console.error("Failed to clock in:", error);
-      toast.error(error?.message || "Failed to clock in");
+      toast.error(error?.message || t("web.provider.pages.team/time-clock.failedToClockIn"));
     }
   };
 
@@ -87,17 +90,17 @@ export default function TimeClockPage() {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.post(`/api/provider/staff/${memberId}/time-clock/clock-out`, {});
-      toast.success("Clocked out successfully");
+      toast.success(t("web.provider.pages.team/time-clock.clockedOutSuccessfully"));
       loadData();
     } catch (error: any) {
       console.error("Failed to clock out:", error);
-      toast.error(error?.message || "Failed to clock out");
+      toast.error(error?.message || t("web.provider.pages.team/time-clock.failedToClockOut"));
     }
   };
 
   const handlePinClockIn = async () => {
     if (!pin || pin.length !== 4) {
-      toast.error("Please enter a 4-digit PIN");
+      toast.error(t("web.provider.pages.team/time-clock.enter4DigitPin"));
       return;
     }
 
@@ -105,13 +108,13 @@ export default function TimeClockPage() {
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.post<{ data: { staff_id: string } }>("/api/provider/time-clock/clock-in-pin", { pin });
       if (response.data) {
-        toast.success("Clocked in successfully");
+        toast.success(t("web.provider.pages.team/time-clock.clockedInSuccessfully"));
         setPin("");
         loadData();
       }
     } catch (error: any) {
       console.error("Failed to clock in with PIN:", error);
-      toast.error(error?.message || "Invalid PIN");
+      toast.error(error?.message || t("web.provider.pages.team/time-clock.invalidPin"));
     }
   };
 
@@ -136,8 +139,8 @@ export default function TimeClockPage() {
   return (
     <div>
       <PageHeader
-        title="Time Clock"
-        subtitle="Manage staff clock in/out and time cards"
+        title={t("web.provider.pages.team/time-clock.title")}
+        subtitle={t("web.provider.pages.team/time-clock.subtitle")}
       />
 
       {/* Stats */}
@@ -148,7 +151,7 @@ export default function TimeClockPage() {
               <LogIn className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Clocked In</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/time-clock.clockedIn")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {getClockedInMembers().length}
               </div>
@@ -161,7 +164,7 @@ export default function TimeClockPage() {
               <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Today</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.common.dateRange.today")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {getTodayTimeCards().length}
               </div>
@@ -174,9 +177,9 @@ export default function TimeClockPage() {
               <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Hours Today</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/time-clock.hoursToday")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                {getTotalHoursToday().toFixed(1)}h
+                {t("web.provider.pages.team/time-clock.hoursValue", { hours: getTotalHoursToday().toFixed(1) })}
               </div>
             </div>
           </div>
@@ -187,7 +190,7 @@ export default function TimeClockPage() {
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Total Staff</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/time-clock.totalStaff")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {teamMembers.length}
               </div>
@@ -198,8 +201,8 @@ export default function TimeClockPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-4 sm:mb-6">
-          <TabsTrigger value="clock" className="text-xs sm:text-sm">Clock In/Out</TabsTrigger>
-          <TabsTrigger value="timecards" className="text-xs sm:text-sm">Time Cards</TabsTrigger>
+          <TabsTrigger value="clock" className="text-xs sm:text-sm">{t("web.provider.pages.team/time-clock.clockInOut")}</TabsTrigger>
+          <TabsTrigger value="timecards" className="text-xs sm:text-sm">{t("web.provider.pages.team/time-clock.timeCards")}</TabsTrigger>
         </TabsList>
 
         {/* Clock In/Out Tab */}
@@ -207,14 +210,14 @@ export default function TimeClockPage() {
           {/* PIN Clock In (Front Desk) */}
           <SectionCard>
             <div className="space-y-4">
-              <h3 className="text-sm sm:text-base font-semibold">Front Desk Clock In</h3>
+              <h3 className="text-sm sm:text-base font-semibold">{t("web.provider.pages.team/time-clock.frontDeskClockIn")}</h3>
               <p className="text-xs sm:text-sm text-gray-500">
-                Enter PIN to clock in/out on front desk device
+                {t("web.provider.pages.team/time-clock.frontDeskHint")}
               </p>
               <div className="flex gap-2">
                 <Input
                   type="text"
-                  placeholder="Enter 4-digit PIN"
+                  placeholder={t("web.provider.pages.team/time-clock.enter4DigitPinPlaceholder")}
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   maxLength={4}
@@ -224,7 +227,7 @@ export default function TimeClockPage() {
                   onClick={handlePinClockIn}
                   className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
                 >
-                  Clock In
+                  {t("web.provider.pages.team/time-clock.clockIn")}
                 </Button>
               </div>
             </div>
@@ -233,12 +236,12 @@ export default function TimeClockPage() {
           {/* Staff Clock In/Out */}
           <SectionCard>
             <div className="space-y-4">
-              <h3 className="text-sm sm:text-base font-semibold">Staff Clock In/Out</h3>
+              <h3 className="text-sm sm:text-base font-semibold">{t("web.provider.pages.team/time-clock.staffClockInOut")}</h3>
               {isLoading ? (
                 <Skeleton className="h-32 w-full" />
               ) : teamMembers.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-8">
-                  No staff members with time clock enabled
+                  {t("web.provider.pages.team/time-clock.noStaffTimeClock")}
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -263,15 +266,15 @@ export default function TimeClockPage() {
                         <div className="flex items-center gap-2">
                           {isClockedIn ? (
                             <>
-                              <Badge className="bg-green-100 text-green-800">Clocked In</Badge>
+                              <Badge className="bg-green-100 text-green-800">{t("web.provider.pages.team/time-clock.clockedIn")}</Badge>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleClockOut(member.id)}
                                 className="min-h-[36px] touch-manipulation"
                               >
-                                <LogOut className="w-4 h-4 mr-2" />
-                                Clock Out
+                                <LogOut className="w-4 h-4 me-2" />
+                                {t("web.provider.pages.team/time-clock.clockOut")}
                               </Button>
                             </>
                           ) : (
@@ -280,8 +283,8 @@ export default function TimeClockPage() {
                               onClick={() => handleClockIn(member.id)}
                               className="bg-primary hover:bg-primary-hover min-h-[36px] touch-manipulation"
                             >
-                              <LogIn className="w-4 h-4 mr-2" />
-                              Clock In
+                              <LogIn className="w-4 h-4 me-2" />
+                              {t("web.provider.pages.team/time-clock.clockIn")}
                             </Button>
                           )}
                         </div>
@@ -304,19 +307,19 @@ export default function TimeClockPage() {
             ) : timeCards.length === 0 ? (
               <div className="p-8 sm:p-12 text-center">
                 <Clock className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 mb-4">No time cards found</p>
+                <p className="text-gray-600 mb-4">{t("web.provider.pages.team/time-clock.noTimeCards")}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Staff Member</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Clock In</TableHead>
-                      <TableHead>Clock Out</TableHead>
-                      <TableHead>Total Hours</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t("web.provider.calendarMobile.staffMember")}</TableHead>
+                      <TableHead>{t("web.provider.pages.team/time-clock.date")}</TableHead>
+                      <TableHead>{t("web.provider.pages.team/time-clock.clockIn")}</TableHead>
+                      <TableHead>{t("web.provider.pages.team/time-clock.clockOut")}</TableHead>
+                      <TableHead>{t("web.provider.pages.team/time-clock.totalHours")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/time-clock.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -338,13 +341,13 @@ export default function TimeClockPage() {
                         <TableCell className="text-sm">{timeCard.clock_in_time}</TableCell>
                         <TableCell className="text-sm">
                           {timeCard.clock_out_time || (
-                            <Badge className="bg-green-100 text-green-800 text-xs">In Progress</Badge>
+                            <Badge className="bg-green-100 text-green-800 text-xs">{t("web.provider.common.status.inProgress")}</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-sm font-medium">
-                          {timeCard.total_hours ? `${timeCard.total_hours.toFixed(1)}h` : "-"}
+{timeCard.total_hours ? t("web.provider.pages.team/time-clock.hoursValue", { hours: timeCard.total_hours.toFixed(1) }) : "-"}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -368,12 +371,12 @@ export default function TimeClockPage() {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg font-semibold">Edit Time Card</DialogTitle>
+            <DialogTitle className="text-base sm:text-lg font-semibold">{t("web.provider.pages.team/time-clock.editTimeCard")}</DialogTitle>
           </DialogHeader>
           {editingTimeCard && (
             <div className="space-y-4">
               <div>
-                <Label className="text-sm font-medium">Clock In Time</Label>
+                <Label className="text-sm font-medium">{t("web.provider.pages.team/time-clock.clockInTime")}</Label>
                 <Input
                   type="time"
                   defaultValue={editingTimeCard.clock_in_time}
@@ -381,7 +384,7 @@ export default function TimeClockPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm font-medium">Clock Out Time</Label>
+                <Label className="text-sm font-medium">{t("web.provider.pages.team/time-clock.clockOutTime")}</Label>
                 <Input
                   type="time"
                   defaultValue={editingTimeCard.clock_out_time || ""}
@@ -396,7 +399,7 @@ export default function TimeClockPage() {
               onClick={() => setIsEditDialogOpen(false)}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={async () => {
@@ -421,17 +424,17 @@ export default function TimeClockPage() {
                   }
                   
                   await fetcher.put(`/api/provider/staff/${editingTimeCard.team_member_id}/time-clock/${editingTimeCard.id}`, updateData);
-                  toast.success("Time card updated");
+                  toast.success(t("web.provider.pages.team/time-clock.timeCardUpdated"));
                   setIsEditDialogOpen(false);
                   loadData();
                 } catch (error: any) {
                   console.error("Failed to update time card:", error);
-                  toast.error(error?.message || "Failed to update time card");
+                  toast.error(error?.message || t("web.provider.pages.team/time-clock.failedToUpdateTimeCard"));
                 }
               }}
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              Save Changes
+              {t("web.provider.settings.common.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>

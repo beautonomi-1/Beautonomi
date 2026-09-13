@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 import { mapboxStyleUrlToStaticStylePath } from "@/lib/mapbox/attach-map-resize";
 
@@ -34,6 +35,7 @@ export default function ZoneMapViewer({
   height = "400px",
   onZoneClick,
 }: ZoneMapViewerProps) {
+  const { t } = useTranslation();
   const [staticImageUrl, setStaticImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [imageFailed, setImageFailed] = useState(false);
@@ -79,7 +81,7 @@ export default function ZoneMapViewer({
   if (!staticImageUrl || imageFailed) {
     return (
       <div className="border rounded-lg p-4" style={{ height, overflowY: "auto" }}>
-        <h3 className="font-semibold mb-4">Service Zones</h3>
+        <h3 className="font-semibold mb-4">{t("web.mapbox.zoneViewer.serviceZones")}</h3>
         <div className="space-y-2">
           {zones.map((zone, index) => (
             <div
@@ -93,10 +95,10 @@ export default function ZoneMapViewer({
                 <div>
                   <p className="font-medium">{zone.name}</p>
                   <p className="text-sm text-gray-600">
-                    {zone.zone_type === "postal_code" && "Postal Code Zone"}
-                    {zone.zone_type === "city" && "City Zone"}
-                    {zone.zone_type === "radius" && `Radius: ${zone.radius_km}km`}
-                    {zone.zone_type === "polygon" && "Polygon Zone"}
+                    {zone.zone_type === "postal_code" && t("web.mapbox.zoneViewer.postalCodeZone")}
+                    {zone.zone_type === "city" && t("web.mapbox.zoneViewer.cityZone")}
+                    {zone.zone_type === "radius" && t("web.mapbox.zoneViewer.radiusKm", { km: zone.radius_km })}
+                    {zone.zone_type === "polygon" && t("web.mapbox.zoneViewer.polygonZone")}
                   </p>
                 </div>
                 <span
@@ -104,7 +106,7 @@ export default function ZoneMapViewer({
                     zone.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
                   }`}
                 >
-                  {zone.is_active ? "Active" : "Inactive"}
+                  {zone.is_active ? t("web.mapbox.zoneViewer.active") : t("web.mapbox.zoneViewer.inactive")}
                 </span>
               </div>
             </div>
@@ -118,7 +120,7 @@ export default function ZoneMapViewer({
     <div className="border rounded-lg overflow-hidden" style={{ height }}>
       <img
         src={staticImageUrl}
-        alt="Service zone location"
+        alt={t("web.mapbox.zoneViewer.locationAlt")}
         className="w-full h-full object-cover"
         width={600}
         height={400}

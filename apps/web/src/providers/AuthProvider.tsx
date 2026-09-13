@@ -377,7 +377,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return result;
         }
         if (late.error) {
-          console.error("Error getting session:", late.error);
+          const { isStaleRefreshTokenError } = await import("@/lib/supabase/auth-errors");
+          if (isStaleRefreshTokenError(late.error)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          } else if (process.env.NODE_ENV === "development") {
+            console.warn("Error getting session:", late.error.message);
+          }
           if (late.error.message !== "timeout" && late.error.code !== "PGRST301") {
             setSession(null);
             setUser(null);
@@ -395,7 +400,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         const { data: { session: initialSession }, error: sessionError } = sessionRace.r;
         if (sessionError) {
-          console.error("Error getting session:", sessionError);
+          const { isStaleRefreshTokenError } = await import("@/lib/supabase/auth-errors");
+          if (isStaleRefreshTokenError(sessionError)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          } else if (process.env.NODE_ENV === "development") {
+            console.warn("Error getting session:", sessionError.message);
+          }
           if (sessionError.message !== "timeout" && sessionError.code !== "PGRST301") {
             setSession(null);
             setUser(null);

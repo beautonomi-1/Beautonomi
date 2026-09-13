@@ -20,23 +20,39 @@ import {
   Plus,
   Trophy,
   CreditCard,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  ALLOWED_RUNNING_LATE_MINUTES,
+  canCustomerReportRunningLate,
+} from "@/lib/bookings/lifecycle-running-late";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus, buildWebRebookHref, slaSettingsFromHours } from "@beautonomi/utils";
+import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmation-sla-copy";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { useTranslation } from "@beautonomi/i18n";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
   selected_datetime?: string;
-  location?: { name?: string; address?: string };
+  location?: { id?: string; name?: string; address?: string; working_hours?: Record<string, unknown> | null };
   location_name?: string;
-  provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string };
+  provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string; timezone?: string | null; confirmation_sla_hours?: number | null; unconfirmed_expire_hours_before_slot?: number | null };
   outstanding_balance?: number;
   cancellation_fee?: number;
   display_time_zone?: string | null;
+  lifecycle_hint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null;
+  pending_confirmation_sla?: { body?: string; overnight?: boolean; lastMinute?: boolean; timeLabel?: string };
+  recurring_series_id?: string | null;
+  in_late_window?: boolean;
+  close_out_at?: string;
+  can_report_running_late?: boolean;
+  customer_running_late_at?: string | null;
+  customer_running_late_minutes?: number | null;
+  provider_late_ack_at?: string | null;
+  current_stage?: string | null;
 };
 import { toast } from "sonner";
 import OrderDetailsDynamic from "@/app/checkout/components/order-details-dynamic";
@@ -78,6 +94,8 @@ export default function BookingDetailPage() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [isPayingOutstanding, setIsPayingOutstanding] = useState(false);
   const [chargeApproveLoadingId, setChargeApproveLoadingId] = useState<string | null>(null);
+  const [runningLateMinutes, setRunningLateMinutes] = useState<number>(15);
+  const [isReportingLate, setIsReportingLate] = useState(false);
 
   const reloadBooking = useCallback(async (opts?: { silent?: boolean }) => {
     if (!bookingId) return;
@@ -95,10 +113,10 @@ export default function BookingDetailPage() {
       if (!opts?.silent) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.accountSettings.bookings.requestTimeout")
             : err instanceof FetchError
               ? err.message
-              : "Failed to load booking";
+              : t("web.accountSettings.bookings.loadFailed");
         setError(errorMessage);
         console.error("Error loading booking:", err);
       }
@@ -126,11 +144,11 @@ export default function BookingDetailPage() {
         });
         toast.success(
           action === "dispute"
-            ? "Refund disputed. Our team will review."
-            : "Refund confirmed. Thank you.",
+            ? t("web.accountSettings.bookings.refundDisputed")
+            : t("web.accountSettings.bookings.refundConfirmed"),
         );
       } catch (err) {
-        const msg = err instanceof FetchError ? err.message : "Could not update refund status.";
+        const msg = err instanceof FetchError ? err.message : t("web.accountSettings.bookings.refundUpdateFailed");
         toast.error(msg);
       } finally {
         router.replace(`/account-settings/bookings/${bookingId}`);
@@ -240,12 +258,12 @@ export default function BookingDetailPage() {
         charge_id: chargeId,
         approved,
       });
-      toast.success(approved ? "Charge approved" : "Charge rejected");
+      toast.success(approved ? t("web.accountSettings.bookings.chargeApproved") : t("web.accountSettings.bookings.chargeRejected"));
       // Refresh booking to reflect new charge status
       const response = await fetcher.get<{ data: BookingDetail }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
       setBooking(response.data);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : `Failed to ${approved ? "approve" : "reject"} charge`);
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.bookings.chargeActionFailed", { action: approved ? t("web.accountSettings.bookings.approveAction") : t("web.accountSettings.bookings.rejectAction") }));
     } finally {
       setChargeApproveLoadingId(null);
     }
@@ -307,10 +325,10 @@ export default function BookingDetailPage() {
       });
 
       setBooking(response.data.booking);
-      toast.success("Booking cancelled successfully");
+      toast.success(t("web.accountSettings.bookings.cancelledSuccess"));
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        toast.error("This booking was modified by another user. Please refresh and try again.");
+        toast.error(t("web.accountSettings.bookings.conflictRefresh"));
         // Reload booking to get latest version
         const refreshResponse = await fetcher.get<{
           data: BookingDetail;
@@ -319,11 +337,27 @@ export default function BookingDetailPage() {
         setBooking(refreshResponse.data);
       } else {
         const errorMessage =
-          err instanceof FetchError ? err.message : "Failed to cancel booking";
+          err instanceof FetchError ? err.message : t("web.accountSettings.bookings.cancelFailed");
         toast.error(errorMessage);
       }
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleReportRunningLate = async () => {
+    if (!bookingId) return;
+    setIsReportingLate(true);
+    try {
+      await fetcher.post(`/api/me/bookings/${bookingId}/running-late`, {
+        delay_minutes: runningLateMinutes,
+      });
+      toast.success(t("web.accountSettings.bookings.runningLateNotified"));
+      await reloadBooking({ silent: true });
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.bookings.runningLateFailed"));
+    } finally {
+      setIsReportingLate(false);
     }
   };
 
@@ -340,9 +374,9 @@ export default function BookingDetailPage() {
         window.location.href = url;
         return;
       }
-      toast.error("Could not start payment.");
+      toast.error(t("web.accountSettings.bookings.paymentStartFailed"));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Could not start payment.");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.bookings.paymentStartFailed"));
     } finally {
       setIsPayingOutstanding(false);
     }
@@ -361,7 +395,7 @@ export default function BookingDetailPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading booking details..." />
+        <LoadingTimeout loadingMessage={t("web.accountSettings.bookings.loading")} />
       </div>
     );
   }
@@ -370,10 +404,10 @@ export default function BookingDetailPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Booking not found"
-          description={error || "The booking you're looking for doesn't exist"}
+          title={t("web.accountSettings.bookings.notFoundTitle")}
+          description={error || t("web.accountSettings.bookings.notFoundDescription")}
           action={{
-            label: "Go Back",
+            label: t("web.accountSettings.bookings.goBack"),
             onClick: () => router.push("/account-settings/bookings"),
           }}
         />
@@ -405,13 +439,32 @@ export default function BookingDetailPage() {
     _detailEffectiveStatus !== "cancelled" &&
     (booking.outstanding_balance ?? 0) > 0 &&
     (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
-  const providerName = booking.provider?.business_name ?? "your provider";
+  const providerName = booking.provider?.business_name ?? t("web.accountSettings.bookings.yourProvider");
+  const expiredPendingReason = String(booking.cancellation_reason ?? "");
+  const isExpiredPending =
+    booking.status === "cancelled" &&
+    (expiredPendingReason.includes("not confirmed in time") ||
+      expiredPendingReason.includes("did not confirm this request before the appointment time"));
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName,
     paymentStatus: _detailPaymentStatus,
     outstandingBalance: _detailOutstanding,
+    lifecycleHint: booking.lifecycle_hint,
   });
+  const pendingSlaCopy = lifecycleDisplay.isAwaitingProviderConfirmation && !booking.recurring_series_id
+    ? booking.pending_confirmation_sla ??
+      pendingConfirmationSlaDisplay({
+        scheduledAt: booking.scheduled_at ?? booking.selected_datetime,
+        createdAt: booking.created_at,
+        paymentStatus: booking.payment_status,
+        timezone: booking.provider?.timezone ?? booking.display_time_zone,
+        workingHours: (booking.location?.working_hours ?? null) as
+          | import("@/lib/bookings/lifecycle-deadlines").WorkingHoursJson
+          | null,
+        settings: slaSettingsFromHours(booking.provider),
+      })
+    : null;
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: booking.payment_status,
     paymentProvider: (booking as unknown as Record<string, unknown>).payment_provider as string | undefined,
@@ -426,33 +479,125 @@ export default function BookingDetailPage() {
   const calendarEnd = calendarStart ? new Date(calendarStart.getTime() + totalDurationMinutes * 60 * 1000) : null;
   const calendarLocation =
     booking.location_type === "at_salon"
-      ? booking.location?.name || booking.location?.address || "Salon"
+      ? booking.location?.name || booking.location?.address || t("web.accountSettings.bookings.salonFallback")
       : booking.address
         ? `${booking.address.line1}, ${booking.address.city}`
-        : "Address TBD";
+        : t("web.accountSettings.bookings.addressTbd");
   const calendarEvent =
     calendarStart && calendarEnd
       ? {
-          title: `Appointment with ${providerName}`,
-          description: `Booking #${booking.booking_number}\n${booking.services?.map((s) => `${s.offering_name || "Service"} (${s.duration_minutes ?? 0} min)`).join("\n") ?? ""}`,
+          title: t("web.accountSettings.bookings.calendarTitle", { provider: providerName }),
+          description: `${t("web.accountSettings.bookings.calendarBookingNumber", { number: booking.booking_number })}\n${booking.services?.map((svc) => t("web.accountSettings.bookings.calendarServiceLine", { name: svc.offering_name || t("web.accountSettings.bookings.serviceFallback"), minutes: svc.duration_minutes ?? 0 })).join("\n") ?? ""}`,
           location: calendarLocation,
           start: calendarStart,
           end: calendarEnd,
         }
       : null;
 
+  const runningLateGuard = canCustomerReportRunningLate({
+    status: booking.status,
+    scheduled_at: booking.scheduled_at,
+    location_type: booking.location_type,
+    current_stage: booking.current_stage,
+    customer_running_late_at: booking.customer_running_late_at,
+    booking_services: booking.services?.map((s) => ({
+      duration_minutes: s.duration_minutes,
+      scheduled_end_at: (s as { scheduled_end_at?: string | null }).scheduled_end_at,
+    })),
+  });
+  const canReportRunningLate =
+    typeof booking.can_report_running_late === "boolean"
+      ? booking.can_report_running_late
+      : runningLateGuard.ok;
+  const lifecycleHint = booking.lifecycle_hint;
+  const showLateWindowStrip =
+    lifecycleHint === "late_window" || booking.in_late_window === true;
+  const showRunningLateStrip =
+    canReportRunningLate ||
+    showLateWindowStrip ||
+    Boolean(booking.customer_running_late_at);
+  const showAwaitingCloseOutStrip = lifecycleHint === "awaiting_close_out";
+
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-      <BackButton href="/account-settings/bookings" label="Back to Bookings" />
+      <BackButton href="/account-settings/bookings" label={t("web.accountSettings.bookings.backToBookings")} />
       {booking && (
         <Breadcrumb 
           items={[
-            { label: "Account", href: "/account-settings" },
-            { label: "Bookings", href: "/account-settings/bookings" },
-            { label: booking.booking_number ? `Booking #${booking.booking_number}` : "Booking" }
+            { label: t("web.accountSettings.bookings.breadcrumbAccount"), href: "/account-settings" },
+            { label: t("web.accountSettings.bookings.breadcrumbBookings"), href: "/account-settings/bookings" },
+            { label: booking.booking_number ? t("web.accountSettings.bookings.bookingNumber", { number: booking.booking_number }) : t("web.accountSettings.bookings.bookingTitle") }
           ]} 
         />
       )}
+
+      {showRunningLateStrip ? (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-amber-950">
+                {showLateWindowStrip ? t("web.accountSettings.bookings.lateWindowTitle") : t("web.accountSettings.bookings.onYourWay")}
+              </p>
+              <p className="text-sm text-amber-900/90 mt-1">
+                {t("web.accountSettings.bookings.runningLateHint", { provider: providerName })}
+              </p>
+              {booking.customer_running_late_at && !booking.provider_late_ack_at ? (
+                <p className="text-sm text-amber-900 mt-2">
+                  {t("web.accountSettings.bookings.runningLateReported", {
+                    minutes: booking.customer_running_late_minutes
+                      ? t("web.accountSettings.bookings.runningLateMinutes", { minutes: booking.customer_running_late_minutes })
+                      : "",
+                  })}
+                </p>
+              ) : null}
+              {booking.provider_late_ack_at ? (
+                <p className="text-sm text-green-800 mt-2 font-medium">
+                  {t("web.accountSettings.bookings.providerAcked", { provider: providerName })}
+                </p>
+              ) : null}
+              {canReportRunningLate ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <select
+                    value={runningLateMinutes}
+                    onChange={(e) => setRunningLateMinutes(Number(e.target.value))}
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm min-h-[40px]"
+                  >
+                    {ALLOWED_RUNNING_LATE_MINUTES.map((mins) => (
+                      <option key={mins} value={mins}>
+                        {t("web.accountSettings.bookings.minutesLate", { minutes: mins })}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="min-h-[40px]"
+                    disabled={isReportingLate}
+                    onClick={() => void handleReportRunningLate()}
+                  >
+                    {isReportingLate ? t("web.accountSettings.bookings.sending") : t("web.accountSettings.bookings.imRunningLate")}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showAwaitingCloseOutStrip ? (
+        <div className="mb-4 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+          <div className="flex items-start gap-3">
+            <Clock className="h-5 w-5 shrink-0 text-orange-700 mt-0.5" />
+            <div>
+              <p className="font-semibold text-orange-950">{t("web.accountSettings.bookings.closeOutTitle")}</p>
+              <p className="text-sm text-orange-900/90 mt-1">
+                {t("web.accountSettings.bookings.closeOutBody", { provider: providerName })}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isActive && (
         <div
@@ -475,6 +620,9 @@ export default function BookingDetailPage() {
               <p className="text-sm text-gray-600 mt-0.5">
                 {lifecycleDisplay.description}
               </p>
+              {pendingSlaCopy ? (
+                <p className="text-sm text-gray-600 mt-1">{pendingSlaCopy.body}</p>
+              ) : null}
               {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
                 <p className="text-sm text-gray-600 mt-1">{paymentDisplay.label}.</p>
               )}
@@ -486,7 +634,7 @@ export default function BookingDetailPage() {
                   className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:underline"
                 >
                   <HelpCircle className="h-4 w-4" />
-                  Help
+                  {t("web.accountSettings.bookings.help")}
                 </a>
               )}
             </div>
@@ -497,7 +645,7 @@ export default function BookingDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-semibold mb-2 text-gray-900">
-            {booking.booking_number ? `Booking #${booking.booking_number}` : "Booking"}
+            {booking.booking_number ? t("web.accountSettings.bookings.bookingNumber", { number: booking.booking_number }) : t("web.accountSettings.bookings.bookingTitle")}
           </h1>
           <span
             className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
@@ -517,6 +665,36 @@ export default function BookingDetailPage() {
         </div>
       </div>
 
+      {isExpiredPending && booking.provider?.slug ? (
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="font-semibold text-gray-900">{t("web.accountSettings.bookings.requestExpired")}</p>
+          <p className="text-sm text-gray-600 mt-1">
+            {expiredPendingReason.trim() ||
+              t("web.accountSettings.bookings.requestExpiredDefault")}
+          </p>
+          <Button
+            className="mt-3"
+            onClick={() =>
+              router.push(
+                buildWebRebookHref(
+                  booking.provider!.slug!,
+                  (booking.services ?? []).map((service) => ({
+                    offering_id: service.offering_id,
+                    staff_id: service.staff_id,
+                  })),
+                  {
+                    locationId: booking.location_id ?? booking.location?.id ?? null,
+                    locationType: booking.location_type,
+                  },
+                ),
+              )
+            }
+          >
+            {t("web.accountSettings.bookings.bookAgain")}
+          </Button>
+        </div>
+      ) : null}
+
       <BookingReferencePanel
         bookingId={bookingId}
         bookingNumber={booking.booking_number}
@@ -530,32 +708,32 @@ export default function BookingDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
         {/* Booking Details */}
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Booking Details</h2>
+          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.bookingDetails")}</h2>
           <div className="space-y-4">
             <div className="flex items-start gap-3">
               <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
-                <p className="text-sm text-gray-600">Date</p>
+                <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.date")}</p>
                 <p className="font-medium">{formatDate(booking.scheduled_at)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Clock className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
-                <p className="text-sm text-gray-600">Time</p>
+                <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.time")}</p>
                 <p className="font-medium">{formatTime(booking.scheduled_at)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
-                <p className="text-sm text-gray-600">Location</p>
+                <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.location")}</p>
                 <p className="font-medium">
                   {booking.location_type === "at_salon"
-                    ? booking.location?.name || booking.location_name || "At Salon"
+                    ? booking.location?.name || booking.location_name || t("web.accountSettings.bookings.atSalon")
                     : booking.address
                     ? `${booking.address.line1}, ${booking.address.city}`
-                    : "At your location"}
+                    : t("web.accountSettings.bookings.atYourLocation")}
                 </p>
               </div>
             </div>
@@ -563,7 +741,7 @@ export default function BookingDetailPage() {
               <div className="flex items-start gap-3">
                 <User className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
-                  <p className="text-sm text-gray-600">Professional</p>
+                  <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.professional")}</p>
                   <p className="font-medium">{booking.services[0].staff_name}</p>
                 </div>
               </div>
@@ -573,11 +751,11 @@ export default function BookingDetailPage() {
 
         {/* Provider Info */}
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Provider</h2>
+          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.provider")}</h2>
           <div className="space-y-4">
             <div>
               <p className="font-medium text-lg">
-                {booking.provider?.business_name || "Provider"}
+                {booking.provider?.business_name || t("web.accountSettings.bookings.provider")}
               </p>
               {booking.provider?.phone && (
                 <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
@@ -598,12 +776,15 @@ export default function BookingDetailPage() {
 
       {calendarEvent && booking.status !== "cancelled" && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-2 text-gray-900">Add this booking to your calendar</h2>
+          <h2 className="text-lg md:text-xl font-semibold mb-2 text-gray-900">{t("web.accountSettings.bookings.calendarSectionTitle")}</h2>
           <p className="text-sm text-gray-600 mb-4">
-            Use <span className="font-medium text-gray-800">Google Calendar</span> or{" "}
-            <span className="font-medium text-gray-800">Outlook</span> in your browser, or download a calendar file (
-            <span className="font-medium text-gray-800">.ics</span>) for Apple Calendar, the Outlook desktop app, and
-            anything else that imports events.
+            {t("web.accountSettings.bookings.calendarSectionBefore")}
+            <span className="font-medium text-gray-800">{t("web.accountSettings.bookings.googleCalendar")}</span>
+            {t("web.accountSettings.bookings.calendarSectionMid")}
+            <span className="font-medium text-gray-800">{t("web.accountSettings.bookings.outlook")}</span>
+            {t("web.accountSettings.bookings.calendarSectionAfter")}
+            <span className="font-medium text-gray-800">{t("web.accountSettings.bookings.ics")}</span>
+            {t("web.accountSettings.bookings.calendarSectionEnd")}
           </p>
           <div className="flex flex-wrap gap-2">
             <a
@@ -612,8 +793,8 @@ export default function BookingDetailPage() {
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              <Plus className="w-4 h-4 mr-1" />
-              Google Calendar
+              <Plus className="w-4 h-4 me-1" />
+              {t("web.accountSettings.bookings.googleCalendar")}
             </a>
             <a
               href={getOutlookCalendarUrl(calendarEvent)}
@@ -621,16 +802,16 @@ export default function BookingDetailPage() {
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              <Mail className="w-4 h-4 mr-1" />
-              Outlook (web)
+              <Mail className="w-4 h-4 me-1" />
+              {t("web.accountSettings.bookings.outlookWeb")}
             </a>
             <a
               href={`/api/me/bookings/${bookingId}/calendar.ics`}
               download
               className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              <Calendar className="w-4 h-4 mr-1" />
-              Calendar file (.ics)
+              <Calendar className="w-4 h-4 me-1" />
+              {t("web.accountSettings.bookings.calendarFileIcs")}
             </a>
           </div>
         </div>
@@ -638,7 +819,7 @@ export default function BookingDetailPage() {
 
       {/* Services */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Services</h2>
+        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.services")}</h2>
         <div className="space-y-3">
           {booking.services?.map((service, index) => (
             <div
@@ -646,8 +827,8 @@ export default function BookingDetailPage() {
               className="flex justify-between items-center py-3 border-b last:border-0"
             >
               <div>
-                <p className="font-medium">{service.offering_name || "Service"}</p>
-                <p className="text-sm text-gray-600">{service.duration_minutes} mins</p>
+                <p className="font-medium">{service.offering_name || t("web.accountSettings.bookings.serviceFallback")}</p>
+                <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.durationMins", { minutes: service.duration_minutes })}</p>
               </div>
               <p className="font-medium">
                 {booking.currency} {service.price.toFixed(2)}
@@ -655,20 +836,20 @@ export default function BookingDetailPage() {
             </div>
           ))}
           {(!booking.services || booking.services.length === 0) && (
-            <p className="text-sm text-gray-500">No services</p>
+            <p className="text-sm text-gray-500">{t("web.accountSettings.bookings.noServices")}</p>
           )}
         </div>
         {booking.custom_offer && (
           <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-            <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Custom Offer Details</h3>
+            <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">{t("web.accountSettings.bookings.customOfferDetails")}</h3>
             {booking.custom_offer.request?.description && (
               <p className="text-sm text-slate-600 mb-1">
-                <span className="font-medium text-slate-800">Your request:</span> {booking.custom_offer.request.description}
+                <span className="font-medium text-slate-800">{t("web.accountSettings.bookings.yourRequest")}</span> {booking.custom_offer.request.description}
               </p>
             )}
             {booking.custom_offer.notes && (
               <p className="text-sm text-slate-600">
-                <span className="font-medium text-slate-800">Provider notes:</span> {booking.custom_offer.notes}
+                <span className="font-medium text-slate-800">{t("web.accountSettings.bookings.providerNotes")}</span> {booking.custom_offer.notes}
               </p>
             )}
           </div>
@@ -678,7 +859,7 @@ export default function BookingDetailPage() {
       {/* Products */}
       {booking.products && booking.products.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Products</h2>
+          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.products")}</h2>
           <div className="space-y-3">
             {booking.products.map((product, index: number) => (
               <div
@@ -686,8 +867,8 @@ export default function BookingDetailPage() {
                 className="flex justify-between items-center py-3 border-b last:border-0"
               >
                 <div>
-                  <p className="font-medium">{product.product_name || "Product"}</p>
-                  <p className="text-sm text-gray-600">Quantity: {product.quantity}</p>
+                  <p className="font-medium">{product.product_name || t("web.accountSettings.bookings.productFallback")}</p>
+                  <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.quantity", { count: product.quantity })}</p>
                 </div>
                 <p className="font-medium">
                   {booking.currency} {product.total_price.toFixed(2)}
@@ -701,7 +882,7 @@ export default function BookingDetailPage() {
       {/* Additional Charges */}
       {booking.additional_charges && booking.additional_charges.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Additional Charges</h2>
+          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.additionalCharges")}</h2>
           <div className="space-y-3">
             {booking.additional_charges.map((charge) => (
               <div
@@ -743,7 +924,7 @@ export default function BookingDetailPage() {
                       onClick={() => void handleApproveRejectCharge(charge.id, true)}
                       disabled={chargeApproveLoadingId === charge.id}
                     >
-                      {chargeApproveLoadingId === charge.id ? "Approving…" : "Approve"}
+                      {chargeApproveLoadingId === charge.id ? t("web.accountSettings.bookings.approving") : t("web.accountSettings.bookings.approveCta")}
                     </Button>
                     <Button
                       variant="outline"
@@ -752,14 +933,14 @@ export default function BookingDetailPage() {
                       disabled={chargeApproveLoadingId === charge.id}
                       className="border-red-200 text-red-600 hover:bg-red-50"
                     >
-                      Reject
+                      {t("web.accountSettings.bookings.rejectCta")}
                     </Button>
                     <Button
                       size="sm"
                       onClick={() => router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)}
                       className="bg-gradient-to-r from-primary to-primary-hover text-white"
                     >
-                      Pay Now
+                      {t("web.accountSettings.bookings.payNow")}
                     </Button>
                   </div>
                 )}
@@ -768,12 +949,12 @@ export default function BookingDetailPage() {
                     onClick={() => router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)}
                     className="mt-2 w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white"
                   >
-                    Pay Now
+                    {t("web.accountSettings.bookings.payNow")}
                   </Button>
                 )}
                 {charge.paid_at && (
                   <p className="text-xs text-gray-500 mt-2">
-                    Paid on {new Date(charge.paid_at).toLocaleDateString()}
+                    {t("web.accountSettings.bookings.paidOn", { date: new Date(charge.paid_at).toLocaleDateString() })}
                   </p>
                 )}
               </div>
@@ -784,17 +965,17 @@ export default function BookingDetailPage() {
 
       {/* Payment Summary */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Payment Summary</h2>
+        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.paymentSummary")}</h2>
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span className="text-gray-600">Subtotal</span>
+            <span className="text-gray-600">{t("web.accountSettings.bookings.subtotal")}</span>
             <span className="font-medium">
               {booking.currency} {(Number(booking.subtotal) || 0).toFixed(2)}
             </span>
           </div>
           {booking.travel_fee > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Travel fee</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.travelFee")}</span>
               <span className="font-medium">
                 {booking.currency} {booking.travel_fee.toFixed(2)}
               </span>
@@ -803,7 +984,7 @@ export default function BookingDetailPage() {
           {booking.discount_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">
-                Discount{booking.discount_code ? ` (${booking.discount_code})` : ""}
+                {booking.discount_code ? t("web.accountSettings.bookings.discountWithCode", { code: booking.discount_code }) : t("web.accountSettings.bookings.discount")}
               </span>
               <span className="font-medium text-green-600">
                 -{booking.currency} {booking.discount_amount.toFixed(2)}
@@ -812,7 +993,7 @@ export default function BookingDetailPage() {
           )}
           {booking.promotion_discount_amount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Promotion</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.promotion")}</span>
               <span className="font-medium text-green-600">
                 -{booking.currency} {booking.promotion_discount_amount.toFixed(2)}
               </span>
@@ -820,7 +1001,7 @@ export default function BookingDetailPage() {
           )}
           {booking.membership_discount_amount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Membership discount</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.membershipDiscount")}</span>
               <span className="font-medium text-green-600">
                 -{booking.currency} {booking.membership_discount_amount.toFixed(2)}
               </span>
@@ -828,7 +1009,7 @@ export default function BookingDetailPage() {
           )}
           {booking.loyalty_discount_amount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Loyalty points redeemed</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.loyaltyRedeemed")}</span>
               <span className="font-medium text-green-600">
                 -{booking.currency} {booking.loyalty_discount_amount.toFixed(2)}
               </span>
@@ -841,7 +1022,7 @@ export default function BookingDetailPage() {
               payments section so customers see one consistent reconciliation. */}
           {booking.tax_amount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Tax{booking.tax_rate > 0 ? ` (${booking.tax_rate}%)` : ""}</span>
+              <span className="text-gray-600">{booking.tax_rate > 0 ? t("web.accountSettings.bookings.taxWithRate", { rate: booking.tax_rate }) : t("web.accountSettings.bookings.tax")}</span>
               <span className="font-medium">
                 {booking.currency} {booking.tax_amount.toFixed(2)}
               </span>
@@ -850,7 +1031,7 @@ export default function BookingDetailPage() {
           {booking.service_fee_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">
-                Platform fee{formatPercent(booking.service_fee_percentage) ? ` (${formatPercent(booking.service_fee_percentage)}%)` : ""}
+                {formatPercent(booking.service_fee_percentage) ? t("web.accountSettings.bookings.platformFeeWithPct", { pct: formatPercent(booking.service_fee_percentage) }) : t("web.accountSettings.bookings.platformFee")}
               </span>
               <span className="font-medium">
                 {booking.currency} {booking.service_fee_amount.toFixed(2)}
@@ -859,7 +1040,7 @@ export default function BookingDetailPage() {
           )}
           {booking.tip_amount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Tip</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.tip")}</span>
               <span className="font-medium">
                 {booking.currency} {booking.tip_amount.toFixed(2)}
               </span>
@@ -867,7 +1048,7 @@ export default function BookingDetailPage() {
           )}
           {booking.additional_charges && booking.additional_charges.length > 0 && (
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium text-gray-700 mb-2">Additional Charges</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">{t("web.accountSettings.bookings.additionalCharges")}</p>
               {booking.additional_charges
                 .filter((c) => c.status !== 'rejected')
                 .map((charge) => (
@@ -877,7 +1058,7 @@ export default function BookingDetailPage() {
                       charge.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
                     }`}>
                       {charge.currency} {Number(charge.amount).toFixed(2)}
-                      {charge.status !== 'paid' && ' (Pending)'}
+                      {charge.status !== 'paid' && t("web.accountSettings.bookings.pendingSuffix")}
                     </span>
                   </div>
                 ))}
@@ -885,7 +1066,7 @@ export default function BookingDetailPage() {
           )}
           {Number(booking.cancellation_fee ?? 0) > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Cancellation fee</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.cancellationFee")}</span>
               <span className="font-medium text-amber-700">
                 {booking.currency} {Number(booking.cancellation_fee).toFixed(2)}
               </span>
@@ -893,7 +1074,7 @@ export default function BookingDetailPage() {
           )}
           <div className="border-t pt-2 mt-2">
             <div className="flex justify-between">
-              <span className="font-semibold">Total</span>
+              <span className="font-semibold">{t("web.accountSettings.bookings.total")}</span>
               <span className="font-semibold text-lg">
                 {booking.currency} {booking.total_amount.toFixed(2)}
               </span>
@@ -913,7 +1094,7 @@ export default function BookingDetailPage() {
               <div className="pt-2">
                 {walletPaid > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Paid (wallet)</span>
+                    <span className="text-gray-600">{t("web.accountSettings.bookings.paidWallet")}</span>
                     <span className="font-medium text-gray-700">
                       {booking.currency} {walletPaid.toFixed(2)}
                     </span>
@@ -921,7 +1102,7 @@ export default function BookingDetailPage() {
                 )}
                 {giftPaid > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Paid (gift card)</span>
+                    <span className="text-gray-600">{t("web.accountSettings.bookings.paidGiftCard")}</span>
                     <span className="font-medium text-gray-700">
                       {booking.currency} {giftPaid.toFixed(2)}
                     </span>
@@ -929,7 +1110,7 @@ export default function BookingDetailPage() {
                 )}
                 {otherPaid > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Paid (card / other)</span>
+                    <span className="text-gray-600">{t("web.accountSettings.bookings.paidCardOther")}</span>
                     <span className="font-medium text-gray-700">
                       {booking.currency} {otherPaid.toFixed(2)}
                     </span>
@@ -937,7 +1118,7 @@ export default function BookingDetailPage() {
                 )}
                 {totalPaid > 0 && (
                   <div className="flex justify-between text-sm font-semibold border-t mt-1 pt-1">
-                    <span className="text-gray-700">Total paid</span>
+                    <span className="text-gray-700">{t("web.accountSettings.bookings.totalPaid")}</span>
                     <span className="text-green-600">
                       {booking.currency} {totalPaid.toFixed(2)}
                     </span>
@@ -949,7 +1130,7 @@ export default function BookingDetailPage() {
           {booking.outstanding_balance !== undefined && booking.outstanding_balance > 0 && (
             <div className="pt-2 border-t">
               <div className="flex justify-between">
-                <span className="font-semibold text-orange-600">Outstanding Balance</span>
+                <span className="font-semibold text-orange-600">{t("web.accountSettings.bookings.outstandingBalance")}</span>
                 <span className="font-semibold text-lg text-orange-600">
                   {booking.currency} {booking.outstanding_balance.toFixed(2)}
                 </span>
@@ -957,8 +1138,8 @@ export default function BookingDetailPage() {
               {isCashBooking ? (
                 <p className="text-sm text-gray-600 mt-2">
                   {booking.location_type === "at_home"
-                    ? "You will pay cash when your provider arrives."
-                    : "You will pay cash at the salon."}
+                    ? t("web.accountSettings.bookings.payCashOnArrival")
+                    : t("web.accountSettings.bookings.payCashAtSalon")}
                 </p>
               ) : canPayOutstandingOnline ? (
                 <div className="mt-3">
@@ -968,30 +1149,30 @@ export default function BookingDetailPage() {
                     onClick={handlePayOutstanding}
                     disabled={isPayingOutstanding}
                   >
-                    <CreditCard className="w-4 h-4 mr-2" aria-hidden />
-                    {isPayingOutstanding ? "Processing…" : "Pay outstanding balance"}
+                    <CreditCard className="w-4 h-4 me-2" aria-hidden />
+                    {isPayingOutstanding ? t("web.accountSettings.bookings.processing") : t("web.accountSettings.bookings.payOutstanding")}
                   </Button>
                   <p className="text-xs text-gray-500 mt-2">
-                    Secure payment via Paystack. You will return here after paying.
+                    {t("web.accountSettings.bookings.paystackReturnHint")}
                   </p>
                 </div>
               ) : null}
             </div>
           )}
           <div className="flex justify-between text-sm text-gray-600 mt-2 pt-2 border-t">
-            <span>Payment method</span>
+            <span>{t("web.accountSettings.bookings.paymentMethod")}</span>
             <span className="font-medium capitalize">
               {isCashBooking
-                ? "Cash"
+                ? t("web.accountSettings.bookings.cash")
                 : paymentDisplay.isPaymentSettled
-                ? "Online"
+                ? t("web.accountSettings.bookings.online")
                 : paymentDisplay.isDepositPaid
-                ? "Online (deposit paid)"
-                : "Online (pending)"}
+                ? t("web.accountSettings.bookings.onlineDepositPaid")
+                : t("web.accountSettings.bookings.onlinePending")}
             </span>
           </div>
           <div className="flex justify-between text-sm text-gray-600">
-            <span>Payment status</span>
+            <span>{t("web.accountSettings.bookings.paymentStatus")}</span>
             <span
               className={`font-medium ${
                 paymentDisplay.tone === "success"
@@ -1006,8 +1187,8 @@ export default function BookingDetailPage() {
           </div>
           {booking.loyalty_points_earned > 0 && booking.status === "completed" && (
             <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Loyalty points earned</span>
-              <span className="font-medium text-primary">+{booking.loyalty_points_earned} pts</span>
+              <span className="text-gray-600">{t("web.accountSettings.bookings.loyaltyEarned")}</span>
+              <span className="font-medium text-primary">{t("web.accountSettings.bookings.loyaltyPts", { points: booking.loyalty_points_earned })}</span>
             </div>
           )}
         </div>
@@ -1030,7 +1211,7 @@ export default function BookingDetailPage() {
             onClick={() => router.push(`/account-settings/bookings/${bookingId}/reschedule`)}
             className="flex-1"
           >
-            Reschedule
+            {t("web.accountSettings.bookings.reschedule")}
           </Button>
         )}
         {canCancel && (
@@ -1040,7 +1221,7 @@ export default function BookingDetailPage() {
             disabled={isCancelling}
             className="flex-1"
           >
-            {isCancelling ? "Cancelling..." : "Cancel Booking"}
+            {isCancelling ? t("web.accountSettings.bookings.cancelling") : t("web.accountSettings.bookings.cancelBooking")}
           </Button>
         )}
         {booking.status === "completed" && (
@@ -1050,14 +1231,14 @@ export default function BookingDetailPage() {
               onClick={() => router.push(`/account-settings/bookings/${bookingId}/review`)}
               className="flex-1"
             >
-              Write Review
+              {t("web.accountSettings.bookings.writeReview")}
             </Button>
             <Button
               variant="outline"
               onClick={() => router.push(`/account-settings/bookings/${bookingId}/receipt`)}
               className="flex-1"
             >
-              View Receipt
+              {t("web.accountSettings.bookings.viewReceipt")}
             </Button>
           </>
         )}
@@ -1067,7 +1248,7 @@ export default function BookingDetailPage() {
             onClick={() => router.push(`/account-settings/bookings/${bookingId}/receipt`)}
             className="flex-1"
           >
-            View Receipt
+            {t("web.accountSettings.bookings.viewReceipt")}
           </Button>
         )}
       </div>
@@ -1081,12 +1262,12 @@ export default function BookingDetailPage() {
                 <Trophy className="h-10 w-10 text-primary" aria-hidden />
               </div>
             </div>
-            <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
+            <DialogTitle className="text-center text-xl">{t("web.accountSettings.bookings.completeTitle")}</DialogTitle>
             <DialogDescription className="text-center">
-              You’re all set. Thanks for booking with us.
+              {t("web.accountSettings.bookings.completeBody")}
               {(booking?.loyalty_points_earned ?? 0) > 0 && (
                 <span className="mt-2 block font-medium text-primary">
-                  You earned {booking.loyalty_points_earned} loyalty points. They’ve been added to your balance.
+                  {t("web.accountSettings.bookings.completeLoyalty", { points: booking.loyalty_points_earned })}
                 </span>
               )}
             </DialogDescription>
@@ -1096,14 +1277,14 @@ export default function BookingDetailPage() {
               onClick={handleCompletionWriteReview}
               className="w-full"
             >
-              Write a review
+              {t("web.accountSettings.bookings.writeAReview")}
             </Button>
             <Button
               variant="outline"
               onClick={() => dismissCompletionModal(true)}
               className="w-full"
             >
-              Maybe later
+              {t("web.accountSettings.bookings.maybeLater")}
             </Button>
           </DialogFooter>
         </DialogContent>

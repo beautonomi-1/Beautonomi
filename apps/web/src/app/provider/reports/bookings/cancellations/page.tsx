@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -21,6 +22,7 @@ import type { CancellationsReportResponse } from "@/app/api/provider/reports/boo
 import { CancellationsDailyChart, CancellationsReasonsChart } from "./components/CancellationsCharts";
 
 export default function CancellationsReport() {
+  const { t } = useTranslation();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -79,17 +81,17 @@ export default function CancellationsReport() {
   };
 
   const handleExportPdf = () => {
-    exportToPDF("cancellations-report", "cancellations-report", "Cancellations report");
+    exportToPDF("cancellations-report", "cancellations-report", t("web.provider.reports.pages.bookings/cancellations.reportTitle"));
   };
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Cancellations" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/cancellations.title") },
         ]}
       >
         <ReportSkeleton />
@@ -101,15 +103,15 @@ export default function CancellationsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Cancellations" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/cancellations.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Cancellations" />
-          <ReportSubscriptionRequired feature="Cancellations" />
+          <PageHeader title={t("web.provider.reports.pages.bookings/cancellations.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.bookings/cancellations.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -119,15 +121,15 @@ export default function CancellationsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Cancellations" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/cancellations.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load cancellations data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.bookings/cancellations.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -136,25 +138,25 @@ export default function CancellationsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Cancellations" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.bookings/cancellations.title") },
       ]}
       showCloseButton={false}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
-          title="Cancellations"
-          subtitle="Scheduled-window counts, reasons, and ledger-linked amounts posted in range"
+          title={t("web.provider.reports.pages.bookings/cancellations.title")}
+          subtitle={t("web.provider.reports.pages.bookings/cancellations.subtitle")}
         />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={handleExportCsv} className="rounded-xl">
-            <Download className="mr-2 h-4 w-4" />
-            CSV
+            <Download className="me-2 h-4 w-4" />
+            {t("web.provider.common.csv")}
           </Button>
           <Button variant="outline" onClick={handleExportPdf} className="rounded-xl">
-            Print / PDF
+            {t("web.provider.reports.common.printPdf")}
           </Button>
         </div>
       </div>
@@ -167,11 +169,11 @@ export default function CancellationsReport() {
             <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
               <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
               <div>
-                <p className="font-medium text-sky-900">Facts & definitions</p>
+                <p className="font-medium text-sky-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
                 <p className="mt-1">{data.basisNote}</p>
                 {data.ledgerTransactionTypes?.length ? (
                   <p className="mt-2 text-xs text-sky-900/85">
-                    Ledger net types for “lost revenue”: {data.ledgerTransactionTypes.join(", ")}
+                    {t("web.provider.reports.pages.bookings/cancellations.ledgerNetTypes", { types: data.ledgerTransactionTypes.join(", ") })}
                   </p>
                 ) : null}
               </div>
@@ -181,7 +183,7 @@ export default function CancellationsReport() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Cancelled (scheduled in window)</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/cancellations.cancelledScheduled")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between gap-2">
@@ -195,8 +197,8 @@ export default function CancellationsReport() {
 
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Cancellation rate</CardTitle>
-                <p className="text-xs text-gray-500">Share of all appointments in window</p>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/cancellations.cancellationRate")}</CardTitle>
+                <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.rateHint")}</p>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between gap-2">
@@ -212,8 +214,8 @@ export default function CancellationsReport() {
 
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Ledger net (in window)</CardTitle>
-                <p className="text-xs text-gray-500">Posted transactions for cancelled bookings</p>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/cancellations.ledgerNet")}</CardTitle>
+                <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.ledgerNetHint")}</p>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between gap-2">
@@ -227,8 +229,8 @@ export default function CancellationsReport() {
 
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Appointments in window</CardTitle>
-                <p className="text-xs text-gray-500">Denominator for rate · {data.timezone ?? ""}</p>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/cancellations.appointmentsInWindow")}</CardTitle>
+                <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.denominator", { timezone: data.timezone ?? "" })}</p>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between gap-2">
@@ -244,9 +246,9 @@ export default function CancellationsReport() {
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <Card className="border-gray-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-lg">Cancellations by day</CardTitle>
+                <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/cancellations.byDay")}</CardTitle>
                 <p className="text-sm font-normal text-gray-500">
-                  Bucketed by cancellation local date (fallback: scheduled date if cancel time missing).
+                  {t("web.provider.reports.pages.bookings/cancellations.byDayHint")}
                 </p>
               </CardHeader>
               <CardContent>
@@ -256,8 +258,8 @@ export default function CancellationsReport() {
 
             <Card className="border-gray-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-lg">Reason mix</CardTitle>
-                <p className="text-sm font-normal text-gray-500">Percent of cancellations in this range (top 10 shown).</p>
+                <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/cancellations.reasonMix")}</CardTitle>
+                <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.reasonMixHint")}</p>
               </CardHeader>
               <CardContent>
                 <CancellationsReasonsChart rows={data.cancellationReasons} />
@@ -267,27 +269,27 @@ export default function CancellationsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">All reasons</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/cancellations.allReasons")}</CardTitle>
             </CardHeader>
             <CardContent>
               {data.cancellationReasons.length === 0 ? (
-                <EmptyReportState title="No cancellation reasons" description="No cancellation reasons recorded." />
+                <EmptyReportState title={t("web.provider.reports.pages.bookings/cancellations.noReasons")} description={t("web.provider.reports.pages.bookings/cancellations.noReasonsDesc")} />
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50/80">
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Reason</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Count</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Share</th>
+                        <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.reports.pages.bookings/cancellations.reason")}</th>
+                        <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.bookings/cancellations.count")}</th>
+                        <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.bookings/cancellations.share")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.cancellationReasons.map((reason) => (
                         <tr key={reason.reason} className="border-b border-gray-50 hover:bg-gray-50/60">
                           <td className="px-4 py-3 font-medium text-gray-900">{reason.reason}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-gray-800">{reason.count}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-gray-600">{reason.percentage.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-end tabular-nums text-gray-800">{reason.count}</td>
+                          <td className="px-4 py-3 text-end tabular-nums text-gray-600">{reason.percentage.toFixed(1)}%</td>
                         </tr>
                       ))}
                     </tbody>
@@ -299,12 +301,12 @@ export default function CancellationsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Recent cancellations</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Newest first — detail sample for quick review.</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/cancellations.recent")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.recentHint")}</p>
             </CardHeader>
             <CardContent>
               {data.recentCancellations.length === 0 ? (
-                <EmptyReportState title="No cancellations" description="No cancellations in the selected period." />
+                <EmptyReportState title={t("web.provider.reports.pages.bookings/cancellations.noCancellations")} description={t("web.provider.reports.pages.bookings/cancellations.noCancellationsDesc")} />
               ) : (
                 <div className="space-y-3">
                   {data.recentCancellations.map((booking) => (
@@ -314,18 +316,18 @@ export default function CancellationsReport() {
                     >
                       <div>
                         <p className="font-medium text-gray-900">
-                          {(booking.users as { full_name?: string } | null)?.full_name ?? "Unknown client"}
+                          {(booking.users as { full_name?: string } | null)?.full_name ?? t("web.provider.reports.pages.bookings/cancellations.unknownClient")}
                         </p>
                         <p className="text-sm text-gray-600">
                           {booking.scheduled_at
                             ? format(new Date(String(booking.scheduled_at)), "MMM dd, yyyy 'at' h:mm a")
-                            : "—"}
+                            : t("web.provider.common.emDash")}
                         </p>
                         {booking.cancellation_reason ? (
-                          <p className="mt-1 text-xs text-gray-500">Reason: {String(booking.cancellation_reason)}</p>
+                          <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.reasonLabel", { reason: String(booking.cancellation_reason) })}</p>
                         ) : null}
                       </div>
-                      <div className="text-left sm:text-right">
+                      <div className="text-start sm:text-end">
                         <p className="font-semibold tabular-nums text-gray-900">
                           {fmt(Number(booking.total_amount ?? 0))}
                         </p>

@@ -395,7 +395,7 @@ export default function RecurringBookingsScreen() {
   const saveSchedule = useCallback(async () => {
     if (!editing) return;
     if (!isValidPreferredTimeInput(editPreferredTime)) {
-      Alert.alert(errTitle, "Enter a valid time in HH:MM format (e.g. 10:30).");
+      Alert.alert(errTitle, rb("invalidPreferredTime"));
       return;
     }
     if (!editSeriesNoEnd && !editEndDate.trim()) {
@@ -514,7 +514,7 @@ export default function RecurringBookingsScreen() {
             style={{ padding: 16, paddingBottom: 12 }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={{ flex: 1, marginEnd: 8 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.service_name}</Text>
                 <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600", marginTop: 4 }}>{rb("tapForDetails")}</Text>
               </View>
@@ -745,11 +745,11 @@ export default function RecurringBookingsScreen() {
                     </Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Upcoming visits</Text>
+                    <Text style={detailLabelStyle}>{rb("detailUpcomingVisits")}</Text>
                     {loadingSeriesVisits ? (
                       <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 8 }} />
                     ) : seriesVisits.length === 0 ? (
-                      <Text style={detailValueStyle}>No scheduled visits yet.</Text>
+                      <Text style={detailValueStyle}>{rb("detailNoScheduledVisits")}</Text>
                     ) : (
                       seriesVisits.map((visit) => (
                         <View
@@ -856,7 +856,7 @@ export default function RecurringBookingsScreen() {
               />
 
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <View style={{ flex: 1, marginRight: 12 }}>
+                <View style={{ flex: 1, marginEnd: 12 }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{rb("noEndDateToggle")}</Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{rb("noEndDateHint")}</Text>
                 </View>

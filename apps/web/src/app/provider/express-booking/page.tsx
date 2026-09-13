@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import { ExpressLinkQr } from "@/components/provider/booking/commerce/ExpressLinkQr";
@@ -41,6 +43,7 @@ import {
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
 export default function ExpressBookingLinksPage() {
+  const { t } = useTranslation();
   const [links, setLinks] = useState<ExpressBookingLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -60,7 +63,7 @@ export default function ExpressBookingLinksPage() {
         return;
       }
       console.error("Failed to load express booking links:", error);
-      toast.error("Failed to load express booking links");
+      toast.error(t("web.provider.expressBooking.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -89,11 +92,11 @@ export default function ExpressBookingLinksPage() {
     try {
       await providerApi.deleteExpressBookingLink(deleteLinkId);
       setLinks((current) => current.filter((link) => link.id !== deleteLinkId));
-      toast.success("Link deleted");
+      toast.success(t("web.provider.expressBooking.linkDeleted"));
       void loadLinks();
     } catch (error) {
       console.error("Failed to delete link:", error);
-      toast.error("Failed to delete link");
+      toast.error(t("web.provider.expressBooking.deleteFailed"));
     } finally {
       setDeleteLinkId(null);
     }
@@ -102,10 +105,10 @@ export default function ExpressBookingLinksPage() {
   const handleCopyLink = async (link: ExpressBookingLink) => {
     const copied = await copyTextToClipboard(link.full_url);
     if (copied) {
-      toast.success("Link copied to clipboard");
+      toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.linkCopiedToClipboard"));
       return;
     }
-    toast.error("Unable to copy link on this browser");
+    toast.error(t("web.provider.settings.pages.calendar/links.unableToCopyLinkOnThis"));
   };
 
   const handleViewLink = (link: ExpressBookingLink) => {
@@ -118,19 +121,19 @@ export default function ExpressBookingLinksPage() {
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading express booking links..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.expressBooking.loading")} />;
   }
 
   if (subscriptionRequired) {
     return (
       <div>
         <PageHeader
-          title="Express Booking Links"
-          subtitle="Create quick booking links for specific services or team members"
+          title={t("web.provider.expressBooking.title")}
+          subtitle={t("web.provider.expressBooking.subtitle")}
         />
         <SectionCard className="p-12">
           <SubscriptionGate
-            feature="Express booking links"
+            feature={t("web.provider.expressBooking.feature")}
             message={getUpgradeMessage("express.feature")}
           />
         </SectionCard>
@@ -141,22 +144,22 @@ export default function ExpressBookingLinksPage() {
   return (
     <div>
       <PageHeader
-        title="Express Booking Links"
-        subtitle="Create quick booking links for specific services or team members"
+        title={t("web.provider.expressBooking.title")}
+        subtitle={t("web.provider.expressBooking.subtitle")}
         primaryAction={{
-          label: "New Link",
+          label: t("web.provider.expressBooking.newLink"),
           onClick: handleCreate,
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
       {links.length === 0 ? (
         <SectionCard className="p-12">
           <EmptyState
-            title="No express booking links"
-            description="Create booking links to share with clients for quick appointment booking"
+            title={t("web.provider.expressBooking.emptyTitle")}
+            description={t("web.provider.expressBooking.emptyDescription")}
             action={{
-              label: "Create Link",
+              label: t("web.provider.expressBooking.createLink"),
               onClick: handleCreate,
             }}
           />
@@ -175,11 +178,11 @@ export default function ExpressBookingLinksPage() {
                     </code>
                   </div>
                   {!link.is_active ? (
-                    <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+<Badge className="bg-gray-100 text-gray-800 shrink-0">{t("web.provider.common.inactive")}</Badge>
                   ) : isExpired(link) ? (
-                    <Badge className="bg-red-100 text-red-800 shrink-0">Expired</Badge>
+<Badge className="bg-red-100 text-red-800 shrink-0">{t("web.provider.common.expired")}</Badge>
                   ) : (
-                    <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+<Badge className="bg-green-100 text-green-800 shrink-0">{t("web.provider.common.active")}</Badge>
                   )}
                 </div>
 
@@ -190,7 +193,7 @@ export default function ExpressBookingLinksPage() {
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
                   <span className="flex items-center gap-1">
                     <Eye className="w-3.5 h-3.5 text-gray-400" />
-                    {link.usage_count} clicks
+{t("web.provider.expressBooking.clicks", { count: link.usage_count })}
                   </span>
                   {link.expires_at && (
                     <span
@@ -203,7 +206,7 @@ export default function ExpressBookingLinksPage() {
                           : ""
                       }
                     >
-                      Expires {new Date(link.expires_at).toLocaleDateString()}
+{t("web.provider.expressBooking.expiresOn", { date: new Date(link.expires_at).toLocaleDateString() })}
                     </span>
                   )}
                 </div>
@@ -215,8 +218,8 @@ export default function ExpressBookingLinksPage() {
                     className="min-h-[44px] flex-1"
                     onClick={() => handleCopyLink(link)}
                   >
-                    <Copy className="w-4 h-4 mr-1" />
-                    Copy
+                    <Copy className="w-4 h-4 me-1" />
+                    {t("web.provider.common.copy")}
                   </Button>
                   <Button
                     variant="outline"
@@ -224,8 +227,8 @@ export default function ExpressBookingLinksPage() {
                     className="min-h-[44px] flex-1"
                     onClick={() => handleViewLink(link)}
                   >
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                    Open
+                    <ExternalLink className="w-4 h-4 me-1" />
+                    {t("web.provider.common.open")}
                   </Button>
                   <Button
                     variant="outline"
@@ -253,17 +256,17 @@ export default function ExpressBookingLinksPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Short Code</TableHead>
-                  <TableHead>Services</TableHead>
-                  <TableHead>Team Member</TableHead>
-                  <TableHead>Venue</TableHead>
-                  <TableHead>Usage</TableHead>
-                  <TableHead>Max</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Embed</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("web.provider.common.name")}</TableHead>
+                  <TableHead>{t("web.provider.expressBooking.shortCodeCol")}</TableHead>
+                  <TableHead>{t("web.provider.expressBooking.services")}</TableHead>
+                  <TableHead>{t("web.provider.portal.newSaleDialog.teamMember")}</TableHead>
+                  <TableHead>{t("web.provider.common.venue")}</TableHead>
+                  <TableHead>{t("web.provider.common.usage")}</TableHead>
+                  <TableHead>{t("web.provider.common.max")}</TableHead>
+                  <TableHead>{t("web.provider.expressBooking.expiresCol")}</TableHead>
+                  <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+                  <TableHead>{t("web.provider.common.embed")}</TableHead>
+                  <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -278,43 +281,43 @@ export default function ExpressBookingLinksPage() {
                     <TableCell>
                       {(link.service_ids?.length ?? (link.service_id ? 1 : 0)) > 0 ? (
                         <Badge variant="outline">
-                          {(link.service_ids?.length ?? (link.service_id ? 1 : 0))} selected
+{t("web.provider.expressBooking.selectedCount", { count: (link.service_ids?.length ?? (link.service_id ? 1 : 0)) })}
                         </Badge>
                       ) : (
-                        <span className="text-gray-400">Any</span>
+<span className="text-gray-400">{t("web.provider.common.any")}</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {link.team_member_id ? (
-                        <Badge variant="outline">Pre-selected</Badge>
+<Badge variant="outline">{t("web.provider.expressBooking.preSelected")}</Badge>
                       ) : (
-                        <span className="text-gray-400">Any</span>
+<span className="text-gray-400">{t("web.provider.common.any")}</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {link.location_type === "at_home" ? (
                         <span className="text-sm flex items-center gap-1">
-                          <Home className="w-3.5 h-3.5" /> At home
+<Home className="w-3.5 h-3.5" /> {t("web.provider.expressBooking.atHome")}
                         </span>
                       ) : link.location_type === "at_salon" || link.location_id ? (
                         <span className="text-sm flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" /> At salon
+<MapPin className="w-3.5 h-3.5" /> {t("web.provider.common.locationType.atSalon")}
                         </span>
                       ) : (
-                        <span className="text-gray-400">Any</span>
+<span className="text-gray-400">{t("web.provider.common.any")}</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Eye className="w-3 h-3 text-gray-400" />
-                        <span>{link.usage_count} clicks</span>
+<span>{t("web.provider.expressBooking.clicks", { count: link.usage_count })}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       {link.max_uses != null ? (
                         <span className="text-sm">{link.max_uses}</span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+<span className="text-gray-400">{t("web.provider.common.emDash")}</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -332,16 +335,16 @@ export default function ExpressBookingLinksPage() {
                           {new Date(link.expires_at).toLocaleDateString()}
                         </span>
                       ) : (
-                        <span className="text-gray-400">Never</span>
+<span className="text-gray-400">{t("web.provider.common.never")}</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {!link.is_active ? (
-                        <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+<Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                       ) : isExpired(link) ? (
-                        <Badge className="bg-red-100 text-red-800">Expired</Badge>
+<Badge className="bg-red-100 text-red-800">{t("web.provider.common.expired")}</Badge>
                       ) : (
-                        <Badge className="bg-green-100 text-green-800">Active</Badge>
+<Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -354,24 +357,24 @@ export default function ExpressBookingLinksPage() {
                             const embedUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/book/l/${encodeURIComponent(link.short_code)}?embed=1`;
                             const copied = await copyTextToClipboard(embedUrl);
                             if (copied) {
-                              toast.success("Embed URL copied");
+toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.embedUrlCopied"));
                               return;
                             }
-                            toast.error("Unable to copy embed URL on this browser");
+toast.error(t("web.provider.expressBooking.unableToCopyEmbed"));
                           }}
-                          title="Copy embed URL"
+title={t("web.provider.expressBooking.copyEmbedUrl")}
                         >
                           <Copy className="w-3 h-3" />
                         </Button>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleCopyLink(link)}
-                          title="Copy link"
+title={t("web.provider.expressBooking.copyLink")}
                         >
                           <Copy className="w-3 h-3" />
                         </Button>
@@ -379,7 +382,7 @@ export default function ExpressBookingLinksPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleViewLink(link)}
-                          title="View link"
+title={t("web.provider.expressBooking.viewLink")}
                         >
                           <ExternalLink className="w-3 h-3" />
                         </Button>
@@ -388,8 +391,8 @@ export default function ExpressBookingLinksPage() {
                           size="sm"
                           onClick={() => handleEdit(link)}
                         >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Edit
+                          <Edit className="w-3 h-3 me-1" />
+                          {t("web.provider.common.edit")}
                         </Button>
                         <Button
                           variant="outline"
@@ -397,8 +400,8 @@ export default function ExpressBookingLinksPage() {
                           onClick={() => handleDelete(link.id)}
                           className="text-red-600 hover:text-red-700"
                         >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          Delete
+                          <Trash2 className="w-3 h-3 me-1" />
+                          {t("web.provider.common.delete")}
                         </Button>
                       </div>
                     </TableCell>
@@ -429,18 +432,18 @@ export default function ExpressBookingLinksPage() {
       <AlertDialog open={deleteLinkId != null} onOpenChange={(open) => !open && setDeleteLinkId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete booking link?</AlertDialogTitle>
+<AlertDialogTitle>{t("web.provider.expressBooking.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This link will stop working immediately. Clients will no longer be able to book through it.
+{t("web.provider.expressBooking.deleteDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+<AlertDialogCancel>{t("web.provider.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => void confirmDelete()}
             >
-              Delete
+              {t("web.provider.common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -476,6 +479,7 @@ function ExpressBookingLinkDialog({
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (open) {
@@ -564,7 +568,7 @@ function ExpressBookingLinkDialog({
           .replace(/^-+|-+$/g, "")
           .replace(/-{2,}/g, "-") || undefined;
       if (!slug) {
-        toast.error("Short code must contain at least one letter or number");
+toast.error(t("web.provider.expressBooking.shortCodeInvalid"));
         setIsLoading(false);
         return;
       }
@@ -592,11 +596,11 @@ function ExpressBookingLinkDialog({
 
       if (link) {
         const savedLink = await providerApi.updateExpressBookingLink(link.id, linkData);
-        toast.success("Link updated");
+toast.success(t("web.provider.expressBooking.linkUpdated"));
         onSuccess(savedLink);
       } else {
         const savedLink = await providerApi.createExpressBookingLink(linkData);
-        toast.success("Link created");
+toast.success(t("web.provider.expressBooking.linkCreated"));
         onSuccess(savedLink);
       }
       onOpenChange(false);
@@ -604,7 +608,7 @@ function ExpressBookingLinkDialog({
       if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         toast.error(error.message || getUpgradeMessage("limits.express_links"), {
           action: {
-            label: "View plans",
+label: t("web.provider.portal.appointmentDialog.viewPlans"),
             onClick: () => {
               window.location.assign("/provider/subscription");
             },
@@ -613,7 +617,7 @@ function ExpressBookingLinkDialog({
         return;
       }
       console.error("Failed to save link:", error);
-      toast.error("Failed to save link");
+toast.error(t("web.provider.expressBooking.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -637,23 +641,23 @@ function ExpressBookingLinkDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{link ? "Edit Booking Link" : "New Express Booking Link"}</DialogTitle>
+<DialogTitle>{link ? t("web.provider.expressBooking.editTitle") : t("web.provider.expressBooking.newTitle")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Link Name *</Label>
+<Label htmlFor="name">{t("web.provider.expressBooking.linkName")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Haircut Special Booking"
+placeholder={t("web.provider.expressBooking.linkNamePlaceholder")}
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="short_code">Short Code *</Label>
+<Label htmlFor="short_code">{t("web.provider.expressBooking.shortCode")}</Label>
             <div className="flex gap-2">
               <Input
                 id="short_code"
@@ -661,7 +665,7 @@ function ExpressBookingLinkDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, short_code: e.target.value.toUpperCase() })
                 }
-                placeholder="ABC123"
+placeholder={t("web.provider.expressBooking.shortCodePlaceholder")}
                 required
                 maxLength={10}
               />
@@ -670,11 +674,11 @@ function ExpressBookingLinkDialog({
                 variant="outline"
                 onClick={generateRandomCode}
               >
-                Generate
+                {t("web.provider.common.generate")}
               </Button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              URL: {typeof window !== "undefined" && window.location.origin}/book/l/
+{t("web.provider.expressBooking.urlPreview")} {typeof window !== "undefined" && window.location.origin}/book/l/
               {formData.short_code
                 ? formData.short_code
                     .toLowerCase()
@@ -686,13 +690,13 @@ function ExpressBookingLinkDialog({
           </div>
 
           <div>
-            <Label className="mb-2 block">Pre-select Services / Variants / Packages (Optional)</Label>
+<Label className="mb-2 block">{t("web.provider.expressBooking.preselectServices")}</Label>
             <p className="text-xs text-gray-500 mb-2">
-              Select one or more items; clients will see these pre-filled. Includes services, variants, and packages.
+{t("web.provider.expressBooking.preselectServicesHint")}
             </p>
             <div className="max-h-56 overflow-y-auto border rounded-lg p-3 space-y-1">
               {services.length === 0 ? (
-                <p className="text-sm text-gray-500">Loading services…</p>
+<p className="text-sm text-gray-500">{t("web.provider.expressBooking.loadingServices")}</p>
               ) : (
                 (() => {
                   // Group: variants under parents; packages labelled
@@ -712,7 +716,7 @@ function ExpressBookingLinkDialog({
                           {svc.name}
                         </p>,
                         ...variants.map((v) => (
-                          <div key={v.id} className="flex items-center gap-2 pl-2">
+                          <div key={v.id} className="flex items-center gap-2 ps-2">
                             <Checkbox
                               id={`svc-${v.id}`}
                               checked={formData.service_ids.includes(v.id)}
@@ -720,7 +724,7 @@ function ExpressBookingLinkDialog({
                             />
                             <Label htmlFor={`svc-${v.id}`} className="cursor-pointer text-sm font-normal flex-1">
                               {v.variant_name ?? v.name}
-                              <span className="text-gray-400 ml-1">• {v.duration_minutes}min</span>
+<span className="text-gray-400 ms-1">• {t("web.provider.expressBooking.durationMin", { count: v.duration_minutes })}</span>
                             </Label>
                           </div>
                         )),
@@ -736,10 +740,10 @@ function ExpressBookingLinkDialog({
                         <Label htmlFor={`svc-${svc.id}`} className="cursor-pointer text-sm font-normal flex-1">
                           {svc.name ?? (svc as any).title}
                           {svc.service_type === "package" && (
-                            <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1 rounded">Package</span>
+<span className="ms-1.5 text-xs bg-purple-100 text-purple-700 px-1 rounded">{t("web.provider.portal.newSaleDialog.packageBadge")}</span>
                           )}
                           {svc.service_type === "addon" && (
-                            <span className="ml-1.5 text-xs bg-blue-100 text-blue-700 px-1 rounded">Add-on</span>
+<span className="ms-1.5 text-xs bg-blue-100 text-blue-700 px-1 rounded">{t("web.provider.common.addOn")}</span>
                           )}
                         </Label>
                       </div>,
@@ -749,13 +753,13 @@ function ExpressBookingLinkDialog({
               )}
             </div>
             {formData.service_ids.length > 0 && (
-              <p className="text-xs text-green-600 mt-1">{formData.service_ids.length} item{formData.service_ids.length !== 1 ? "s" : ""} selected</p>
+<p className="text-xs text-green-600 mt-1">{t("web.provider.expressBooking.itemsSelected", { count: formData.service_ids.length })}</p>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="team_member_id">Pre-select Team Member (Optional)</Label>
+<Label htmlFor="team_member_id">{t("web.provider.expressBooking.preselectTeam")}</Label>
               <Select
                 value={formData.team_member_id || RADIX_SELECT_ANY}
                 onValueChange={(value) =>
@@ -766,10 +770,10 @@ function ExpressBookingLinkDialog({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Any team member" />
+<SelectValue placeholder={t("web.provider.expressBooking.anyTeamMember")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_ANY}>Any team member</SelectItem>
+<SelectItem value={RADIX_SELECT_ANY}>{t("web.provider.expressBooking.anyTeamMember")}</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
@@ -781,8 +785,8 @@ function ExpressBookingLinkDialog({
           </div>
 
           <div>
-            <Label className="mb-2 block">Pre-select venue (Optional)</Label>
-            <p className="text-xs text-gray-500 mb-2">Choose where the appointment takes place. Any = customer chooses.</p>
+<Label className="mb-2 block">{t("web.provider.expressBooking.preselectVenue")}</Label>
+<p className="text-xs text-gray-500 mb-2">{t("web.provider.expressBooking.preselectVenueHint")}</p>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -792,7 +796,7 @@ function ExpressBookingLinkDialog({
                     checked && setFormData({ ...formData, location_type: "", location_id: "" })
                   }
                 />
-                <Label htmlFor="venue_any" className="cursor-pointer font-normal">Any (customer chooses)</Label>
+<Label htmlFor="venue_any" className="cursor-pointer font-normal">{t("web.provider.expressBooking.anyCustomerChooses")}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -802,7 +806,7 @@ function ExpressBookingLinkDialog({
                     setFormData({ ...formData, location_type: checked ? "at_home" : "", location_id: "" })
                   }
                 />
-                <Label htmlFor="venue_at_home" className="cursor-pointer font-normal">At home (house call)</Label>
+<Label htmlFor="venue_at_home" className="cursor-pointer font-normal">{t("web.provider.expressBooking.atHomeHouseCall")}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -812,17 +816,17 @@ function ExpressBookingLinkDialog({
                     setFormData({ ...formData, location_type: checked ? "at_salon" : "", location_id: checked ? formData.location_id : "" })
                   }
                 />
-                <Label htmlFor="venue_at_salon" className="cursor-pointer font-normal">At salon</Label>
+<Label htmlFor="venue_at_salon" className="cursor-pointer font-normal">{t("web.provider.common.locationType.atSalon")}</Label>
                 {formData.location_type === "at_salon" &&
                   (locations.length === 0 ? (
-                    <span className="text-sm text-gray-500 ml-2 self-center">No locations</span>
+<span className="text-sm text-gray-500 ms-2 self-center">{t("web.provider.expressBooking.noLocations")}</span>
                   ) : (
                     <Select
                       value={formData.location_id}
                       onValueChange={(value) => setFormData({ ...formData, location_id: value })}
                     >
-                      <SelectTrigger className="w-[200px] ml-2">
-                        <SelectValue placeholder="Choose branch" />
+                      <SelectTrigger className="w-[200px] ms-2">
+<SelectValue placeholder={t("web.provider.expressBooking.chooseBranch")} />
                       </SelectTrigger>
                       <SelectContent>
                         {locations.map((loc) => (
@@ -839,26 +843,26 @@ function ExpressBookingLinkDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="expires_at">Expiration Date (Optional)</Label>
+<Label htmlFor="expires_at">{t("web.provider.expressBooking.expirationDate")}</Label>
               <Input
                 id="expires_at"
                 type="date"
                 value={formData.expires_at}
                 onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
               />
-              <p className="text-xs text-gray-500 mt-1">Leave empty for no expiration</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.expressBooking.leaveEmptyNoExpiration")}</p>
             </div>
             <div>
-              <Label htmlFor="max_uses">Max Uses (Optional)</Label>
+<Label htmlFor="max_uses">{t("web.provider.expressBooking.maxUses")}</Label>
               <Input
                 id="max_uses"
                 type="number"
                 min={1}
-                placeholder="Unlimited"
+placeholder={t("web.provider.common.unlimited")}
                 value={formData.max_uses}
                 onChange={(e) => setFormData({ ...formData, max_uses: e.target.value.replace(/\D/g, "") })}
               />
-              <p className="text-xs text-gray-500 mt-1">Leave empty for unlimited clicks</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.expressBooking.leaveEmptyUnlimited")}</p>
             </div>
           </div>
 
@@ -871,22 +875,22 @@ function ExpressBookingLinkDialog({
               }
             />
             <Label htmlFor="is_active" className="cursor-pointer">
-              Active
+              {t("web.provider.common.active")}
             </Label>
           </div>
 
           <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-            <p className="font-medium mb-1">How it works:</p>
+<p className="font-medium mb-1">{t("web.provider.expressBooking.howItWorks")}</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Share the generated link with clients</li>
-              <li>Clients can book appointments directly</li>
-              <li>Pre-selected options will be pre-filled in the booking form</li>
-              <li>Track usage to see how many clients use each link</li>
+              <li>{t("web.provider.expressBooking.howShare")}</li>
+              <li>{t("web.provider.expressBooking.howBook")}</li>
+              <li>{t("web.provider.expressBooking.howPrefill")}</li>
+              <li>{t("web.provider.expressBooking.howTrack")}</li>
             </ul>
           </div>
 
           {link?.full_url ? (
-            <ExpressLinkQr url={link.full_url} label="Scan to open express booking link" />
+<ExpressLinkQr url={link.full_url} label={t("web.provider.expressBooking.scanExpress")} />
           ) : formData.short_code && typeof window !== "undefined" ? (
             <ExpressLinkQr
               url={`${window.location.origin}/book/l/${formData.short_code
@@ -894,7 +898,7 @@ function ExpressBookingLinkDialog({
                 .replace(/[^a-z0-9-]/g, "-")
                 .replace(/^-+|-+$/g, "")
                 .replace(/-{2,}/g, "-")}`}
-              label="Preview QR for this short code"
+label={t("web.provider.expressBooking.previewQr")}
             />
           ) : null}
 
@@ -905,14 +909,14 @@ function ExpressBookingLinkDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : link ? "Update" : "Create"}
+{isLoading ? t("web.provider.common.saving") : link ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </form>

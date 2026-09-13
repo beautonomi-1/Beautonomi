@@ -13,9 +13,9 @@ import {
   Moon,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 const STRIP_DAYS = 21;
-const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d);
@@ -70,9 +70,9 @@ interface AvailabilitySlotPickerProps {
 }
 
 const PERIOD_CONFIG = {
-  morning: { Icon: Sun, label: "Morning", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  afternoon: { Icon: Cloud, label: "Afternoon", bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
-  evening: { Icon: Moon, label: "Evening", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
+  morning: { Icon: Sun, bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+  afternoon: { Icon: Cloud, bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
+  evening: { Icon: Moon, bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
 } as const;
 
 export function AvailabilitySlotPicker({
@@ -87,6 +87,7 @@ export function AvailabilitySlotPicker({
   mode = "salon",
   excludeBookingId,
 }: AvailabilitySlotPickerProps) {
+  const { t, i18n } = useTranslation();
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,12 +136,12 @@ export function AvailabilitySlotPicker({
       );
       setSlots(res.data?.slots || []);
     } catch (err: any) {
-      setError(err?.message || "Failed to load slots");
+      setError(err?.message || t("web.appointments.availabilitySlotPicker.loadFailed"));
       setSlots([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, staffId, locationId, providerId, duration, mode, excludeBookingId]);
+  }, [selectedDate, staffId, locationId, providerId, duration, mode, excludeBookingId, t]);
 
   useEffect(() => {
     fetchSlots();
@@ -172,13 +173,13 @@ export function AvailabilitySlotPicker({
       {/* Date Strip */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[11px] text-gray-500 font-medium">Select Date</label>
+          <label className="text-[11px] text-gray-500 font-medium">{t("web.appointments.availabilitySlotPicker.selectDate")}</label>
           <button
             type="button"
             onClick={() => setShowManual((v) => !v)}
             className="text-[10px] text-primary hover:text-primary/80 font-medium"
           >
-            {showManual ? "Use slot picker" : "Enter manually"}
+            {showManual ? t("web.appointments.availabilitySlotPicker.useSlotPicker") : t("web.appointments.availabilitySlotPicker.enterManually")}
           </button>
         </div>
 
@@ -234,7 +235,7 @@ export function AvailabilitySlotPicker({
                       "text-[9px] font-semibold uppercase tracking-wide",
                       isSelected ? "text-white/70" : isToday ? "text-primary" : "text-gray-400"
                     )}>
-                      {isToday ? "Today" : WEEKDAYS_SHORT[date.getDay()]}
+                      {isToday ? t("web.appointments.availabilitySlotPicker.today") : t(`web.appointments.availabilitySlotPicker.${["weekdaySun","weekdayMon","weekdayTue","weekdayWed","weekdayThu","weekdayFri","weekdaySat"][date.getDay()]}`)}
                     </span>
                     <span className={cn(
                       "text-base font-bold leading-none",
@@ -246,7 +247,7 @@ export function AvailabilitySlotPicker({
                       "text-[9px] mt-0.5",
                       isSelected ? "text-white/70" : "text-gray-400"
                     )}>
-                      {date.toLocaleDateString("en-US", { month: "short" })}
+                      {date.toLocaleDateString(i18n.language, { month: "short" })}
                     </span>
                   </button>
                 );
@@ -258,8 +259,8 @@ export function AvailabilitySlotPicker({
               <div className="mt-3">
                 {loading ? (
                   <div className="flex items-center justify-center py-6 text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    <span className="text-xs">Loading availability...</span>
+                    <Loader2 className="w-4 h-4 animate-spin me-2" />
+                    <span className="text-xs">{t("web.appointments.availabilitySlotPicker.loading")}</span>
                   </div>
                 ) : error ? (
                   <div className="py-4 text-center">
@@ -269,27 +270,27 @@ export function AvailabilitySlotPicker({
                       onClick={fetchSlots}
                       className="mt-1 text-xs text-primary hover:underline"
                     >
-                      Retry
+                      {t("common.retry")}
                     </button>
                   </div>
                 ) : selectableSlots.length === 0 ? (
                   <div className="py-4 text-center">
                     <CalendarIcon className="w-6 h-6 text-gray-300 mx-auto mb-1" />
-                    <p className="text-xs text-gray-500 font-medium">No available slots</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Try another date or use manual entry</p>
+                    <p className="text-xs text-gray-500 font-medium">{t("web.appointments.availabilitySlotPicker.noSlots")}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{t("web.appointments.availabilitySlotPicker.tryAnotherDate")}</p>
                     <button
                       type="button"
                       onClick={() => setShowManual(true)}
                       className="mt-2 text-[10px] text-primary hover:underline font-medium"
                     >
-                      Enter time manually
+                      {t("web.appointments.availabilitySlotPicker.enterTimeManually")}
                     </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-gray-400 font-medium">
-                        {availableCount} slot{availableCount !== 1 ? "s" : ""} available
+                        {t("web.appointments.availabilitySlotPicker.slotsAvailable", { count: availableCount })}
                       </span>
                       {selectedTime && (
                         <span className="text-[10px] text-primary font-semibold flex items-center gap-1">
@@ -311,10 +312,10 @@ export function AvailabilitySlotPicker({
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <cfg.Icon className={cn("w-3 h-3", cfg.text)} />
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                              {cfg.label}
+                              {t(`web.appointments.availabilitySlotPicker.${period}`)}
                             </span>
-                            <span className="text-[10px] text-gray-400 ml-auto">
-                              {openCount} open
+                            <span className="text-[10px] text-gray-400 ms-auto">
+                              {t("web.appointments.availabilitySlotPicker.openCount", { count: openCount })}
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-1">

@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetcher } from "@/lib/http/fetcher";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
 
@@ -89,6 +90,7 @@ export default function BeautyPreferencesSection({
   preferences = {},
   onUpdate,
 }: BeautyPreferencesSectionProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<BeautyPreferences>(preferences);
@@ -101,10 +103,10 @@ export default function BeautyPreferencesSection({
     setIsSaving(true);
     try {
       await fetcher.patch("/api/me/beauty-preferences", formData);
-      toast.success("Beauty preferences saved");
+      toast.success(t("web.accountSettings.beautyPreferences.saved"));
       onUpdate?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to save preferences");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.beautyPreferences.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -119,7 +121,7 @@ export default function BeautyPreferencesSection({
           <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors bg-white border-b border-gray-200">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold text-gray-900">
-                Beauty Preferences
+                {t("web.accountSettings.beautyPreferences.title")}
               </CardTitle>
               {isOpen ? (
                 <ChevronUp className="w-5 h-5 text-gray-500" />
@@ -134,13 +136,13 @@ export default function BeautyPreferencesSection({
             <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-blue-800">
-                Providers see this when you book. Helps them prepare for your appointment.
+                {t("web.accountSettings.beautyPreferences.infoBannerSection")}
               </p>
             </div>
 
             {/* Hair Type */}
             <div>
-              <Label htmlFor="hair-type">Hair Type/Texture</Label>
+              <Label htmlFor="hair-type">{t("web.accountSettings.beautyPreferences.hairType")}</Label>
               <Select
                 value={formData.hair_type || ""}
                 onValueChange={(value) =>
@@ -148,12 +150,12 @@ export default function BeautyPreferencesSection({
                 }
               >
                 <SelectTrigger id="hair-type">
-                  <SelectValue placeholder="Select hair type" />
+                  <SelectValue placeholder={t("web.accountSettings.beautyPreferences.selectHairType")} />
                 </SelectTrigger>
                 <SelectContent>
                   {HAIR_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                      {t(`web.accountSettings.beautyPreferences.hair.${type.value}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -162,7 +164,7 @@ export default function BeautyPreferencesSection({
 
             {/* Skin Type */}
             <div>
-              <Label htmlFor="skin-type">Skin Type</Label>
+              <Label htmlFor="skin-type">{t("web.accountSettings.beautyPreferences.skinType")}</Label>
               <Select
                 value={formData.skin_type || ""}
                 onValueChange={(value) =>
@@ -170,12 +172,12 @@ export default function BeautyPreferencesSection({
                 }
               >
                 <SelectTrigger id="skin-type">
-                  <SelectValue placeholder="Select skin type" />
+                  <SelectValue placeholder={t("web.accountSettings.beautyPreferences.selectSkinType")} />
                 </SelectTrigger>
                 <SelectContent>
                   {SKIN_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                      {t(`web.accountSettings.beautyPreferences.skin.${type.value}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -184,30 +186,30 @@ export default function BeautyPreferencesSection({
 
             {/* Allergies */}
             <div>
-              <Label htmlFor="allergies">Allergies & Sensitivities</Label>
+              <Label htmlFor="allergies">{t("web.accountSettings.beautyPreferences.allergies")}</Label>
               <div className="mt-2">
                 <ChipCombobox
                   singleSelect={false}
                   value={formData.allergies || []}
                   onChange={(allergies) => setFormData({ ...formData, allergies })}
-                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: a }))}
+                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: t(`web.accountSettings.beautyPreferences.allergy.${a.toLowerCase()}`) }))}
                   allowFreeForm
-                  placeholder="Add allergy or sensitivity..."
-                  aria-label="Allergies and sensitivities"
+                  placeholder={t("web.accountSettings.beautyPreferences.allergiesPlaceholder")}
+                  aria-label={t("web.accountSettings.beautyPreferences.allergiesA11y")}
                 />
               </div>
             </div>
 
             {/* Things to Avoid */}
             <div>
-              <Label htmlFor="things-to-avoid">Things to Avoid</Label>
+              <Label htmlFor="things-to-avoid">{t("web.accountSettings.beautyPreferences.thingsToAvoid")}</Label>
               <Textarea
                 id="things-to-avoid"
                 value={formData.things_to_avoid || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, things_to_avoid: e.target.value })
                 }
-                placeholder="List any products, ingredients, or techniques to avoid"
+                placeholder={t("web.accountSettings.beautyPreferences.thingsToAvoidPlaceholder")}
                 rows={3}
                 maxLength={200}
               />
@@ -215,7 +217,7 @@ export default function BeautyPreferencesSection({
 
             {/* Appointment Style */}
             <div>
-              <Label>Appointment Style</Label>
+              <Label>{t("web.accountSettings.beautyPreferences.appointmentStyle")}</Label>
               <RadioGroup
                 value={formData.appointment_style || ""}
                 onValueChange={(value) =>
@@ -227,7 +229,7 @@ export default function BeautyPreferencesSection({
                   <div key={style.value} className="flex items-center space-x-2">
                     <RadioGroupItem value={style.value} id={style.value} />
                     <Label htmlFor={style.value} className="font-normal cursor-pointer">
-                      {style.label}
+                      {t(`web.accountSettings.beautyPreferences.style.${style.value}`)}
                     </Label>
                   </div>
                 ))}
@@ -236,7 +238,7 @@ export default function BeautyPreferencesSection({
 
             {/* Preferred Times */}
             <div>
-              <Label>Preferred Times</Label>
+              <Label>{t("web.accountSettings.beautyPreferences.preferredTimes")}</Label>
               <div className="mt-2 space-y-2">
                 {PREFERRED_TIMES.map((time) => (
                   <div key={time.value} className="flex items-center space-x-2">
@@ -259,7 +261,7 @@ export default function BeautyPreferencesSection({
                       }}
                     />
                     <Label htmlFor={time.value} className="font-normal cursor-pointer">
-                      {time.label}
+                      {t(`web.accountSettings.beautyPreferences.time.${time.value}`)}
                     </Label>
                   </div>
                 ))}
@@ -268,7 +270,7 @@ export default function BeautyPreferencesSection({
 
             {/* Preferred Days */}
             <div>
-              <Label>Preferred Days</Label>
+              <Label>{t("web.accountSettings.beautyPreferences.preferredDays")}</Label>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {DAYS_OF_WEEK.map((day) => (
                   <div key={day.value} className="flex items-center space-x-2">
@@ -291,7 +293,7 @@ export default function BeautyPreferencesSection({
                       }}
                     />
                     <Label htmlFor={day.value} className="font-normal cursor-pointer text-sm">
-                      {day.label}
+                      {t(`web.accountSettings.beautyPreferences.day.${day.value}`)}
                     </Label>
                   </div>
                 ))}
@@ -300,14 +302,14 @@ export default function BeautyPreferencesSection({
 
             {/* Product Preferences */}
             <div>
-              <Label htmlFor="product-preferences">Product Preferences (Optional)</Label>
+              <Label htmlFor="product-preferences">{t("web.accountSettings.beautyPreferences.productPreferences")}</Label>
               <Textarea
                 id="product-preferences"
                 value={formData.product_preferences || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, product_preferences: e.target.value })
                 }
-                placeholder="Any specific product preferences or brands you prefer"
+                placeholder={t("web.accountSettings.beautyPreferences.productPreferencesPlaceholder")}
                 rows={3}
                 maxLength={200}
               />
@@ -321,7 +323,7 @@ export default function BeautyPreferencesSection({
                   disabled={isSaving}
                   className="w-full bg-[#FF0077] hover:bg-[#E6006A] text-white"
                 >
-                  {isSaving ? "Saving..." : "Save Preferences"}
+                  {isSaving ? t("web.accountSettings.beautyPreferences.saving") : t("web.accountSettings.beautyPreferences.save")}
                 </Button>
               </div>
             )}

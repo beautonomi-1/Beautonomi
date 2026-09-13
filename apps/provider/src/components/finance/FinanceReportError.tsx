@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { isFinancePermissionDenied } from "@/lib/finance-report-errors";
 import { isPlanGateErrorCode } from "@/lib/plan-gate";
+import { useTranslation } from "@beautonomi/i18n";
 
 type FinanceReportErrorProps = {
   error: string | null;
@@ -14,24 +15,27 @@ export function FinanceReportError({
   error,
   errorCode,
   onRetry,
-  permissionMessage = "Ask your business owner to grant view sales, view reports, or process payments permission for this report.",
+  permissionMessage,
 }: FinanceReportErrorProps) {
+  const { t } = useTranslation();
+  const fe = (key: string) => t(`provider.mobile.components.financeReportError.${key}`) as string;
+  const resolvedPermission = permissionMessage ?? fe("permissionDefault");
   const router = useRouter();
 
   if (isPlanGateErrorCode(errorCode)) {
     const title =
       errorCode === "LIMIT_REACHED" || errorCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
-        ? "Plan limit reached"
+        ? fe("planLimitReached")
         : errorCode === "TERMINAL_LIMIT_REACHED"
-          ? "Terminal limit reached"
-          : "Not included in your plan";
+          ? fe("terminalLimitReached")
+          : fe("notIncluded");
     return (
       <ErrorState
         icon="lock-closed-outline"
         title={title}
-        message={error ?? "This feature requires a plan upgrade."}
+        message={error ?? fe("upgradeRequired")}
         onRetry={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
-        retryLabel="View plans"
+        retryLabel={fe("viewPlans")}
       />
     );
   }
@@ -40,12 +44,12 @@ export function FinanceReportError({
     return (
       <ErrorState
         icon="lock-closed-outline"
-        title="You don't have access"
-        message={permissionMessage}
+        title={fe("noAccess")}
+        message={resolvedPermission}
         onRetry={onRetry}
-        retryLabel="Try again"
+        retryLabel={fe("tryAgain")}
       />
     );
   }
-  return <ErrorState message={error ?? "Something went wrong"} onRetry={onRetry} />;
+  return <ErrorState message={error ?? fe("genericError")} onRetry={onRetry} />;
 }

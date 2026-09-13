@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ interface SetupStatus {
 }
 
 export default function GetStartedPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,17 +75,17 @@ export default function GetStartedPage() {
         previousCompletion !== null &&
         previousCompletion !== next.completionPercentage
       ) {
-        toast.success("Progress updated");
+        toast.success(t("web.provider.getStartedPage.progressUpdated"));
       }
     } catch (err) {
       const msg =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load setup status";
+          : t("web.provider.getStartedPage.failedToLoad");
       setError(msg);
-      if (isRefresh) toast.error("Could not refresh status");
+      if (isRefresh) toast.error(t("web.provider.getStartedPage.couldNotRefresh"));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -105,13 +107,13 @@ export default function GetStartedPage() {
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Get Started"
+        title={t("web.provider.getStartedPage.title")}
         breadcrumbs={[
-          { label: "Provider", href: "/provider" },
-          { label: "Get Started" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.getStartedPage.title") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading your setup checklist…" />
+        <LoadingTimeout loadingMessage={t("web.provider.getStartedPage.loading")} />
       </SettingsDetailLayout>
     );
   }
@@ -120,18 +122,18 @@ export default function GetStartedPage() {
   if (error || !setupStatus) {
     return (
       <SettingsDetailLayout
-        title="Get Started"
+        title={t("web.provider.getStartedPage.title")}
         breadcrumbs={[
-          { label: "Provider", href: "/provider" },
-          { label: "Get Started" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.getStartedPage.title") },
         ]}
       >
         <div className="rounded-xl border border-red-100 bg-red-50 p-6">
           <p className="text-sm text-red-700 mb-4">
-            {error ?? "Something went wrong loading your checklist."}
+            {error ?? t("web.provider.getStartedPage.somethingWrong")}
           </p>
           <Button size="sm" onClick={() => loadSetupStatus()}>
-            Try again
+            {t("web.provider.common.tryAgain")}
           </Button>
         </div>
       </SettingsDetailLayout>
@@ -142,29 +144,28 @@ export default function GetStartedPage() {
   if (!setupStatus.steps || setupStatus.steps.length === 0) {
     return (
       <SettingsDetailLayout
-        title="Get Started"
+        title={t("web.provider.getStartedPage.title")}
         breadcrumbs={[
-          { label: "Provider", href: "/provider" },
-          { label: "Get Started" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.getStartedPage.title") },
         ]}
       >
         <div className="max-w-lg mx-auto py-8 px-4">
           <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-6 sm:p-8 text-center">
-            <h1 className="text-xl font-bold text-gray-900 mb-2">Start your business profile</h1>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">{t("web.provider.getStartedPage.startProfileTitle")}</h1>
             <p className="text-sm text-gray-600 mb-6 leading-relaxed">
-              Complete the guided setup wizard first. We will walk you through business details,
-              services, availability, and payment setup — then your checklist will appear here.
+{t("web.provider.getStartedPage.startProfileBody")}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
                 onClick={() => router.push("/provider/onboarding")}
                 className="bg-primary hover:bg-primary-hover text-white"
               >
-                Start business setup
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {t("web.provider.getStartedPage.startBusinessSetup")}
+                <ArrowRight className="ms-2 h-4 w-4" />
               </Button>
               <Button variant="outline" onClick={() => loadSetupStatus(true)} disabled={isRefreshing}>
-                Refresh
+                {t("web.provider.common.refresh")}
               </Button>
             </div>
           </div>
@@ -186,10 +187,10 @@ export default function GetStartedPage() {
 
     return (
       <SettingsDetailLayout
-        title="Get Started"
+        title={t("web.provider.getStartedPage.title")}
         breadcrumbs={[
-          { label: "Provider", href: "/provider" },
-          { label: "Get Started" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.getStartedPage.title") },
         ]}
       >
         <div className="max-w-lg mx-auto text-center py-16 px-4">
@@ -197,29 +198,29 @@ export default function GetStartedPage() {
             <Check className="h-8 w-8 text-green-600" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {isSuspended ? "Account suspended" : "You're all set!"}
+            {isSuspended ? t("web.provider.getStartedPage.accountSuspended") : t("web.provider.getStartedPage.allSet")}
           </h1>
           <p className="text-gray-500 mb-8">
             {isSuspended
-              ? "Your provider account is suspended. Contact support to restore access before accepting new bookings."
+              ? t("web.provider.getStartedPage.suspendedBody")
               : isPendingApproval
-                ? "Your setup checklist is complete. Your profile is under review — you can explore the portal while we approve your listing. Public bookings open once you're approved."
-                : "Your profile is ready. You can now accept bookings and start earning."}
+                ? t("web.provider.getStartedPage.pendingApprovalBody")
+                : t("web.provider.getStartedPage.readyBody")}
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3 w-full sm:w-auto">
             <Button
               onClick={() => router.push("/provider/dashboard")}
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white"
             >
-              Go to Dashboard
-              <ArrowRight className="ml-2 h-4 w-4" />
+              {t("web.provider.getStartedPage.goToDashboard")}
+              <ArrowRight className="ms-2 h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               onClick={() => router.push("/provider/catalogue/services")}
               className="w-full sm:w-auto"
             >
-              Manage Services
+              {t("web.provider.getStartedPage.manageServices")}
             </Button>
           </div>
         </div>
@@ -230,10 +231,10 @@ export default function GetStartedPage() {
   // ── Main checklist ────────────────────────────────────────────────────────
   return (
     <SettingsDetailLayout
-      title="Get Started"
+      title={t("web.provider.getStartedPage.title")}
       breadcrumbs={[
-        { label: "Provider", href: "/provider" },
-        { label: "Get Started" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.getStartedPage.title") },
       ]}
     >
       <div className="max-w-2xl mx-auto px-1 sm:px-0">
@@ -242,14 +243,14 @@ export default function GetStartedPage() {
           <div className="flex items-start justify-between gap-3 mb-2">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
               {remaining === 0
-                ? "Almost there!"
-                : `${remaining} step${remaining === 1 ? "" : "s"} to go`}
+                ? t("web.provider.getStartedPage.almostThere")
+                : t("web.provider.getStartedPage.stepsToGo", { count: remaining })}
             </h1>
             <button
               onClick={() => loadSetupStatus(true)}
               disabled={isRefreshing}
               className="flex-shrink-0 p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40"
-              title="Refresh"
+              title={t("web.provider.common.refresh")}
             >
               <RefreshCw
                 className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
@@ -258,8 +259,8 @@ export default function GetStartedPage() {
           </div>
           <p className="text-gray-500 text-sm mb-5">
             {completedRequired > 0
-              ? `${completedRequired} of ${requiredSteps.length} required steps done — finish the rest to start accepting bookings.`
-              : "Complete the steps below to start accepting bookings."}
+              ? t("web.provider.getStartedPage.progressDone", { done: completedRequired, total: requiredSteps.length })
+              : t("web.provider.getStartedPage.completeSteps")}
           </p>
 
           {/* Progress bar */}
@@ -280,7 +281,7 @@ export default function GetStartedPage() {
           <div className="mb-6 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-gray-900">
-                Next up: {nextIncomplete.title}
+                {t("web.provider.getStartedPage.nextUp", { title: nextIncomplete.title })}
               </p>
               {nextIncomplete.description ? (
                 <p className="text-xs text-gray-600 mt-0.5">{nextIncomplete.description}</p>
@@ -291,8 +292,8 @@ export default function GetStartedPage() {
               className="shrink-0 bg-primary hover:bg-primary-hover text-white"
               onClick={() => handleStepClick(nextIncomplete)}
             >
-              Continue setup
-              <ChevronRight className="ml-1 h-4 w-4" />
+              {t("web.provider.getStartedPage.continueSetup")}
+              <ChevronRight className="ms-1 h-4 w-4" />
             </Button>
           </div>
         ) : null}
@@ -300,7 +301,7 @@ export default function GetStartedPage() {
         {/* Required steps */}
         <section className="mb-6 sm:mb-8">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-            Required to go live
+            {t("web.provider.getStartedPage.requiredToGoLive")}
           </p>
           <div className="space-y-2">
             {requiredSteps.map((step) => (
@@ -317,7 +318,7 @@ export default function GetStartedPage() {
         {optionalSteps.length > 0 && (
           <section className="mb-6 sm:mb-8">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-              Boost your profile
+              {t("web.provider.getStartedPage.boostProfile")}
             </p>
             <div className="space-y-2">
               {optionalSteps.map((step) => (
@@ -338,15 +339,15 @@ export default function GetStartedPage() {
             onClick={() => router.push("/provider/dashboard")}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
-            Complete later
+            {t("web.provider.getStartedPage.completeLater")}
           </button>
           {remaining === 0 && (
             <Button
               onClick={() => router.push("/provider/dashboard")}
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white"
             >
-              Go to Dashboard
-              <ArrowRight className="ml-2 h-4 w-4" />
+              {t("web.provider.getStartedPage.goToDashboard")}
+              <ArrowRight className="ms-2 h-4 w-4" />
             </Button>
           )}
         </div>
@@ -366,10 +367,11 @@ function StepCard({
   onClick: () => void;
   isOptional?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-xl border px-4 sm:px-5 py-3.5 sm:py-4 flex items-center gap-3 sm:gap-4 transition-all group ${
+      className={`w-full text-start rounded-xl border px-4 sm:px-5 py-3.5 sm:py-4 flex items-center gap-3 sm:gap-4 transition-all group ${
         step.completed
           ? "border-green-100 bg-green-50/40 hover:bg-green-50"
           : "border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm"
@@ -413,7 +415,7 @@ function StepCard({
       {/* Action */}
       <div className="flex-shrink-0 flex items-center gap-0.5 text-xs font-medium text-gray-400 group-hover:text-gray-600 transition-colors whitespace-nowrap">
         <span className="hidden sm:inline">
-          {step.completed ? "Update" : "Set up"}
+          {step.completed ? t("web.provider.common.update") : t("web.provider.getStartedPage.setUp")}
         </span>
         <ChevronRight className="h-3.5 w-3.5" />
       </div>

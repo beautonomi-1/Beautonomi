@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -21,6 +23,7 @@ function ServiceAddonBlock({
   line: AppointmentService;
   onToggle: (addon: AddonRow) => void;
 }) {
+  const { t } = useTranslation();
   const [addons, setAddons] = useState<AddonRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +71,7 @@ function ServiceAddonBlock({
   const selectedIds = new Set((line.addons ?? []).map((a) => a.addonId));
 
   return (
-    <div className="space-y-2 pl-1 border-l-2 border-gray-100 ml-1">
+    <div className="space-y-2 ps-1 border-s-2 border-gray-100 ms-1">
       <p className="text-xs font-medium text-gray-600">{line.serviceName}</p>
       {addons.map((addon) => (
         <label
@@ -82,7 +85,7 @@ function ServiceAddonBlock({
           <span className="text-sm text-gray-800 flex-1">
             {addon.name}
             {addon.price > 0 ? ` · ${addon.price.toFixed(2)}` : ""}
-            {addon.duration_minutes > 0 ? ` · ${addon.duration_minutes} min` : ""}
+            {addon.duration_minutes > 0 ? ` · ${t("web.book.engine.durationMinShort", { minutes: addon.duration_minutes })}` : ""}
           </span>
         </label>
       ))}
@@ -91,6 +94,7 @@ function ServiceAddonBlock({
 }
 
 export function ServiceAddonsSection({ services, onChange }: ServiceAddonsSectionProps) {
+  const { t } = useTranslation();
   const serviceLines = useMemo(
     () => services.filter((s) => s.serviceId && !s.serviceId.startsWith("custom-")),
     [services],
@@ -123,7 +127,7 @@ export function ServiceAddonsSection({ services, onChange }: ServiceAddonsSectio
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-2">Add-ons</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.book.engine.addons")}</BookingSectionLabel>
       <div className="space-y-3">
         {serviceLines.map((line) => (
           <ServiceAddonBlock

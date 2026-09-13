@@ -3,6 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Trophy, Sparkles, Star } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import { Button } from "@/components/ui/button";
 
 interface RewardsCardProps {
@@ -30,6 +31,8 @@ interface RewardsCardProps {
 
 export function RewardsCard({ gamification }: RewardsCardProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const prefix = "web.provider.rewardsCard";
   
   // Determine what to show - current badge or next badge progress
   const currentBadge = gamification.current_badge;
@@ -54,17 +57,17 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                 <Trophy className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Rewards & Achievements</h3>
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900">{t(`${prefix}.title`)}</h3>
                 {currentBadge ? (
                   <>
-                    <p className="text-sm sm:text-base text-gray-600 mt-0.5">Current: {currentBadge.name}</p>
+                    <p className="text-sm sm:text-base text-gray-600 mt-0.5">{t(`${prefix}.currentBadge`, { name: currentBadge.name })}</p>
                     {gamification.badge_earned_at && (() => {
                       const earnedAt = new Date(gamification.badge_earned_at).getTime();
                       const daysSince = (Date.now() - earnedAt) / (24 * 60 * 60 * 1000);
                       if (daysSince <= 14) {
                         return (
                           <p className="text-xs sm:text-sm text-amber-600 mt-0.5 font-medium">
-                            🎉 Congratulations on earning this badge!
+                            {t(`${prefix}.congratsBadge`)}
                           </p>
                         );
                       }
@@ -72,7 +75,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     })()}
                   </>
                 ) : showGetStarted ? (
-                  <p className="text-sm sm:text-base text-gray-600 mt-0.5">Earn points and unlock badges</p>
+                  <p className="text-sm sm:text-base text-gray-600 mt-0.5">{t(`${prefix}.earnUnlock`)}</p>
                 ) : null}
               </div>
             </div>
@@ -81,9 +84,9 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
           {/* Max tier — has badge, no next level */}
           {currentBadge && !showProgress && (
             <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 mb-4">
-              <p className="text-sm font-bold text-gray-900">Top tier unlocked</p>
+              <p className="text-sm font-bold text-gray-900">{t(`${prefix}.topTierTitle`)}</p>
               <p className="text-xs sm:text-sm text-gray-600 mt-1 leading-relaxed">
-                You&apos;re at the highest badge level. Keep delivering great service to stay featured.
+                {t(`${prefix}.topTierBody`)}
               </p>
             </div>
           )}
@@ -94,7 +97,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm sm:text-base font-medium text-gray-700">
-                    Level up next
+                    {t(`${prefix}.levelUpNext`)}
                   </p>
                   <span className="text-xs sm:text-sm text-gray-600 font-semibold">
                     {showProgress.progress_percentage}%
@@ -110,7 +113,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                       <Star className="w-5 h-5 sm:w-6 sm:h-6 text-primary fill-primary" />
                     </span>
                     <span className="text-base sm:text-lg text-gray-600">
-                      / {showProgress.required_points.toLocaleString()} points
+                      {t(`${prefix}.pointsRatio`, { amount: showProgress.required_points.toLocaleString() })}
                     </span>
                   </div>
                   
@@ -131,18 +134,18 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                 {showProgress.points_needed > 0 ? (
                   <div className="space-y-2">
                     <p className="text-sm sm:text-base text-gray-700">
-                      <span className="font-semibold text-primary">{showProgress.points_needed.toLocaleString()}</span> more points needed
+                      <span className="font-semibold text-primary">{showProgress.points_needed.toLocaleString()}</span> {t(`${prefix}.morePointsNeeded`)}
                     </p>
                     <p className="text-sm font-medium text-gray-800">
-                      You’re {showProgress.points_needed.toLocaleString()} points away from {showProgress.badge.name}.
+                      {t(`${prefix}.pointsAway`, { amount: showProgress.points_needed.toLocaleString(), name: showProgress.badge.name })}
                     </p>
                     <p className="text-xs sm:text-sm text-gray-600 italic">
-                      💡 Keep earning points by completing bookings and receiving great reviews!
+                      {t(`${prefix}.keepEarningHint`)}
                     </p>
                   </div>
                 ) : (
                   <p className="text-sm sm:text-base text-primary font-semibold">
-                    🎉 You've reached the requirements!
+                    {t(`${prefix}.reachedRequirements`)}
                   </p>
                 )}
               </div>
@@ -154,13 +157,13 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
             <div className="space-y-4">
               <div>
                 <h4 className="text-lg sm:text-xl font-bold mb-2 text-gray-900">
-                  {showGetStarted ? "Start earning" : "Get Started"}
+                  {showGetStarted ? t(`${prefix}.startEarning`) : t(`${prefix}.getStarted`)}
                 </h4>
                 <p className="text-sm sm:text-base text-gray-700 mb-4">
                   {showGetStarted ? (
-                    <>Complete bookings and get great reviews to earn points and unlock badges. Higher tiers unlock perks like featured placement and more.</>
+                    t(`${prefix}.startEarningBody`)
                   ) : (
-                    <>Start earning points to unlock your first badge: <span className="font-semibold text-primary">{displayBadge.name}</span></>
+                    <>{t(`${prefix}.unlockFirstBadge`)} <span className="font-semibold text-primary">{displayBadge.name}</span></>
                   )}
                 </p>
                 <div className="flex items-baseline gap-2 mb-3">
@@ -168,10 +171,10 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     {(gamification.total_points ?? 0).toLocaleString()}
                     <Star className="w-5 h-5 sm:w-6 sm:h-6 text-primary fill-primary" />
                   </span>
-                  <span className="text-base sm:text-lg text-gray-600">points earned</span>
+                  <span className="text-base sm:text-lg text-gray-600">{t(`${prefix}.pointsEarned`)}</span>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-600 italic">
-                  💡 Complete bookings and receive great reviews to earn more points!
+                  {t(`${prefix}.completeBookingsHint`)}
                 </p>
               </div>
             </div>
@@ -184,8 +187,8 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
               variant="outline"
               className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-white transition-colors"
             >
-              <Sparkles className="w-4 h-4 mr-2" />
-              View badges & journey
+              <Sparkles className="w-4 h-4 me-2" />
+              {t(`${prefix}.viewBadges`)}
             </Button>
           </div>
         </div>

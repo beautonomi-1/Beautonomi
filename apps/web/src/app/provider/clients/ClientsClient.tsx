@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -68,6 +70,7 @@ import type { MergedProviderClient } from "@/lib/provider-portal/merge-provider-
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { mergeProviderClientsListFromSources } from "@/lib/provider-portal/merge-provider-clients-list";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 type Client = MergedProviderClient;
 
@@ -169,6 +172,7 @@ export function ClientsClient({
   initialError: string | null;
   fromServer: boolean;
 }) {
+  const { t } = useTranslation();
   const { selectedLocationId } = useProviderPortal();
   const [clients, setClients] = useState<Client[]>(() => initialClients ?? []);
   const [isLoading, setIsLoading] = useState(() => {
@@ -235,7 +239,7 @@ export function ClientsClient({
         safeGet(conversationsUrl, "conversation clients"),
       ]);
       if (errors.length > 0) {
-        toast.error(`Failed to load: ${errors.join(", ")}`);
+        toast.error(t("web.provider.clientsPage.loadPartialFailed", { errors: errors.join(", ") }));
       }
       
       const allClients = mergeProviderClientsListFromSources(savedData, servicedData, conversationsData);
@@ -243,7 +247,7 @@ export function ClientsClient({
       setClients(allClients);
     } catch (error) {
       console.error("Failed to load clients:", error);
-      toast.error("Failed to load clients");
+      toast.error(t("web.provider.settings.pages.clients/list.failedToLoadClients"));
       setClients([]);
       setLoadFailed(true);
     } finally {
@@ -259,7 +263,7 @@ export function ClientsClient({
     } catch (error) {
       console.error("Error loading client history:", error, "Client ID:", clientId);
       setClientHistory([]);
-      toast.error("Failed to load client history");
+      toast.error(t("web.provider.clientsPage.historyFailed"));
     }
   };
 
@@ -314,7 +318,7 @@ export function ClientsClient({
                   ...(addr ? { address: addr } : {}),
                 }),
           });
-          toast.success("Client updated successfully");
+          toast.success(t("web.provider.clientsPage.updated"));
         } else if (customerId) {
           await fetcher.post("/api/provider/clients", {
             customer_id: customerId,
@@ -324,14 +328,14 @@ export function ClientsClient({
             date_of_birth: data.birth_date || null,
             ...(addr ? { address: addr } : {}),
           });
-          toast.success("Client saved successfully");
+          toast.success(t("web.provider.settings.pages.clients/list.clientSavedSuccessfully"));
         } else {
           throw new Error("Invalid client data");
         }
       } else {
         // Create new client from scratch
         if (!data.first_name || !data.last_name) {
-          toast.error("First name and last name are required");
+          toast.error(t("web.provider.clientsPage.namesRequired"));
           return;
         }
 
@@ -353,18 +357,18 @@ export function ClientsClient({
           email_notifications_enabled: data.marketing_consent ?? true,
           sms_notifications_enabled: data.sms_consent ?? true,
         });
-        toast.success("Client created successfully");
+        toast.success(t("web.provider.clientsPage.created"));
       }
       setIsCreateDialogOpen(false);
       loadClients();
     } catch (error: any) {
       console.error("Error saving client:", error);
-      toast.error(error?.message || "Failed to save client");
+      toast.error(error?.message || t("web.provider.clientsPage.saveFailed"));
     }
   };
 
   const handleDelete = async (client: Client) => {
-    if (!confirm(`Are you sure you want to remove ${client.first_name} ${client.last_name}?`)) return;
+    if (!confirm(t("web.provider.clientsPage.deleteConfirm", { name: `${client.first_name} ${client.last_name}` }))) return;
     
     try {
       // Only delete if it's a saved client (has provider_clients id)
@@ -372,44 +376,44 @@ export function ClientsClient({
       
       if (!clientId) {
         // For unsaved clients, just show a message
-        toast.info("This client is not saved. They will remain in your serviced customers list.");
+        toast.info(t("web.provider.clientsPage.notSavedInfo"));
         return;
       }
 
       await fetcher.delete(`/api/provider/clients/${clientId}`);
-      toast.success("Client removed");
+      toast.success(t("web.provider.clientsPage.removed"));
       loadClients();
     } catch (error: any) {
       console.error("Error deleting client:", error);
-      toast.error(error?.message || "Failed to remove client");
+      toast.error(error?.message || t("web.provider.clientsPage.removeFailed"));
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Clients"
-        subtitle="Manage your client database and relationships"
+        title={t("web.provider.clientsPage.title")}
+        subtitle={t("web.provider.clientsPage.subtitle")}
         primaryAction={{
-          label: "Add Client",
+          label: t("web.provider.settings.pages.clients/list.addClient"),
           onClick: handleCreate,
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
       <DataTableShell
-        searchPlaceholder="Search by name, email, or phone..."
+searchPlaceholder={t("web.provider.clientsPage.searchPlaceholder")}
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         
         sortOptions={[
-          { value: "name", label: "Name" },
-          { value: "last_visit", label: "Last Visit" },
-          { value: "total_spent", label: "Total Spent" },
-          { value: "created_at", label: "Date Added" },
+          { value: "name", label: t("web.provider.clientsPage.sortName") },
+          { value: "last_visit", label: t("web.provider.clientsPage.sortLastVisit") },
+          { value: "total_spent", label: t("web.provider.clientsPage.sortTotalSpent") },
+          { value: "created_at", label: t("web.provider.clientsPage.sortDateAdded") },
         ]}
         addButton={{
-          label: "Add Client",
+label: t("web.provider.settings.pages.clients/list.addClient"),
           onClick: handleCreate,
         }}
       >
@@ -424,24 +428,24 @@ export function ClientsClient({
         ) : loadFailed && clients.length === 0 ? (
           <SectionCard className="p-12">
             <EmptyState
-              title="Failed to load clients"
-              description="Something went wrong. Please try again."
-              action={{ label: "Retry", onClick: loadClients }}
+              title={t("web.provider.clientsPage.loadFailedTitle")}
+              description={t("web.provider.clientsPage.loadFailedDescription")}
+              action={{ label: t("web.provider.common.retry"), onClick: loadClients }}
             />
           </SectionCard>
         ) : filteredClients.length === 0 ? (
           <SectionCard className="p-12">
             <EmptyState
-              title="No clients found"
+title={t("web.provider.settings.pages.clients/list.noClientsFound")}
               description={
                 searchQuery
-                  ? "Try a different search term"
-                  : "Add your first client to get started"
+                  ? t("web.provider.clientsPage.emptySearch")
+                  : t("web.provider.clientsPage.emptyAdd")
               }
               action={
                 !searchQuery
                   ? {
-                      label: "Add Client",
+            label: t("web.provider.settings.pages.clients/list.addClient"),
                       onClick: handleCreate,
                     }
                   : undefined
@@ -486,7 +490,7 @@ export function ClientsClient({
                           </p>
                           {client.is_limited_platform_link && (
                             <span className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                              Platform customer
+{t("web.provider.clientsPage.platformCustomer")}
                             </span>
                           )}
                           {client.city && (
@@ -504,17 +508,17 @@ export function ClientsClient({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => handleViewDetails(client)}>
-                                <User className="w-4 h-4 mr-2" />View Profile
+<User className="w-4 h-4 me-2" />{t("web.provider.clientsPage.viewProfile")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleEdit(client)}>
-                                <Edit className="w-4 h-4 mr-2" />Edit
+                                <Edit className="w-4 h-4 me-2" />{t("web.provider.common.edit")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setReportCustomerClient(client)}>
-                                <Flag className="w-4 h-4 mr-2" />Report
+                                <Flag className="w-4 h-4 me-2" />{t("web.provider.clientsPage.report")}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(client)}>
-                                <Trash2 className="w-4 h-4 mr-2" />Delete
+                                <Trash2 className="w-4 h-4 me-2" />{t("web.provider.common.delete")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -536,15 +540,15 @@ export function ClientsClient({
 
                       <div className="flex items-center gap-4 mt-2.5 text-xs">
                         <span className="text-gray-500">
-                          {client.total_visits} visit{client.total_visits !== 1 ? "s" : ""}
+{t("web.provider.clientsPage.visits", { count: client.total_visits })}
                         </span>
                         <span className="font-medium text-gray-700">
                           <Money amount={client.total_spent} />
                         </span>
                         <span className="text-gray-400">
                           {client.last_visit
-                            ? `Last: ${new Date(client.last_visit).toLocaleDateString()}`
-                            : "No visits"}
+                            ? t("web.provider.clientsPage.lastVisit", { date: new Date(client.last_visit).toLocaleDateString() })
+                            : t("web.provider.clientsPage.noVisits")}
                         </span>
                       </div>
 
@@ -580,12 +584,12 @@ export function ClientsClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"><Checkbox /></TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Last Visit</TableHead>
-                      <TableHead>Total Visits</TableHead>
-                      <TableHead>Total Spent</TableHead>
-                      <TableHead>Tags</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.client")}</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.contact")}</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.lastVisitCol")}</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.totalVisits")}</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.totalSpent")}</TableHead>
+                      <TableHead>{t("web.provider.clientsPage.tags")}</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -612,7 +616,7 @@ export function ClientsClient({
                                 ) : null}
                               </p>
                               {client.is_limited_platform_link && (
-                                <p className="text-xs font-medium text-sky-700">Existing platform customer</p>
+<p className="text-xs font-medium text-sky-700">{t("web.provider.clientsPage.existingPlatformCustomer")}</p>
                               )}
                               {client.city && <p className="text-sm text-gray-500">{client.city}</p>}
                             </div>
@@ -627,7 +631,7 @@ export function ClientsClient({
                         <TableCell>
                           {client.last_visit
                             ? <span className="text-sm">{new Date(client.last_visit).toLocaleDateString()}</span>
-                            : <span className="text-sm text-gray-400">Never</span>}
+: <span className="text-sm text-gray-400">{t("web.provider.common.never")}</span>}
                         </TableCell>
                         <TableCell><span className="font-medium">{client.total_visits}</span></TableCell>
                         <TableCell><Money amount={client.total_spent} /></TableCell>
@@ -646,11 +650,11 @@ export function ClientsClient({
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleViewDetails(client)}><User className="w-4 h-4 mr-2" />View Profile</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(client)}><Edit className="w-4 h-4 mr-2" />Edit CRM notes/tags</DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setReportCustomerClient(client); }}><Flag className="w-4 h-4 mr-2" />Report customer</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleViewDetails(client)}><User className="w-4 h-4 me-2" />{t("web.provider.clientsPage.viewProfile")}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(client)}><Edit className="w-4 h-4 me-2" />{t("web.provider.clientsPage.editCrmNotes")}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setReportCustomerClient(client); }}><Flag className="w-4 h-4 me-2" />{t("web.provider.clientsPage.reportCustomer")}</DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-red-600" onClick={(e) => { e.stopPropagation(); handleDelete(client); }}><Trash2 className="w-4 h-4 mr-2" />Delete</DropdownMenuItem>
+                              <DropdownMenuItem className="text-red-600" onClick={(e) => { e.stopPropagation(); handleDelete(client); }}><Trash2 className="w-4 h-4 me-2" />{t("web.provider.common.delete")}</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -690,7 +694,7 @@ export function ClientsClient({
           open={!!reportCustomerClient}
           onOpenChange={(open) => !open && setReportCustomerClient(null)}
           reportedUserId={reportCustomerClient.customer_id ?? reportCustomerClient.id}
-          customerName={`${reportCustomerClient.first_name} ${reportCustomerClient.last_name}`.trim() || "Customer"}
+          customerName={`${reportCustomerClient.first_name} ${reportCustomerClient.last_name}`.trim() || t("web.provider.clientsPage.customerFallback")}
         />
       )}
     </div>
@@ -709,6 +713,7 @@ function ClientCreateEditDialog({
   client: Client | null;
   onSave: (data: ClientFormData) => void;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<ClientFormData>({
     first_name: "",
     last_name: "",
@@ -794,20 +799,19 @@ function ClientCreateEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="text-lg sm:text-xl">{client ? "Edit Client" : "Add Client"}</DialogTitle>
+          <DialogTitle className="text-lg sm:text-xl">{client ? t("web.provider.clientsPage.editClient") : t("web.provider.settings.pages.clients/list.addClient")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 w-full overflow-x-hidden">
           {isLimitedPlatformLink && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              This is an existing Beautonomi customer linked by exact match. You can message, book, sell, and manage
-              provider CRM notes/tags, while their profile fields remain customer-managed.
+{t("web.provider.clientsPage.limitedLinkBanner")}
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="w-full">
-              <Label htmlFor="first_name" className="text-sm sm:text-base">First Name *</Label>
+<Label htmlFor="first_name" className="text-sm sm:text-base">{t("web.provider.clientsPage.firstName")}</Label>
               <Input
                 id="first_name"
                 value={formData.first_name}
@@ -820,7 +824,7 @@ function ClientCreateEditDialog({
               />
             </div>
             <div className="w-full">
-              <Label htmlFor="last_name" className="text-sm sm:text-base">Last Name *</Label>
+<Label htmlFor="last_name" className="text-sm sm:text-base">{t("web.provider.clientsPage.lastName")}</Label>
               <Input
                 id="last_name"
                 value={formData.last_name}
@@ -836,7 +840,7 @@ function ClientCreateEditDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="w-full">
-              <Label htmlFor="email" className="text-sm sm:text-base">Email</Label>
+<Label htmlFor="email" className="text-sm sm:text-base">{t("web.provider.common.email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -852,8 +856,8 @@ function ClientCreateEditDialog({
               <PhoneInput
                 value={formData.phone || ""}
                 onChange={(value) => setFormData({ ...formData, phone: value })}
-                label="Phone"
-                placeholder="82 123 4567"
+label={t("web.provider.common.phone")}
+placeholder={t("web.provider.clientsPage.phonePlaceholder")}
                 className="mt-1.5"
                 disabled={isLimitedPlatformLink}
               />
@@ -861,7 +865,7 @@ function ClientCreateEditDialog({
           </div>
 
           <div className="w-full">
-            <Label className="text-sm sm:text-base">Address (home / house call)</Label>
+<Label className="text-sm sm:text-base">{t("web.provider.clientsPage.addressHome")}</Label>
             {formData.home_address_read_only || isLimitedPlatformLink ? (
               <>
                 <div className="mt-1.5 rounded-md border border-border bg-muted/40 px-3 py-3 text-sm text-foreground">
@@ -870,7 +874,7 @@ function ClientCreateEditDialog({
                     "—"}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  This address was saved by the customer in their account. Only they can change it from the customer app or website.
+{t("web.provider.clientsPage.addressCustomerManaged")}
                 </p>
               </>
             ) : (
@@ -879,8 +883,8 @@ function ClientCreateEditDialog({
                   inputId="client-address"
                   value={formData.address_display || ""}
                   country="ZA"
-                  defaultCountryName="South Africa"
-                  placeholder="Start typing to search for an address"
+defaultCountryName={t("web.provider.clientsPage.southAfrica")}
+placeholder={t("web.provider.clientsPage.addressSearchPlaceholder")}
                   className="mt-1.5"
                   inputClassName="min-h-[44px] touch-manipulation w-full"
                   onInputChange={(v) =>
@@ -906,7 +910,7 @@ function ClientCreateEditDialog({
                   }}
                 />
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Pick a suggestion for accurate travel distance on house calls. City must be set (included when you select a result).
+{t("web.provider.clientsPage.addressHint")}
                 </p>
               </>
             )}
@@ -914,7 +918,7 @@ function ClientCreateEditDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="w-full">
-              <Label htmlFor="city" className="text-sm sm:text-base">City</Label>
+<Label htmlFor="city" className="text-sm sm:text-base">{t("web.provider.clientsPage.city")}</Label>
               <Input
                 id="city"
                 value={formData.city}
@@ -926,7 +930,7 @@ function ClientCreateEditDialog({
               />
             </div>
             <div className="w-full">
-              <Label htmlFor="birth_date" className="text-sm sm:text-base">Birthday</Label>
+<Label htmlFor="birth_date" className="text-sm sm:text-base">{t("web.provider.common.birthday")}</Label>
               <Input
                 id="birth_date"
                 type="date"
@@ -941,21 +945,21 @@ function ClientCreateEditDialog({
           </div>
 
           <div className="w-full">
-            <Label htmlFor="notes" className="text-sm sm:text-base">Notes</Label>
+<Label htmlFor="notes" className="text-sm sm:text-base">{t("web.provider.common.notes")}</Label>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) =>
                 setFormData({ ...formData, notes: e.target.value })
               }
-              placeholder="Add any notes about this client..."
+placeholder={t("web.provider.clientsPage.notesPlaceholder")}
               rows={3}
               className="mt-1.5 w-full max-w-full"
             />
           </div>
 
           <div className="space-y-3 w-full">
-            <Label className="text-sm sm:text-base">Communication Preferences</Label>
+<Label className="text-sm sm:text-base">{t("web.provider.clientsPage.communicationPreferences")}</Label>
             <div className="flex items-center gap-2">
               <Checkbox
                 id="marketing_consent"
@@ -967,7 +971,7 @@ function ClientCreateEditDialog({
                 className="min-w-[44px] min-h-[44px] touch-manipulation"
               />
               <label htmlFor="marketing_consent" className="text-sm sm:text-base cursor-pointer">
-                Receive marketing emails
+                {t("web.provider.clientsPage.receiveMarketingEmails")}
               </label>
             </div>
             <div className="flex items-center gap-2">
@@ -981,7 +985,7 @@ function ClientCreateEditDialog({
                 className="min-w-[44px] min-h-[44px] touch-manipulation"
               />
               <label htmlFor="sms_consent" className="text-sm sm:text-base cursor-pointer">
-                Receive SMS notifications
+                {t("web.provider.clientsPage.receiveSms")}
               </label>
             </div>
           </div>
@@ -994,14 +998,14 @@ function ClientCreateEditDialog({
               disabled={isLoading}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              {isLoading ? "Saving..." : client ? "Update" : "Add Client"}
+{isLoading ? t("web.provider.common.saving") : client ? t("web.provider.common.update") : t("web.provider.settings.pages.clients/list.addClient")}
             </Button>
           </DialogFooter>
         </form>
@@ -1024,6 +1028,7 @@ function ClientDetailSheet({
   history: ClientHistory[];
   onEdit: () => void;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [isLimitedPlatformLink, setIsLimitedPlatformLink] = useState(false);
@@ -1153,7 +1158,7 @@ function ClientDetailSheet({
     } else {
       // Show dialog to select booking
       if (rateableBookings.length === 0) {
-        toast.info("No completed bookings available to rate");
+toast.info(t("web.provider.clientsPage.noCompletedToRate"));
         return;
       }
       if (rateableBookings.length === 1) {
@@ -1210,7 +1215,7 @@ function ClientDetailSheet({
 
   const handleBookAppointment = () => {
     if (!client?.customer_id) {
-      toast.error("Cannot book appointment: Client ID is missing");
+toast.error(t("web.provider.clientsPage.cannotBookMissingId"));
       return;
     }
     // Navigate to calendar with customer pre-selected
@@ -1220,11 +1225,11 @@ function ClientDetailSheet({
 
   const handleSendMessage = async () => {
     if (!client?.customer_id) {
-      toast.error("Cannot send message: Client ID is missing");
+toast.error(t("web.provider.clientsPage.cannotMessageMissingId"));
       return;
     }
     if (!isRegistered) {
-      toast.error("This client is not registered on Beautonomi. Only registered clients can receive chat messages.");
+toast.error(t("web.provider.clientsPage.notRegisteredChat"));
       return;
     }
     try {
@@ -1236,7 +1241,7 @@ function ClientDetailSheet({
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating conversation:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to start conversation");
+toast.error(error instanceof Error ? error.message : t("web.provider.clientsPage.startConversationFailed"));
     }
   };
 
@@ -1267,7 +1272,7 @@ function ClientDetailSheet({
                 </SheetTitle>
                 {isLimitedPlatformLink && (
                   <div className="mt-2 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                    Existing platform customer
+                    {t("web.provider.clientsPage.existingPlatformCustomer")}
                   </div>
                 )}
                 {client.tags && client.tags.length > 0 && (
@@ -1289,8 +1294,8 @@ function ClientDetailSheet({
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={onEdit}>
-              <Edit className="w-4 h-4 mr-2" />
-              Edit CRM
+              <Edit className="w-4 h-4 me-2" />
+              {t("web.provider.clientsPage.editCrm")}
             </Button>
           </div>
         </SheetHeader>
@@ -1298,7 +1303,7 @@ function ClientDetailSheet({
         {/* Stats */}
         {isLimitedPlatformLink && (
           <div className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
-            This customer already has a Beautonomi account. Their platform profile remains customer-managed,
+{t("web.provider.clientsPage.limitedSheetBanner")}
             but you can message them, book appointments, sell products, and manage provider CRM notes normally.
           </div>
         )}
@@ -1307,13 +1312,13 @@ function ClientDetailSheet({
         <div className="grid grid-cols-3 gap-4 mt-6">
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-semibold">{client.total_visits}</p>
-            <p className="text-xs text-gray-600">Total Visits</p>
+<p className="text-xs text-gray-600">{t("web.provider.clientsPage.totalVisits")}</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-semibold">
               <Money amount={client.total_spent} />
             </p>
-            <p className="text-xs text-gray-600">Total Spent</p>
+<p className="text-xs text-gray-600">{t("web.provider.clientsPage.totalSpent")}</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             {isLoadingRatingStats ? (
@@ -1328,22 +1333,22 @@ function ClientDetailSheet({
             ) : (
               <p className="text-2xl font-semibold">–</p>
             )}
-            <p className="text-xs text-gray-600">Avg Rating</p>
+<p className="text-xs text-gray-600">{t("web.provider.clientsPage.avgRating")}</p>
             <p className="text-xs text-gray-400 mt-1">
               {isLoadingRatingStats
-                ? "Loading…"
+? t("web.provider.clientsPage.loading")
                 : providerBookingAvgDisplay != null
-                  ? "Your post-visit ratings (this business)"
-                  : "No booking ratings yet"}
+                  ? t("web.provider.clientsPage.yourPostVisitRatings")
+                  : t("web.provider.clientsPage.noBookingRatings")}
             </p>
           </div>
         </div>
 
         <Tabs defaultValue="info" className="mt-6">
           <TabsList className="grid w-full grid-cols-3 gap-1">
-            <TabsTrigger value="info" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">Info</TabsTrigger>
-            <TabsTrigger value="history" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">History</TabsTrigger>
-            <TabsTrigger value="ratings" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">Ratings</TabsTrigger>
+            <TabsTrigger value="info" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">{t("web.provider.clientsPage.info")}</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">{t("web.provider.clientsPage.history")}</TabsTrigger>
+            <TabsTrigger value="ratings" className="text-xs sm:text-sm px-2 sm:px-3 flex-1">{t("web.provider.clientsPage.ratings")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="mt-4 space-y-4">
@@ -1351,7 +1356,7 @@ function ClientDetailSheet({
               <div className="flex items-center gap-3">
                 <Mail className="w-4 h-4 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-600">Email</p>
+<p className="text-sm text-gray-600">{t("web.provider.common.email")}</p>
                   <p className="font-medium">{client.email}</p>
                 </div>
               </div>
@@ -1360,7 +1365,7 @@ function ClientDetailSheet({
               <div className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-600">Phone</p>
+<p className="text-sm text-gray-600">{t("web.provider.common.phone")}</p>
                   <p className="font-medium">{client.phone}</p>
                 </div>
               </div>
@@ -1369,7 +1374,7 @@ function ClientDetailSheet({
               <div className="flex items-center gap-3">
                 <MapPin className="w-4 h-4 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-600">Address</p>
+<p className="text-sm text-gray-600">{t("web.provider.clientsPage.addressHome")}</p>
                   <p className="font-medium">
                     {[client.address, client.city].filter(Boolean).join(", ")}
                   </p>
@@ -1380,9 +1385,9 @@ function ClientDetailSheet({
               <div className="flex items-center gap-3">
                 <Calendar className="w-4 h-4 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-600">Birthday</p>
+                  <p className="text-sm text-gray-600">{t("web.provider.common.birthday")}</p>
                   <p className="font-medium">
-                    {new Date(client.birth_date).toLocaleDateString("en-US", {
+                    {new Date(client.birth_date).toLocaleDateString(getDefaultMoneyLocale(), {
                       month: "long",
                       day: "numeric",
                     })}
@@ -1392,12 +1397,12 @@ function ClientDetailSheet({
             )}
             {client.notes && (
               <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-1">Notes</p>
+                <p className="text-sm text-gray-600 mb-1">{t("web.provider.common.notes")}</p>
                 <p className="text-sm bg-gray-50 rounded-lg p-3">{client.notes}</p>
               </div>
             )}
             <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-2">Communication</p>
+<p className="text-sm text-gray-600 mb-2">{t("web.provider.clientsPage.communication")}</p>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span
@@ -1409,8 +1414,8 @@ function ClientDetailSheet({
                   />
                   <span className="text-sm">
                     {(clientDetails?.customer?.email_notifications_enabled ?? client.marketing_consent ?? false)
-                      ? "Receives marketing emails"
-                      : "No marketing emails"}
+                      ? t("web.provider.clientsPage.receivesMarketing")
+                      : t("web.provider.clientsPage.noMarketing")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1423,8 +1428,8 @@ function ClientDetailSheet({
                   />
                   <span className="text-sm">
                     {(clientDetails?.customer?.sms_notifications_enabled ?? client.sms_consent ?? false)
-                      ? "Receives SMS" 
-                      : "No SMS"}
+? t("web.provider.clientsPage.receivesSms")
+                      : t("web.provider.clientsPage.noSms")}
                   </span>
                 </div>
               </div>
@@ -1434,8 +1439,8 @@ function ClientDetailSheet({
           <TabsContent value="history" className="mt-4">
             {history.length === 0 ? (
               <EmptyState
-                title="No history yet"
-                description="Appointments and sales will appear here"
+                title={t("web.provider.clientsPage.noHistoryYet")}
+                description={t("web.provider.clientsPage.historyEmpty")}
               />
             ) : (
               <div className="space-y-3">
@@ -1451,14 +1456,14 @@ function ClientDetailSheet({
             {ratingStats && ratingStats.total_ratings > 0 && (
               <div className="mb-6 space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Rating Statistics</h3>
+<h3 className="text-sm font-semibold text-gray-700 mb-3">{t("web.provider.clientsPage.ratingStatistics")}</h3>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <p className="text-xs text-gray-600">Total Ratings</p>
+<p className="text-xs text-gray-600">{t("web.provider.clientsPage.totalRatings")}</p>
                       <p className="text-2xl font-semibold">{ratingStats.total_ratings}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600">Average Rating</p>
+<p className="text-xs text-gray-600">{t("web.provider.clientsPage.averageRating")}</p>
                       <div className="flex items-center gap-1">
                         <p className="text-2xl font-semibold">{ratingStats.average_rating?.toFixed(1) || "0.0"}</p>
                         <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
@@ -1469,7 +1474,7 @@ function ClientDetailSheet({
                   {/* Rating Distribution */}
                   {ratingStats.rating_distribution && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Rating Distribution</p>
+<p className="text-xs font-semibold text-gray-700 mb-2">{t("web.provider.clientsPage.ratingDistribution")}</p>
                       {ratingStats.rating_distribution.map((dist: any) => (
                         <div key={dist.stars} className="flex items-center gap-2">
                           <div className="flex items-center gap-1 w-20">
@@ -1484,7 +1489,7 @@ function ClientDetailSheet({
                               }}
                             />
                           </div>
-                          <span className="text-xs text-gray-600 w-8 text-right">{dist.count}</span>
+                          <span className="text-xs text-gray-600 w-8 text-end">{dist.count}</span>
                         </div>
                       ))}
                     </div>
@@ -1501,12 +1506,12 @@ function ClientDetailSheet({
                 onClick={() => handleRateClient()}
                 disabled={isLoadingRateableBookings || rateableBookings.length === 0}
               >
-                <Star className="w-4 h-4 mr-2" />
+                <Star className="w-4 h-4 me-2" />
                 {isLoadingRateableBookings
-                  ? "Loading..."
+? t("web.provider.settings.common.loading")
                   : rateableBookings.length === 0
-                  ? "No bookings to rate"
-                  : `Rate Client (${rateableBookings.length} available)`}
+? t("web.provider.clientsPage.noBookingsToRate")
+: t("web.provider.clientsPage.rateClientAvailable", { count: rateableBookings.length })}
               </Button>
             </div>
 
@@ -1519,8 +1524,8 @@ function ClientDetailSheet({
               </div>
             ) : ratingsList.length === 0 ? (
               <EmptyState
-                title="No ratings yet"
-                description="Ratings you give to this client will appear here"
+                title={t("web.provider.clientsPage.noRatingsYet")}
+                description={t("web.provider.clientsPage.ratingsEmpty")}
               />
             ) : (
               <div className="space-y-3">
@@ -1545,7 +1550,7 @@ function ClientDetailSheet({
                             ))}
                           </div>
                           <span className="text-xs text-gray-500">
-                            {rating.booking_number && `Booking ${rating.booking_number}`}
+{rating.booking_number && t("web.provider.clientsPage.bookingLabel", { number: rating.booking_number })}
                             {rating.completed_at &&
                               ` • ${new Date(rating.completed_at).toLocaleDateString()}`}
                           </span>
@@ -1555,7 +1560,7 @@ function ClientDetailSheet({
                         )}
                         {rating.location_id && (
                           <p className="text-xs text-gray-500 mt-1">
-                            Location: {rating.location_id}
+{t("web.provider.clientsPage.locationLabel", { id: rating.location_id })}
                           </p>
                         )}
                       </div>
@@ -1581,8 +1586,8 @@ function ClientDetailSheet({
             className="w-full"
             onClick={handleBookAppointment}
           >
-            <Calendar className="w-4 h-4 mr-2" />
-            Book Appointment
+            <Calendar className="w-4 h-4 me-2" />
+            {t("web.provider.clientsPage.bookAppointment")}
           </Button>
           <Button 
             variant="outline" 
@@ -1590,24 +1595,24 @@ function ClientDetailSheet({
             onClick={handleSendMessage}
             disabled={!isRegistered || isCheckingRegistration}
             title={
-              isCheckingRegistration 
-                ? "Checking registration..." 
-                : !isRegistered 
-                ? "Client is not registered on Beautonomi. Only registered clients can receive chat messages."
-                : "Send a chat message to this client"
+              isCheckingRegistration
+                ? t("web.provider.clientsPage.checkingRegistration")
+                : !isRegistered
+                ? t("web.provider.clientsPage.notRegisteredTitle")
+                : t("web.provider.clientsPage.sendChatTitle")
             }
           >
-            <Mail className="w-4 h-4 mr-2" />
-            Send Message
+            <Mail className="w-4 h-4 me-2" />
+            {t("web.provider.clientsPage.sendMessage")}
           </Button>
         </div>
         {isLimitedPlatformLink && !isCheckingRegistration && client.customer_id ? (
           <p className="text-xs text-sky-700 mt-2 text-center">
-            Platform customer: profile fields are customer-managed. Messaging and booking remain available.
+{t("web.provider.clientsPage.platformCustomerHint")}
           </p>
         ) : !isRegistered && !isCheckingRegistration && client.customer_id && (
           <p className="text-xs text-gray-500 mt-2 text-center">
-            This client is not registered. Chat messages are only available for registered clients.
+{t("web.provider.clientsPage.notRegisteredHint")}
           </p>
         )}
       </SheetContent>

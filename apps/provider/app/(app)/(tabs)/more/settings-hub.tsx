@@ -6,21 +6,23 @@ import { SegmentTabs } from "@/components/ui/SegmentTabs";
 import { SettingsBusinessContent } from "./_components/settings-content";
 import { SubscriptionContent } from "./subscription";
 import { BillingHistoryContent } from "./billing-history";
-
-const TABS = [
-  { key: "business", label: "Business" },
-  { key: "subscription", label: "Subscription" },
-  { key: "billing", label: "Billing" },
-];
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function SettingsHubScreen() {
+  const { t } = useTranslation();
+  const sh = (key: string) => t(`provider.mobile.screens.settingsHub.${key}`) as string;
   const [activeKey, setActiveKey] = useState("business");
+  const tabs = [
+    { key: "business", label: sh("tabBusiness") },
+    { key: "subscription", label: sh("tabSubscription") },
+    { key: "billing", label: sh("tabBilling") },
+  ];
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Settings" showBack subtitle="Business, plan & billing" />
+      <ScreenHeader title={sh("title")} showBack subtitle={sh("subtitle")} />
       <View style={{ marginBottom: 16 }}>
-        <SegmentTabs tabs={TABS} activeKey={activeKey} onSelect={setActiveKey} />
+        <SegmentTabs tabs={tabs} activeKey={activeKey} onSelect={setActiveKey} />
       </View>
       <View style={{ flex: 1, minHeight: 0 }}>
         {activeKey === "business" && <SettingsBusinessContent />}

@@ -16,6 +16,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTranslation } from "@beautonomi/i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,8 +45,15 @@ interface TaxDocument {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatTaxStatus(status: string | null): string {
-  if (!status) return "—";
+function formatTaxStatus(
+  status: string | null,
+  tx: (key: string) => string,
+): string {
+  if (!status) return tx("taxStatusEmpty");
+  const normalized = status.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const key = `taxStatus_${normalized}`;
+  const label = tx(key);
+  if (label !== `customer.mobile.screens.taxes.${key}`) return label;
   return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
 }
 
@@ -150,16 +158,28 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: (url: string) => void }) {
+function DocumentCard({
+  doc,
+  onDownload,
+  tx,
+}: {
+  doc: TaxDocument;
+  onDownload: (url: string) => void;
+  tx: (key: string, options?: Record<string, string>) => string;
+}) {
   const rawUrl = getDocumentDownloadSource(doc);
   const hasUrl = Boolean(rawUrl);
+  const docLabel = doc.label ?? doc.type ?? tx("documentFallbackTitle");
 
   let subtitle = String(doc.year ?? "");
   if (doc.issued_at && hasUrl) {
     try {
       const d = new Date(doc.issued_at);
       if (Number.isFinite(d.getTime())) {
-        subtitle = `${subtitle} · Issued ${d.toLocaleDateString()}`;
+        subtitle = tx("issuedOn", {
+          year: String(doc.year ?? ""),
+          date: d.toLocaleDateString(),
+        });
       }
     } catch {
       /* ignore */
@@ -180,16 +200,20 @@ function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: (url:
         justifyContent: "space-between",
       }}
     >
-      <View style={{ flex: 1, marginRight: 12 }}>
-        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{doc.label ?? doc.type ?? "Tax document"}</Text>
+      <View style={{ flex: 1, marginEnd: 12 }}>
+        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{docLabel}</Text>
         <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>{subtitle}</Text>
         {!hasUrl && (
           <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 4 }}>
-            {doc.status === "not_issued" || !doc.status ? "Not yet issued — download appears when a file is available." : formatTaxStatus(doc.status ?? null)}
+            {doc.status === "not_issued" || !doc.status
+              ? tx("notYetIssued")
+              : formatTaxStatus(doc.status ?? null, tx)}
           </Text>
         )}
         {hasUrl && (
-          <Text style={{ fontSize: 12, color: Colors.success, marginTop: 4, fontWeight: "500" }}>Ready to download</Text>
+          <Text style={{ fontSize: 12, color: Colors.success, marginTop: 4, fontWeight: "500" }}>
+            {tx("readyToDownload")}
+          </Text>
         )}
       </View>
       <TouchableOpacity
@@ -204,12 +228,14 @@ function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: (url:
           opacity: hasUrl ? 1 : 0.65,
         }}
         accessibilityRole="button"
-        accessibilityLabel={hasUrl ? `Download ${doc.label ?? "tax document"}` : "Download unavailable"}
-        accessibilityHint={hasUrl ? "Opens the PDF or file in your browser" : undefined}
+        accessibilityLabel={
+          hasUrl ? tx("downloadA11y", { label: docLabel }) : tx("downloadUnavailableA11y")
+        }
+        accessibilityHint={hasUrl ? tx("downloadHintA11y") : undefined}
         accessibilityState={{ disabled: !hasUrl }}
       >
         <Text style={{ color: hasUrl ? Colors.white : Colors.gray[500], fontSize: 14, fontWeight: "600" }}>
-          {hasUrl ? "Download" : "Unavailable"}
+          {hasUrl ? tx("downloadCta") : tx("unavailableCta")}
         </Text>
       </TouchableOpacity>
     </View>
@@ -223,6 +249,12 @@ function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: (url:
 export default function TaxesScreen() {
   useScreenTracking("Taxes");
   const router = useRouter();
+  const { t } = useTranslation();
+  const tx = useCallback(
+    (key: string, options?: Record<string, string>) =>
+      t(`customer.mobile.screens.taxes.${key}`, options) as string,
+    [t],
+  );
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint =
     isTablet || Platform.OS === "web" ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
@@ -248,7 +280,7 @@ export default function TaxesScreen() {
       ]);
 
       if (taxRes.error) {
-        setFatalError(taxRes.error.message || "Failed to load tax information");
+        setFatalError(taxRes.error.message || tx("loadFailed"));
         setTaxInfo(null);
       } else {
         const raw = (taxRes.data ?? {}) as Record<string, unknown>;
@@ -257,19 +289,19 @@ export default function TaxesScreen() {
 
       if (docsRes.error) {
         setDocs([]);
-        setDocumentsError(docsRes.error.message || "Could not load tax document list.");
+        setDocumentsError(docsRes.error.message || tx("documentsLoadFailed"));
       } else {
         const rawDocs = docsRes.data as unknown;
         const parsed = parseTaxDocumentsPayload(rawDocs);
         setDocs(parsed);
       }
     } catch (e) {
-      setFatalError(e instanceof Error ? e.message : "Failed to load tax information");
+      setFatalError(e instanceof Error ? e.message : tx("loadFailed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     load();
@@ -289,9 +321,9 @@ export default function TaxesScreen() {
     const url = `${base}/account-settings/taxes`;
     router.push({
       pathname: "/(app)/in-app-browser",
-      params: { url: encodeURIComponent(url), title: "Tax & VAT settings" },
+      params: { url: encodeURIComponent(url), title: tx("webSettingsTitle") },
     });
-  }, [router, webBaseUrl]);
+  }, [router, tx, webBaseUrl]);
 
   const hasAnyContent = useMemo(() => taxInfo !== null || docs.length > 0, [taxInfo, docs.length]);
 
@@ -299,7 +331,7 @@ export default function TaxesScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>{tx("loading")}</Text>
       </View>
     );
   }
@@ -312,7 +344,7 @@ export default function TaxesScreen() {
           onPress={() => load()}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{tx("retry")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -341,17 +373,9 @@ export default function TaxesScreen() {
           borderColor: "#BFDBFE",
         }}
       >
-        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>About tax & VAT on mobile</Text>
-        <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>
-          This screen shows a read-only summary of taxpayer details we have on file and any annual summaries the platform issues.
-          Editing tax numbers, VAT ID, and address — and managing invoice settings — is done on the website for now (web-first by
-          design). Fully native forms would be a follow-up if you want parity without opening the site.
-        </Text>
-        <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20, marginTop: 10 }}>
-          When real PDFs or files exist in storage, the API should return <Text style={{ fontWeight: "600" }}>download_url</Text>{" "}
-          (absolute URL or a path such as <Text style={{ fontWeight: "600" }}>/api/…</Text>) and/or <Text style={{ fontWeight: "600" }}>document_url</Text>{" "}
-          — the Download button enables automatically for that row.
-        </Text>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>{tx("aboutTitle")}</Text>
+        <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>{tx("aboutBody")}</Text>
+        <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20, marginTop: 10 }}>{tx("aboutDownloadHint")}</Text>
         {webBaseUrl ? (
           <TouchableOpacity
             onPress={openWebTaxSettings}
@@ -364,14 +388,12 @@ export default function TaxesScreen() {
               backgroundColor: Colors.primary,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Open tax and VAT settings on the website"
+            accessibilityLabel={tx("editOnWebA11y")}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Edit tax & VAT on the web</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{tx("editOnWebCta")}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={{ marginTop: 10, fontSize: 12, color: Colors.gray[600] }}>
-            Set EXPO_PUBLIC_APP_URL in your build to open the web tax settings screen.
-          </Text>
+          <Text style={{ marginTop: 10, fontSize: 12, color: Colors.gray[600] }}>{tx("appUrlMissing")}</Text>
         )}
       </View>
 
@@ -387,8 +409,8 @@ export default function TaxesScreen() {
           }}
         >
           <Text style={{ fontSize: 13, color: "#991B1B" }}>{fatalError}</Text>
-          <TouchableOpacity onPress={() => load()} style={{ marginTop: 8 }} accessibilityRole="button" accessibilityLabel="Retry">
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Retry</Text>
+          <TouchableOpacity onPress={() => load()} style={{ marginTop: 8 }} accessibilityRole="button" accessibilityLabel={tx("retryA11y")}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{tx("retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -409,7 +431,7 @@ export default function TaxesScreen() {
       ) : null}
 
       <View style={{ marginBottom: 24 }}>
-        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Tax information</Text>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>{tx("taxInfoSection")}</Text>
         {taxInfo ? (
           <View
             style={{
@@ -420,8 +442,8 @@ export default function TaxesScreen() {
               borderColor: Colors.gray[100],
             }}
           >
-            <InfoRow label="Country" value={taxInfo.country || "Not specified"} />
-            <InfoRow label="VAT / Tax ID" value={taxInfo.vat_id || taxInfo.tax_id || "Not provided"} />
+            <InfoRow label={tx("countryLabel")} value={taxInfo.country || tx("notSpecified")} />
+            <InfoRow label={tx("vatTaxIdLabel")} value={taxInfo.vat_id || taxInfo.tax_id || tx("notProvided")} />
             {taxInfo.tax_status ? (
               <View
                 style={{
@@ -431,7 +453,7 @@ export default function TaxesScreen() {
                   paddingVertical: 12,
                 }}
               >
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tax status</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{tx("taxStatusLabel")}</Text>
                 <View
                   style={{
                     backgroundColor: Colors.primaryLight,
@@ -441,7 +463,7 @@ export default function TaxesScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>
-                    {formatTaxStatus(taxInfo.tax_status)}
+                    {formatTaxStatus(taxInfo.tax_status, tx)}
                   </Text>
                 </View>
               </View>
@@ -457,19 +479,14 @@ export default function TaxesScreen() {
               borderColor: Colors.gray[100],
             }}
           >
-            <Text style={{ color: Colors.gray[500], fontSize: 14, lineHeight: 20 }}>
-              No tax information on file yet. Use &quot;Edit tax & VAT on the web&quot; above to add your details.
-            </Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, lineHeight: 20 }}>{tx("noTaxInfoBody")}</Text>
           </View>
         )}
       </View>
 
       <View>
-        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Tax documents</Text>
-        <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12, lineHeight: 18 }}>
-          Yearly summaries appear here. Until a file is generated, the row stays unavailable; when the API provides a URL,
-          Download opens it (signed URLs and relative API paths are supported).
-        </Text>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{tx("documentsSection")}</Text>
+        <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12, lineHeight: 18 }}>{tx("documentsSubtitle")}</Text>
         {docs.length === 0 ? (
           <View
             style={{
@@ -481,12 +498,12 @@ export default function TaxesScreen() {
             }}
           >
             <Text style={{ color: Colors.gray[500], fontSize: 14 }}>
-              {documentsError ? "Could not load the document list." : "No tax document rows returned yet."}
+              {documentsError ? tx("documentsLoadErrorEmpty") : tx("documentsEmpty")}
             </Text>
           </View>
         ) : (
           docs.map((doc) => (
-            <DocumentCard key={doc.id} doc={doc} onDownload={handleDownload} />
+            <DocumentCard key={doc.id} doc={doc} onDownload={handleDownload} tx={tx} />
           ))
         )}
       </View>

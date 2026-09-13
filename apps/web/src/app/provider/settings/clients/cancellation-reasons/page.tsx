@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -30,6 +31,7 @@ interface CancellationReason {
 }
 
 export default function CancellationReasonsSettings() {
+  const { t } = useTranslation();
   const [reasons, setReasons] = useState<CancellationReason[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function CancellationReasonsSettings() {
       console.error("Error loading cancellation reasons:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load cancellation reasons";
+        : error?.error?.message || t("web.provider.settings.pages.clients/cancellation-reasons.failedToLoad");
       toast.error(errorMessage);
       setReasons([]);
     } finally {
@@ -84,16 +86,16 @@ export default function CancellationReasonsSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this cancellation reason? This action cannot be undone.")) return;
+    if (!confirm(t("web.provider.settings.pages.clients/cancellation-reasons.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/cancellation-reasons/${id}`);
-      toast.success("Cancellation reason deleted successfully");
+      toast.success(t("web.provider.settings.pages.clients/cancellation-reasons.cancellationReasonDeletedSuccessfully"));
       await loadReasons();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to delete cancellation reason";
+        : error?.error?.message || t("web.provider.settings.pages.clients/cancellation-reasons.failedToDelete");
       toast.error(errorMessage);
       console.error("Error deleting cancellation reason:", error);
     }
@@ -102,7 +104,7 @@ export default function CancellationReasonsSettings() {
   const handleSave = async () => {
     try {
       if (!formData.name.trim()) {
-        toast.error("Cancellation reason name is required");
+        toast.error(t("web.provider.settings.pages.clients/cancellation-reasons.cancellationReasonNameIsRequired"));
         return;
       }
 
@@ -112,43 +114,43 @@ export default function CancellationReasonsSettings() {
           description: formData.description.trim() || null,
           is_active: formData.is_active,
         });
-        toast.success("Cancellation reason updated successfully");
+        toast.success(t("web.provider.settings.pages.clients/cancellation-reasons.cancellationReasonUpdatedSuccessfully"));
       } else {
         await fetcher.post("/api/provider/cancellation-reasons", {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           is_active: formData.is_active,
         });
-        toast.success("Cancellation reason created successfully");
+        toast.success(t("web.provider.settings.pages.clients/cancellation-reasons.cancellationReasonCreatedSuccessfully"));
       }
       setIsDialogOpen(false);
       await loadReasons();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save cancellation reason";
+        : error?.error?.message || t("web.provider.settings.pages.clients/cancellation-reasons.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving cancellation reason:", error);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Clients", href: "/provider/settings/clients/list" },
-    { label: "Cancellation Reasons" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.clients/cancellation-reasons.clients"), href: "/provider/settings/clients/list" },
+    { label: t("web.provider.settings.pages.clients/cancellation-reasons.cancellationReasons") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Cancellation Reasons"
-        subtitle="Manage cancellation reason options"
+        title={t("web.provider.settings.categories.clients.items.cancellationReasons.title")}
+        subtitle={t("web.provider.settings.categories.clients.items.cancellationReasons.description")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading cancellation reasons..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.clients/cancellation-reasons.loadingCancellationReasons")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -156,33 +158,33 @@ export default function CancellationReasonsSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Cancellation Reasons"
-      subtitle="Manage cancellation reason options"
+      title={t("web.provider.settings.categories.clients.items.cancellationReasons.title")}
+      subtitle={t("web.provider.settings.categories.clients.items.cancellationReasons.description")}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
-              Add cancellation reasons to track why appointments are cancelled
+{t("web.provider.settings.pages.clients/cancellation-reasons.emptyHint")}
             </p>
           </div>
           <Button
             onClick={handleCreate}
             className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Reason
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.clients/cancellation-reasons.addReason")}
           </Button>
         </div>
 
         {reasons.length === 0 ? (
           <SectionCard className="p-8 sm:p-12">
             <EmptyState
-              title="No cancellation reasons yet"
-              description="Add cancellation reasons to track why appointments are cancelled"
+              title={t("web.provider.settings.pages.clients/cancellation-reasons.noCancellationReasonsYet")}
+              description={t("web.provider.settings.pages.clients/cancellation-reasons.emptyHint")}
               action={{
-                label: "Add Reason",
+                label: t("web.provider.settings.pages.clients/cancellation-reasons.addReason"),
                 onClick: handleCreate,
               }}
             />
@@ -200,7 +202,7 @@ export default function CancellationReasonsSettings() {
                     <Badge
                       className={reason.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
                     >
-                      {reason.is_active ? "Active" : "Inactive"}
+{reason.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                     </Badge>
                   </div>
                 </div>
@@ -211,8 +213,8 @@ export default function CancellationReasonsSettings() {
                     onClick={() => handleEdit(reason)}
                     className="flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
+                    <Edit className="w-3 h-3 me-1" />
+{t("web.provider.common.edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -220,8 +222,8 @@ export default function CancellationReasonsSettings() {
                     onClick={() => handleDelete(reason.id)}
                     className="text-red-600 hover:text-red-700 flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Delete
+                    <Trash2 className="w-3 h-3 me-1" />
+{t("web.provider.common.delete")}
                   </Button>
                 </div>
               </SectionCard>
@@ -234,33 +236,33 @@ export default function CancellationReasonsSettings() {
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>
-              {editingReason ? "Edit Cancellation Reason" : "Add Cancellation Reason"}
+{editingReason ? t("web.provider.settings.pages.clients/cancellation-reasons.editTitle") : t("web.provider.settings.pages.clients/cancellation-reasons.addTitle")}
             </DialogTitle>
             <DialogDescription>
               {editingReason
-                ? "Update cancellation reason information"
-                : "Add a new cancellation reason to track why appointments are cancelled"}
+                ? t("web.provider.settings.pages.clients/cancellation-reasons.updateHint")
+                : t("web.provider.settings.pages.clients/cancellation-reasons.addHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Name *</Label>
+<Label htmlFor="name">{t("web.provider.onboarding.leftover2.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Client Request, Weather, Emergency"
+                placeholder={t("web.provider.settings.pages.clients/cancellation-reasons.eGClientRequestWeatherEmergency")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+<Label htmlFor="description">{t("web.provider.common.description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description"
+                placeholder={t("web.provider.settings.pages.clients/cancellation-reasons.optionalDescription")}
                 rows={3}
                 className="mt-1.5"
               />
@@ -274,7 +276,7 @@ export default function CancellationReasonsSettings() {
                 className="w-4 h-4"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active
+{t("web.provider.common.active")}
               </Label>
             </div>
           </div>
@@ -284,13 +286,13 @@ export default function CancellationReasonsSettings() {
               onClick={() => setIsDialogOpen(false)}
               className="min-h-[44px] touch-manipulation"
             >
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
               className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {editingReason ? "Update" : "Create"}
+{editingReason ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

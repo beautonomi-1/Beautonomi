@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslation } from "@beautonomi/i18n";
+
 // components/global/LocationModal.tsx
 
 import { useState, useEffect } from "react";
@@ -13,6 +17,7 @@ interface LocationModalProps {
 }
 
 export default function LocationModal({ showModal, closeModal, defaultValue = "", onSave }: LocationModalProps) {
+  const { t } = useTranslation();
   const [location, setLocation] = useState(defaultValue);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>(defaultValue);
@@ -62,11 +67,11 @@ export default function LocationModal({ showModal, closeModal, defaultValue = ""
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white rounded-lg p-6 max-w-lg w-full relative">
           <X className="h-5 w-5  cursor-pointer mb-7" onClick={closeModal} />
-          <h2 className="text-[26px] font-medium text-secondary mb-8">Where you live?</h2>
+          <h2 className="text-[26px] font-medium text-secondary mb-8">{t("web.layout.locationModal.title")}</h2>
           <div className="border rounded-full border-secondary mb-20 flex items-center">
             <Input
               type="text"
-              placeholder="Search for your city"
+              placeholder={t("web.layout.locationModal.searchPlaceholder")}
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="rounded-full flex-grow"
@@ -95,7 +100,7 @@ export default function LocationModal({ showModal, closeModal, defaultValue = ""
               onSave(selectedLocation || location);
             }
             closeModal();
-          }}>Save</Button>
+          }}>{t("common.save")}</Button>
         </div>
         </div>
       </div>

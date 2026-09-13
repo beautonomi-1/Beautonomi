@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Check, Sparkles, Clock } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Addon {
   id: string;
@@ -38,6 +39,7 @@ export default function ServiceAddons({
   selectedAddons,
   onAddonsChange,
 }: ServiceAddonsProps) {
+  const { t } = useTranslation();
   const [addons, setAddons] = useState<Addon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -89,7 +91,7 @@ export default function ServiceAddons({
       <div className="flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary" />
         <h4 className="text-sm font-semibold text-gray-900">
-          Recommended Add-ons
+          {t("web.booking.steps.addons.recommendedTitle")}
         </h4>
       </div>
       <div className="space-y-2">
@@ -101,7 +103,7 @@ export default function ServiceAddons({
               key={addon.id}
               whileTap={{ scale: 0.98 }}
               onClick={() => toggleAddon(addon)}
-              className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
+              className={`w-full p-3 rounded-lg border-2 text-start transition-all touch-target ${
                 isSelected
                   ? "border-primary bg-pink-50"
                   : "border-gray-200 bg-white hover:border-gray-300"
@@ -116,7 +118,7 @@ export default function ServiceAddons({
                     {addon.is_recommended && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
                         <Sparkles className="w-3 h-3" />
-                        Popular
+                        {t("web.booking.steps.addons.popularBadge")}
                       </span>
                     )}
                   </div>
@@ -128,7 +130,7 @@ export default function ServiceAddons({
                   <div className="flex items-center gap-3 text-xs text-gray-600">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      +{addon.duration} min
+                      {t("web.booking.steps.addons.durationPlus", { duration: addon.duration })}
                     </span>
                   </div>
                 </div>

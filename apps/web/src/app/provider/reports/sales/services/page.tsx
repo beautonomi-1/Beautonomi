@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -48,6 +49,7 @@ interface ServicePerformanceData {
 }
 
 export default function ServicePerformanceReport() {
+  const { t } = useTranslation();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -127,10 +129,10 @@ export default function ServicePerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales by service" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/services.title") },
         ]}
       >
         <ReportSkeleton />
@@ -142,15 +144,15 @@ export default function ServicePerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales by service" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/services.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Sales by service" />
-          <ReportSubscriptionRequired feature="Sales by service" />
+          <PageHeader title={t("web.provider.reports.pages.sales/services.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.sales/services.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -160,15 +162,15 @@ export default function ServicePerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales by service" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/services.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load service performance data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.sales/services.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -177,21 +179,21 @@ export default function ServicePerformanceReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Sales by service" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.sales/services.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="service-performance-report">
         <PageHeader
-          title="Sales by service"
-          subtitle="Ledger net allocated to each offering — completed visits only"
+          title={t("web.provider.reports.pages.sales/services.title")}
+          subtitle={t("web.provider.reports.pages.sales/services.subtitle")}
           actions={
             <Button variant="outline" className="min-h-[44px] touch-manipulation gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" />
-              Export CSV
+              {t("web.provider.common.exportCsv")}
             </Button>
           }
         />
@@ -206,11 +208,11 @@ export default function ServicePerformanceReport() {
           <div className="flex gap-3 rounded-xl border border-violet-200/90 bg-violet-50/95 px-4 py-3 text-sm leading-relaxed text-violet-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden />
             <div>
-              <p className="font-medium text-violet-900">Accounting basis</p>
+              <p className="font-medium text-violet-900">{t("web.provider.reports.pages.sales/services.accountingBasis")}</p>
               <p className="mt-1 text-violet-950/95">{data.basisNote}</p>
               {data.ledgerTransactionTypes?.length ? (
                 <p className="mt-2 text-xs text-violet-800/90">
-                  Ledger types: {data.ledgerTransactionTypes.join(", ")}
+                  {t("web.provider.reports.pages.sales/services.ledgerTypes", { types: data.ledgerTransactionTypes.join(", ") })}
                 </p>
               ) : null}
             </div>
@@ -221,8 +223,8 @@ export default function ServicePerformanceReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Distinct offerings</CardTitle>
-              <p className="text-xs text-gray-500">Services sold in this period</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/services.distinctOfferings")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/services.servicesSold")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -236,8 +238,8 @@ export default function ServicePerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Completed appointments</CardTitle>
-              <p className="text-xs text-gray-500">Unique bookings in date range</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/services.completedAppointments")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/services.uniqueBookings")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -251,8 +253,8 @@ export default function ServicePerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Ledger net (allocated)</CardTitle>
-              <p className="text-xs text-gray-500">Sum of proportional splits</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/services.ledgerNetAllocated")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/services.proportionalSplits")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -266,8 +268,8 @@ export default function ServicePerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg per offering row</CardTitle>
-              <p className="text-xs text-gray-500">Total ledger ÷ distinct services</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/services.avgPerOffering")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/services.avgHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -285,14 +287,14 @@ export default function ServicePerformanceReport() {
         {/* Top Services */}
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Top services</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.sales/services.topServices")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Ranked by allocated ledger net. Bar shows share of total on this report.
+              {t("web.provider.reports.pages.sales/services.topServicesHint")}
             </p>
           </CardHeader>
           <CardContent className="space-y-2">
             {data.topServices.length === 0 ? (
-              <EmptyReportState title="No services" description="No completed bookings with services in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.sales/services.noServices")} description={t("web.provider.reports.pages.sales/services.noServicesDesc")} />
             ) : (
               topWithPct.map((service, index) => {
                 const avg =
@@ -314,17 +316,17 @@ export default function ServicePerformanceReport() {
                           <p className="text-sm text-gray-500">
                             {service.category}
                             {service.duration ? (
-                              <span className="text-gray-400"> · {service.duration} min</span>
+                              <span className="text-gray-400">{t("web.provider.reports.pages.sales/services.durationMin", { count: service.duration })}</span>
                             ) : null}
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="font-semibold tabular-nums text-gray-900">{fmt(service.revenue)}</p>
                         <p className="text-xs tabular-nums text-gray-500">
-                          {service.bookings} visit{service.bookings !== 1 ? "s" : ""} · {fmt(avg)} avg
+                          {t("web.provider.reports.pages.sales/services.visitsAvg", { count: service.bookings, avg: fmt(avg) })}
                         </p>
-                        <p className="text-xs font-medium tabular-nums text-violet-700">{service.pct.toFixed(1)}% of total</p>
+                        <p className="text-xs font-medium tabular-nums text-violet-700">{t("web.provider.reports.pages.sales/services.pctOfTotal", { pct: service.pct.toFixed(1) })}</p>
                       </div>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
@@ -343,14 +345,14 @@ export default function ServicePerformanceReport() {
         {/* Category Performance */}
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">By category</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.sales/services.byCategory")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Unique visits per category — multi-service bookings count once per category when they include that category.
+              {t("web.provider.reports.pages.sales/services.byCategoryHint")}
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.categoryPerformance.length === 0 ? (
-              <EmptyReportState title="No categories" description="No category data for this period." />
+              <EmptyReportState title={t("web.provider.reports.pages.sales/services.noCategories")} description={t("web.provider.reports.pages.sales/services.noCategoriesDesc")} />
             ) : (
               categoryWithPct.map((category) => (
                 <div
@@ -361,8 +363,7 @@ export default function ServicePerformanceReport() {
                     <div>
                       <p className="font-medium text-gray-900">{category.categoryName}</p>
                       <p className="text-sm text-gray-600">
-                        {category.services} offering{category.services !== 1 ? "s" : ""} · {category.bookings} visit
-                        {category.bookings !== 1 ? "s" : ""}
+                        {t("web.provider.reports.pages.sales/services.offering", { count: category.services })} · {t("web.provider.reports.pages.sales/services.visit", { count: category.bookings })}
                       </p>
                     </div>
                     <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(category.revenue)}</p>

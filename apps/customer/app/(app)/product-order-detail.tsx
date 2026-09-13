@@ -34,21 +34,70 @@ import { formatMoney, getProductOrderSupportPrompt } from "@beautonomi/utils";
 import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
 
-function formatPaymentMethod(method: string | null | undefined): string | null {
+const PAYMENT_METHOD_I18N_KEY: Record<string, string> = {
+  paystack: "paymentMethodPaystack",
+  wallet: "paymentMethodWallet",
+  cash: "paymentMethodCash",
+  yoco: "paymentMethodYoco",
+  card_on_delivery: "paymentMethodCardOnDelivery",
+};
+
+const PAYMENT_STATUS_I18N_KEY: Record<string, string> = {
+  paid: "paymentStatusPaid",
+  pending: "paymentStatusPending",
+  failed: "paymentStatusFailed",
+  refunded: "paymentStatusRefunded",
+};
+
+const RETURN_STATUS_I18N_KEY: Record<string, string> = {
+  pending: "returnStatusPending",
+  approved: "returnStatusApproved",
+  item_received: "returnStatusItemReceived",
+  refunded: "returnStatusRefunded",
+  rejected: "returnStatusRejected",
+  escalated: "returnStatusEscalated",
+  resolved_by_admin: "returnStatusResolved",
+  cancelled: "returnStatusCancelled",
+};
+
+const RETURN_TITLE_I18N_KEY: Record<string, string> = {
+  refunded: "refundProcessed",
+  approved: "returnApproved",
+  item_received: "itemReceived",
+  rejected: "returnRejected",
+  escalated: "returnEscalated",
+  cancelled: "returnCancelled",
+};
+
+function formatPaymentMethod(
+  method: string | null | undefined,
+  pod: (key: string) => string,
+): string | null {
   if (!method || typeof method !== "string") return null;
   const m = method.toLowerCase().trim();
-  const labels: Record<string, string> = {
-    paystack: "Card (Pay online)",
-    wallet: "Wallet",
-    cash: "Cash",
-    yoco: "Yoco",
-    card_on_delivery: "Card on delivery / collection",
-  };
-  return labels[m] ?? method.replace(/_/g, " ");
+  const key = PAYMENT_METHOD_I18N_KEY[m];
+  return key ? pod(key) : method.replace(/_/g, " ");
 }
+
+function formatPaymentStatus(status: string, pod: (key: string) => string): string {
+  const key = PAYMENT_STATUS_I18N_KEY[status];
+  return key ? pod(key) : status.replace(/_/g, " ");
+}
+
+function formatReturnStatus(status: string, pod: (key: string) => string): string {
+  const key = RETURN_STATUS_I18N_KEY[status];
+  return key ? pod(key) : status.replace(/_/g, " ");
+}
+
+function formatReturnTitle(status: string, pod: (key: string) => string): string {
+  const key = RETURN_TITLE_I18N_KEY[status];
+  return key ? pod(key) : pod("returnRequest");
+}
+
 const RETURN_WINDOW_DAYS = 14;
 
 const RETURN_BLOCKING_STATUSES = new Set([
@@ -85,11 +134,11 @@ function customerHasReturnableLineItem(order: ProductOrder): boolean {
 function getStatusTimeline(fulfillmentType?: string) {
   const isCollection = fulfillmentType === "collection" || fulfillmentType === "pickup";
   return [
-    { key: "pending", label: "Order Placed", icon: "receipt-outline" },
-    { key: "confirmed", label: "Confirmed", icon: "checkmark-circle-outline" },
-    { key: "processing", label: "Processing", icon: "construct-outline" },
-    { key: isCollection ? "ready_for_collection" : "shipped", label: isCollection ? "Ready for Collection" : "Shipped", icon: isCollection ? "storefront-outline" : "airplane-outline" },
-    { key: "delivered", label: isCollection ? "Collected" : "Delivered", icon: "checkmark-done-circle-outline" },
+    { key: "pending", labelKey: "timelineOrderPlaced", icon: "receipt-outline" },
+    { key: "confirmed", labelKey: "timelineConfirmed", icon: "checkmark-circle-outline" },
+    { key: "processing", labelKey: "timelineProcessing", icon: "construct-outline" },
+    { key: isCollection ? "ready_for_collection" : "shipped", labelKey: isCollection ? "timelineReadyForCollection" : "timelineShipped", icon: isCollection ? "storefront-outline" : "airplane-outline" },
+    { key: "delivered", labelKey: isCollection ? "timelineCollected" : "timelineDelivered", icon: "checkmark-done-circle-outline" },
   ];
 }
 
@@ -242,7 +291,7 @@ export default function ProductOrderDetailScreen() {
     order.customer_phone?.trim() ||
     user?.phone?.trim() ||
     null;
-  const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined);
+  const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined, pod);
   const onlineAmountDue = Math.max(0, Number(order.total_amount ?? 0) - walletAmt);
   const canPayOnline =
     order.payment_status === "pending" &&
@@ -292,7 +341,7 @@ export default function ProductOrderDetailScreen() {
       }
 
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
-        title: pod("securePaymentTitle") || "Secure payment",
+        title: pod("securePaymentTitle"),
         returnUrl: paystackReturnPath ?? undefined,
         matchSuccess: (u) =>
           !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
@@ -354,8 +403,8 @@ export default function ProductOrderDetailScreen() {
           borderBottomColor: "#F3F4F6",
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity onPress={() => router.back()} style={{ marginEnd: 12 }}>
+          <DirectionalIcon name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{order.order_number}</Text>
@@ -372,12 +421,12 @@ export default function ProductOrderDetailScreen() {
           <TouchableOpacity
             onPress={() => {
               Alert.alert(
-                "Cancel order",
-                "Cancel this order? In-stock items will be restocked and paid tenders refunded.",
+                pod("cancelOrderTitle"),
+                pod("cancelOrderBody"),
                 [
-                  { text: "Keep order", style: "cancel" },
+                  { text: pod("keepOrderCta"), style: "cancel" },
                   {
-                    text: "Cancel order",
+                    text: pod("cancelOrderCta"),
                     style: "destructive",
                     onPress: () => {
                       void (async () => {
@@ -385,7 +434,7 @@ export default function ProductOrderDetailScreen() {
                         const res = await api.patch(`/api/me/orders/${order.id}/cancel`, {});
                         setCancelling(false);
                         if (res.error) {
-                          Alert.alert("Cancel order", res.error.message || "Could not cancel this order.");
+                          Alert.alert(pod("cancelOrderTitle"), res.error.message || pod("cancelOrderFailed"));
                           return;
                         }
                         const next = await fetchOrderDetail(order.id);
@@ -399,7 +448,7 @@ export default function ProductOrderDetailScreen() {
             disabled={cancelling}
             style={{ padding: 8 }}
             accessibilityRole="button"
-            accessibilityLabel="Cancel order"
+            accessibilityLabel={pod("cancelOrderA11y")}
           >
             <Ionicons name="close-circle-outline" size={22} color="#B91C1C" />
           </TouchableOpacity>
@@ -412,7 +461,7 @@ export default function ProductOrderDetailScreen() {
           }}
           style={{ padding: 8 }}
           accessibilityRole="button"
-          accessibilityLabel="Share order receipt"
+          accessibilityLabel={pod("shareReceiptA11y")}
         >
           <Ionicons name="share-outline" size={22} color="#111827" />
         </TouchableOpacity>
@@ -424,7 +473,7 @@ export default function ProductOrderDetailScreen() {
                 pdfPath: `/api/me/orders/${encodeURIComponent(order.id)}/receipt/pdf`,
                 signedUrlPath: `/api/me/orders/${encodeURIComponent(order.id)}/receipt/signed-url`,
                 filename: `order_${order.order_number || order.id}.pdf`,
-                title: `Order ${order.order_number}`,
+                title: pod("orderPdfTitle", { orderNumber: order.order_number }),
                 label: pod("downloadReceiptTitle"),
               });
             } catch (e) {
@@ -433,7 +482,7 @@ export default function ProductOrderDetailScreen() {
           }}
           style={{ padding: 8 }}
           accessibilityRole="button"
-          accessibilityLabel="Download order receipt"
+          accessibilityLabel={pod("downloadReceiptA11y")}
         >
           <Ionicons name="download-outline" size={22} color="#111827" />
         </TouchableOpacity>
@@ -464,7 +513,7 @@ export default function ProductOrderDetailScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: "#6B7280", textTransform: "uppercase" }}>
-                Order ID
+                {pod("orderIdLabel")}
               </Text>
               <Text
                 selectable
@@ -489,9 +538,9 @@ export default function ProductOrderDetailScreen() {
                     paddingVertical: 8,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Copy order number"
+                  accessibilityLabel={pod("copyNumberA11y")}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Copy number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>{pod("copyNumber")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => void Clipboard.setStringAsync(order.id)}
@@ -504,9 +553,9 @@ export default function ProductOrderDetailScreen() {
                     paddingVertical: 8,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Copy order ID"
+                  accessibilityLabel={pod("copyIdA11y")}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Copy ID</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>{pod("copyId")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() =>
@@ -526,9 +575,9 @@ export default function ProductOrderDetailScreen() {
                     paddingVertical: 8,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Contact support"
+                  accessibilityLabel={pod("contactSupportA11y")}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>Contact support</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>{pod("contactSupport")}</Text>
                 </TouchableOpacity>
               </View>
               <Text style={{ marginTop: 8, fontSize: 12, color: urgent ? "#92400E" : "#6B7280" }}>{prompt.body}</Text>
@@ -538,7 +587,7 @@ export default function ProductOrderDetailScreen() {
         {/* Status timeline */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
-            Order Status
+            {pod("orderStatus")}
           </Text>
           {isCancelled ? (
             <View
@@ -551,9 +600,9 @@ export default function ProductOrderDetailScreen() {
               }}
             >
               <Ionicons name="close-circle" size={24} color="#EF4444" />
-              <View style={{ marginLeft: 12 }}>
+              <View style={{ marginStart: 12 }}>
                 <Text style={{ fontSize: 15, fontWeight: "600", color: "#EF4444" }}>
-                  {order.status === "refunded" ? "Refunded" : "Cancelled"}
+                  {order.status === "refunded" ? pod("statusRefunded") : pod("statusCancelled")}
                 </Text>
                 {order.cancellation_reason && (
                   <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
@@ -595,7 +644,7 @@ export default function ProductOrderDetailScreen() {
                       />
                     )}
                   </View>
-                  <View style={{ flex: 1, marginLeft: 12, paddingBottom: 20 }}>
+                  <View style={{ flex: 1, marginStart: 12, paddingBottom: 20 }}>
                     <Text
                       style={{
                         fontSize: 14,
@@ -603,7 +652,7 @@ export default function ProductOrderDetailScreen() {
                         color: completed ? "#111827" : "#9CA3AF",
                       }}
                     >
-                      {step.label}
+                      {pod(step.labelKey)}
                     </Text>
                   </View>
                 </View>
@@ -620,12 +669,12 @@ export default function ProductOrderDetailScreen() {
               ]
                 .filter(Boolean)
                 .join(" ");
-              const display = label || "Track shipment";
+              const display = label || pod("trackShipment");
               if (order.tracking_url) {
                 return (
                   <TouchableOpacity
                     accessibilityRole="link"
-                    accessibilityLabel={`Open tracking${order.carrier ? ` with ${order.carrier}` : ""}`}
+                    accessibilityLabel={order.carrier ? pod("openTrackingWithCarrierA11y", { carrier: order.carrier }) : pod("openTrackingA11y")}
                     onPress={() => {
                       void openTrackingUrl(order.tracking_url!);
                     }}
@@ -639,8 +688,8 @@ export default function ProductOrderDetailScreen() {
                     }}
                   >
                     <Ionicons name="location-outline" size={18} color="#3B82F6" />
-                    <Text style={{ flex: 1, fontSize: 13, color: "#3B82F6", fontWeight: "600", marginLeft: 8 }} numberOfLines={1}>
-                      Tracking: {display}
+                    <Text style={{ flex: 1, fontSize: 13, color: "#3B82F6", fontWeight: "600", marginStart: 8 }} numberOfLines={1}>
+                      {pod("trackingLabel", { detail: display })}
                     </Text>
                     <Ionicons name="open-outline" size={16} color="#3B82F6" />
                   </TouchableOpacity>
@@ -658,8 +707,8 @@ export default function ProductOrderDetailScreen() {
                   }}
                 >
                   <Ionicons name="location-outline" size={18} color="#3B82F6" />
-                  <Text style={{ fontSize: 13, color: "#3B82F6", fontWeight: "600", marginLeft: 8 }}>
-                    Tracking: {display}
+                  <Text style={{ fontSize: 13, color: "#3B82F6", fontWeight: "600", marginStart: 8 }}>
+                    {pod("trackingLabel", { detail: display })}
                   </Text>
                 </View>
               );
@@ -680,7 +729,7 @@ export default function ProductOrderDetailScreen() {
         {order.returns && order.returns.length > 0 ? (
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Returns & Refunds
+              {pod("returnsAndRefunds")}
             </Text>
             {order.returns.map((ret) => {
               const isApproved = ret.status === "approved";
@@ -689,8 +738,6 @@ export default function ProductOrderDetailScreen() {
               const isPending = ret.status === "pending";
               const isReceived = ret.status === "item_received";
               const isEscalated = ret.status === "escalated";
-              const isCancelled = ret.status === "cancelled";
-              const isResolvedAdmin = ret.status === "resolved_by_admin";
 
               let statusColor = "#6B7280";
               let bgColor = "#F3F4F6";
@@ -709,40 +756,34 @@ export default function ProductOrderDetailScreen() {
                 bgColor = "#FEF3C7";
               }
 
-              let title = "Return Request";
-              if (isRefunded) title = "Refund Processed";
-              else if (isApproved) title = "Return Approved";
-              else if (isReceived) title = "Item Received";
-              else if (isRejected) title = "Return Rejected";
-              else if (isEscalated) title = "Return Escalated";
-              else if (isCancelled) title = "Return Cancelled";
+              const title = formatReturnTitle(ret.status, pod);
 
               return (
                 <View key={ret.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>{title}</Text>
                     <View style={{ backgroundColor: bgColor, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: "row", alignItems: "center" }}>
-                      <Ionicons name={iconName as any} size={14} color={statusColor} style={{ marginRight: 4 }} />
+                      <Ionicons name={iconName as any} size={14} color={statusColor} style={{ marginEnd: 4 }} />
                       <Text style={{ fontSize: 12, fontWeight: "600", color: statusColor, textTransform: "capitalize" }}>
-                        {ret.status}
+                        {formatReturnStatus(ret.status, pod)}
                       </Text>
                     </View>
                   </View>
                   <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 4 }}>
-                    <Text style={{ fontWeight: "600" }}>Reason:</Text> {ret.reason.replace(/_/g, " ")}
+                    <Text style={{ fontWeight: "600" }}>{pod("reasonLabel")}</Text> {ret.reason.replace(/_/g, " ")}
                   </Text>
                   {ret.description ? (
                     <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 4 }}>
-                      <Text style={{ fontWeight: "600" }}>Details:</Text> {ret.description}
+                      <Text style={{ fontWeight: "600" }}>{pod("detailsLabel")}</Text> {ret.description}
                     </Text>
                   ) : null}
                   {ret.refund_amount ? (
                     <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
-                      <Text style={{ fontWeight: "600" }}>Refund Amount:</Text> {fmt(ret.refund_amount)}
+                      <Text style={{ fontWeight: "600" }}>{pod("refundAmountLabel")}</Text> {fmt(ret.refund_amount)}
                     </Text>
                   ) : null}
                   <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 8 }}>
-                    Requested on {formatDate(ret.created_at)}
+                    {pod("requestedOn", { date: formatDate(ret.created_at) ?? "" })}
                   </Text>
                 </View>
               );
@@ -753,7 +794,7 @@ export default function ProductOrderDetailScreen() {
         {/* Items */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Items
+            {pod("items")}
           </Text>
           {order.items?.map((item) => (
             <View
@@ -786,7 +827,7 @@ export default function ProductOrderDetailScreen() {
                   </View>
                 )}
               </View>
-              <View style={{ flex: 1, marginLeft: 12, justifyContent: "center" }}>
+              <View style={{ flex: 1, marginStart: 12, justifyContent: "center" }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {item.product_name}
                   {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
@@ -794,7 +835,7 @@ export default function ProductOrderDetailScreen() {
                   )}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
-                  {item.quantity} x {fmt(Number(item.unit_price))}
+                  {pod("itemQtyPrice", { count: item.quantity, price: fmt(Number(item.unit_price)) })}
                 </Text>
               </View>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", alignSelf: "center" }}>
@@ -807,38 +848,38 @@ export default function ProductOrderDetailScreen() {
         {/* Buyer / contact on this order */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Your details
+            {pod("yourDetails")}
           </Text>
           {buyerName ? (
             <View style={{ marginBottom: 10 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Name</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>{pod("nameLabel")}</Text>
               <Text style={{ fontSize: 14, color: "#111827", fontWeight: "600" }}>{buyerName}</Text>
             </View>
           ) : null}
           {buyerEmail ? (
             <View style={{ marginBottom: 10 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Email</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>{pod("emailLabel")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{buyerEmail}</Text>
             </View>
           ) : null}
           {buyerPhone ? (
             <View style={{ marginBottom: 10 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Phone</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>{pod("phoneLabel")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{buyerPhone}</Text>
             </View>
           ) : null}
           {!buyerName && !buyerEmail && !buyerPhone ? (
-            <Text style={{ fontSize: 13, color: "#6B7280" }}>No contact details on file for this order.</Text>
+            <Text style={{ fontSize: 13, color: "#6B7280" }}>{pod("noContactDetails")}</Text>
           ) : null}
           {paymentMethodLabel ? (
             <View style={{ marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6" }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Payment method</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>{pod("paymentMethodLabel")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{paymentMethodLabel}</Text>
             </View>
           ) : null}
           {order.payment_status ? (
             <View style={{ marginTop: 10 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Payment status</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>{pod("paymentStatusLabel")}</Text>
               <Text
                 style={{
                   fontSize: 14,
@@ -846,7 +887,7 @@ export default function ProductOrderDetailScreen() {
                   color: order.payment_status === "paid" ? "#059669" : order.payment_status === "failed" ? "#DC2626" : "#D97706",
                 }}
               >
-                {order.payment_status.replace(/_/g, " ")}
+                {formatPaymentStatus(order.payment_status, pod)}
               </Text>
             </View>
           ) : null}
@@ -863,13 +904,13 @@ export default function ProductOrderDetailScreen() {
                 justifyContent: "center",
               }}
               accessibilityRole="button"
-              accessibilityLabel="Pay order online"
+              accessibilityLabel={pod("payOnlineA11y")}
             >
               {paying ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={{ color: "#fff", fontWeight: "700" }}>
-                  Pay {fmt(onlineAmountDue)} online
+                  {pod("payOnlineCta", { amount: fmt(onlineAmountDue) })}
                 </Text>
               )}
             </TouchableOpacity>
@@ -879,14 +920,14 @@ export default function ProductOrderDetailScreen() {
         {/* Fulfillment details */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            {order.fulfillment_type === "delivery" ? "Delivery Details" : "Collection Details"}
+            {order.fulfillment_type === "delivery" ? pod("deliveryDetails") : pod("collectionDetails")}
           </Text>
           {order.fulfillment_type === "delivery" && order.delivery_address && (
             <View style={{ flexDirection: "row" }}>
               <Ionicons name="location-outline" size={20} color="#6B7280" />
-              <View style={{ marginLeft: 10, flex: 1 }}>
+              <View style={{ marginStart: 10, flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                  {order.delivery_address.label ?? "Delivery Address"}
+                  {order.delivery_address.label ?? pod("deliveryAddress")}
                 </Text>
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
                   {order.delivery_address.address_line1}
@@ -904,7 +945,7 @@ export default function ProductOrderDetailScreen() {
           {order.fulfillment_type === "collection" && order.collection_location && (
             <View style={{ flexDirection: "row" }}>
               <Ionicons name="storefront-outline" size={20} color="#6B7280" />
-              <View style={{ marginLeft: 10, flex: 1 }}>
+              <View style={{ marginStart: 10, flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {order.collection_location.name}
                 </Text>
@@ -919,7 +960,7 @@ export default function ProductOrderDetailScreen() {
                 </Text>
                 {order.collection_location.phone && (
                   <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                    Tel: {order.collection_location.phone}
+                    {pod("telLabel", { phone: order.collection_location.phone })}
                   </Text>
                 )}
               </View>
@@ -928,10 +969,10 @@ export default function ProductOrderDetailScreen() {
           {(formatEstimatedDeliveryDate(order.estimated_delivery_date) || order.delivery_instructions?.trim()) &&
           order.fulfillment_type === "delivery" ? (
             <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#F3F4F6" }}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>Delivery notes</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>{pod("deliveryNotes")}</Text>
               {formatEstimatedDeliveryDate(order.estimated_delivery_date) ? (
                 <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                  Estimated delivery: {formatEstimatedDeliveryDate(order.estimated_delivery_date)}
+                  {pod("estimatedDelivery", { date: formatEstimatedDeliveryDate(order.estimated_delivery_date) ?? "" })}
                 </Text>
               ) : null}
               {order.delivery_instructions?.trim() ? (
@@ -944,56 +985,56 @@ export default function ProductOrderDetailScreen() {
         {/* Payment summary — line items above + full breakdown */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Payment summary
+            {pod("paymentSummary")}
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-            <Text style={{ fontSize: 14, color: "#6B7280" }}>Items subtotal</Text>
+            <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("itemsSubtotal")}</Text>
             <Text style={{ fontSize: 14, color: "#111827", fontWeight: "600" }}>{fmt(Number(order.subtotal ?? 0))}</Text>
           </View>
           {Number(order.discount_amount ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#059669" }}>Discount</Text>
+              <Text style={{ fontSize: 14, color: "#059669" }}>{pod("discount")}</Text>
               <Text style={{ fontSize: 14, color: "#059669" }}>-{fmt(Number(order.discount_amount ?? 0))}</Text>
             </View>
           )}
           {Number(order.delivery_fee ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("delivery")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee ?? 0))}</Text>
             </View>
           )}
           {Number(order.tax_amount ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("tax")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount ?? 0))}</Text>
             </View>
           )}
           {platformFee > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform fee</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("platformFee")}</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
             </View>
           )}
           {walletAmt > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Paid from wallet</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("paidFromWallet")}</Text>
               <Text style={{ fontSize: 14, color: "#059669" }}>{fmt(walletAmt)}</Text>
             </View>
           )}
           {Number(order.gift_card_amount ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Paid from gift card</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("paidFromGiftCard")}</Text>
               <Text style={{ fontSize: 14, color: "#059669" }}>{fmt(Number(order.gift_card_amount))}</Text>
             </View>
           )}
           {order.promotion_code ? (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Promotion</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("promotion")}</Text>
               <Text style={{ fontSize: 14, color: "#059669" }}>{order.promotion_code}</Text>
             </View>
           ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Calculated total</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>{pod("calculatedTotal")}</Text>
             <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
               {fmt(
                 Math.max(
@@ -1008,7 +1049,7 @@ export default function ProductOrderDetailScreen() {
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Charged total</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{pod("chargedTotal")}</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(Number(order.total_amount ?? 0))}</Text>
           </View>
           {Math.abs(
@@ -1020,7 +1061,7 @@ export default function ProductOrderDetailScreen() {
                 platformFee),
           ) > 0.02 && (
             <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>
-              Small differences can come from rounding or promotions applied at checkout.
+              {pod("totalDifferenceHint")}
             </Text>
           )}
         </View>
@@ -1032,14 +1073,14 @@ export default function ProductOrderDetailScreen() {
             style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12, flexDirection: "row", alignItems: "center" }}
             activeOpacity={0.7}
           >
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>{(order.provider.business_name ?? "P").charAt(0).toUpperCase()}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>Sold by</Text>
+              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{pod("soldBy")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{order.provider.business_name}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+            <DirectionalIcon name="chevron-forward" size={16} color="#9CA3AF" />
           </TouchableOpacity>
         )}
 
@@ -1062,9 +1103,9 @@ export default function ProductOrderDetailScreen() {
                 paddingVertical: 14,
               }}
             >
-              <Ionicons name="arrow-undo-outline" size={18} color="#EF4444" style={{ marginRight: 8 }} />
+              <Ionicons name="arrow-undo-outline" size={18} color="#EF4444" style={{ marginEnd: 8 }} />
               <Text style={{ color: "#EF4444", fontWeight: "600", fontSize: 15 }}>
-                Request Return / Refund
+                {pod("requestReturnCta")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1072,7 +1113,7 @@ export default function ProductOrderDetailScreen() {
         {["delivered", "ready_for_collection"].includes(order.status) && !isWithinReturnWindow(order) && (
           <View style={{ padding: contentPadding, marginTop: 12 }}>
             <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>
-              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, open Profile → Help centre → New ticket.
+              {pod("returnWindowPassed", { days: RETURN_WINDOW_DAYS })}
             </Text>
           </View>
         )}

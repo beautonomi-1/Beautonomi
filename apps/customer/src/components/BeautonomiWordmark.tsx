@@ -42,7 +42,7 @@ export function BeautonomiWordmark({
       {showText ? (
         <Text
           style={{
-            marginLeft: Math.max(4, Math.round(size * 0.18)),
+            marginStart: Math.max(4, Math.round(size * 0.18)),
             fontSize: Math.round(size * 0.6),
             fontWeight: "800",
             color,

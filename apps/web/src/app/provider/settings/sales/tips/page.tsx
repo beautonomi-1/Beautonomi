@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -10,6 +11,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 
 export default function TipsSettings() {
+  const { t } = useTranslation();
   const [tipsEnabled, setTipsEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -21,7 +23,7 @@ export default function TipsSettings() {
         );
         setTipsEnabled(Boolean(res.data.tips_enabled));
       } catch {
-        toast.error("Failed to load tip settings");
+        toast.error(t("web.provider.settings.pages.sales/tips.failedToLoadTipSettings"));
       }
     };
     load();
@@ -35,9 +37,9 @@ export default function TipsSettings() {
         { tips_enabled: Boolean(tipsEnabled) }
       );
       setTipsEnabled(Boolean(res.data.tips_enabled));
-      toast.success("Tip settings saved");
+      toast.success(t("web.provider.settings.pages.sales/tips.tipSettingsSaved"));
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save tip settings");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/tips.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -45,33 +47,32 @@ export default function TipsSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Tips"
-      subtitle="Manage tip settings"
+      title={t("web.provider.settings.categories.sales.items.tips.title")}
+      subtitle={t("web.provider.settings.categories.sales.items.tips.description")}
       onSave={onSave}
       isSaving={isSaving}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-        { label: "Tips" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.sales/tips.sales"), href: "/provider/settings/sales/yoco-integration" },
+        { label: t("web.provider.settings.pages.sales/tips.tips") },
       ]}
     >
 
       <SectionCard>
         <div className="space-y-5">
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-            <p className="text-sm font-semibold text-emerald-950">Tips are on by default for every provider.</p>
+            <p className="text-sm font-semibold text-emerald-950">{t("web.provider.settings.pages.sales/tips.onByDefault")}</p>
             <p className="mt-1 text-sm text-emerald-800">
-              Solo providers keep tips by default. Salons can choose whether tips stay with the business
-              or are allocated to the staff member assigned to the booking.
+{t("web.provider.settings.pages.sales/tips.onByDefaultBody")}
             </p>
           </div>
 
           <div className="flex items-center justify-between">
             <div>
-              <Label className="text-base font-medium">Enable Tips</Label>
-              <p className="text-sm text-gray-600">Allow customers to add tips during checkout</p>
+              <Label className="text-base font-medium">{t("web.provider.settings.pages.sales/tips.enableTips")}</Label>
+              <p className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/tips.enableHint")}</p>
             </div>
             <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
           </div>
@@ -81,18 +82,18 @@ export default function TipsSettings() {
               href="/provider/settings/tips/distribution"
               className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
             >
-              Tip distribution
+{t("web.provider.settings.pages.sales/tips.tipDistribution")}
               <span className="mt-1 block text-xs font-normal text-gray-500">
-                Decide who receives tips for staff-assigned bookings
+                {t("web.provider.settings.pages.sales/tips.tipDistributionHint")}
               </span>
             </Link>
             <Link
               href="/provider/settings/payments"
               className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
             >
-              Payment settings
+{t("web.provider.settings.pages.sales/tips.paymentSettings")}
               <span className="mt-1 block text-xs font-normal text-gray-500">
-                Review tip presets and checkout payment methods
+                {t("web.provider.settings.pages.sales/tips.paymentSettingsHint")}
               </span>
             </Link>
           </div>

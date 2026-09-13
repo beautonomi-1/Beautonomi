@@ -25,6 +25,7 @@ import type {
   RefDataOption,
 } from "@/features/catalogue/types";
 import { pricingOptionsFromService } from "@/features/catalogue/types";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ServiceCategory {
   id: string;
@@ -98,6 +99,8 @@ function serviceToFormState(service: Service): ServiceFormState {
 }
 
 export default function ServiceFormScreen() {
+  const { t } = useTranslation();
+  const sf = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.screens.serviceForm.${key}`, opts) as string;
   const router = useRouter();
   const { id: serviceId } = useLocalSearchParams<{ id?: string }>();
   const isEdit = !!serviceId;
@@ -200,14 +203,14 @@ export default function ServiceFormScreen() {
         error?: string;
       };
       if (res.error) {
-        Alert.alert("Error", res.error);
+        Alert.alert(sf("errorTitle"), res.error);
         return null;
       }
       await refreshCategories();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return res.data?.id ? { value: res.data.id, label: trimmed } : null;
     },
-    [postMutation, refreshCategories],
+    [postMutation, refreshCategories, t],
   );
 
   const zoneSelections = useMemo(() => {
@@ -228,12 +231,12 @@ export default function ServiceFormScreen() {
       const selected = zoneSelections.filter((z) => z.is_selected);
       if (selected.length === 0) {
         Alert.alert(
-          "Service zones required",
-          "Please select service zones before enabling at-home services.",
+          sf("zonesRequiredTitle"),
+          sf("zonesRequiredBody"),
           [
-            { text: "Cancel", style: "cancel" },
+            { text: t("common.cancel"), style: "cancel" },
             {
-              text: "Open settings",
+              text: sf("openSettings"),
               onPress: () => router.push("/(app)/(tabs)/more/settings/service-zones" as never),
             },
           ],
@@ -242,29 +245,29 @@ export default function ServiceFormScreen() {
       }
       setForm((p) => ({ ...p, supportsAtHome: true }));
     },
-    [router, refreshZones, zoneSelections],
+    [router, refreshZones, zoneSelections, t],
   );
 
   const handleDeactivate = useCallback(async () => {
     if (!serviceId) return;
     const { error } = await updateService(`/api/provider/services/${serviceId}`, { is_active: false });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(sf("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
-  }, [serviceId, updateService, router]);
+  }, [serviceId, updateService, router, t]);
 
   const handleDelete = useCallback(() => {
     if (!serviceId) return;
     Alert.alert(
-      "Delete service",
-      `Remove "${form.name || "this service"}"? This cannot be undone.`,
+      sf("deleteTitle"),
+      sf("deleteBody", { name: form.name || sf("thisService") }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("common.delete"),
           style: "destructive",
           onPress: async () => {
             const { error } = await deleteService(`/api/provider/services/${serviceId}`);
@@ -273,15 +276,15 @@ export default function ServiceFormScreen() {
                 /booking|foreign|constraint|referenced|in use|cannot be deleted|violates/i.test(error);
               if (cannotDelete) {
                 Alert.alert(
-                  "Cannot delete",
-                  "This service is linked to bookings or other records. Deactivate it instead?",
+                  sf("cannotDeleteTitle"),
+                  sf("cannotDeleteBody"),
                   [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Deactivate", onPress: () => void handleDeactivate() },
+                    { text: t("common.cancel"), style: "cancel" },
+                    { text: sf("deactivate"), onPress: () => void handleDeactivate() },
                   ],
                 );
               } else {
-                Alert.alert("Error", error);
+                Alert.alert(sf("errorTitle"), error);
               }
             } else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -291,7 +294,7 @@ export default function ServiceFormScreen() {
         },
       ],
     );
-  }, [serviceId, form.name, deleteService, router, handleDeactivate]);
+  }, [serviceId, form.name, deleteService, router, handleDeactivate, t]);
 
   const handleSave = useCallback(async () => {
     setFormValidationError(null);
@@ -356,15 +359,15 @@ export default function ServiceFormScreen() {
         error?: string | null;
       };
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sf("errorTitle"), error);
         return;
       }
       const sync = data?.variant_sync;
       if (form.pricingOptions.length > 1) {
         if (sync?.errors?.length) {
-          variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
+          variantSyncMessage = sf("tierSyncIssues", { error: sync.errors[0] });
         } else if (sync?.synced != null) {
-          variantSyncMessage = `${sync.synced} booking tier${sync.synced === 1 ? "" : "s"} synced for customers.`;
+          variantSyncMessage = sf("tiersSynced", { count: sync.synced });
         }
       }
     } else {
@@ -373,16 +376,16 @@ export default function ServiceFormScreen() {
         error?: string | null;
       };
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sf("errorTitle"), error);
         return;
       }
       savedId = data?.id;
       const sync = data?.variant_sync;
       if (form.pricingOptions.length > 1) {
         if (sync?.errors?.length) {
-          variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
+          variantSyncMessage = sf("tierSyncIssues", { error: sync.errors[0] });
         } else if (sync?.synced != null) {
-          variantSyncMessage = `${sync.synced} booking tier${sync.synced === 1 ? "" : "s"} synced for customers.`;
+          variantSyncMessage = sf("tiersSynced", { count: sync.synced });
         }
       }
     }
@@ -396,7 +399,7 @@ export default function ServiceFormScreen() {
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (variantSyncMessage) {
-      Alert.alert("Service saved", variantSyncMessage, [{ text: "OK", onPress: () => router.back() }]);
+      Alert.alert(sf("savedTitle"), variantSyncMessage, [{ text: t("common.ok"), onPress: () => router.back() }]);
     } else {
       router.back();
     }
@@ -409,6 +412,7 @@ export default function ServiceFormScreen() {
     updateService,
     putResources,
     router,
+    t,
   ]);
 
   const isSaving = creating || updating;
@@ -416,8 +420,8 @@ export default function ServiceFormScreen() {
   if (serviceId && loadingService && !service) {
     return (
       <ScreenContainer>
-        <ScreenHeader title={isEdit ? "Edit Service" : "Add Service"} onBack={() => router.back()} />
-        <LoadingState message="Loading service..." />
+        <ScreenHeader title={isEdit ? sf("editTitle") : sf("addTitle")} onBack={() => router.back()} />
+        <LoadingState message={sf("loading")} />
       </ScreenContainer>
     );
   }
@@ -425,9 +429,9 @@ export default function ServiceFormScreen() {
   if (serviceId && serviceError && !service) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Edit Service" onBack={() => router.back()} />
+        <ScreenHeader title={sf("editTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center p-6")}>
-          <Text style={twStyle("text-center text-gray-600")}>Service not found.</Text>
+          <Text style={twStyle("text-center text-gray-600")}>{sf("notFound")}</Text>
         </View>
       </ScreenContainer>
     );
@@ -436,11 +440,11 @@ export default function ServiceFormScreen() {
   return (
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
-        title={isEdit ? "Edit Service" : "Add Service"}
+        title={isEdit ? sf("editTitle") : sf("addTitle")}
         subtitle={
           isEdit
             ? service?.title || service?.name || form.name || undefined
-            : "Pricing, team, location, variants, and booking settings"
+            : sf("addSubtitle")
         }
         onBack={() => router.back()}
       />
@@ -494,14 +498,14 @@ export default function ServiceFormScreen() {
             <TouchableOpacity
               onPress={handleDelete}
               style={twStyle("mb-3 items-center rounded-xl border border-red-200 py-3")}
-              accessibilityLabel="Delete service"
+              accessibilityLabel={sf("deleteA11y")}
               accessibilityRole="button"
             >
-              <Text style={twStyle("font-medium text-red-600")}>Delete service</Text>
+              <Text style={twStyle("font-medium text-red-600")}>{sf("deleteTitle")}</Text>
             </TouchableOpacity>
           )}
           <ActionButton
-            label={isSaving ? "Saving…" : isEdit ? "Save changes" : "Create service"}
+            label={isSaving ? sf("saving") : isEdit ? sf("saveChanges") : sf("createService")}
             onPress={handleSave}
             loading={isSaving}
             fullWidth

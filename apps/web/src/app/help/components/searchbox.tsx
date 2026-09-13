@@ -96,7 +96,7 @@ export default function SearchBox({ content = null }: SearchBoxProps) {
         </h1>
         <div className="relative w-full max-w-2xl">
           <div
-            className={`relative flex items-center max-w-sm mx-auto py-3 pl-3 pr-2 border rounded-full transition-colors ${
+            className={`relative flex items-center max-w-sm mx-auto py-3 ps-3 pe-2 border rounded-full transition-colors ${
               isSearchActive
                 ? "bg-white border-zinc-300 shadow-xl"
                 : "bg-zinc-100 border-zinc-300"
@@ -119,7 +119,7 @@ export default function SearchBox({ content = null }: SearchBoxProps) {
               className="flex-grow outline-none text-[14px] font-normal text-zinc-800 placeholder:text-zinc-500 px-4 border-none bg-transparent rounded-full transition-colors duration-300"
             />
             {!isSearchActive && (
-              <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+              <div className="absolute inset-y-0 right-0 flex items-center pe-2">
                 <Button
                   className="flex items-center justify-center h-11 w-11 rounded-full bg-gradient-to-r from-primary to-primary-hover p-2"
                   onClick={() => setIsSearchActive(true)}
@@ -129,7 +129,7 @@ export default function SearchBox({ content = null }: SearchBoxProps) {
               </div>
             )}
             {isSearchActive && (
-              <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+              <div className="absolute inset-y-0 right-0 flex items-center pe-2">
                 <div className="h-11 w-28 flex items-center gap-2 justify-center rounded-full bg-gradient-to-r from-primary to-primary-hover">
                   <Button
                     className="flex items-center gap-2 rounded-full bg-transparent"
@@ -147,7 +147,7 @@ export default function SearchBox({ content = null }: SearchBoxProps) {
           </div>
 
           {isSearchActive && (
-            <Card className="absolute top-20 left-0 right-0 mt-2 pr-5 shadow-2xl max-w-sm mx-auto rounded-[32px] z-50">
+            <Card className="absolute top-20 left-0 right-0 mt-2 pe-5 shadow-2xl max-w-sm mx-auto rounded-[32px] z-50">
               <CardHeader>
                 <CardTitle>{query.trim() ? "Suggestions" : "Top articles"}</CardTitle>
               </CardHeader>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -8,7 +9,6 @@ import {
   getPublicPageContent,
   type PublicPageContent,
 } from "@/lib/content/getPublicPageContent";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
 export interface HelpPageContent {
   [sectionKey: string]: {
@@ -17,16 +17,6 @@ export interface HelpPageContent {
     metadata: Record<string, unknown>;
   };
 }
-
-export const metadata: Metadata = {
-  title: "Help Centre",
-  description:
-    "Find answers, browse common help articles, and contact Beautonomi support.",
-  alternates: {
-    canonical: "/help",
-    languages: getHreflangAlternateUrls("/help"),
-  },
-};
 
 export const revalidate = 300;
 
@@ -52,5 +42,13 @@ const Page = async () => {
     </div>
   );
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/help",
+    titleKey: "web.seo.helpTitle",
+    descriptionKey: "web.seo.helpDescription",
+  });
+}
 
 export default Page;

@@ -15,12 +15,15 @@ import { Label } from "@/components/ui/label";
 import ShareModal from "./share-modal";
 import LoginModal from "../../../components/global/login-modal";
 import Link from "next/link";
+import { ApproxMoneyLabel } from "@/components/i18n/ApproxMoneyLabel";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function CarouselCard({
   slides,
   content,
   imageHeight = "270px",
 }: any) {
+  const { t } = useTranslation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -67,9 +70,9 @@ export default function CarouselCard({
         index={currentIndex}
         onSelect={handleSlideChange}
       >
-        <CarouselContent className="-ml-1">
+        <CarouselContent className="-ms-1">
           {slides?.map((slide: any, index: number) => (
-            <CarouselItem key={index} className="pl-1">
+            <CarouselItem key={index} className="ps-1">
               <div
                 className={`relative w-full overflow-hidden`}
                 style={{ height: imageHeight }}
@@ -101,21 +104,21 @@ export default function CarouselCard({
                 </div>
                 {guestfav && (
                   <Label className="absolute top-4 left-4 rounded-full bg-white hover:bg-white text-black text-xs font-normal shadow px-2.5 py-1.5">
-                    Top Rated
+                    {t("web.cards.topRated")}
                   </Label>
                 )}
                 {housecall && (
                   <Label
                     className={`absolute ${labelTopClass} left-4 rounded-full bg-white hover:bg-white text-black text-xs font-normal shadow px-2.5 py-1.5`}
                   >
-                    House Call
+                    {t("web.cards.houseCall")}
                   </Label>
                 )}
                 {atsalon && (
                   <Label
                     className={`absolute ${labelTopClass} left-4 rounded-full bg-white hover:bg-white text-black text-xs font-normal shadow px-2.5 py-1.5`}
                   >
-                    At Salon
+                    {t("web.cards.atSalon")}
                   </Label>
                 )}
               </div>
@@ -166,6 +169,16 @@ export default function CarouselCard({
             {content?.subtitle}
           </p>
           <p className="font-light text-black mb-2">{content?.dates}</p>
+          {typeof content?.startingPrice === "number" && content.startingPrice > 0 ? (
+            <p className="text-sm font-medium text-gray-900 mb-1">
+              {t("web.home.fromPrice")}{" "}
+              <ApproxMoneyLabel
+                amount={content.startingPrice}
+                chargeCurrency={content.chargeCurrency}
+              />
+              +
+            </p>
+          ) : null}
         </div>
       </Link>
       <ShareModal

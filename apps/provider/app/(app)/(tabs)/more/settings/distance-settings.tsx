@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, Alert, Switch, TouchableOpacity } from "react-native";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -22,6 +23,12 @@ interface DistanceSettings {
 const PRESET_DISTANCES = [5, 10, 15, 25, 50, 100];
 
 export default function DistanceSettingsScreen() {
+  const { t } = useTranslation();
+  const ds = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.distanceSettings.${key}`, opts) as string,
+    [t],
+  );
   const { data: settings, loading, error: loadError, refresh } = useApi<DistanceSettings>("/api/provider/distance-settings");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
@@ -49,7 +56,7 @@ export default function DistanceSettingsScreen() {
     if (enabled) {
       const dist = parseFloat(maxDistance);
       if (isNaN(dist) || dist < 1 || dist > 200) {
-        Alert.alert("Invalid", "Distance must be between 1 and 200 km");
+        Alert.alert(ds("invalidTitle"), ds("invalidDistance"));
         return;
       }
     }
@@ -65,7 +72,7 @@ export default function DistanceSettingsScreen() {
       if (!isNaN(ahDist) && ahDist > 0) payload.at_home_distance_km = ahDist;
     }
     const { error } = await saveSettings("/api/provider/distance-settings", payload);
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(ds("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDirty(false);
@@ -77,7 +84,7 @@ export default function DistanceSettingsScreen() {
   if (loadError && !settings) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Distance Settings" showBack subtitle="Service area radius" />
+        <ScreenHeader title={ds("title")} showBack subtitle={ds("subtitle")} />
         <ErrorState message={loadError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -88,9 +95,8 @@ export default function DistanceSettingsScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Distance Settings" showBack subtitle="Service area radius" />
+      <ScreenHeader title={ds("title")} showBack subtitle={ds("subtitle")} />
 
-      {/* Visual radius indicator */}
       {enabled && dist > 0 && (
         <View style={twStyle("mb-4 items-center rounded-2xl border border-gray-100 bg-white p-6")}>
           <View style={twStyle("h-24 w-24 items-center justify-center rounded-full border-4 border-indigo-200 bg-indigo-50")}>
@@ -98,11 +104,11 @@ export default function DistanceSettingsScreen() {
               <Ionicons name="location" size={24} color="#6366f1" />
             </View>
           </View>
-          <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>{dist} km</Text>
-          <Text style={twStyle("text-xs text-gray-500")}>Service area radius</Text>
+          <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>{ds("kmValue", { km: dist })}</Text>
+          <Text style={twStyle("text-xs text-gray-500")}>{ds("subtitle")}</Text>
           {atHomeDistance && parseFloat(atHomeDistance) > 0 && (
             <Text style={twStyle("mt-1 text-xs text-indigo-500")}>
-              At-home services: {atHomeDistance} km
+              {ds("atHomeServices", { km: atHomeDistance })}
             </Text>
           )}
         </View>
@@ -111,8 +117,8 @@ export default function DistanceSettingsScreen() {
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable Distance Filter</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Only show to clients within your area</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{ds("enableTitle")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{ds("enableHint")}</Text>
           </View>
           <Switch
             value={enabled}
@@ -126,15 +132,14 @@ export default function DistanceSettingsScreen() {
           <>
             <View style={twStyle("mb-3 border-t border-gray-100 pt-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Max Service Distance (km)
+                {ds("maxDistance")}
               </Text>
-              {/* Slider + big value */}
               <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-4")}>
                 <View style={twStyle("mb-2 flex-row items-baseline justify-between")}>
                   <Text style={twStyle("text-2xl font-bold text-gray-900 tabular-nums")}>
-                    {dist} km
+                    {ds("kmValue", { km: dist })}
                   </Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Drag to adjust</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{ds("dragToAdjust")}</Text>
                 </View>
                 <Slider
                   style={{ width: "100%", height: 40 }}
@@ -151,17 +156,17 @@ export default function DistanceSettingsScreen() {
                   minimumTrackTintColor="#6366f1"
                   maximumTrackTintColor="#e5e7eb"
                   thumbTintColor="#6366f1"
-                  accessibilityLabel="Maximum service distance in kilometers"
+                  accessibilityLabel={ds("maxDistanceA11y")}
                 />
                 <View style={twStyle("mt-1 flex-row justify-between")}>
-                  <Text style={twStyle("text-xs text-gray-400")}>1 km</Text>
-                  <Text style={twStyle("text-xs text-gray-400")}>100 km</Text>
+                  <Text style={twStyle("text-xs text-gray-400")}>{ds("sliderMin")}</Text>
+                  <Text style={twStyle("text-xs text-gray-400")}>{ds("sliderMax")}</Text>
                 </View>
               </View>
               <TextInput
                 style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={maxDistance}
-                onChangeText={(t) => update(() => setMaxDistance(t))}
+                onChangeText={(text) => update(() => setMaxDistance(text))}
                 keyboardType="decimal-pad"
                 placeholder="10"
                 placeholderTextColor="#9ca3af"
@@ -172,7 +177,7 @@ export default function DistanceSettingsScreen() {
                     key={d}
                     style={[twStyle(`rounded-full px-3 py-1.5 ${
                       dist === d ? "bg-indigo-600" : "bg-gray-100"
-                    }`), { marginRight: 8, marginBottom: 8 }]}
+                    }`), { marginEnd: 8, marginBottom: 8 }]}
                     onPress={() => update(() => setMaxDistance(String(d)))}
                   >
                     <Text
@@ -180,14 +185,14 @@ export default function DistanceSettingsScreen() {
                         dist === d ? "text-white" : "text-gray-600"
                       }`)}
                     >
-                      {d} km
+                      {ds("kmValue", { km: d })}
                     </Text>
                   </TouchableOpacity>
                 ))}
                 <TouchableOpacity
                   style={[twStyle(`rounded-full px-3 py-1.5 ${
                     !enabled ? "bg-emerald-600" : "bg-gray-100"
-                  }`), { marginRight: 8, marginBottom: 8 }]}
+                  }`), { marginEnd: 8, marginBottom: 8 }]}
                   onPress={() =>
                     update(() => {
                       setEnabled(false);
@@ -200,7 +205,7 @@ export default function DistanceSettingsScreen() {
                       !enabled ? "text-white" : "text-gray-600"
                     }`)}
                   >
-                    No limit
+                    {ds("noLimit")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -208,17 +213,17 @@ export default function DistanceSettingsScreen() {
 
             <View style={twStyle("mb-3 border-t border-gray-100 pt-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                At-Home Service Distance (km)
+                {ds("atHomeDistance")}
               </Text>
               <Text style={twStyle("mb-2 text-xs text-gray-400")}>
-                Separate limit for at-home services. Leave blank to use main distance.
+                {ds("atHomeHint")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={atHomeDistance}
-                onChangeText={(t) => update(() => setAtHomeDistance(t))}
+                onChangeText={(text) => update(() => setAtHomeDistance(text))}
                 keyboardType="decimal-pad"
-                placeholder="Same as above"
+                placeholder={ds("sameAsAbove")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
@@ -227,10 +232,10 @@ export default function DistanceSettingsScreen() {
               <View style={twStyle("flex-row items-center justify-between")}>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                    Show Distance to Clients
+                    {ds("showToClients")}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    Clients see how far you are from them
+                    {ds("showToClientsHint")}
                   </Text>
                 </View>
                 <Switch
@@ -245,7 +250,7 @@ export default function DistanceSettingsScreen() {
         )}
       </View>
 
-      <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
+      <ActionButton label={ds("save")} onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
       <View style={twStyle("h-8")} />
     </ScreenContainer>
   );

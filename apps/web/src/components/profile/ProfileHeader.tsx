@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProfileHeaderProps {
   preferredName: string | null;
@@ -34,6 +35,7 @@ export default function ProfileHeader({
   role,
   onUpdate,
 }: ProfileHeaderProps) {
+  const { t } = useTranslation();
   const [isUploading, setIsUploading] = React.useState(false);
   const [isEditingHandle, setIsEditingHandle] = React.useState(false);
   const [handleValue, setHandleValue] = React.useState(handle || "");
@@ -43,32 +45,29 @@ export default function ProfileHeader({
     const months = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
     const years = Math.floor(months / 12);
     if (years > 0) {
-      return `${years} ${years === 1 ? "year" : "years"} on Beautonomi`;
+      return t("web.accountSettings.profileHeader.yearsOn", { count: years });
     }
-    return `${months} ${months === 1 ? "month" : "months"} on Beautonomi`;
+    return t("web.accountSettings.profileHeader.monthsOn", { count: months });
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
+      toast.error(t("web.accountSettings.profileHeader.selectImage"));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be less than 5MB");
+      toast.error(t("web.accountSettings.profileHeader.imageTooLarge"));
       return;
     }
 
     setIsUploading(true);
     try {
-      // Create FormData
       const formData = new FormData();
       formData.append("file", file);
 
-      // Upload to Supabase Storage
       const uploadResponse = await fetch("/api/me/avatar", {
         method: "POST",
         body: formData,
@@ -76,20 +75,19 @@ export default function ProfileHeader({
 
       if (!uploadResponse.ok) {
         const error = await uploadResponse.json();
-        throw new Error(error.error?.message || "Failed to upload photo");
+        throw new Error(error.error?.message || t("web.accountSettings.profileHeader.uploadFailed"));
       }
 
       const { data } = await uploadResponse.json();
-      
-      // Update profile with new avatar URL
+
       await fetcher.patch("/api/me/profile", {
         avatar_url: data.url,
       });
 
-      toast.success("Profile photo updated");
+      toast.success(t("web.accountSettings.profileHeader.photoUpdated"));
       onUpdate?.();
     } catch (error: any) {
-      toast.error(error.message || "Failed to upload photo");
+      toast.error(error.message || t("web.accountSettings.profileHeader.uploadFailed"));
     } finally {
       setIsUploading(false);
     }
@@ -97,12 +95,12 @@ export default function ProfileHeader({
 
   const handleSaveHandle = async () => {
     if (!handleValue.trim()) {
-      toast.error("Handle cannot be empty");
+      toast.error(t("web.accountSettings.profileHeader.handleEmpty"));
       return;
     }
 
     if (!/^[a-zA-Z0-9_]{3,50}$/.test(handleValue)) {
-      toast.error("Handle must be 3-50 characters and contain only letters, numbers, and underscores");
+      toast.error(t("web.accountSettings.profileHeader.handleInvalid"));
       return;
     }
 
@@ -111,15 +109,15 @@ export default function ProfileHeader({
         handle: handleValue.trim(),
       });
 
-      toast.success("Handle updated");
+      toast.success(t("web.accountSettings.profileHeader.handleUpdated"));
       setIsEditingHandle(false);
       onUpdate?.();
     } catch (error: any) {
-      toast.error(error.message || "Failed to update handle");
+      toast.error(error.message || t("web.accountSettings.profileHeader.handleUpdateFailed"));
     }
   };
 
-  const displayName = preferredName || "User";
+  const displayName = preferredName || t("web.accountSettings.profileHeader.userFallback");
   const initials = displayName
     .split(" ")
     .map((n) => n[0])
@@ -130,7 +128,6 @@ export default function ProfileHeader({
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
       <div className="flex items-start gap-6">
-        {/* Avatar */}
         <div className="relative">
           <Avatar className="h-20 w-20 md:h-24 md:w-24">
             <AvatarImage src={avatarUrl || undefined} alt={displayName} />
@@ -145,22 +142,22 @@ export default function ProfileHeader({
                 variant="secondary"
                 className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full bg-white border-2 border-gray-200 shadow-sm hover:bg-gray-50"
                 disabled={isUploading}
-                aria-label="Update profile photo"
+                aria-label={t("web.accountSettings.profileHeader.updatePhotoAria")}
               >
                 <Camera className="h-4 w-4 text-gray-600" />
               </Button>
             </SheetTrigger>
             <SheetContent className="bg-white">
               <SheetHeader>
-                <SheetTitle>Update Profile Photo</SheetTitle>
+                <SheetTitle>{t("web.accountSettings.profileHeader.updatePhotoTitle")}</SheetTitle>
                 <SheetDescription>
-                  Choose a photo from your device or take a new one.
+                  {t("web.accountSettings.profileHeader.updatePhotoDescription")}
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-4">
                 <div>
                   <Label htmlFor="photo-upload" className="mb-2 block">
-                    Select Photo
+                    {t("web.accountSettings.profileHeader.selectPhoto")}
                   </Label>
                   <Input
                     id="photo-upload"
@@ -171,14 +168,13 @@ export default function ProfileHeader({
                   />
                 </div>
                 {isUploading && (
-                  <p className="text-sm text-gray-500">Uploading...</p>
+                  <p className="text-sm text-gray-500">{t("web.accountSettings.profileHeader.uploading")}</p>
                 )}
               </div>
             </SheetContent>
           </Sheet>
         </div>
 
-        {/* Name and Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 truncate">
@@ -192,32 +188,32 @@ export default function ProfileHeader({
             <Sheet open={isEditingHandle} onOpenChange={setIsEditingHandle}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="sm" className="text-xs text-gray-500 h-auto p-0">
-                  Add handle
+                  {t("web.accountSettings.profileHeader.addHandle")}
                 </Button>
               </SheetTrigger>
               <SheetContent className="bg-white">
                 <SheetHeader>
-                  <SheetTitle>Add Handle</SheetTitle>
+                  <SheetTitle>{t("web.accountSettings.profileHeader.addHandleTitle")}</SheetTitle>
                   <SheetDescription>
-                    Choose a unique username. This will be visible to others.
+                    {t("web.accountSettings.profileHeader.addHandleDescription")}
                   </SheetDescription>
                 </SheetHeader>
                 <div className="mt-6 space-y-4">
                   <div>
-                    <Label htmlFor="handle-input">Handle</Label>
+                    <Label htmlFor="handle-input">{t("web.accountSettings.profileHeader.handle")}</Label>
                     <Input
                       id="handle-input"
                       value={handleValue}
                       onChange={(e) => setHandleValue(e.target.value)}
-                      placeholder="username"
+                      placeholder={t("web.accountSettings.profileHeader.handlePlaceholder")}
                       maxLength={50}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      3-50 characters, letters, numbers, and underscores only
+                      {t("web.accountSettings.profileHeader.handleHint")}
                     </p>
                   </div>
                   <Button onClick={handleSaveHandle} className="w-full">
-                    Save
+                    {t("web.accountSettings.profileHeader.save")}
                   </Button>
                 </div>
               </SheetContent>

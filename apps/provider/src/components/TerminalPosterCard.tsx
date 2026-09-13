@@ -8,6 +8,7 @@ import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import { twStyle } from "@/lib/twStyle";
 import { ensureMediaLibraryPermission, PERMISSION_COPY } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 type TerminalLike = {
   display_name?: string | null;
@@ -33,6 +34,8 @@ export function TerminalPosterCard({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
+  const tp = (key: string) => t(`provider.mobile.components.terminalPosterCard.${key}`) as string;
   const qrValue =
     terminal.payment_link ||
     terminal.terminal_url ||
@@ -90,13 +93,13 @@ export function TerminalPosterCard({
       if (!allowed) return;
       const uri = await resolveLocalImageUri();
       if (!uri) {
-        Alert.alert("Save poster", "Could not prepare the image to save.");
+        Alert.alert(tp("saveTitle"), tp("savePrepareFailed"));
         return;
       }
       await MediaLibrary.saveToLibraryAsync(uri);
-      Alert.alert("Saved", "The poster was saved to your photos.");
+      Alert.alert(tp("savedTitle"), tp("savedBody"));
     } catch {
-      Alert.alert("Save poster", "Could not save the poster. Please try again.");
+      Alert.alert(tp("saveTitle"), tp("saveFailed"));
     } finally {
       setBusy(null);
     }
@@ -108,12 +111,12 @@ export function TerminalPosterCard({
       const available = await Sharing.isAvailableAsync();
       const uri = await resolveLocalImageUri();
       if (!available || !uri) {
-        Alert.alert("Share poster", "Sharing is not available on this device.");
+        Alert.alert(tp("shareTitle"), tp("shareUnavailable"));
         return;
       }
-      await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share Paystack Terminal poster" });
+      await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: tp("shareDialogTitle") });
     } catch {
-      Alert.alert("Share poster", "Could not share the poster. Please try again.");
+      Alert.alert(tp("shareTitle"), tp("shareFailed"));
     } finally {
       setBusy(null);
     }
@@ -122,7 +125,7 @@ export function TerminalPosterCard({
   const onPrint = async () => {
     setBusy("print");
     try {
-      const name = terminal.display_name || terminal.name || "Pay here";
+      const name = terminal.display_name || terminal.name || tp("payHere");
       let imgSrc = terminal.poster_url || terminal.qr_url || null;
       if (!imgSrc) {
         const base64 = await captureQrDataUrl();
@@ -132,12 +135,12 @@ export function TerminalPosterCard({
 <style>*{font-family:-apple-system,Roboto,sans-serif}body{margin:0;padding:48px;text-align:center;color:#0f172a}
 h1{font-size:30px;margin:0 0 8px}p{font-size:18px;color:#334155}img{width:320px;max-width:80%;height:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin:24px auto;display:block}
 .code{font-family:monospace;font-size:20px}</style></head><body>
-<h1>${name}</h1><p>Scan to pay with your phone</p>
-${imgSrc ? `<img src="${imgSrc}" alt="QR" />` : "<p>QR not available.</p>"}
+<h1>${name}</h1><p>${tp("printScanHint")}</p>
+${imgSrc ? `<img src="${imgSrc}" alt="QR" />` : `<p>${tp("qrUnavailable")}</p>`}
 <p class="code">${terminal.terminal_code}</p></body></html>`;
       await Print.printAsync({ html });
     } catch {
-      Alert.alert("Print poster", "Could not open the print dialog.");
+      Alert.alert(tp("printTitle"), tp("printFailed"));
     } finally {
       setBusy(null);
     }
@@ -162,9 +165,9 @@ ${imgSrc ? `<img src="${imgSrc}" alt="QR" />` : "<p>QR not available.</p>"}
           </View>
         )}
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-sm font-semibold text-gray-900")}>Show to customer</Text>
+          <Text style={twStyle("text-sm font-semibold text-gray-900")}>{tp("showToCustomer")}</Text>
           <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
-            Tap to present full screen, save, share, or print the poster.
+            {tp("showToCustomerHint")}
           </Text>
         </View>
         <Ionicons name="expand-outline" size={20} color="#16a34a" />
@@ -175,7 +178,7 @@ ${imgSrc ? `<img src="${imgSrc}" alt="QR" />` : "<p>QR not available.</p>"}
           <Text style={twStyle("text-xl font-bold text-gray-900 mb-1")}>
             {terminal.display_name || terminal.name}
           </Text>
-          <Text style={twStyle("text-sm text-gray-500 mb-6")}>Scan to pay</Text>
+          <Text style={twStyle("text-sm text-gray-500 mb-6")}>{tp("scanToPay")}</Text>
           {terminal.poster_url ? (
             <Image
               source={{ uri: terminal.poster_url }}
@@ -190,12 +193,12 @@ ${imgSrc ? `<img src="${imgSrc}" alt="QR" />` : "<p>QR not available.</p>"}
           <Text style={twStyle("mt-4 font-mono text-base text-gray-700")}>{terminal.terminal_code}</Text>
 
           <View style={twStyle("flex-row flex-wrap gap-2 mt-8 w-full justify-center")}>
-            <ActionButton icon="download-outline" label="Save" onPress={onSave} busy={busy === "save"} />
-            <ActionButton icon="share-social-outline" label="Share" onPress={onShare} busy={busy === "share"} />
-            <ActionButton icon="print-outline" label="Print" onPress={onPrint} busy={busy === "print"} />
+            <ActionButton icon="download-outline" label={tp("save")} onPress={onSave} busy={busy === "save"} />
+            <ActionButton icon="share-social-outline" label={tp("share")} onPress={onShare} busy={busy === "share"} />
+            <ActionButton icon="print-outline" label={tp("print")} onPress={onPrint} busy={busy === "print"} />
           </View>
           <TouchableOpacity onPress={() => setFullScreen(false)} style={twStyle("mt-8")}>
-            <Text style={twStyle("text-base font-semibold text-gray-500")}>Close</Text>
+            <Text style={twStyle("text-base font-semibold text-gray-500")}>{tp("close")}</Text>
           </TouchableOpacity>
         </View>
       </Modal>

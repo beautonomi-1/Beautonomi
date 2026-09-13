@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import {
   authFlowBreadcrumb,
@@ -32,6 +33,7 @@ type AccountStatus = {
 };
 
 export function AccountStatusGuard({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
@@ -122,7 +124,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
         if (res.error || !status) {
           const message =
             res.error?.message ||
-            "We couldn't verify your account status. Check your connection and try again.";
+            t("customer.mobile.components.accountStatusGuard.verifyFailed");
           if (isSentryEnabled()) {
             setAuthGateContext("account_status", { phase: "resolved", outcome: "no_status" });
             authFlowBreadcrumb(`${GUARD}.request_complete`, { ok: false, hasBody: !!status });
@@ -192,7 +194,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
           setCheckError(
             e instanceof Error
               ? e.message
-              : "We couldn't verify your account status. Check your connection and try again.",
+              : t("customer.mobile.components.accountStatusGuard.verifyFailed"),
           );
         }
         if (isSentryEnabled()) {
@@ -215,7 +217,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [userId, signOut, router, retryKey]);
+  }, [userId, signOut, router, retryKey, t]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -252,14 +254,14 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
         }}
       >
         <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center" }}>
-          Account check needed
+          {t("customer.mobile.components.accountStatusGuard.title")}
         </Text>
         <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, color: Colors.gray[600], textAlign: "center" }}>
           {checkError}
         </Text>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel="Retry account status check"
+          accessibilityLabel={t("customer.mobile.components.accountStatusGuard.retryA11y")}
           onPress={() => {
             didCheckForUser.current = null;
             setCheckError(null);
@@ -278,21 +280,21 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
             paddingVertical: 12,
           }}
         >
-          <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Try again</Text>
+          <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{t("common.retry")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel="Sign out"
+          accessibilityLabel={t("common.signOut")}
           onPress={() => {
             void signOut();
           }}
           style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10 }}
         >
-          <Text style={{ color: Colors.gray[500], fontSize: 14, fontWeight: "600" }}>Sign out</Text>
+          <Text style={{ color: Colors.gray[500], fontSize: 14, fontWeight: "600" }}>{t("common.signOut")}</Text>
         </TouchableOpacity>
       </View>
     );
   }
-  if (!checked) return <GateLoadingScreen message="Checking account…" />;
+  if (!checked) return <GateLoadingScreen message={t("customer.mobile.components.gateLoading.checkingAccount")} />;
   return <>{children}</>;
 }

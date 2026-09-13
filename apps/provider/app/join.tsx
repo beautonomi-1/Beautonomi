@@ -7,6 +7,7 @@ import {
   Linking,
   ScrollView,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
@@ -33,6 +34,12 @@ type AppLinks = {
 };
 
 export default function StaffJoinScreen() {
+  const { t } = useTranslation();
+  const sj = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.staffJoin.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ token?: string }>();
   const token = typeof params.token === "string" ? params.token.trim() : "";
@@ -47,7 +54,7 @@ export default function StaffJoinScreen() {
 
   useEffect(() => {
     if (!token) {
-      setLoadError("Missing invite token. Open the link from your invitation email.");
+      setLoadError(sj("missingToken"));
       return;
     }
     let cancelled = false;
@@ -57,12 +64,12 @@ export default function StaffJoinScreen() {
       );
       if (cancelled) return;
       if (res.error || !res.data) {
-        setLoadError(res.error?.message ?? "Could not load invite");
+        setLoadError(res.error?.message ?? sj("loadFailed"));
         return;
       }
       setPreview(res.data);
       if (res.data.expired && !res.data.already_accepted) {
-        setLoadError("This invite has expired. Ask your manager to resend.");
+        setLoadError(sj("expired"));
       }
     })();
     (async () => {
@@ -72,7 +79,7 @@ export default function StaffJoinScreen() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, sj]);
 
   const goToAppHome = useCallback(() => {
     clearPortalCache();
@@ -91,7 +98,7 @@ export default function StaffJoinScreen() {
     });
     setAccepting(false);
     if (res.error) {
-      setAcceptError(res.error.message ?? "Could not accept invite");
+      setAcceptError(res.error.message ?? sj("acceptFailed"));
       return;
     }
     const providerId = res.data?.provider_id ?? (res as { provider_id?: string }).provider_id;
@@ -107,7 +114,7 @@ export default function StaffJoinScreen() {
     void acceptInvite();
   }, [authLoading, user, token, preview, acceptInvite]);
 
-  const businessName = preview?.business_name ?? "your team";
+  const businessName = preview?.business_name ?? sj("teamFallback");
 
   return (
     <ScreenContainer scrollable={false} edges={["top", "bottom"]} reserveTabBarSpace={false}>
@@ -135,12 +142,12 @@ export default function StaffJoinScreen() {
             }}
           >
             <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827", marginBottom: 8 }}>
-              Join {businessName}
+              {sj("joinTitle", { name: businessName })}
             </Text>
             <Text style={{ fontSize: 15, color: "#4b5563", marginBottom: 20 }}>
               {preview?.staff_name
-                ? `Hi ${preview.staff_name}, you've been invited to join the team on Beautonomi.`
-                : "You've been invited to join a team on Beautonomi."}
+                ? sj("inviteNamed", { name: preview.staff_name })
+                : sj("inviteGeneric")}
             </Text>
 
             {loadError ? (
@@ -155,10 +162,9 @@ export default function StaffJoinScreen() {
             ) : !user ? (
               <>
                 <Text style={{ fontSize: 14, color: "#4b5563", marginBottom: 16 }}>
-                  Sign in with the email that received this invite
-                  {preview?.email_hint ? ` (${preview.email_hint})` : ""}. Use the set-password
-                  link from your invitation email, or sign in with email OTP — you do not need an
-                  existing password.
+                  {preview?.email_hint
+                    ? sj("signInHintWithEmail", { email: preview.email_hint })
+                    : sj("signInHint")}
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -174,13 +180,13 @@ export default function StaffJoinScreen() {
                     router.push(`/(auth)/login?${qs.toString()}` as never);
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Sign in to continue</Text>
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{sj("signInContinue")}</Text>
                 </TouchableOpacity>
               </>
             ) : accepting ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <ActivityIndicator color={Colors.primary} />
-                <Text style={{ color: "#6b7280" }}>Setting up your access…</Text>
+                <Text style={{ color: "#6b7280" }}>{sj("settingUp")}</Text>
               </View>
             ) : preview?.already_accepted ? (
               <TouchableOpacity
@@ -192,7 +198,7 @@ export default function StaffJoinScreen() {
                 }}
                 onPress={goToAppHome}
               >
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Open app</Text>
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{sj("openApp")}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -206,7 +212,7 @@ export default function StaffJoinScreen() {
                 disabled={!preview?.valid}
                 onPress={acceptInvite}
               >
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Accept invite</Text>
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{sj("acceptInvite")}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -214,16 +220,16 @@ export default function StaffJoinScreen() {
           {(appLinks?.ios || appLinks?.android) && (
             <View style={{ marginTop: 24, alignItems: "center" }}>
               <Text style={{ fontWeight: "600", color: "#111827", marginBottom: 8 }}>
-                Get the Provider app
+                {sj("getApp")}
               </Text>
               {appLinks.ios ? (
                 <TouchableOpacity onPress={() => Linking.openURL(appLinks.ios!)}>
-                  <Text style={{ color: Colors.primary, marginBottom: 4 }}>Download for iPhone</Text>
+                  <Text style={{ color: Colors.primary, marginBottom: 4 }}>{sj("downloadIos")}</Text>
                 </TouchableOpacity>
               ) : null}
               {appLinks.android ? (
                 <TouchableOpacity onPress={() => Linking.openURL(appLinks.android!)}>
-                  <Text style={{ color: Colors.primary }}>Download for Android</Text>
+                  <Text style={{ color: Colors.primary }}>{sj("downloadAndroid")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>

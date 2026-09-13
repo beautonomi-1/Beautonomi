@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -59,26 +60,27 @@ interface BusinessOverviewData {
 }
 
 const PERIOD_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "week", label: "Week to date" },
-  { value: "month", label: "Month to date" },
-  { value: "quarter", label: "Quarter to date" },
-  { value: "year", label: "Year to date" },
+  { value: "week", label: "web.provider.reports.pages.business/overview.weekToDate" },
+  { value: "month", label: "web.provider.reports.pages.business/overview.monthToDate" },
+  { value: "quarter", label: "web.provider.reports.pages.business/overview.quarterToDate" },
+  { value: "year", label: "web.provider.reports.pages.business/overview.yearToDate" },
 ];
 
 const BASIS_LABELS: Record<string, string> = {
-  calendar: "Calendar window",
-  bookings: "Bookings",
-  ledgerHeadline: "Ledger headline",
-  ledgerSplit: "Ledger split check",
-  avgBookingValue: "Avg per booking",
-  payments: "Payments query",
-  netRevenue: "Net revenue",
-  growth: "Growth",
-  staff: "Staff count",
+  calendar: "web.provider.reports.pages.business/overview.basisCalendar",
+  bookings: "web.provider.reports.pages.business/overview.basisBookings",
+  ledgerHeadline: "web.provider.reports.pages.business/overview.basisLedgerHeadline",
+  ledgerSplit: "web.provider.reports.pages.business/overview.basisLedgerSplit",
+  avgBookingValue: "web.provider.reports.pages.business/overview.basisAvgBooking",
+  payments: "web.provider.reports.pages.business/overview.basisPayments",
+  netRevenue: "web.provider.reports.pages.business/overview.basisNetRevenue",
+  growth: "web.provider.reports.pages.business/overview.basisGrowth",
+  staff: "web.provider.reports.pages.business/overview.basisStaff",
 };
 
 export default function BusinessOverviewReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessOverviewData | null>(null);
@@ -132,10 +134,10 @@ export default function BusinessOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Business Overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/overview.title") },
         ]}
       >
         <ReportSkeleton />
@@ -147,18 +149,18 @@ export default function BusinessOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Business Overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/overview.title") },
         ]}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Business Overview"
-            subtitle="Ledger + scheduled bookings — period to date"
+            title={t("web.provider.reports.pages.business/overview.title")}
+            subtitle={t("web.provider.reports.pages.business/overview.subtitleGate")}
           />
-          <ReportSubscriptionRequired feature="Business overview" message={subscriptionGateMessage} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.business/overview.feature")} message={subscriptionGateMessage} />
         </div>
       </SettingsDetailLayout>
     );
@@ -168,13 +170,13 @@ export default function BusinessOverviewReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Business Overview" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.business/overview.title") },
         ]}
       >
-        <EmptyReportState title="Failed to load report" description={error || "Unable to load business overview data"} />
+        <EmptyReportState title={t("web.provider.common.failedToLoadReport")} description={error || t("web.provider.reports.pages.business/overview.unableToLoad")} />
       </SettingsDetailLayout>
     );
   }
@@ -190,21 +192,21 @@ export default function BusinessOverviewReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Business Overview" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.business/overview.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Business Overview"
-          subtitle="Facts from ledger settlement dates + bookings by scheduled time"
+          title={t("web.provider.reports.pages.business/overview.title")}
+          subtitle={t("web.provider.reports.pages.business/overview.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.dataTableShell.export")}
             </Button>
           }
         />
@@ -217,7 +219,7 @@ export default function BusinessOverviewReport() {
             <SelectContent>
               {PERIOD_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+                  {t(o.label)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -237,7 +239,7 @@ export default function BusinessOverviewReport() {
             <div className="flex items-start gap-2">
               <Info className="w-4 h-4 shrink-0 text-sky-700 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">What this report counts</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">{t("web.provider.reports.common.whatThisReportCounts")}</p>
                 <p className="mt-2 leading-relaxed">{basisText}</p>
               </div>
             </div>
@@ -246,11 +248,11 @@ export default function BusinessOverviewReport() {
 
         {basisEntries.length > 0 ? (
           <div className="rounded-xl border border-violet-100 bg-violet-50/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">Definitions</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">{t("web.provider.reports.common.definitions")}</p>
             <ul className="mt-2 space-y-2 text-sm text-violet-950">
               {basisEntries.map(([k, v]) => (
                 <li key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{BASIS_LABELS[k] ? t(BASIS_LABELS[k]) : k} · </span>
                   {v}
                 </li>
               ))}
@@ -262,8 +264,8 @@ export default function BusinessOverviewReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-emerald-100 bg-emerald-50/40">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-emerald-900">Ledger earnings</CardTitle>
-              <p className="text-xs font-normal text-emerald-800/90">provider_earnings · settlement window</p>
+              <CardTitle className="text-sm font-medium text-emerald-900">{t("web.provider.reports.pages.business/overview.ledgerEarnings")}</CardTitle>
+              <p className="text-xs font-normal text-emerald-800/90">{t("web.provider.reports.pages.business/overview.ledgerEarningsHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -273,10 +275,10 @@ export default function BusinessOverviewReport() {
                     {data.revenueGrowthIsNew ? (
                       <>
                         <TrendingUp className="h-4 w-4 text-emerald-700" />
-                        <p className="text-xs text-emerald-700">New vs prior window</p>
+                        <p className="text-xs text-emerald-700">{t("web.provider.reports.pages.business/overview.newVsPrior")}</p>
                       </>
                     ) : data.revenueGrowth === 0 ? (
-                      <p className="text-xs text-gray-500">0% vs prior window</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.zeroVsPrior")}</p>
                     ) : (
                       <>
                         {data.revenueGrowth > 0 ? (
@@ -285,8 +287,10 @@ export default function BusinessOverviewReport() {
                           <TrendingDown className="h-4 w-4 text-red-600" />
                         )}
                         <p className={`text-xs ${data.revenueGrowth > 0 ? "text-green-700" : "text-red-600"}`}>
-                          {data.revenueGrowth > 0 ? "+" : ""}
-                          {data.revenueGrowth.toFixed(1)}% vs prior window
+                          {t("web.provider.reports.pages.business/overview.pctVsPrior", {
+                            sign: data.revenueGrowth > 0 ? "+" : "",
+                            pct: data.revenueGrowth.toFixed(1),
+                          })}
                         </p>
                       </>
                     )}
@@ -296,7 +300,7 @@ export default function BusinessOverviewReport() {
               </div>
               {showLedgerSplit ? (
                 <p className="mt-2 text-xs leading-snug text-emerald-900/85">
-                  Bookings {fmt(lb)} · Product orders {fmt(lo)}
+                  {t("web.provider.reports.pages.business/overview.bookingsAndOrders", { bookings: fmt(lb), orders: fmt(lo) })}
                 </p>
               ) : null}
             </CardContent>
@@ -304,8 +308,8 @@ export default function BusinessOverviewReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">Scheduled bookings</CardTitle>
-              <p className="text-xs font-normal text-gray-500">scheduled_at in range · all statuses</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.scheduledBookings")}</CardTitle>
+              <p className="text-xs font-normal text-gray-500">{t("web.provider.reports.pages.business/overview.scheduledBookingsHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -317,8 +321,8 @@ export default function BusinessOverviewReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">Distinct clients</CardTitle>
-              <p className="text-xs font-normal text-gray-500">Unique customer_id on those bookings</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.distinctClients")}</CardTitle>
+              <p className="text-xs font-normal text-gray-500">{t("web.provider.reports.pages.business/overview.distinctClientsHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -330,8 +334,8 @@ export default function BusinessOverviewReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">Avg ledger / booking</CardTitle>
-              <p className="text-xs font-normal text-gray-500">Among bookings with earnings rows only</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.avgLedgerPerBooking")}</CardTitle>
+              <p className="text-xs font-normal text-gray-500">{t("web.provider.reports.pages.business/overview.avgLedgerPerBookingHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -345,78 +349,78 @@ export default function BusinessOverviewReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">Completion rate</CardTitle>
-              <p className="text-xs text-gray-500">completed ÷ all scheduled in window</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.completionRate")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.completionRateHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.completionRate.toFixed(1)}%</p>
                 <CheckCircle className="h-8 w-8 text-green-600 opacity-90" />
               </div>
-              <p className="mt-1 text-xs text-gray-500">{data.completedBookings} completed</p>
+              <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.completedCount", { count: data.completedBookings })}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">Cancellation rate</CardTitle>
-              <p className="text-xs text-gray-500">cancelled ÷ all scheduled in window</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.cancellationRate")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.cancellationRateHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.cancellationRate.toFixed(1)}%</p>
                 <XCircle className="h-8 w-8 text-red-600 opacity-90" />
               </div>
-              <p className="mt-1 text-xs text-gray-500">{data.cancelledBookings} cancelled</p>
+              <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.cancelledCount", { count: data.cancelledBookings })}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-700">No-show rate</CardTitle>
-              <p className="text-xs text-gray-500">no_show ÷ all scheduled in window</p>
+              <CardTitle className="text-sm font-medium text-gray-700">{t("web.provider.reports.pages.business/overview.noShowRate")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.noShowRateHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.noShowRate.toFixed(1)}%</p>
                 <XCircle className="h-8 w-8 text-amber-600 opacity-90" />
               </div>
-              <p className="mt-1 text-xs text-gray-500">{data.noShows} no-shows</p>
+              <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.noShowsCount", { count: data.noShows })}</p>
             </CardContent>
           </Card>
         </div>
 
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg">Financial detail</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.business/overview.financialDetail")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Net combines headline ledger earnings with cancellation fees and subtracts refunds (tips tracked separately).
+              {t("web.provider.reports.pages.business/overview.financialDetailHint")}
             </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-4">
-                <p className="text-sm text-gray-600">Net after refunds & fees</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.netAfterRefunds")}</p>
                 <p className="text-xl font-semibold tabular-nums text-gray-900">{fmt(data.netRevenue)}</p>
               </div>
               <div className="rounded-lg border border-gray-100 p-4">
-                <p className="text-sm text-gray-600">Refunds (ledger)</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.refundsLedger")}</p>
                 <p className="text-xl font-semibold tabular-nums text-red-600">{fmt(data.totalRefunded)}</p>
               </div>
               <div className="rounded-lg border border-gray-100 p-4">
-                <p className="text-sm text-gray-600">Cancellation fees retained</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.cancellationFeesRetained")}</p>
                 <p className="text-xl font-semibold tabular-nums text-amber-800">
                   {fmt(data.cancellationFees ?? 0)}
                 </p>
               </div>
               <div className="rounded-lg border border-gray-100 p-4">
-                <p className="text-sm text-gray-600">Tips (ledger rows)</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.tipsLedgerRows")}</p>
                 <p className="text-xl font-semibold tabular-nums text-gray-900">{fmt(data.tipsTotal ?? 0)}</p>
               </div>
             </div>
             {(data.additionalChargesTotal ?? 0) !== 0 ? (
               <p className="mt-3 text-xs text-gray-600">
-                Additional charges / payments (ledger): {fmt(data.additionalChargesTotal ?? 0)}
+                {t("web.provider.reports.pages.business/overview.additionalCharges", { amount: fmt(data.additionalChargesTotal ?? 0) })}
               </p>
             ) : null}
           </CardContent>
@@ -424,30 +428,30 @@ export default function BusinessOverviewReport() {
 
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg">Payments & operations</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.business/overview.paymentsAndOps")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-lg border border-gray-100 p-4">
-                <p className="text-sm text-gray-600">Booking payments captured</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.bookingPaymentsCaptured")}</p>
                 <p className="text-xl font-semibold text-green-700">
                   {data.successfulPayments} / {data.totalPayments}
                 </p>
-                <p className="mt-1 text-xs text-gray-500">Succeeded or completed statuses · scoped to bookings above</p>
+                <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.bookingPaymentsHint")}</p>
               </div>
               <div className="rounded-lg border border-gray-100 p-4">
-                <p className="text-sm text-gray-600">Staff profiles</p>
+                <p className="text-sm text-gray-600">{t("web.provider.reports.pages.business/overview.staffProfiles")}</p>
                 <p className="text-xl font-semibold text-gray-900">{data.totalStaff}</p>
-                <p className="mt-1 text-xs text-gray-500">Provider-wide · not filtered by location</p>
+                <p className="mt-1 text-xs text-gray-500">{t("web.provider.reports.pages.business/overview.staffProfilesHint")}</p>
               </div>
               {data.locationAttribution?.scopedByLocation ? (
                 <div className="rounded-lg border border-amber-100 bg-amber-50/80 p-4">
-                  <p className="text-sm font-medium text-amber-950">Location scope</p>
+                  <p className="text-sm font-medium text-amber-950">{t("web.provider.reports.pages.business/overview.locationScope")}</p>
                   <p className="mt-1 text-xs text-amber-950/90">{data.locationAttribution.note}</p>
                   {typeof data.locationAttribution.excludedUnattributedRows === "number" &&
                   data.locationAttribution.excludedUnattributedRows > 0 ? (
                     <p className="mt-2 text-xs text-amber-900">
-                      Unattributed rows excluded: {data.locationAttribution.excludedUnattributedRows}
+                      {t("web.provider.reports.pages.business/overview.unattributedExcluded", { count: data.locationAttribution.excludedUnattributedRows })}
                     </p>
                   ) : null}
                 </div>

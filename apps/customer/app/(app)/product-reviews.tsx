@@ -39,6 +39,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
+import { endTextAlign } from "@/lib/rtlText";
 
 type SortKey = "newest" | "highest" | "lowest" | "helpful";
 
@@ -73,11 +74,11 @@ interface ReviewsResponse {
 
 const PAGE_SIZE = 10;
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "newest", label: "Newest" },
-  { value: "highest", label: "Highest" },
-  { value: "lowest", label: "Lowest" },
-  { value: "helpful", label: "Most helpful" },
+const SORT_OPTIONS: { value: SortKey; labelKey: string }[] = [
+  { value: "newest", labelKey: "sortNewest" },
+  { value: "highest", labelKey: "sortHighest" },
+  { value: "lowest", labelKey: "sortLowest" },
+  { value: "helpful", labelKey: "sortHelpful" },
 ];
 
 function formatDateSafe(value: string | null | undefined): string {
@@ -91,6 +92,13 @@ export default function ProductReviewsScreen() {
   const { contentPadding } = useResponsive();
   const { user } = useAuth();
   const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.productReviews.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const productId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -149,7 +157,7 @@ export default function ProductReviewsScreen() {
         );
         if (token !== fetchTokenRef.current) return;
         if (res.error) {
-          setError(res.error.message || "Failed to load reviews");
+          setError(res.error.message || pr("loadFailed"));
           if (opts.mode !== "append") {
             setReviews([]);
             setSummary(null);
@@ -167,7 +175,7 @@ export default function ProductReviewsScreen() {
         }
       } catch (e) {
         if (token !== fetchTokenRef.current) return;
-        setError(e instanceof Error ? e.message : "Failed to load reviews");
+        setError(e instanceof Error ? e.message : pr("loadFailed"));
       } finally {
         if (token !== fetchTokenRef.current) return;
         setLoading(false);
@@ -175,7 +183,7 @@ export default function ProductReviewsScreen() {
         setRefreshing(false);
       }
     },
-    [productId]
+    [productId, pr]
   );
 
   useEffect(() => {
@@ -224,7 +232,7 @@ export default function ProductReviewsScreen() {
             {item.customer?.avatar_url ? (
               <Image
                 source={{ uri: item.customer.avatar_url }}
-                style={{ width: 28, height: 28, borderRadius: 14, marginRight: 10 }}
+                style={{ width: 28, height: 28, borderRadius: 14, marginEnd: 10 }}
               />
             ) : (
               <View
@@ -232,7 +240,7 @@ export default function ProductReviewsScreen() {
                   width: 28,
                   height: 28,
                   borderRadius: 14,
-                  marginRight: 10,
+                  marginEnd: 10,
                   backgroundColor: Colors.gray[100],
                   alignItems: "center",
                   justifyContent: "center",
@@ -243,7 +251,7 @@ export default function ProductReviewsScreen() {
             )}
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>
-                {item.customer?.full_name ?? "Customer"}
+                {item.customer?.full_name ?? pr("customerFallback")}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                 {[1, 2, 3, 4, 5].map((n) => (
@@ -252,12 +260,12 @@ export default function ProductReviewsScreen() {
                     name={n <= item.rating ? "star" : "star-outline"}
                     size={12}
                     color="#F59E0B"
-                    style={{ marginRight: 2 }}
+                    style={{ marginEnd: 2 }}
                   />
                 ))}
-                <Text style={{ marginLeft: 6, fontSize: 11, color: Colors.gray[500] }}>
+                <Text style={{ marginStart: 6, fontSize: 11, color: Colors.gray[500] }}>
                   {formatDateSafe(item.created_at)}
-                  {item.is_verified_purchase ? " · Verified" : ""}
+                  {item.is_verified_purchase ? pr("verifiedSuffix") : ""}
                 </Text>
               </View>
             </View>
@@ -273,7 +281,7 @@ export default function ProductReviewsScreen() {
                 }}
               >
                 <Ionicons name="thumbs-up-outline" size={12} color="#1D4ED8" />
-                <Text style={{ fontSize: 11, color: "#1D4ED8", marginLeft: 4 }}>
+                <Text style={{ fontSize: 11, color: "#1D4ED8", marginStart: 4 }}>
                   {item.helpful_count}
                 </Text>
               </View>
@@ -307,7 +315,7 @@ export default function ProductReviewsScreen() {
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 2 }}>
-                Provider response
+                {pr("providerResponse")}
               </Text>
               <Text style={{ fontSize: 12, color: Colors.gray[700], lineHeight: 18 }}>
                 {item.provider_response}
@@ -317,7 +325,7 @@ export default function ProductReviewsScreen() {
         </View>
       );
     },
-    [openReportReview, t],
+    [openReportReview, pr, t],
   );
 
   const ListHeader = useMemo(
@@ -335,7 +343,7 @@ export default function ProductReviewsScreen() {
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ alignItems: "center", marginRight: 16 }}>
+              <View style={{ alignItems: "center", marginEnd: 16 }}>
                 <Text style={{ fontSize: 32, fontWeight: "700", color: Colors.gray[900] }}>
                   {summary.average_rating.toFixed(1)}
                 </Text>
@@ -346,19 +354,19 @@ export default function ProductReviewsScreen() {
                       name={n <= Math.round(summary.average_rating) ? "star" : "star-outline"}
                       size={14}
                       color="#F59E0B"
-                      style={{ marginRight: 1 }}
+                      style={{ marginEnd: 1 }}
                     />
                   ))}
                 </View>
                 <Text style={{ marginTop: 4, fontSize: 11, color: Colors.gray[500] }}>
-                  {summary.total_count} reviews
+                  {pr("reviewCount", { count: summary.total_count })}
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
                 {distribution.map((row) => (
                   <View key={row.stars} style={{ flexDirection: "row", alignItems: "center", marginBottom: 3 }}>
                     <Text style={{ width: 14, fontSize: 11, color: Colors.gray[600] }}>{row.stars}</Text>
-                    <Ionicons name="star" size={10} color="#F59E0B" style={{ marginRight: 6 }} />
+                    <Ionicons name="star" size={10} color="#F59E0B" style={{ marginEnd: 6 }} />
                     <View
                       style={{
                         flex: 1,
@@ -370,7 +378,7 @@ export default function ProductReviewsScreen() {
                     >
                       <View style={{ width: `${row.pct}%`, height: 6, backgroundColor: "#F59E0B" }} />
                     </View>
-                    <Text style={{ width: 26, textAlign: "right", fontSize: 11, color: Colors.gray[500] }}>
+                    <Text style={{ width: 26, textAlign: endTextAlign(), fontSize: 11, color: Colors.gray[500] }}>
                       {row.count}
                     </Text>
                   </View>
@@ -395,7 +403,7 @@ export default function ProductReviewsScreen() {
                   borderWidth: 1,
                   borderColor: active ? Colors.primary : Colors.gray[200],
                   backgroundColor: active ? Colors.primary : Colors.white,
-                  marginRight: 8,
+                  marginEnd: 8,
                   marginBottom: 8,
                 }}
               >
@@ -406,7 +414,7 @@ export default function ProductReviewsScreen() {
                     color: active ? Colors.white : Colors.gray[700],
                   }}
                 >
-                  {opt.label}
+                  {pr(opt.labelKey)}
                 </Text>
               </TouchableOpacity>
             );
@@ -414,7 +422,7 @@ export default function ProductReviewsScreen() {
         </View>
       </View>
     ),
-    [summary, distribution, sort]
+    [summary, distribution, sort, pr]
   );
 
   const ListEmpty = useMemo(() => {
@@ -440,7 +448,7 @@ export default function ProductReviewsScreen() {
               backgroundColor: Colors.primary,
             }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{pr("retry")}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -449,14 +457,14 @@ export default function ProductReviewsScreen() {
       <View style={{ alignItems: "center", paddingVertical: 40 }}>
         <Ionicons name="chatbubble-ellipses-outline" size={28} color={Colors.gray[400]} />
         <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>
-          No reviews yet
+          {pr("emptyTitle")}
         </Text>
         <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500], textAlign: "center" }}>
-          Be the first to share what you think.
+          {pr("emptyBody")}
         </Text>
       </View>
     );
-  }, [loading, error, handleRefresh]);
+  }, [loading, error, handleRefresh, pr]);
 
   const ListFooter = useMemo(() => {
     if (loadingMore) {
@@ -472,14 +480,14 @@ export default function ProductReviewsScreen() {
   if (!productId) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center" }}>
-        <Stack.Screen options={{ title: "Reviews" }} />
+        <Stack.Screen options={{ title: pr("title") }} />
         <Ionicons name="alert-circle-outline" size={28} color={Colors.gray[400]} />
-        <Text style={{ marginTop: 8, color: Colors.gray[600] }}>Missing product id.</Text>
+        <Text style={{ marginTop: 8, color: Colors.gray[600] }}>{pr("missingProductId")}</Text>
         <TouchableOpacity
           onPress={() => router.back()}
           style={{ marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.primary }}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Go back</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{pr("goBack")}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -487,7 +495,7 @@ export default function ProductReviewsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
-      <Stack.Screen options={{ title: "Reviews" }} />
+      <Stack.Screen options={{ title: pr("title") }} />
       <FlatList
         {...verticalFlatListPerf}
         data={reviews}

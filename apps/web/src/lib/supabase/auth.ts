@@ -321,6 +321,7 @@ export type SocialOAuthProvider = 'google' | 'apple';
 export async function signInWithOAuth(
   provider: SocialOAuthProvider,
   redirectUrl?: string,
+  opts?: { skipBrowserRedirect?: boolean },
 ) {
   const supabase = getSupabaseClient();
   
@@ -348,7 +349,11 @@ export async function signInWithOAuth(
     redirectTo: string;
     queryParams?: Record<string, string>;
     scopes?: string;
+    skipBrowserRedirect?: boolean;
   } = { redirectTo };
+  if (opts?.skipBrowserRedirect) {
+    options.skipBrowserRedirect = true;
+  }
   if (provider === 'google') {
     options.queryParams = {
       access_type: 'offline',

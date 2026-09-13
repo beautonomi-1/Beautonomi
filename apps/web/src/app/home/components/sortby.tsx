@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronUp, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function FilterInterface() {
-  const [sortBy, setSortBy] = useState("Recommended");
+  const { t } = useTranslation();
+  const [sortBy, setSortBy] = useState("recommended");
   const [_price, setPrice] = useState(35953);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -18,9 +20,9 @@ export default function FilterInterface() {
   const [venueType, setVenueType] = useState<string | null>(null);
 
   const venueOptions = [
-    { id: "everyone", label: "Everyone", icon: <Users /> },
-    { id: "female-only", label: "Female only", icon: <User /> },
-    { id: "male-only", label: "Male only", icon: <User /> },
+    { id: "everyone", label: t("web.home.venueEveryone"), icon: <Users /> },
+    { id: "female-only", label: t("web.home.venueFemaleOnly"), icon: <User /> },
+    { id: "male-only", label: t("web.home.venueMaleOnly"), icon: <User /> },
   ];
   return (
     <div className="">
@@ -28,34 +30,38 @@ export default function FilterInterface() {
         className="flex justify-between items-center mb-3 cursor-pointer"
         onClick={toggleExpand}
       >
-        <h2 className="text-lg font-medium text-secondary">Sort by</h2>
+        <h2 className="text-lg font-medium text-secondary">{t("web.home.sortBy")}</h2>
         <span>{isExpanded ? <ChevronDown /> :  <ChevronUp />}</span>
       </div>
 
       {isExpanded && (
         <>
           <div className="mb-6">
-            {["Recommended", "Nearest", "Top-rated"].map((option) => (
-              <label key={option} className="flex items-center mb-2">
+            {([
+              { id: "recommended", label: t("web.home.sortRecommended") },
+              { id: "nearest", label: t("web.home.sortNearest") },
+              { id: "top-rated", label: t("web.home.sortTopRated") },
+            ] as const).map((option) => (
+              <label key={option.id} className="flex items-center mb-2">
                 <input
                   type="radio"
                   name="sortBy"
-                  value={option}
-                  checked={sortBy === option}
-                  onChange={() => setSortBy(option)}
+                  value={option.id}
+                  checked={sortBy === option.id}
+                  onChange={() => setSortBy(option.id)}
                   className={`radio-input appearance-none w-4 h-4 rounded-full  ${
-                    sortBy === option
+                    sortBy === option.id
                       ? "border-muted bg-white border-4"
                       : "border-gray-400 border"
                   } checked:bg-white`}
                 />
-                <span className="ml-2 font-light text-sm">{option}</span>
+                <span className="ms-2 font-light text-sm">{option.label}</span>
               </label>
             ))}
           </div>
 
           <div className="mb-6">
-            <h3 className="font-semibold mb-2">Venue type</h3>
+            <h3 className="font-semibold mb-2">{t("web.home.venueType")}</h3>
             <div className="flex flex-wrap gap-2 mb-6">
               {venueOptions.map((option) => (
                 <Button

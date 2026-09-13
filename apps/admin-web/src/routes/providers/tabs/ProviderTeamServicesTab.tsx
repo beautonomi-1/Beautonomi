@@ -7,17 +7,14 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { str } from "./types";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type Props = {
   staff: unknown[] | null | undefined;
   offerings: unknown[] | null | undefined;
 };
 
-const cur = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "ZAR",
-  maximumFractionDigits: 2,
-}).format;
+const cur = (n: number) => formatAdminCurrency(n, "ZAR");
 
 function asRecord(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) {

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     let q = supabase
       .from("ai_prompt_templates")
-      .select("id, key, version, enabled, platform_scopes, role_scopes, template, system_instructions, output_schema, updated_at")
+      .select("id, key, version, enabled, platform_scopes, role_scopes, template, system_instructions, output_schema, model_id, updated_at")
       .order("key")
       .order("version", { ascending: false });
 
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       template = "",
       system_instructions = "",
       output_schema = {},
+      model_id,
     } = body;
 
     if (!key) {
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
         template: String(template),
         system_instructions: String(system_instructions),
         output_schema: output_schema ?? {},
+        model_id: typeof model_id === "string" && model_id.trim() ? model_id.trim() : null,
       })
       .select()
       .single();

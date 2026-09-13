@@ -14,6 +14,7 @@ import { trackReferralShared, trackSafetyHubNav } from "@/lib/analytics";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ProfileCompletion {
   percentage?: number;
@@ -212,7 +213,7 @@ export default function AccountSettingsScreen() {
               {t("customer.accountSettings.profileCompletionBanner", { pct: completionPct })}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
+          <DirectionalIcon name="chevron-forward" size={20} color={Colors.primary} />
         </TouchableOpacity>
       )}
 
@@ -241,7 +242,7 @@ export default function AccountSettingsScreen() {
                     backgroundColor: Colors.gray[50],
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 12,
+                    marginEnd: 12,
                   }}
                 >
                   <Ionicons name={item.icon} size={18} color={Colors.primary} />
@@ -250,7 +251,7 @@ export default function AccountSettingsScreen() {
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{item.title}</Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{item.desc}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+                <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
               </TouchableOpacity>
             ))}
           </View>
@@ -265,14 +266,14 @@ export default function AccountSettingsScreen() {
           accessibilityLabel={t("customer.accountSettings.accessibilityShare")}
           accessibilityRole="button"
         >
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Ionicons name="share-social-outline" size={18} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{t("customer.accountSettings.shareFooterTitle")}</Text>
             <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("customer.accountSettings.shareFooterDesc")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleRateStore}
@@ -280,7 +281,7 @@ export default function AccountSettingsScreen() {
           accessibilityLabel={t("customer.accountSettings.accessibilityRateStore")}
           accessibilityRole="button"
         >
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Ionicons name="star-outline" size={18} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
@@ -295,14 +296,14 @@ export default function AccountSettingsScreen() {
           accessibilityLabel={t("customer.accountSettings.accessibilityHelp")}
           accessibilityRole="button"
         >
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Ionicons name="help-circle-outline" size={18} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{t("customer.accountSettings.helpTitle")}</Text>
             <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("customer.accountSettings.helpDesc")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/about")}
@@ -310,14 +311,14 @@ export default function AccountSettingsScreen() {
           accessibilityLabel={t("customer.accountSettings.accessibilityAbout")}
           accessibilityRole="button"
         >
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{t("customer.accountSettings.aboutTitle")}</Text>
             <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("customer.accountSettings.aboutDesc")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
@@ -334,14 +335,14 @@ export default function AccountSettingsScreen() {
           }
           style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", marginBottom: 16 }}
         >
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryLight || "#fce7f3", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryLight || "#fce7f3", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Ionicons name="storefront-outline" size={18} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{t("customer.accountSettings.becomeProviderTitle")}</Text>
             <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("customer.accountSettings.becomeProviderDesc")}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
       )}
 

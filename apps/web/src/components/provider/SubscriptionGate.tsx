@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,8 @@ export function SubscriptionGate({
   showUpgradeButton = true,
   className = "",
 }: SubscriptionGateProps) {
-  const title = feature?.trim() || "Not included in your plan";
+  const { t } = useTranslation();
+  const title = feature?.trim() || t("web.provider.bookings.detail.leftoverCopy.notIncludedInPlan");
   const body = upgradeMessage?.trim() || message;
   return (
     <Alert className={`border-yellow-200 bg-yellow-50 ${className}`}>
@@ -36,10 +39,10 @@ export function SubscriptionGate({
             <Button
               variant="default"
               size="sm"
-              className="ml-4 bg-primary hover:bg-primary-hover"
+              className="ms-4 bg-primary hover:bg-primary-hover"
             >
-              <Sparkles className="w-4 h-4 mr-2" />
-              View plans
+              <Sparkles className="w-4 h-4 me-2" />
+              {t("web.provider.portal.appointmentDialog.viewPlans")}
             </Button>
           </Link>
         )}

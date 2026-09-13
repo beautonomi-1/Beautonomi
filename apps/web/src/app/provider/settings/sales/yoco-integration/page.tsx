@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -34,6 +35,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getCsrfHeaders } from "@/lib/csrf";
 
 export default function YocoIntegrationPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { bundle, isLoading: isConfigLoading } = useConfigBundle();
@@ -98,7 +100,7 @@ export default function YocoIntegrationPage() {
       if (error instanceof Error && isPlanGateErrorCode((error as { code?: string }).code)) {
         setSubscriptionRequired(true);
       } else if (err?.name !== "FetchTimeoutError" || !err?.__cancelled) {
-        toast.error("Failed to load Yoco integration");
+        toast.error(t("web.provider.settings.pages.sales/yoco-integration.failedToLoadYocoIntegration"));
       }
     } finally {
       setIsLoading(false);
@@ -118,11 +120,11 @@ export default function YocoIntegrationPage() {
     if (!connected && !errored) return;
 
     if (connected) {
-      toast.success("Yoco connected — you can now add Web POS devices.");
+      toast.success(t("web.provider.settings.pages.sales/yoco-integration.yocoConnectedYouCanNowAdd"));
       void loadData();
     }
     if (errored) {
-      toast.error(`Yoco connection failed: ${errored}`);
+      toast.error(t("web.provider.settings.pages.sales/yoco-integration.yocoConnectionFailed", { error: errored }));
     }
     const next = new URLSearchParams(searchParams.toString());
     next.delete("yoco_connected");
@@ -153,11 +155,11 @@ export default function YocoIntegrationPage() {
         credentials: "include",
         body: JSON.stringify({ action: "dismiss" }),
       });
-      if (!res.ok) throw new Error("Dismiss failed");
+      if (!res.ok) throw new Error(t("web.provider.settings.pages.sales/yoco-integration.dismissFailed"));
       await loadData();
     } catch (err) {
       console.error(err);
-      toast.error("Could not dismiss the banner");
+      toast.error(t("web.provider.settings.pages.sales/yoco-integration.couldNotDismissTheBanner"));
     }
   };
 
@@ -165,23 +167,23 @@ export default function YocoIntegrationPage() {
     if (oauthConnected) {
       return (
         <Badge variant="default" className="bg-green-500">
-          <CheckCircle2 className="w-3 h-3 mr-1" /> Web POS connected
+          <CheckCircle2 className="w-3 h-3 me-1" /> {t("web.provider.settings.pages.sales/yoco-integration.webPosConnected")}
         </Badge>
       );
     }
     if (credentialMode === "checkout") {
       return (
         <Badge variant="secondary" className="bg-amber-100 text-amber-900 border-amber-200">
-          <AlertTriangle className="w-3 h-3 mr-1" /> Checkout only — reconnect for terminals
+          <AlertTriangle className="w-3 h-3 me-1" /> {t("web.provider.settings.pages.sales/yoco-integration.checkoutOnlyReconnect")}
         </Badge>
       );
     }
     return (
       <Badge variant="secondary">
-        <XCircle className="w-3 h-3 mr-1" /> Not connected
+        <XCircle className="w-3 h-3 me-1" /> {t("web.provider.settings.pages.sales/yoco-integration.notConnected")}
       </Badge>
     );
-  }, [oauthConnected, credentialMode]);
+  }, [oauthConnected, credentialMode, t]);
 
   const handleConnectOauth = () => {
     const returnTo = "/provider/settings/sales/yoco-integration";
@@ -189,7 +191,7 @@ export default function YocoIntegrationPage() {
   };
 
   const handleDisconnectOauth = async () => {
-    if (!confirm("Disconnect Yoco Web POS? You'll need to reconnect to add new card terminals.")) {
+    if (!confirm(t("web.provider.settings.pages.sales/yoco-integration.disconnectConfirm"))) {
       return;
     }
     try {
@@ -199,12 +201,12 @@ export default function YocoIntegrationPage() {
         headers: getCsrfHeaders(),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Disconnect failed");
-      toast.success("Yoco disconnected");
+if (!res.ok) throw new Error(t("web.provider.settings.pages.sales/yoco-integration.disconnectFailed"));
+      toast.success(t("web.provider.settings.pages.sales/yoco-integration.yocoDisconnected"));
       await loadData();
     } catch (err) {
       console.error(err);
-      toast.error("Could not disconnect Yoco");
+      toast.error(t("web.provider.settings.pages.sales/yoco-integration.couldNotDisconnectYoco"));
     } finally {
       setIsSaving(false);
     }
@@ -216,10 +218,10 @@ export default function YocoIntegrationPage() {
       const updated = await providerApi.updateYocoIntegration({ is_enabled: enabled });
       setIntegration(updated);
       invalidateSetupStatusCache();
-      toast.success(enabled ? "Yoco integration enabled" : "Yoco integration disabled");
+toast.success(enabled ? t("web.provider.settings.pages.sales/yoco-integration.yocoIntegrationEnabled") : t("web.provider.settings.pages.sales/yoco-integration.yocoIntegrationDisabled"));
     } catch (error: unknown) {
       console.error("Failed to update integration:", error);
-      if (toastPlanGateError(error, "Failed to update integration")) {
+if (toastPlanGateError(error, t("web.provider.settings.pages.sales/yoco-integration.failedToUpdateIntegration"))) {
         setSubscriptionRequired(true);
       }
     } finally {
@@ -237,11 +239,11 @@ export default function YocoIntegrationPage() {
       });
       setIntegration(updated);
       invalidateSetupStatusCache();
-      toast.success("Checkout API keys saved");
+      toast.success(t("web.provider.settings.pages.sales/yoco-integration.checkoutApiKeysSaved"));
       setShowKeys(false);
     } catch (error: unknown) {
       console.error("Failed to save keys:", error);
-      if (toastPlanGateError(error, "Failed to save API keys")) {
+if (toastPlanGateError(error, t("web.provider.settings.pages.sales/yoco-integration.failedToSaveApiKeys"))) {
         setSubscriptionRequired(true);
       }
     } finally {
@@ -250,17 +252,17 @@ export default function YocoIntegrationPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Yoco Integration" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.sales/yoco-integration.yocoIntegration") },
   ];
 
   if (isConfigLoading || isLoading) {
     return (
       <SettingsDetailLayout
-        title="Yoco Integration"
-        subtitle="Connect your Yoco payment devices to accept card payments"
+        title={t("web.provider.settings.categories.sales.items.yocoIntegration.title")}
+        subtitle={t("web.provider.settings.categories.sales.items.yocoIntegration.description")}
         breadcrumbs={breadcrumbs}
       >
         <div className="space-y-6">
@@ -274,17 +276,16 @@ export default function YocoIntegrationPage() {
   if (!yocoEnabled) {
     return (
       <SettingsDetailLayout
-        title="Yoco Integration"
-        subtitle="Yoco is currently unavailable"
+        title={t("web.provider.settings.pages.sales/yoco-integration.yocoIntegration")}
+        subtitle={t("web.provider.settings.pages.sales/yoco-integration.yocoIsCurrentlyUnavailable")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
           <div className="py-8 text-center">
             <CreditCard className="mx-auto mb-3 h-8 w-8 text-gray-400" />
-            <h2 className="text-base font-semibold text-gray-900">Yoco payments are disabled</h2>
+<h2 className="text-base font-semibold text-gray-900">{t("web.provider.settings.pages.sales/yoco-integration.yocoPaymentsDisabled")}</h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
-              Yoco card terminals and hosted checkout are not available for this market right now.
-              Contact support if you expected to use Yoco.
+{t("web.provider.settings.pages.sales/yoco-integration.yocoUnavailableBody")}
             </p>
           </div>
         </SectionCard>
@@ -294,8 +295,8 @@ export default function YocoIntegrationPage() {
 
   return (
     <SettingsDetailLayout
-      title="Yoco Integration"
-      subtitle="Connect your Yoco payment devices to accept card payments"
+      title={t("web.provider.settings.pages.sales/yoco-integration.yocoIntegration")}
+      subtitle={t("web.provider.settings.pages.sales/yoco-integration.connectYourYocoPaymentDevicesTo")}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-6">
@@ -311,9 +312,9 @@ export default function YocoIntegrationPage() {
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-900 text-sm flex items-start justify-between gap-3">
               <span>
-                <strong>Card terminals now require a one-time Yoco reconnect.</strong>{" "}
-                Your existing online checkout keys keep working — tap{" "}
-                <em>Connect Yoco</em> below to enable Web POS card terminals.
+<strong>{t("web.provider.settings.pages.sales/yoco-integration.reconnectBanner")}</strong>{" "}
+                {t("web.provider.settings.pages.sales/yoco-integration.reconnectBannerRest")}{" "}
+                <em>{t("web.provider.settings.pages.sales/yoco-integration.connectYoco")}</em> {t("web.provider.settings.pages.sales/yoco-integration.reconnectBannerEnd")}
               </span>
               <Button
                 variant="ghost"
@@ -321,7 +322,7 @@ export default function YocoIntegrationPage() {
                 className="text-amber-900 hover:text-amber-950 shrink-0"
                 onClick={handleDismissReconnectBanner}
               >
-                Dismiss
+{t("web.provider.common.dismiss")}
               </Button>
             </AlertDescription>
           </Alert>
@@ -339,11 +340,9 @@ export default function YocoIntegrationPage() {
         <SectionCard>
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Connect Yoco (recommended)</h3>
+<h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.sales/yoco-integration.connectYocoRecommended")}</h3>
               <p className="text-sm text-gray-600">
-                Sign in with Yoco to enable Web POS card terminals, payments,
-                refunds and webhooks. This is the only way to accept in-person
-                card payments through Beautonomi.
+{t("web.provider.settings.pages.sales/yoco-integration.connectYocoBody")}
               </p>
             </div>
             <div className="shrink-0">{oauthBadge}</div>
@@ -356,20 +355,19 @@ export default function YocoIntegrationPage() {
                 <AlertDescription className="text-green-900 text-sm">
                   <div className="space-y-1">
                     <div>
-                      Connected as{" "}
+{t("web.provider.settings.pages.sales/yoco-integration.connectedAs")}{" "}
                       <strong>
                         {integration?.oauth_business_name ||
                           integration?.oauth_user_email ||
-                          "Yoco account"}
+t("web.provider.settings.pages.sales/yoco-integration.yocoAccount")}
                       </strong>
                       .
                     </div>
                     <div className="text-xs">
-                      Environment: <span className="uppercase">{environment}</span>
+{t("web.provider.settings.pages.sales/yoco-integration.environment")} <span className="uppercase">{environment}</span>
                       {integration?.oauth_expires_at ? (
                         <>
-                          {" • "}token refreshes automatically (current expiry{" "}
-                          {new Date(integration.oauth_expires_at).toLocaleString()})
+{" • "}{t("web.provider.settings.pages.sales/yoco-integration.tokenRefreshes", { date: new Date(integration.oauth_expires_at).toLocaleString() })}
                         </>
                       ) : null}
                     </div>
@@ -378,7 +376,7 @@ export default function YocoIntegrationPage() {
               </Alert>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={handleConnectOauth} disabled={isSaving}>
-                  Reconnect
+{t("web.provider.common.reconnect")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -386,15 +384,15 @@ export default function YocoIntegrationPage() {
                   disabled={isSaving}
                   className="text-red-600 hover:text-red-700"
                 >
-                  Disconnect
+{t("web.provider.settings.pages.sales/yoco-integration.disconnect")}
                 </Button>
               </div>
               {integration?.oauth_last_refresh_error && (
                 <Alert className="mt-3 bg-red-50 border-red-200">
                   <AlertDescription className="text-red-900 text-sm">
-                    Last token refresh failed:{" "}
-                    {integration.oauth_last_refresh_error}. Click <em>Reconnect</em>{" "}
-                    to restore Web POS access.
+{t("web.provider.settings.pages.sales/yoco-integration.lastTokenRefreshFailed")}{" "}
+                    {integration.oauth_last_refresh_error}. <em>{t("web.provider.common.reconnect")}</em>{" "}
+                    {t("web.provider.settings.pages.sales/yoco-integration.reconnectToRestore")}
                   </AlertDescription>
                 </Alert>
               )}
@@ -403,14 +401,12 @@ export default function YocoIntegrationPage() {
             <>
               <Alert className="bg-blue-50 border-blue-200 mb-4">
                 <AlertDescription className="text-blue-900 text-sm">
-                  We will redirect you to <strong>yoco.com</strong> to authorise
-                  Beautonomi. After you approve, you can add Web POS devices and
-                  start charging cards.
+{t("web.provider.settings.pages.sales/yoco-integration.redirectToYoco")} <strong>{t("web.provider.settings.pages.sales/yoco-integration.yocoCom")}</strong> {t("web.provider.settings.pages.sales/yoco-integration.redirectToYocoRest")}
                 </AlertDescription>
               </Alert>
               <Button onClick={handleConnectOauth} disabled={isSaving} size="lg">
-                <Plug className="w-4 h-4 mr-2" />
-                Connect Yoco
+                <Plug className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.sales/yoco-integration.connectYoco")}
               </Button>
             </>
           )}
@@ -421,19 +417,19 @@ export default function YocoIntegrationPage() {
         <SectionCard>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Integration status</h3>
+<h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.sales/yoco-integration.integrationStatus")}</h3>
               <p className="text-sm text-gray-600">
-                Master toggle for Yoco payments across the salon.
+{t("web.provider.settings.pages.sales/yoco-integration.masterToggle")}
               </p>
             </div>
             <div className="flex items-center gap-3">
               {integration?.is_enabled ? (
                 <Badge variant="default" className="bg-green-500">
-                  <CheckCircle2 className="w-3 h-3 mr-1" /> Enabled
+<CheckCircle2 className="w-3 h-3 me-1" /> {t("web.provider.common.enabled")}
                 </Badge>
               ) : (
                 <Badge variant="secondary">
-                  <XCircle className="w-3 h-3 mr-1" /> Disabled
+<XCircle className="w-3 h-3 me-1" /> {t("web.provider.common.disabled")}
                 </Badge>
               )}
               <Switch
@@ -446,18 +442,16 @@ export default function YocoIntegrationPage() {
           {integration?.is_enabled && (
             <Alert className="mt-3 bg-amber-50 border-amber-200">
               <AlertDescription className="text-amber-900 text-sm">
-                <strong>Refunds:</strong> Card refunds for Yoco payments are
-                processed in your{" "}
+<strong>{t("web.provider.settings.pages.sales/yoco-integration.refundsLabel")}</strong> {t("web.provider.settings.pages.sales/yoco-integration.refundsBody")}{" "}
                 <a
                   href="https://dashboard.yoco.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline font-medium"
                 >
-                  Yoco dashboard
+{t("web.provider.settings.pages.sales/yoco-integration.yocoDashboard")}
                 </a>
-                . When you refund a payment there, we will sync the refund to
-                the booking automatically.
+{t("web.provider.settings.pages.sales/yoco-integration.refundsBodyEnd")}
               </AlertDescription>
             </Alert>
           )}
@@ -467,17 +461,17 @@ export default function YocoIntegrationPage() {
         <SectionCard>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Payment Devices</h3>
+<h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.sales/yoco-integration.paymentDevices")}</h3>
               <p className="text-sm text-gray-600">
                 {credentialMode === "oauth"
-                  ? "Manage your Yoco Web POS devices"
-                  : "Connect Yoco first to add physical Web POS devices, or use Hosted Checkout for online payments."}
+                  ? t("web.provider.settings.pages.sales/yoco-integration.manageOauthDevices")
+                  : t("web.provider.settings.pages.sales/yoco-integration.connectFirstOrCheckout")}
               </p>
             </div>
             <Link href="/provider/settings/sales/yoco-devices">
               <Button variant="outline" size="sm">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Manage Devices
+                <CreditCard className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.sales/yoco-integration.manageDevices")}
               </Button>
             </Link>
           </div>
@@ -485,10 +479,10 @@ export default function YocoIntegrationPage() {
           {devices.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <CreditCard className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-sm">No devices connected</p>
+<p className="text-sm">{t("web.provider.settings.pages.sales/yoco-integration.noDevicesConnected")}</p>
               <Link href="/provider/settings/sales/yoco-devices">
                 <Button variant="outline" size="sm" className="mt-3">
-                  Add Your First Device
+{t("web.provider.settings.pages.sales/yoco-integration.addYourFirstDevice")}
                 </Button>
               </Link>
             </div>
@@ -502,19 +496,19 @@ export default function YocoIntegrationPage() {
                   <div>
                     <p className="font-medium">{device.name}</p>
                     <p className="text-sm text-gray-600">
-                      {device.location_name || "No location"} •{" "}
-                      {device.total_transactions || 0} transactions
+{device.location_name || t("web.provider.settings.pages.sales/yoco-integration.noLocation")} •{" "}
+{t("web.provider.settings.pages.sales/yoco-integration.transactionsCount", { count: device.total_transactions || 0 })}
                     </p>
                   </div>
                   <Badge variant={device.is_active ? "default" : "secondary"}>
-                    {device.is_active ? "Active" : "Inactive"}
+{device.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                   </Badge>
                 </div>
               ))}
               {devices.length > 3 && (
                 <Link href="/provider/settings/sales/yoco-devices">
                   <Button variant="ghost" size="sm" className="w-full">
-                    View all {devices.length} devices
+{t("web.provider.settings.pages.sales/yoco-integration.viewAllDevices", { count: devices.length })}
                   </Button>
                 </Link>
               )}
@@ -526,17 +520,15 @@ export default function YocoIntegrationPage() {
         <SectionCard>
           <button
             type="button"
-            className="w-full flex items-center justify-between text-left"
+            className="w-full flex items-center justify-between text-start"
             onClick={() => setShowAdvancedKeys((v) => !v)}
           >
             <div>
               <h3 className="text-lg font-semibold mb-1">
-                Advanced &middot; Hosted Checkout keys
+{t("web.provider.settings.pages.sales/yoco-integration.advancedHostedCheckout")}
               </h3>
               <p className="text-sm text-gray-600">
-                For taking <em>online</em> card payments via Yoco's hosted
-                checkout (no card terminal). Not required if you've connected
-                Yoco above.
+{t("web.provider.settings.pages.sales/yoco-integration.advancedHostedHint")}
               </p>
             </div>
             {showAdvancedKeys ? (
@@ -550,20 +542,18 @@ export default function YocoIntegrationPage() {
             <div className="mt-4 space-y-4">
               <Alert className="bg-amber-50 border-amber-200">
                 <AlertDescription className="text-amber-900 text-sm">
-                  <strong>Heads up:</strong> Pasting your dashboard secret key
-                  here only enables Yoco's <strong>hosted checkout pages</strong>.
-                  It will <strong>NOT</strong> enable physical card terminals —
-                  for that you must use the <em>Connect Yoco</em> button above.
+<strong>{t("web.provider.settings.pages.sales/yoco-integration.headsUp")}</strong> {t("web.provider.settings.pages.sales/yoco-integration.headsUpBody")} <strong>{t("web.provider.settings.pages.sales/yoco-integration.hostedCheckoutPages")}</strong>.
+                  {t("web.provider.settings.pages.sales/yoco-integration.headsUpNot")} <strong>{t("web.provider.settings.pages.sales/yoco-integration.not")}</strong> {t("web.provider.settings.pages.sales/yoco-integration.headsUpEnd")} <em>{t("web.provider.settings.pages.sales/yoco-integration.connectYocoButton")}</em> {t("web.provider.settings.pages.sales/yoco-integration.headsUpButtonEnd")}
                 </AlertDescription>
               </Alert>
 
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertDescription className="text-blue-900 text-sm">
-                  <p className="font-medium mb-1">How to find your keys</p>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Sign in to your Yoco business dashboard.</li>
-                    <li>Open the API credentials / developer settings.</li>
-                    <li>Copy your live public &amp; secret keys, then paste here.</li>
+<p className="font-medium mb-1">{t("web.provider.settings.pages.sales/yoco-integration.howToFindKeys")}</p>
+                  <ol className="list-decimal ps-5 space-y-1">
+<li>{t("web.provider.settings.pages.sales/yoco-integration.findKeys1")}</li>
+<li>{t("web.provider.settings.pages.sales/yoco-integration.findKeys2")}</li>
+<li>{t("web.provider.settings.pages.sales/yoco-integration.findKeys3")}</li>
                   </ol>
                 </AlertDescription>
               </Alert>
@@ -571,40 +561,40 @@ export default function YocoIntegrationPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-600">
                   {integration?.secret_key === "***"
-                    ? "Keys saved (masked). Click Edit to update."
+                    ? t("web.provider.settings.pages.sales/yoco-integration.keysSavedMasked")
                     : integration?.secret_key
-                      ? "Keys saved."
-                      : "No keys saved."}
+                      ? t("web.provider.settings.pages.sales/yoco-integration.keysSaved")
+                      : t("web.provider.settings.pages.sales/yoco-integration.noKeysSaved")}
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowKeys((v) => !v)}
                 >
-                  {showKeys ? "Cancel" : "Edit"}
+{showKeys ? t("web.provider.common.cancel") : t("web.provider.common.edit")}
                 </Button>
               </div>
 
               {showKeys && (
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="secret_key">Secret Key</Label>
+<Label htmlFor="secret_key">{t("web.provider.settings.pages.sales/yoco-integration.secretKey")}</Label>
                     <div className="relative mt-1">
                       <Input
                         id="secret_key"
                         type={showSecretKey ? "text" : "password"}
-                        placeholder="sk_live_..."
+                        placeholder={t("web.provider.settings.pages.sales/yoco-integration.skLive")}
                         value={formData.secret_key}
                         onChange={(e) =>
                           setFormData({ ...formData, secret_key: e.target.value })
                         }
-                        className="pr-10"
+                        className="pe-10"
                       />
                       <button
                         type="button"
                         onClick={() => setShowSecretKey((v) => !v)}
                         className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
-                        aria-label={showSecretKey ? "Hide secret key" : "Show secret key"}
+aria-label={showSecretKey ? t("web.provider.settings.pages.sales/yoco-integration.hideSecretKey") : t("web.provider.settings.pages.sales/yoco-integration.showSecretKey")}
                       >
                         {showSecretKey ? (
                           <EyeOff className="h-4 w-4" />
@@ -616,11 +606,11 @@ export default function YocoIntegrationPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="public_key">Public Key (optional)</Label>
+<Label htmlFor="public_key">{t("web.provider.settings.pages.sales/yoco-integration.publicKeyOptional")}</Label>
                     <Input
                       id="public_key"
                       type="text"
-                      placeholder="pk_live_..."
+                      placeholder={t("web.provider.settings.pages.sales/yoco-integration.pkLive")}
                       value={formData.public_key}
                       onChange={(e) =>
                         setFormData({ ...formData, public_key: e.target.value })
@@ -630,11 +620,11 @@ export default function YocoIntegrationPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="webhook_secret">Webhook Secret (recommended)</Label>
+<Label htmlFor="webhook_secret">{t("web.provider.settings.pages.sales/yoco-integration.webhookSecretRecommended")}</Label>
                     <Input
                       id="webhook_secret"
                       type="password"
-                      placeholder="whsec_..."
+                      placeholder={t("web.provider.settings.pages.sales/yoco-integration.whsec")}
                       value={formData.webhook_secret}
                       onChange={(e) =>
                         setFormData({ ...formData, webhook_secret: e.target.value })
@@ -642,13 +632,13 @@ export default function YocoIntegrationPage() {
                       className="mt-1"
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Required for automatic hosted checkout completion. Use the signing secret from your Yoco Checkout webhook.
+{t("web.provider.settings.pages.sales/yoco-integration.webhookSecretHint")}
                     </p>
                   </div>
 
                   <div className="flex gap-3">
                     <Button onClick={handleSaveKeys} disabled={isSaving}>
-                      Save Keys
+{t("web.provider.settings.pages.sales/yoco-integration.saveKeys")}
                     </Button>
                     <Button
                       variant="outline"
@@ -672,7 +662,7 @@ export default function YocoIntegrationPage() {
                         });
                       }}
                     >
-                      Reset
+{t("web.provider.common.reset")}
                     </Button>
                   </div>
                 </div>
@@ -686,7 +676,7 @@ export default function YocoIntegrationPage() {
                   className="text-sm text-pink-600 hover:text-pink-700 flex items-center gap-2"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  View Yoco API docs
+{t("web.provider.settings.pages.sales/yoco-integration.viewYocoApiDocs")}
                 </a>
               </div>
             </div>
@@ -695,24 +685,24 @@ export default function YocoIntegrationPage() {
 
         {integration?.connected_date && (
           <SectionCard>
-            <h3 className="text-lg font-semibold mb-3">Connection Details</h3>
+<h3 className="text-lg font-semibold mb-3">{t("web.provider.settings.pages.sales/yoco-integration.connectionDetails")}</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Connected:</span>
+<span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-integration.connected")}</span>
                 <span>{new Date(integration.connected_date).toLocaleDateString()}</span>
               </div>
               {integration.last_sync && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Last sync:</span>
+<span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-integration.lastSync")}</span>
                   <span>{new Date(integration.last_sync).toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-gray-600">Mode:</span>
+<span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-integration.mode")}</span>
                 <span className="capitalize">{credentialMode}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Environment:</span>
+<span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-integration.environment")}</span>
                 <span className="uppercase">{environment}</span>
               </div>
             </div>

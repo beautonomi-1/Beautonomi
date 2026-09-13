@@ -7,6 +7,7 @@ import type { ProductItem, ProductVariantItem } from "@/lib/provider-portal/type
 import type { AppointmentProduct } from "@/components/appointments/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CreateProductsSectionProps {
   products: AppointmentProduct[];
@@ -20,9 +21,9 @@ function stockLimitForLine(product: ProductItem, variant?: ProductVariantItem | 
   return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
 }
 
-function variantLabel(variant: ProductVariantItem): string {
+function variantLabel(variant: ProductVariantItem, fallback: string): string {
   const values = Object.values(variant.option_values ?? {});
-  return values.length > 0 ? values.join(" / ") : variant.sku ?? "Variant";
+  return values.length > 0 ? values.join(" / ") : variant.sku ?? fallback;
 }
 
 function lineKey(productId: string, variantId?: string | null) {
@@ -30,6 +31,7 @@ function lineKey(productId: string, variantId?: string | null) {
 }
 
 export function CreateProductsSection({ products, onChange }: CreateProductsSectionProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [catalog, setCatalog] = useState<ProductItem[]>([]);
   const [pickId, setPickId] = useState("");
@@ -109,7 +111,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
           productId: p.id,
           productName: p.name,
           productVariantId: variant?.id ?? null,
-          productVariantName: variant ? variantLabel(variant) : null,
+          productVariantName: variant ? variantLabel(variant, t("web.provider.portal.appointmentCreate.variantFallback")) : null,
           quantity: 1,
           unitPrice,
           totalPrice: unitPrice,
@@ -157,7 +159,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
     <BookingSectionCard>
       <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
         <ShoppingBag className="h-4 w-4" />
-        Retail products
+        {t("web.provider.portal.appointmentCreate.retailProducts")}
       </BookingSectionLabel>
       <div className="flex flex-col gap-2 mb-3">
         <select
@@ -168,7 +170,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
           }}
           className="w-full rounded-xl border px-3 min-h-[44px] text-sm"
         >
-          <option value="">Select product…</option>
+          <option value="">{t("web.provider.portal.appointmentCreate.selectProduct")}</option>
           {catalog.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} · {formatMoney(Number(p.retail_price ?? 0))}
@@ -181,16 +183,16 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
             onChange={(e) => setPickVariantId(e.target.value)}
             className="w-full rounded-xl border px-3 min-h-[44px] text-sm"
           >
-            <option value="">Select variant…</option>
+            <option value="">{t("web.provider.portal.appointmentCreate.selectVariant")}</option>
             {variantOptions.map((v) => (
               <option key={v.id} value={v.id}>
-                {variantLabel(v)} · {formatMoney(Number(v.retail_price ?? 0))}
+                {variantLabel(v, t("web.provider.portal.appointmentCreate.variantFallback"))} · {formatMoney(Number(v.retail_price ?? 0))}
               </option>
             ))}
           </select>
         ) : null}
         <BookingActionButton fullWidth={false} size="sm" disabled={!canAdd} onClick={addProduct}>
-          Add
+          {t("common.add")}
         </BookingActionButton>
       </div>
       {products.length > 0 ? (
@@ -218,7 +220,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
                   >
                     <Plus className="h-4 w-4" />
                   </button>
-                  <span className="w-16 text-right">{formatMoney(p.totalPrice)}</span>
+                  <span className="w-16 text-end">{formatMoney(p.totalPrice)}</span>
                 </div>
               </li>
             );

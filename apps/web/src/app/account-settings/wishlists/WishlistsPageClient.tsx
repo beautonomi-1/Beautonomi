@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -24,6 +25,7 @@ import type {
 } from "./wishlists-page-types";
 
 const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null }) => {
+  const { t } = useTranslation();
   const { user, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [wishlists, setWishlists] = useState<WishlistSummary[]>(() => initial?.wishlists ?? []);
@@ -116,10 +118,10 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
           console.error("Error loading wishlists:", wlErr);
           const wlErrorMessage =
             wlErr instanceof FetchTimeoutError
-              ? "Request timed out. Please try again."
+              ? t("web.accountSettings.wishlists.requestTimeout")
               : wlErr instanceof FetchError
                 ? wlErr.message
-                : "Failed to load wishlists";
+                : t("web.accountSettings.wishlists.loadWishlistsFailed");
           setDataError(wlErrorMessage);
           setWishlists([]);
         }
@@ -163,10 +165,10 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
         console.error("Unexpected error:", err);
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.accountSettings.wishlists.requestTimeout")
             : err instanceof FetchError
               ? err.message
-              : "Failed to load data";
+              : t("web.accountSettings.wishlists.loadFailed");
         setDataError(errorMessage);
       } finally {
         setSavedPostsLoading(false);
@@ -181,20 +183,20 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
     return (
       <div className='w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12 lg:py-16'>
         <div className="flex flex-col min-h-[60vh]">
-          <h2 className='text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-6 md:mb-8'>Wishlists</h2>
+          <h2 className='text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-6 md:mb-8'>{t("web.accountSettings.wishlists.title")}</h2>
           <div className="flex flex-col flex-1 justify-center">
             <p className="text-base md:text-lg font-bold text-gray-900 mb-3 md:mb-4">
-              Log in to view your wishlists
+              {t("web.accountSettings.wishlists.logInTitle")}
             </p>
             <p className="text-sm md:text-base text-gray-600 mb-8 md:mb-10 max-w-lg">
-              You can create, view, or edit wishlists once you&apos;ve logged in.
+              {t("web.accountSettings.wishlists.logInBody")}
             </p>
             <div className="flex justify-start">
               <Button
                 onClick={() => setIsLoginModalOpen(true)}
                 className="bg-[#FF0077] hover:bg-[#D60565] text-white px-6 md:px-8 py-3 md:py-4 text-base md:text-lg font-medium rounded-lg"
               >
-                Log in
+                {t("web.accountSettings.wishlists.logIn")}
               </Button>
             </div>
           </div>
@@ -215,13 +217,13 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
         <BackButton href="/account-settings" />
         <Breadcrumb 
           items={[
-            { label: "Account", href: "/account-settings" },
-            { label: "Wishlists" }
+            { label: t("web.accountSettings.wishlists.account"), href: "/account-settings" },
+            { label: t("web.accountSettings.wishlists.title") }
           ]} 
         />
-        <h2 className='text-2xl md:text-3xl font-medium text-secondary mb-4 md:mb-6'>Wishlists</h2>
+        <h2 className='text-2xl md:text-3xl font-medium text-secondary mb-4 md:mb-6'>{t("web.accountSettings.wishlists.title")}</h2>
         <div className="flex items-center justify-center py-12">
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">{t("web.accountSettings.wishlists.loading")}</p>
         </div>
       </div>
     );
@@ -233,16 +235,16 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
       <BackButton href="/account-settings" />
       <Breadcrumb 
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Wishlists" }
+          { label: t("web.accountSettings.wishlists.account"), href: "/account-settings" },
+          { label: t("web.accountSettings.wishlists.title") }
         ]} 
       />
       <div className="flex items-center justify-between mb-6">
-        <h2 className='text-2xl md:text-3xl font-medium text-secondary'>Saved</h2>
+        <h2 className='text-2xl md:text-3xl font-medium text-secondary'>{t("web.accountSettings.wishlists.saved")}</h2>
         {wishlists.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">
-              {wishlists.length} {wishlists.length === 1 ? "wishlist" : "wishlists"}
+              {wishlists.length} {wishlists.length === 1 ? t("web.accountSettings.wishlists.wishlistCountOne") : t("web.accountSettings.wishlists.wishlistCountMany")}
             </span>
           </div>
         )}
@@ -250,21 +252,21 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
 
       {dataLoading ? (
         <div className="py-12">
-          <LoadingTimeout loadingMessage="Loading your saved items…" />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.wishlists.loadingSaved")} />
         </div>
       ) : dataError ? (
         <EmptyState
-          title="Unable to load wishlists"
+          title={t("web.accountSettings.unableLoadWishlists")}
           description={dataError}
-          action={{ label: "Try Again", onClick: () => window.location.reload() }}
+          action={{ label: t("web.accountSettings.wishlists.tryAgain"), onClick: () => window.location.reload() }}
         />
       ) : savedProviders.length === 0 && savedProducts.length === 0 && savedPosts.length === 0 && !savedPostsLoading ? (
         <div className="py-12">
           <EmptyState
-            title="No saved items yet"
-            description="Save products, posts, and providers to see them here."
+            title={t("web.accountSettings.noSavedItems")}
+            description={t("web.accountSettings.wishlists.noSavedDesc")}
             action={{
-              label: "Explore",
+              label: t("web.accountSettings.wishlists.explore"),
               onClick: () => window.location.href = "/explore"
             }}
           />
@@ -275,13 +277,13 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
           {/* Boards (collections of saved posts) */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Boards</h3>
+              <h3 className="text-lg font-medium text-gray-900">{t("web.accountSettings.wishlists.boards")}</h3>
               <Button
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-2"
                 onClick={() => {
-                  const name = window.prompt("Board name (e.g. Summer looks)");
+                  const name = window.prompt(t("web.accountSettings.wishlists.boardNamePrompt"));
                   if (!name?.trim()) return;
                   setIsCreatingBoard(true);
                   fetcher
@@ -290,17 +292,17 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
                       const created = res?.data ?? res;
                       setCollections((prev) => [...prev, { id: created.id, name: created.name, slug: created.slug, post_count: 0 }]);
                     })
-                    .catch(() => { toast.error("Failed to create board. Please try again."); })
+                    .catch(() => { toast.error(t("web.accountSettings.wishlists.createBoardFailed")); })
                     .finally(() => setIsCreatingBoard(false));
                 }}
                 disabled={isCreatingBoard}
               >
                 <Plus className="h-4 w-4" />
-                {isCreatingBoard ? "Creating…" : "New board"}
+                {isCreatingBoard ? t("web.accountSettings.wishlists.creating") : t("web.accountSettings.wishlists.newBoard")}
               </Button>
             </div>
             {collections.length === 0 ? (
-              <p className="text-sm text-gray-600">Create boards to organize saved posts (e.g. Summer looks).</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.wishlists.boardsHint")}</p>
             ) : (
               <div className="flex flex-wrap gap-3">
                 {collections.map((c) => (
@@ -320,7 +322,7 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
 
           {(savedPosts.length > 0 || savedPostsLoading) && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Saved posts</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">{t("web.accountSettings.wishlists.savedPosts")}</h3>
               {savedPostsLoading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -343,7 +345,7 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
                             onClick={() => setBoardDropdownPostId((id) => (id === post.id ? null : post.id))}
                             className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-[#FF0077]"
                           >
-                            Add to board
+                            {t("web.accountSettings.wishlists.addToBoard")}
                             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${boardDropdownPostId === post.id ? "rotate-180" : ""}`} />
                           </button>
                           {boardDropdownPostId === post.id && (
@@ -375,15 +377,15 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
                                           setBoardActionLoading(false);
                                         }
                                       }}
-                                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-gray-50"
                                     >
                                       <span className="truncate">{c.name}</span>
                                       {inBoard ? (
                                         <span className="flex items-center gap-1 text-[#FF0077] shrink-0">
-                                          <Check className="h-4 w-4" /> In board
+                                          <Check className="h-4 w-4" /> {t("web.accountSettings.wishlists.inBoard")}
                                         </span>
                                       ) : (
-                                        <span className="text-gray-500 shrink-0">Add</span>
+                                        <span className="text-gray-500 shrink-0">{t("web.accountSettings.wishlists.add")}</span>
                                       )}
                                     </button>
                                   );
@@ -402,9 +404,9 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
 
           {/* Saved providers section */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Saved providers</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t("web.accountSettings.wishlists.savedProviders")}</h3>
             {savedProviders.length === 0 ? (
-              <p className="text-sm text-gray-600">No saved providers yet. Save providers from posts or search.</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.wishlists.noSavedProviders")}</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {savedProviders.map((provider) => (
@@ -420,9 +422,9 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
 
           {/* Saved products section */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Saved products</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t("web.accountSettings.wishlists.savedProducts")}</h3>
             {savedProducts.length === 0 ? (
-              <p className="text-sm text-gray-600">No saved products yet. Tap “Save to wishlist” on product pages.</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.wishlists.noSavedProducts")}</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {savedProducts.map((product) => (
@@ -442,12 +444,12 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-gray-300">
-                          <span className="text-xs">No image</span>
+                          <span className="text-xs">{t("web.accountSettings.wishlists.noImage")}</span>
                         </div>
                       )}
                       {!product.in_stock && (
                         <span className="absolute left-2 top-2 rounded-full bg-red-100 px-2 py-1 text-[11px] font-medium text-red-700">
-                          Out of stock
+                          {t("web.accountSettings.wishlists.outOfStock")}
                         </span>
                       )}
                     </div>
@@ -471,14 +473,14 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
           {wishlists.length > 1 && (
             <div className="border-t pt-8 mt-8">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Your wishlists</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t("web.accountSettings.wishlists.yourWishlists")}</h3>
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex items-center gap-2"
                 >
                   <Plus className="h-4 w-4" />
-                  New wishlist
+                  {t("web.accountSettings.wishlists.newWishlist")}
                 </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -492,13 +494,13 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
                       <h4 className="font-semibold text-gray-900">{w.name}</h4>
                       {w.is_default && (
                         <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium">
-                          Default
+                          {t("web.accountSettings.wishlists.default")}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-gray-600">
-                        {w.item_count} {w.item_count === 1 ? "item" : "items"}
+                        {w.item_count} {w.item_count === 1 ? t("web.accountSettings.wishlists.itemOne") : t("web.accountSettings.wishlists.itemMany")}
                       </p>
                       {w.cover_images && w.cover_images.length > 0 && (
                         <div className="flex -space-x-2">

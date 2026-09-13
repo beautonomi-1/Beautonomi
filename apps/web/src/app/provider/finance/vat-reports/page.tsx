@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -58,6 +59,7 @@ interface VATReportsData {
 }
 
 export default function VATReportsPage() {
+  const { t } = useTranslation();
   const locale = useTenantLocaleTag();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -96,10 +98,10 @@ export default function VATReportsPage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load VAT reports";
+          : t("web.provider.pages.finance/vat-reports.loadFailed");
       setError(errorMessage);
       console.error("Error loading VAT reports:", err);
     } finally {
@@ -109,7 +111,7 @@ export default function VATReportsPage() {
 
   const markAsRemitted = async (report: VATReport) => {
     if (!report.reminder_id) {
-      toast.error("Unable to mark as remitted. Please refresh the page.");
+      toast.error(t("web.provider.pages.finance/vat-reports.unableToMarkRemitted"));
       return;
     }
 
@@ -118,13 +120,13 @@ export default function VATReportsPage() {
         period_start: report.period_start,
         period_end: report.period_end,
       });
-      toast.success("Marked as remitted to SARS");
+      toast.success(t("web.provider.pages.finance/vat-reports.markedRemitted"));
       loadReports(); // Reload to update status
     } catch (err) {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to mark as remitted";
+          : t("web.provider.pages.finance/vat-reports.markRemittedFailed");
       toast.error(errorMessage);
     }
   };
@@ -132,15 +134,15 @@ export default function VATReportsPage() {
   const exportReport = (report: VATReport) => {
     // Create CSV content
     const csvRows = [
-      ['VAT Remittance Report', ''],
-      ['Period', report.period_label],
-      ['Period Start', report.period_start],
-      ['Period End', report.period_end],
-      ['Deadline', report.deadline_date],
-      ['VAT Collected', report.vat_collected_formatted],
-      ['Transaction Count', report.transaction_count.toString()],
+      [t("web.provider.pages.finance/vat-reports.csvTitle"), ''],
+      [t("web.provider.pages.finance/vat-reports.csvPeriod"), report.period_label],
+      [t("web.provider.pages.finance/vat-reports.csvPeriodStart"), report.period_start],
+      [t("web.provider.pages.finance/vat-reports.csvPeriodEnd"), report.period_end],
+      [t("web.provider.pages.finance/vat-reports.csvDeadline"), report.deadline_date],
+      [t("web.provider.pages.finance/vat-reports.csvVatCollected"), report.vat_collected_formatted],
+      [t("web.provider.pages.finance/vat-reports.csvTransactionCount"), report.transaction_count.toString()],
       [''],
-      ['Booking Number', 'Date', 'VAT Amount', 'Description'],
+      [t("web.provider.pages.finance/vat-reports.csvBookingNumber"), t("web.provider.common.date"), t("web.provider.pages.finance/vat-reports.csvVatAmount"), t("web.provider.common.description")],
       ...report.transactions.map(t => [
         t.booking_number,
         new Date(t.booking_date).toLocaleDateString(locale),
@@ -160,13 +162,13 @@ export default function VATReportsPage() {
     link.click();
     document.body.removeChild(link);
     
-    toast.success("VAT report exported successfully");
+    toast.success(t("web.provider.pages.finance/vat-reports.exported"));
   };
 
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading VAT reports..." />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.finance/vat-reports.loading")} />
       </div>
     );
   }
@@ -175,10 +177,10 @@ export default function VATReportsPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Failed to load VAT reports"
-          description={error || "An error occurred while loading VAT reports"}
+          title={t("web.provider.pages.finance/vat-reports.loadFailed")}
+          description={error || t("web.provider.pages.finance/vat-reports.loadError")}
           action={{
-            label: "Try Again",
+            label: t("web.provider.common.tryAgain"),
             onClick: loadReports,
           }}
         />
@@ -191,27 +193,27 @@ export default function VATReportsPage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="bg-white border rounded-lg p-8 text-center">
           <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">VAT Reports Not Available</h2>
+          <h2 className="text-2xl font-semibold mb-2">{t("web.provider.pages.finance/vat-reports.notAvailable")}</h2>
           <p className="text-gray-600 mb-4">
-            You are not VAT registered. VAT reports are only available for VAT-registered providers.
+            {t("web.provider.pages.finance/vat-reports.notRegisteredBody")}
           </p>
           <p className="text-sm text-gray-500 mb-6">
-            If you need to register for VAT, please visit{" "}
+            {t("web.provider.pages.finance/vat-reports.registerHint")}{" "}
             <a
               href="https://www.sars.gov.za/individuals/tax-types/value-added-tax-vat/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              SARS website
+              {t("web.provider.pages.finance/vat-reports.sarsWebsite")}
             </a>
-            . VAT registration is mandatory for businesses with annual turnover of R1 million or more.
+            {t("web.provider.pages.finance/vat-reports.registerMandatory")}
           </p>
           <Button
             onClick={() => window.location.href = "/provider/settings/sales/taxes"}
             className="bg-primary hover:bg-primary-hover"
           >
-            Update VAT Registration Status
+            {t("web.provider.pages.finance/vat-reports.updateVatStatus")}
           </Button>
         </div>
       </div>
@@ -226,11 +228,11 @@ export default function VATReportsPage() {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold mb-2">VAT Reports</h1>
+            <h1 className="text-3xl font-semibold mb-2">{t("web.provider.finance.vatReports")}</h1>
             <p className="text-gray-600">
-              Bi-monthly VAT reports for SARS submission
+              {t("web.provider.pages.finance/vat-reports.subtitle")}
               {data.provider.vat_number && (
-                <span className="ml-2 text-sm">• VAT Number: {data.provider.vat_number}</span>
+                <span className="ms-2 text-sm">{t("web.provider.pages.finance/vat-reports.vatNumber", { number: data.provider.vat_number })}</span>
               )}
             </p>
           </div>
@@ -253,9 +255,9 @@ export default function VATReportsPage() {
         {data.reports.length === 0 ? (
           <div className="bg-white border rounded-lg p-8 text-center">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No VAT Reports Available</h2>
+            <h2 className="text-xl font-semibold mb-2">{t("web.provider.pages.finance/vat-reports.emptyTitle")}</h2>
             <p className="text-gray-600">
-              No VAT transactions found for {selectedYear}. VAT reports will appear here once you have bookings with VAT collected.
+              {t("web.provider.pages.finance/vat-reports.emptyBody", { year: selectedYear })}
             </p>
           </div>
         ) : (
@@ -278,50 +280,49 @@ export default function VATReportsPage() {
                       {report.is_overdue ? (
                         <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium flex items-center gap-1">
                           <AlertCircle className="w-4 h-4" />
-                          Overdue
+                          {t("web.provider.pages.finance/vat-reports.overdue")}
                         </span>
                       ) : report.status === "due_soon" ? (
                         <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          Due Soon
+                          {t("web.provider.pages.finance/vat-reports.dueSoon")}
                         </span>
                       ) : (
                         <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium flex items-center gap-1">
                           <CheckCircle2 className="w-4 h-4" />
-                          Upcoming
+                          {t("web.provider.pages.finance/vat-reports.upcoming")}
                         </span>
                       )}
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <p>
-                        <strong>Period:</strong> {new Date(report.period_start).toLocaleDateString(locale)} - {new Date(report.period_end).toLocaleDateString(locale)}
+                        <strong>{t("web.provider.pages.finance/vat-reports.period")}</strong> {new Date(report.period_start).toLocaleDateString(locale)} - {new Date(report.period_end).toLocaleDateString(locale)}
                       </p>
                       <p>
-                        <strong>Deadline:</strong> {new Date(report.deadline_date).toLocaleDateString(locale, { 
+                        <strong>{t("web.provider.pages.finance/vat-reports.deadline")}</strong> {new Date(report.deadline_date).toLocaleDateString(locale, { 
                           day: 'numeric', 
                           month: 'long', 
                           year: 'numeric' 
                         })}
                         {report.days_until_deadline > 0 && (
-                          <span className="ml-2">
-                            ({report.days_until_deadline} {report.days_until_deadline === 1 ? 'day' : 'days'} remaining)
+                          <span className="ms-2">
+                            {t("web.provider.pages.finance/vat-reports.daysRemaining", { count: report.days_until_deadline })}
                           </span>
                         )}
                       </p>
                       {report.reminder_sent && (
                         <p className="text-xs text-gray-500">
-                          Reminder sent {new Date(report.reminder_sent.sent_at).toLocaleDateString(locale)} 
-                          ({report.reminder_sent.days_before_deadline} days before deadline)
+                          {t("web.provider.pages.finance/vat-reports.reminderSent", { date: new Date(report.reminder_sent.sent_at).toLocaleDateString(locale), count: report.reminder_sent.days_before_deadline })}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-end">
                     <div className="text-2xl font-bold text-primary mb-1">
                       {report.vat_collected_formatted}
                     </div>
                     <p className="text-sm text-gray-600">
-                      {report.transaction_count} {report.transaction_count === 1 ? 'transaction' : 'transactions'}
+                      {t("web.provider.pages.finance/vat-reports.transaction", { count: report.transaction_count })}
                     </p>
                   </div>
                 </div>
@@ -329,7 +330,7 @@ export default function VATReportsPage() {
                 {report.transactions.length > 0 && (
                   <div className="mt-4 border-t pt-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-semibold">Transaction Details</h4>
+                      <h4 className="font-semibold">{t("web.provider.pages.finance/vat-reports.transactionDetails")}</h4>
                       <Button
                         variant="outline"
                         size="sm"
@@ -337,17 +338,17 @@ export default function VATReportsPage() {
                         className="flex items-center gap-2"
                       >
                         <Download className="w-4 h-4" />
-                        Export CSV
+                        {t("web.provider.common.exportCsv")}
                       </Button>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b">
-                            <th className="text-left py-2 px-3">Booking #</th>
-                            <th className="text-left py-2 px-3">Date</th>
-                            <th className="text-right py-2 px-3">VAT Amount</th>
-                            <th className="text-left py-2 px-3">Description</th>
+                            <th className="text-start py-2 px-3">{t("web.provider.pages.finance/vat-reports.bookingHash")}</th>
+                            <th className="text-start py-2 px-3">{t("web.provider.common.date")}</th>
+                            <th className="text-end py-2 px-3">{t("web.provider.pages.finance/vat-reports.vatAmount")}</th>
+                            <th className="text-start py-2 px-3">{t("web.provider.common.description")}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -357,11 +358,11 @@ export default function VATReportsPage() {
                               <td className="py-2 px-3">
                                 {new Date(transaction.booking_date).toLocaleDateString(locale)}
                               </td>
-                              <td className="text-right py-2 px-3 font-medium">
+                              <td className="text-end py-2 px-3 font-medium">
                                 {formatCurrency(transaction.amount, tenantCurrency)}
                               </td>
                               <td className="py-2 px-3 text-gray-600">
-                                {transaction.description || 'N/A'}
+                                {transaction.description || t("web.provider.pages.finance/vat-reports.na")}
                               </td>
                             </tr>
                           ))}
@@ -377,16 +378,16 @@ export default function VATReportsPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-green-800 font-medium mb-1">
-                            ✓ Remitted to SARS
+                            {t("web.provider.pages.finance/vat-reports.remittedToSars")}
                           </p>
                           <p className="text-xs text-green-700">
-                            Confirmed on {report.remitted_at ? new Date(report.remitted_at).toLocaleDateString(locale, { 
+                            {t("web.provider.pages.finance/vat-reports.confirmedOn", { date: report.remitted_at ? new Date(report.remitted_at).toLocaleDateString(locale, { 
                               day: 'numeric', 
                               month: 'long', 
                               year: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit'
-                            }) : 'N/A'}
+                            }) : t("web.provider.pages.finance/vat-reports.na") })}
                           </p>
                         </div>
                         <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -396,19 +397,22 @@ export default function VATReportsPage() {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <div className="mb-3">
                         <p className="text-sm text-blue-800">
-                          <strong>Next Steps:</strong> Remit {report.vat_collected_formatted} to SARS by{" "}
-                          {new Date(report.deadline_date).toLocaleDateString(locale, { 
-                            day: 'numeric', 
-                            month: 'long', 
-                            year: 'numeric' 
-                          })}.{" "}
+                          <strong>{t("web.provider.pages.finance/vat-reports.nextSteps")}</strong>{" "}
+                          {t("web.provider.pages.finance/vat-reports.nextStepsBody", {
+                            amount: report.vat_collected_formatted,
+                            date: new Date(report.deadline_date).toLocaleDateString(locale, {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                            }),
+                          })}{" "}
                           <a
                             href="https://www.sars.gov.za/individuals/tax-types/value-added-tax-vat/"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="underline font-medium"
                           >
-                            Submit via SARS eFiling →
+                            {t("web.provider.pages.finance/vat-reports.submitEfiling")}
                           </a>
                         </p>
                       </div>
@@ -416,8 +420,8 @@ export default function VATReportsPage() {
                         onClick={() => markAsRemitted(report)}
                         className="w-full bg-green-600 hover:bg-green-700 text-white"
                       >
-                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                        Mark as Remitted to SARS
+                        <CheckCircle2 className="w-4 h-4 me-2" />
+                        {t("web.provider.pages.finance/vat-reports.markAsRemitted")}
                       </Button>
                     </div>
                   )}

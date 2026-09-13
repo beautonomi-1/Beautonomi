@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -29,28 +30,27 @@ import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../ut
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { ProviderRefundsReportResponse } from "@/app/api/provider/reports/payments/refunds/route";
 
-const METHOD_LABEL: Record<string, string> = {
-  ledger: "Ledger (unlinked)",
-  product_order: "Retail / product order",
-  paystack: "Paystack",
-  yoco: "Yoco",
-  stripe: "Stripe",
-  cash: "Cash",
-  card: "Card",
-  wallet: "Wallet",
-  bank_transfer: "Bank transfer",
-  other: "Other",
+const METHOD_LABEL_KEYS: Record<string, string> = {
+  ledger: "web.provider.reports.pages.payments/refunds.methodLedger",
+  product_order: "web.provider.reports.pages.payments/refunds.methodProductOrder",
+  paystack: "web.provider.reports.pages.payments/refunds.methodPaystack",
+  yoco: "web.provider.reports.pages.payments/refunds.methodYoco",
+  stripe: "web.provider.reports.pages.payments/refunds.methodStripe",
+  cash: "web.provider.reports.pages.payments/refunds.methodCash",
+  card: "web.provider.reports.pages.payments/refunds.methodCard",
+  wallet: "web.provider.reports.pages.payments/refunds.methodWallet",
+  bank_transfer: "web.provider.reports.pages.payments/refunds.methodBankTransfer",
+  other: "web.provider.reports.pages.payments/refunds.methodOther",
 };
-
-function formatMethodLabel(m: string): string {
-  return METHOD_LABEL[m] ?? m.replace(/_/g, " ");
-}
 
 type RefundsData = ProviderRefundsReportResponse;
 
 export default function RefundsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const formatMethodLabel = (m: string) =>
+    METHOD_LABEL_KEYS[m] ? t(METHOD_LABEL_KEYS[m]) : m.replace(/_/g, " ");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -79,7 +79,7 @@ export default function RefundsReport() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
+      setError(err instanceof Error ? err.message : t("web.provider.common.failedToLoadReport"));
       setData(null);
       console.error("Error loading refunds:", err);
     } finally {
@@ -104,10 +104,10 @@ export default function RefundsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Refunds" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/refunds.title") },
         ]}
       >
         <ReportSkeleton />
@@ -119,15 +119,15 @@ export default function RefundsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Refunds" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/refunds.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Refunds" />
-          <ReportSubscriptionRequired feature="Refunds" />
+          <PageHeader title={t("web.provider.reports.pages.payments/refunds.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.payments/refunds.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -137,15 +137,15 @@ export default function RefundsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Refunds" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/refunds.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load refunds data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.payments/refunds.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -157,21 +157,21 @@ export default function RefundsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Refunds" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.payments/refunds.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Refunds"
-          subtitle="Ledger refund rows and provider earnings reversals — same window as your filters"
+          title={t("web.provider.reports.pages.payments/refunds.title")}
+          subtitle={t("web.provider.reports.pages.payments/refunds.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport} className="min-h-[44px]">
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.dataTableShell.export")}
             </Button>
           }
         />
@@ -181,12 +181,12 @@ export default function RefundsReport() {
         <Alert className="border-sky-200 bg-sky-50 text-sky-950">
           <Info className="h-4 w-4 text-sky-800" />
           <div>
-            <AlertTitle className="text-sky-950">How to read this report</AlertTitle>
+            <AlertTitle className="text-sky-950">{t("web.provider.reports.pages.payments/refunds.howToRead")}</AlertTitle>
             <AlertDescription className="text-sky-950/90 space-y-2 text-sm leading-relaxed">
               <p>{data.reportBasis}</p>
               {data.timezone ? (
                 <p className="text-xs text-sky-900/85">
-                  Dates bucket using provider timezone: <strong>{data.timezone}</strong>
+                  {t("web.provider.reports.pages.payments/refunds.datesBucket", { timezone: data.timezone })}
                 </p>
               ) : null}
             </AlertDescription>
@@ -195,9 +195,9 @@ export default function RefundsReport() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <Card className="border-gray-200 border-l-4 border-l-rose-500">
+          <Card className="border-gray-200 border-s-4 border-s-rose-500">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Refund ledger rows</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.refundLedgerRows")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -205,27 +205,27 @@ export default function RefundsReport() {
                 <RefreshCw className="w-5 h-5 shrink-0 text-rose-600" />
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Count of <code className="text-[11px]">finance_transactions</code> refund rows in range
+                {t("web.provider.reports.pages.payments/refunds.refundLedgerHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Customer refund gross</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.customerRefundGross")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalRefundAmount)}</p>
                 <DollarSign className="w-5 h-5 shrink-0 text-red-600" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">Absolute sum of refund row amounts (money back to customers)</p>
+              <p className="text-xs text-gray-500 mt-2">{t("web.provider.reports.pages.payments/refunds.customerRefundHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Provider earnings reversal</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.providerReversal")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -234,13 +234,13 @@ export default function RefundsReport() {
                 </p>
                 <Wallet className="w-5 h-5 shrink-0 text-violet-600" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">Negative provider_earnings ledger rows (your net clawback)</p>
+              <p className="text-xs text-gray-500 mt-2">{t("web.provider.reports.pages.payments/refunds.providerReversalHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Payment ledger (denominator)</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.paymentLedgerDenom")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -248,34 +248,34 @@ export default function RefundsReport() {
                 <Percent className="w-5 h-5 shrink-0 text-slate-600" />
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Sum of payment-type ledger rows in the same filter — used only for the ratio below
+                {t("web.provider.reports.pages.payments/refunds.paymentLedgerHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Refund ÷ payment ledger</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.refundDivPayment")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{share.toFixed(2)}%</p>
                 <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">Not “refunds ÷ revenue” — different ledger slices</p>
+              <p className="text-xs text-gray-500 mt-2">{t("web.provider.reports.pages.payments/refunds.refundDivHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg refund</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/refunds.avgRefund")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.averageRefundAmount)}</p>
                 <TrendingDown className="w-5 h-5 shrink-0 text-gray-600" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">Mean customer refund gross per refund row</p>
+              <p className="text-xs text-gray-500 mt-2">{t("web.provider.reports.pages.payments/refunds.avgRefundHint")}</p>
             </CardContent>
           </Card>
         </div>
@@ -283,15 +283,14 @@ export default function RefundsReport() {
         {/* Refunds by Method */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>By refund path</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.payments/refunds.byRefundPath")}</CardTitle>
             <p className="text-sm text-gray-500 font-normal mt-1">
-              Grouped from linked booking payments when <code className="text-xs">source_refund_id</code> exists;
-              product-order refunds are labeled separately.
+              {t("web.provider.reports.pages.payments/refunds.byRefundPathHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.methodBreakdown.length === 0 ? (
-              <EmptyReportState title="No refunds" description="No refund ledger rows in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.payments/refunds.noRefunds")} description={t("web.provider.reports.pages.payments/refunds.noRefundsDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.methodBreakdown.map((method) => (
@@ -302,11 +301,13 @@ export default function RefundsReport() {
                     <div>
                       <p className="font-medium text-gray-900">{formatMethodLabel(method.method)}</p>
                       <p className="text-sm text-gray-600">
-                        {method.percentage.toFixed(1)}% of refund gross · {method.count} row
-                        {method.count !== 1 ? "s" : ""}
+                        {t("web.provider.reports.pages.payments/refunds.ofRefundGross", {
+                          pct: method.percentage.toFixed(1),
+                          count: method.count,
+                        })}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold tabular-nums text-gray-900">{fmt(method.amount)}</p>
                     </div>
                   </div>
@@ -319,7 +320,7 @@ export default function RefundsReport() {
         {data.dailyBreakdown.length > 0 ? (
           <Card className="border-gray-200">
             <CardHeader>
-              <CardTitle>By day (provider timezone)</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.payments/refunds.byDay")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -327,7 +328,7 @@ export default function RefundsReport() {
                   <div key={d.date} className="rounded-xl border border-gray-100 bg-white p-4">
                     <p className="text-xs font-medium text-gray-500">{d.date}</p>
                     <p className="text-lg font-semibold tabular-nums text-gray-900 mt-1">{fmt(d.amount)}</p>
-                    <p className="text-xs text-gray-500">{d.count} row{d.count !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-500">{t("web.provider.reports.pages.payments/refunds.rowsCount", { count: d.count })}</p>
                   </div>
                 ))}
               </div>
@@ -338,11 +339,11 @@ export default function RefundsReport() {
         {/* Recent Refunds */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Recent refund rows</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.payments/refunds.recentRefundRows")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.recentRefunds.length === 0 ? (
-              <EmptyReportState title="No refunds" description="No refund ledger rows in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.payments/refunds.noRefunds")} description={t("web.provider.reports.pages.payments/refunds.noRefundsDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.recentRefunds.map((refund) => (
@@ -352,12 +353,12 @@ export default function RefundsReport() {
                   >
                     <div>
                       <p className="font-medium text-gray-900">
-                        {refund.paymentMethodLabel ? formatMethodLabel(refund.paymentMethodLabel) : "Ledger"}
+                        {refund.paymentMethodLabel ? formatMethodLabel(refund.paymentMethodLabel) : t("web.provider.reports.pages.payments/refunds.ledger")}
                         {refund.booking_id ? (
-                          <span className="text-xs font-normal text-gray-500 ml-2">booking-linked</span>
+                          <span className="text-xs font-normal text-gray-500 ms-2">{t("web.provider.reports.pages.payments/refunds.bookingLinked")}</span>
                         ) : null}
                         {refund.product_order_id ? (
-                          <span className="text-xs font-normal text-gray-500 ml-2">order-linked</span>
+                          <span className="text-xs font-normal text-gray-500 ms-2">{t("web.provider.reports.pages.payments/refunds.orderLinked")}</span>
                         ) : null}
                       </p>
                       <p className="text-sm text-gray-600">
@@ -365,9 +366,9 @@ export default function RefundsReport() {
                       </p>
                       {refund.reason ? <p className="text-xs text-gray-500 mt-1 line-clamp-2">{refund.reason}</p> : null}
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold tabular-nums text-red-700">{fmt(refund.amount)}</p>
-                      <p className="text-xs text-gray-500">customer refund gross</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.reports.pages.payments/refunds.customerRefundGrossLabel")}</p>
                     </div>
                   </div>
                 ))}

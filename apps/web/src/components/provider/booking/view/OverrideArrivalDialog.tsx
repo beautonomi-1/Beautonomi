@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useState } from "react";
 import {
   Dialog,
@@ -25,6 +27,7 @@ export function OverrideArrivalDialog({
   saving = false,
   onConfirm,
 }: OverrideArrivalDialogProps) {
+  const { t } = useTranslation();
   const [reason, setReason] = useState("");
 
   const handleOpenChange = (next: boolean) => {
@@ -42,15 +45,15 @@ export function OverrideArrivalDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Manual arrival verification</DialogTitle>
+          <DialogTitle>{t("web.overrideArrival.title")}</DialogTitle>
           <DialogDescription>
-            Customer can&apos;t verify — briefly describe why (required for audit).
+            {t("web.overrideArrival.description")}
           </DialogDescription>
         </DialogHeader>
         <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="e.g. Customer phone battery dead, verified identity in person"
+          placeholder={t("web.overrideArrival.placeholder")}
           rows={4}
           className="rounded-xl min-h-[88px]"
           autoFocus
@@ -60,14 +63,14 @@ export function OverrideArrivalDialog({
             disabled={saving || !reason.trim()}
             onClick={handleConfirm}
           >
-            {saving ? "Saving…" : "Verify manually"}
+            {saving ? t("web.overrideArrival.saving") : t("web.overrideArrival.verifyManually")}
           </BookingActionButton>
           <BookingActionButton
             variant="outline"
             disabled={saving}
             onClick={() => handleOpenChange(false)}
           >
-            Cancel
+            {t("common.cancel")}
           </BookingActionButton>
         </DialogFooter>
       </DialogContent>

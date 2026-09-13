@@ -11,6 +11,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { Booking, BookingEvent, AdditionalCharge } from "@/types/beautonomi";
 import { formatOTP } from "@/lib/otp/generator";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
@@ -347,7 +348,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
-    return date.toLocaleString("en-US", {
+    return date.toLocaleString(getDefaultMoneyLocale(), {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -443,7 +444,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
                   <div className="w-2 h-2 bg-white rounded-full"></div>
                 ) : null}
               </div>
-              <div className={`ml-4 flex-1 ${step.completed || step.current ? "text-gray-900 font-medium" : "text-gray-500 font-light"}`}>
+              <div className={`ms-4 flex-1 ${step.completed || step.current ? "text-gray-900 font-medium" : "text-gray-500 font-light"}`}>
                 <div>{step.label}</div>
                 {step.timestamp && (
                   <div className="text-xs text-gray-400 font-light mt-1">
@@ -714,7 +715,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
               {booking.provider?.business_name?.charAt(0)?.toUpperCase() ?? "P"}
             </AvatarFallback>
           </Avatar>
-          <div className="ml-3">
+          <div className="ms-3">
             <div className="font-medium">{booking.provider?.business_name ?? "Provider"}</div>
             <div className="text-yellow-500">★★★★★</div>
           </div>
@@ -728,7 +729,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
             }
           }}
         >
-          <MessageCircle className="w-4 h-4 mr-2" />
+          <MessageCircle className="w-4 h-4 me-2" />
           Message
         </Button>
       </div>

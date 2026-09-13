@@ -13,7 +13,7 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
       horizontal
       showsHorizontalScrollIndicator={false}
       nestedScrollEnabled
-      contentContainerStyle={{ paddingVertical: 4, paddingRight: 16, flexDirection: "row", alignItems: "center" }}
+      contentContainerStyle={{ paddingVertical: 4, paddingEnd: 16, flexDirection: "row", alignItems: "center" }}
     >
       {options.map((opt) => {
         const isActive = selected === opt.value;
@@ -27,7 +27,7 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
               borderRadius: 9999,
               paddingHorizontal: 20,
               paddingVertical: 10,
-              marginRight: 8,
+              marginEnd: 8,
               ...(isActive ? { backgroundColor: Colors.primary } : { borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff" }),
             }}
             onPress={() => onSelect(opt.value)}

@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -25,6 +26,8 @@ interface Subscription {
 
 export default function UpgradeInfoScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const ui = (key: string) => t(`provider.mobile.screens.upgradeInfo.${key}`) as string;
   const { data: subscription, loading, error } = useApi<Subscription | null>("/api/provider/subscription");
 
   const openUpgrade = () => {
@@ -37,7 +40,7 @@ export default function UpgradeInfoScreen() {
   if (loading && subscription == null) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Upgrade to Salon" onBack={() => router.back()} />
+        <ScreenHeader title={ui("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -47,7 +50,7 @@ export default function UpgradeInfoScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Upgrade to Salon" onBack={() => router.back()} />
+      <ScreenHeader title={ui("title")} onBack={() => router.back()} />
       <View style={twStyle("px-4 pt-4 pb-8")}>
         {error && (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
@@ -57,23 +60,23 @@ export default function UpgradeInfoScreen() {
 
         {planName && (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4")}>
-            <Text style={twStyle("text-sm font-medium text-gray-600")}>Current plan</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-600")}>{ui("currentPlan")}</Text>
             <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")}>{planName}</Text>
             {hasActive && (
-              <Text style={twStyle("mt-1 text-xs text-gray-500")}>Active subscription</Text>
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>{ui("activeSubscription")}</Text>
             )}
           </View>
         )}
 
         <View style={twStyle("mb-4 flex-row items-center rounded-xl border border-pink-200 bg-pink-50 p-4")}>
           <Ionicons name="sparkles" size={28} color="#ec4899" />
-          <Text style={twStyle("ml-3 flex-1 text-base font-medium text-pink-900")}>
-            Unlock team management, multiple locations, and advanced features.
+          <Text style={twStyle("ms-3 flex-1 text-base font-medium text-pink-900")}>
+            {ui("unlockBody")}
           </Text>
         </View>
 
         <Text style={twStyle("text-base text-gray-700 leading-6")}>
-          Compare plans in the app and continue to secure checkout from the subscription screen. Paid tiers match the public pricing catalog for your region.
+          {ui("compareBody")}
         </Text>
 
         <TouchableOpacity
@@ -82,7 +85,7 @@ export default function UpgradeInfoScreen() {
           activeOpacity={0.7}
         >
           <Text style={twStyle("text-center font-semibold text-gray-900")}>
-            Upgrade plan
+            {ui("upgradePlan")}
           </Text>
         </TouchableOpacity>
       </View>

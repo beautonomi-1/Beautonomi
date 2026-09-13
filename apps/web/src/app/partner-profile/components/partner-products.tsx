@@ -9,6 +9,8 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
+import { ApproxMoneyLabel } from "@/components/i18n/ApproxMoneyLabel";
 
 interface Product {
   id: string;
@@ -34,6 +36,7 @@ const MANY_CATEGORY_PILLS = 10;
 
 export default function PartnerProducts({ slug }: PartnerProductsProps) {
   const { t } = useTranslation();
+  const { pp } = usePartnerProfileT();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -149,7 +152,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
   if (loading) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <LoadingTimeout loadingMessage="Loading shop..." />
+        <LoadingTimeout loadingMessage={pp("loadingShop")} />
       </div>
     );
   }
@@ -158,7 +161,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-12 text-center">
         <ShoppingBag className="mx-auto h-12 w-12 text-gray-300" />
-        <p className="mt-3 text-sm text-gray-500">No products available yet</p>
+        <p className="mt-3 text-sm text-gray-500">{pp("noProductsYet")}</p>
       </div>
     );
   }
@@ -166,7 +169,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-6 md:py-8">
       <h2 ref={shopHeadingRef} className="text-xl md:text-2xl font-semibold mb-4 md:mb-6">
-        Shop
+        {pp("tabShop")}
       </h2>
 
       {categoryPills.length > 1 && (
@@ -179,7 +182,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 placeholder={t("booking.filterCategoriesPlaceholder")}
-                className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+                className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
                 aria-label={t("booking.filterCategoriesPlaceholder")}
               />
             </div>
@@ -211,23 +214,23 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
                       : "bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   }`}
                 >
-                  {label}
+                  {label === "All" ? pp("filterAll") : label === "Other" ? pp("filterOther") : label}
                 </button>
               ))}
             </div>
             <button
               type="button"
               onClick={() => scroll("left")}
-              className="absolute left-0 bg-white p-1 rounded-full shadow-md hidden md:block -ml-2 z-10"
-              aria-label="Scroll categories left"
+              className="absolute left-0 bg-white p-1 rounded-full shadow-md hidden md:block -ms-2 z-10"
+              aria-label={t("web.a11y.scrollLeft")}
             >
               <ChevronLeft className="w-4 h-4 text-gray-400" />
             </button>
             <button
               type="button"
               onClick={() => scroll("right")}
-              className="absolute right-0 bg-white p-1 rounded-full shadow-md hidden md:block -mr-2 z-10"
-              aria-label="Scroll categories right"
+              className="absolute right-0 bg-white p-1 rounded-full shadow-md hidden md:block -me-2 z-10"
+              aria-label={t("web.a11y.scrollRight")}
             >
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </button>
@@ -243,14 +246,14 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
             value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
             placeholder={t("booking.searchProductsPlaceholder")}
-            className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+            className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
             aria-label={t("booking.searchProductsPlaceholder")}
           />
         </div>
       )}
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-gray-500 py-8 text-center">No products in this category.</p>
+        <p className="text-sm text-gray-500 py-8 text-center">{pp("noProductsInCategory")}</p>
       ) : (
         <>
           <div className="rounded-3xl border border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4 md:p-6 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-8">
@@ -276,7 +279,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
                   )}
                   {!p.inStock && (
                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">Out of stock</span>
+                      <span className="text-white text-sm font-medium">{pp("outOfStock")}</span>
                     </div>
                   )}
                 </div>
@@ -288,8 +291,8 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
                   ) : null}
                   <p className="font-medium text-gray-900 text-sm line-clamp-2">{p.name}</p>
                   <p className="mt-1 text-sm font-semibold text-[#FF0077]">
-                    {p.hasVariants ? "From " : ""}
-                    {p.currency} {p.price.toFixed(2)}
+                    {p.hasVariants ? pp("fromPrefix") : ""}
+                    <ApproxMoneyLabel amount={p.price} chargeCurrency={p.currency} />
                   </p>
                 </div>
               </Link>
@@ -298,7 +301,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
           {totalPages > 1 && (
             <nav
               className="mt-6 flex flex-wrap items-center justify-center gap-2"
-              aria-label="Product list pagination"
+              aria-label={pp("productPaginationA11y")}
             >
               <Button
                 type="button"

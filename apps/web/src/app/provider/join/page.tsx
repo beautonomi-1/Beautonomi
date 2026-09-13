@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { Suspense, useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -25,11 +26,12 @@ type AppLinks = {
 };
 
 export default function ProviderStaffJoinPageWrapper() {
+  const { t } = useTranslation();
   return (
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center text-gray-500">
-          Loading…
+          {t("web.provider.pages.join.loading")}
         </div>
       }
     >
@@ -39,6 +41,7 @@ export default function ProviderStaffJoinPageWrapper() {
 }
 
 function ProviderStaffJoinPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token")?.trim() || "";
@@ -52,7 +55,7 @@ function ProviderStaffJoinPage() {
 
   useEffect(() => {
     if (!token) {
-      setLoadError("Missing invite token. Open the link from your invitation email.");
+      setLoadError(t("web.provider.pages.join.missingToken"));
       return;
     }
 
@@ -65,11 +68,11 @@ function ProviderStaffJoinPage() {
         if (cancelled) return;
         setPreview(res.data ?? null);
         if (res.data?.expired && !res.data.already_accepted) {
-          setLoadError("This invite has expired. Ask your manager to send a new one.");
+          setLoadError(t("web.provider.pages.join.expired"));
         }
       } catch (err) {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Could not load invite");
+        setLoadError(err instanceof Error ? err.message : t("web.provider.pages.join.loadFailed"));
       }
     })();
 
@@ -101,7 +104,7 @@ function ProviderStaffJoinPage() {
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Could not accept invite";
+            : t("web.provider.pages.join.acceptFailed");
       setAcceptError(msg);
     } finally {
       setAccepting(false);
@@ -115,21 +118,21 @@ function ProviderStaffJoinPage() {
   }, [authLoading, user, token, preview, handleAccept]);
 
   const loginHref = `/login?next=${encodeURIComponent(`/provider/join?token=${token}`)}`;
-  const businessName = preview?.business_name || "your team";
+  const businessName = preview?.business_name || t("web.provider.pages.join.teamFallback");
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-6">
-          <PlatformLogo alt="Beautonomi" className="h-10 w-auto" width={160} height={40} />
+          <PlatformLogo alt={t("web.provider.pages.join.logoAlt")} className="h-10 w-auto" width={160} height={40} />
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Join {businessName}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{t("web.provider.pages.join.joinTitle", { name: businessName })}</h1>
           <p className="text-gray-600 mb-6">
             {preview?.staff_name
-              ? `Hi ${preview.staff_name}, you've been invited to join the team on Beautonomi.`
-              : "You've been invited to join a team on Beautonomi."}
+              ? t("web.provider.pages.join.inviteNamed", { name: preview.staff_name })
+              : t("web.provider.pages.join.inviteGeneric")}
           </p>
 
           {loadError ? (
@@ -141,25 +144,24 @@ function ProviderStaffJoinPage() {
           ) : null}
 
           {!token ? null : authLoading ? (
-            <p className="text-sm text-gray-500">Loading…</p>
+            <p className="text-sm text-gray-500">{t("web.provider.pages.join.loading")}</p>
           ) : !user ? (
             <div className="space-y-3">
               <p className="text-sm text-gray-600">
-                Sign in or create an account with{" "}
+                {t("web.provider.pages.join.signInWithEmail")}{" "}
                 {preview?.email_hint ? (
                   <span className="font-medium">{preview.email_hint}</span>
                 ) : (
-                  "the email that received this invite"
+                  t("web.provider.pages.join.theEmailThatReceived")
                 )}
-                . Use the set-password link from your invitation email, or sign in with email OTP —
-                you do not need an existing password.
+                {t("web.provider.pages.join.signInHint")}
               </p>
               <Button asChild className="w-full">
-                <Link href={loginHref}>Continue to sign in</Link>
+                <Link href={loginHref}>{t("web.provider.pages.join.continueToSignIn")}</Link>
               </Button>
             </div>
           ) : accepting ? (
-            <p className="text-sm text-gray-500">Setting up your access…</p>
+            <p className="text-sm text-gray-500">{t("web.provider.pages.join.settingUp")}</p>
           ) : preview?.already_accepted ? (
             <Button
               className="w-full"
@@ -168,11 +170,11 @@ function ProviderStaffJoinPage() {
                 router.replace("/provider/dashboard");
               }}
             >
-              Go to dashboard
+              {t("web.provider.subscription.goToDashboard")}
             </Button>
           ) : (
             <Button className="w-full" onClick={handleAccept} disabled={!preview?.valid}>
-              Accept invite
+              {t("web.provider.pages.join.acceptInvite")}
             </Button>
           )}
 
@@ -182,14 +184,14 @@ function ProviderStaffJoinPage() {
               className="mt-4 text-xs text-gray-500 underline w-full text-center"
               onClick={() => signOut().then(() => router.push(loginHref))}
             >
-              Sign in with a different account
+              {t("web.provider.pages.join.differentAccount")}
             </button>
           ) : null}
         </div>
 
         {(appLinks?.ios || appLinks?.android) && (
           <div className="mt-8 text-center">
-            <p className="text-sm font-semibold text-gray-900 mb-3">Get the Provider app</p>
+            <p className="text-sm font-semibold text-gray-900 mb-3">{t("web.provider.pages.join.getApp")}</p>
             <div className="flex flex-col gap-2">
               {appLinks.ios ? (
                 <a
@@ -198,7 +200,7 @@ function ProviderStaffJoinPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Download for iPhone
+                  {t("web.provider.pages.join.downloadIos")}
                 </a>
               ) : null}
               {appLinks.android ? (
@@ -208,7 +210,7 @@ function ProviderStaffJoinPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Download for Android
+                  {t("web.provider.pages.join.downloadAndroid")}
                 </a>
               ) : null}
             </div>

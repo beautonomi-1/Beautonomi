@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -35,6 +36,7 @@ type Promotion = {
 };
 
 export default function ProviderPromotionsPage() {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +54,7 @@ export default function ProviderPromotionsPage() {
       const res = await fetcher.get<{ data: Promotion[] }>("/api/provider/promotions");
       setPromotions(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load promo codes");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.promotions.failedToLoad"));
     } finally {
       setLoading(false);
     }
@@ -65,20 +67,20 @@ export default function ProviderPromotionsPage() {
   const handleCreate = async () => {
     const trimmedCode = code.trim().toUpperCase();
     if (!trimmedCode) {
-      toast.error("Enter a promo code");
+      toast.error(t("web.provider.pages.promotions.enterCode"));
       return;
     }
     const numValue = parseFloat(value.replace(/,/g, "."));
     if (Number.isNaN(numValue)) {
-      toast.error("Enter a valid value");
+      toast.error(t("web.provider.pages.promotions.enterValidValue"));
       return;
     }
     if (promoType === "percentage" && (numValue < 0 || numValue > 100)) {
-      toast.error("Percentage must be between 0 and 100");
+      toast.error(t("web.provider.pages.promotions.percentageRange"));
       return;
     }
     if (promoType === "fixed_amount" && numValue <= 0) {
-      toast.error("Enter a fixed amount greater than 0");
+      toast.error(t("web.provider.pages.promotions.enterFixedAmount"));
       return;
     }
     try {
@@ -90,7 +92,7 @@ export default function ProviderPromotionsPage() {
         description: description.trim() || undefined,
         public_on_profile: publicOnProfile,
       });
-      toast.success("Promo code created");
+      toast.success(t("web.provider.pages.promotions.created"));
       setCreateOpen(false);
       setCode("");
       setValue("");
@@ -99,7 +101,7 @@ export default function ProviderPromotionsPage() {
       setPromoType("percentage");
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to create promo code");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.promotions.failedToCreate"));
     } finally {
       setCreating(false);
     }
@@ -110,18 +112,18 @@ export default function ProviderPromotionsPage() {
       await fetcher.patch(`/api/provider/promotions/${p.id}`, { is_active: !p.is_active });
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Update failed");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.promotions.updateFailed"));
     }
   };
 
   const handleDelete = async (p: Promotion) => {
-    if (!window.confirm(`Remove code "${p.code}"?`)) return;
+    if (!window.confirm(t("web.provider.pages.promotions.removeConfirm", { code: p.code }))) return;
     try {
       await fetcher.delete(`/api/provider/promotions/${p.id}`);
-      toast.success("Promo code removed");
+      toast.success(t("web.provider.pages.promotions.removed"));
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Delete failed");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.promotions.deleteFailed"));
     }
   };
 
@@ -131,33 +133,32 @@ export default function ProviderPromotionsPage() {
   return (
     <div>
       <PageHeader
-        title="Promo codes"
-        subtitle="Your discounts—scoped to your bookings only"
+        title={t("web.provider.pages.promotions.title")}
+        subtitle={t("web.provider.pages.promotions.subtitle")}
         breadcrumbs={[
-          { label: "More", href: "/provider/more" },
-          { label: "Promo codes" },
+          { label: t("web.provider.common.more"), href: "/provider/more" },
+          { label: t("web.provider.pages.promotions.title") },
         ]}
         actions={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New code
+            <Plus className="h-4 w-4 me-2" />
+            {t("web.provider.pages.promotions.newCode")}
           </Button>
         }
       />
 
       <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        Codes created here apply when customers book your business. Discounts reduce what you
-        collect on covered bookings—track usage in Finance and reports.
+        {t("web.provider.pages.promotions.hint")}
       </div>
 
       {loading ? (
-        <LoadingTimeout loadingMessage="Loading promo codes…" />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.promotions.loading")} />
       ) : promotions.length === 0 ? (
         <EmptyState
           icon={Tag}
-          title="No promo codes yet"
-          description="Create a code to offer discounts on your bookings."
-          action={{ label: "Create promo code", onClick: () => setCreateOpen(true) }}
+          title={t("web.provider.pages.promotions.emptyTitle")}
+          description={t("web.provider.pages.promotions.emptyDesc")}
+          action={{ label: t("web.provider.pages.promotions.createPromoCode"), onClick: () => setCreateOpen(true) }}
         />
       ) : (
         <ul className="mt-6 space-y-3">
@@ -169,13 +170,13 @@ export default function ProviderPromotionsPage() {
               <div className="flex-1 min-w-[140px]">
                 <p className="font-mono font-bold text-gray-900">{p.code}</p>
                 <p className="text-sm text-gray-600">
-                  {formatValue(p)} · {p.uses_count} uses
+                  {formatValue(p)} · {t("web.provider.pages.promotions.usesCount", { count: p.uses_count })}
                   {p.description ? ` · ${p.description}` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={p.is_active} onCheckedChange={() => void toggleActive(p)} />
-                <span className="text-xs text-gray-500">{p.is_active ? "Active" : "Off"}</span>
+                <span className="text-xs text-gray-500">{p.is_active ? t("web.provider.common.active") : t("web.provider.pages.promotions.off")}</span>
               </div>
               <Button variant="ghost" size="icon" onClick={() => void handleDelete(p)}>
                 <Trash2 className="h-4 w-4 text-red-500" />
@@ -188,21 +189,21 @@ export default function ProviderPromotionsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create promo code</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.promotions.createPromoCode")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label htmlFor="promo-code">Code</Label>
+              <Label htmlFor="promo-code">{t("web.provider.pages.promotions.code")}</Label>
               <Input
                 id="promo-code"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="SUMMER20"
+                placeholder={t("web.provider.pages.promotions.placeholderCode")}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Type</Label>
+                <Label>{t("web.provider.common.type")}</Label>
                 <select
                   className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                   value={promoType}
@@ -210,12 +211,12 @@ export default function ProviderPromotionsPage() {
                     setPromoType(e.target.value as "percentage" | "fixed_amount")
                   }
                 >
-                  <option value="percentage">Percentage</option>
-                  <option value="fixed_amount">Fixed amount</option>
+                  <option value="percentage">{t("web.provider.pages.promotions.percentage")}</option>
+                  <option value="fixed_amount">{t("web.provider.pages.promotions.fixedAmount")}</option>
                 </select>
               </div>
               <div>
-                <Label>Value</Label>
+                <Label>{t("web.provider.pages.promotions.value")}</Label>
                 <Input
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -224,7 +225,7 @@ export default function ProviderPromotionsPage() {
               </div>
             </div>
             <div>
-              <Label>Description (optional)</Label>
+              <Label>{t("web.provider.pages.promotions.descriptionOptional")}</Label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -233,15 +234,15 @@ export default function ProviderPromotionsPage() {
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={publicOnProfile} onCheckedChange={setPublicOnProfile} />
-              Show on my public profile
+              {t("web.provider.pages.promotions.showOnProfile")}
             </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button onClick={() => void handleCreate()} disabled={creating}>
-              {creating ? "Creating…" : "Create"}
+              {creating ? t("web.provider.pages.promotions.creating") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

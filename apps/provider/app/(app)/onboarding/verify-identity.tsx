@@ -23,8 +23,12 @@ import {
 import { twStyle } from "@/lib/twStyle";
 import { Shadows } from "@/constants/colors";
 import { hapticLight } from "@/lib/haptics-safe";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function OnboardingVerifyIdentityScreen() {
+  const { t } = useTranslation();
+  const vi = (key: string) => t(`provider.mobile.screens.verifyIdentity.${key}`) as string;
   const router = useRouter();
   const { bundle } = useConfigBundle();
   const bundlePolicy = verificationPolicyFromBundle(bundle);
@@ -45,15 +49,12 @@ export default function OnboardingVerifyIdentityScreen() {
 
   const goToDashboard = useCallback(() => {
     if (!canSkip) {
-      Alert.alert(
-        "Verification required",
-        "Identity verification is required before you can go live. Complete verification to earn your Verified trust badge.",
-      );
+      Alert.alert(vi("alertTitle"), vi("alertBody"));
       return;
     }
     hapticLight();
     router.replace("/(app)/(tabs)/dashboard" as never);
-  }, [canSkip, router]);
+  }, [canSkip, router, t]);
 
   const goBackToSetup = useCallback(() => {
     hapticLight();
@@ -78,7 +79,7 @@ export default function OnboardingVerifyIdentityScreen() {
     >
       <View style={{ paddingHorizontal: 16 }}>
         <ScreenHeader
-          title="Verify your identity"
+          title={vi("title")}
           subtitle={subtitle}
           showBack={false}
           rightAction={
@@ -90,12 +91,12 @@ export default function OnboardingVerifyIdentityScreen() {
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  isApproved || isPendingReview ? "Continue to dashboard" : "Skip for now"
+                  isApproved || isPendingReview ? vi("continueToDashboard") : vi("skipForNow")
                 }
                 activeOpacity={0.85}
               >
                 <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>
-                  {isApproved || isPendingReview ? "Continue" : "Skip for now"}
+                  {isApproved || isPendingReview ? vi("continue") : vi("skipForNow")}
                 </Text>
               </TouchableOpacity>
             ) : undefined
@@ -107,8 +108,7 @@ export default function OnboardingVerifyIdentityScreen() {
         <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
           <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3")}>
             <Text style={twStyle("text-sm leading-5 text-amber-900")}>
-              Your marketplace requires identity verification before you can go live. Complete this step to
-              earn the Verified trust badge.
+              {vi("requiredBanner")}
             </Text>
           </View>
         </View>
@@ -119,11 +119,11 @@ export default function OnboardingVerifyIdentityScreen() {
           onPress={goBackToSetup}
           style={twStyle("flex-row items-center gap-1 py-2")}
           accessibilityRole="button"
-          accessibilityLabel="Go back to setup"
+          accessibilityLabel={vi("backToSetupA11y")}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back-outline" size={16} color="#6b7280" />
-          <Text style={twStyle("text-sm text-gray-500")}>Back to setup</Text>
+          <DirectionalIcon name="chevron-back-outline" size={16} color="#6b7280" />
+          <Text style={twStyle("text-sm text-gray-500")}>{vi("backToSetup")}</Text>
         </TouchableOpacity>
       </View>
 

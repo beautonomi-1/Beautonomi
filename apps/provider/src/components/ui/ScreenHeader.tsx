@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { performProviderStackBack } from "@/lib/provider-tab-navigation";
@@ -36,12 +36,12 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, l
             onPress={handleBack}
             // §UI-audit 2026-04: raised from 40x40 to 44x44 to hit the
             // HIG touch-target minimum without changing visual weight.
-            style={{ marginRight: 12, height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
+            style={{ marginEnd: 12, height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
             hitSlop={8}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Ionicons name="chevron-back" size={20} color="#111" />
+            <DirectionalIcon name="chevron-back" size={20} color="#111" />
           </TouchableOpacity>
         )}
         {leadingContent}
@@ -54,7 +54,7 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, l
               {title}
             </Text>
             {titleAccessory ? (
-              <View style={{ marginLeft: 8, flexShrink: 0 }}>{titleAccessory}</View>
+              <View style={{ marginStart: 8, flexShrink: 0 }}>{titleAccessory}</View>
             ) : null}
           </View>
           {subtitle ? (
@@ -63,7 +63,7 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, l
         </View>
       </View>
       {rightAction ? (
-      <View style={{ marginLeft: 12, flexShrink: 0, alignSelf: "flex-start" }}>{rightAction}</View>
+      <View style={{ marginStart: 12, flexShrink: 0, alignSelf: "flex-start" }}>{rightAction}</View>
     ) : null}
     </View>
   );

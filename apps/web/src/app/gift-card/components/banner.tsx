@@ -41,7 +41,7 @@ export default function Banner({ content }: BannerProps) {
             className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/40 blur-3xl"
           />
           <div className="relative grid items-center gap-10 px-7 py-10 md:grid-cols-2 md:px-12 md:py-14 lg:px-16">
-            <div className="text-center md:text-left">
+            <div className="text-center md:text-start">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-1.5 text-sm font-medium text-secondary">
                 <Briefcase className="h-4 w-4 text-primary" />
                 For business
@@ -53,7 +53,7 @@ export default function Banner({ content }: BannerProps) {
                 {bannerDescription}
               </p>
 
-              <ul className="mx-auto mt-6 flex max-w-md flex-col gap-2.5 text-left md:mx-0">
+              <ul className="mx-auto mt-6 flex max-w-md flex-col gap-2.5 text-start md:mx-0">
                 {perks.map((perk) => (
                   <li key={perk} className="flex items-center gap-2.5 text-sm font-medium text-secondary/80">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">

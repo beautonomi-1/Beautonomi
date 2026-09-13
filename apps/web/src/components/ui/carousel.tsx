@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useTranslation } from "@beautonomi/i18n"
 
 type CarouselApi = UseEmblaCarouselType[1]
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>
@@ -136,8 +137,9 @@ const Carousel = React.forwardRef<
       >
         <div
           ref={ref}
+          dir="ltr"
           onKeyDownCapture={handleKeyDown}
-          className={cn("relative", className)}
+          className={cn("ltr-island relative", className)}
           role="region"
           aria-roledescription="carousel"
           {...props}
@@ -198,6 +200,7 @@ const CarouselPrevious = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<typeof Button>
 >(({ className, variant = "outline", size = "icon", ...props }, ref) => {
+  const { t } = useTranslation()
   const { orientation, scrollPrev, canScrollPrev } = useCarousel()
 
   return (
@@ -217,7 +220,7 @@ const CarouselPrevious = React.forwardRef<
       {...props}
     >
       <ArrowLeft className="h-4 w-4" />
-      <span className="sr-only">Previous slide</span>
+      <span className="sr-only">{t("web.ui.carousel.previousSlide")}</span>
     </Button>
   )
 })
@@ -227,6 +230,7 @@ const CarouselNext = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<typeof Button>
 >(({ className, variant = "outline", size = "icon", ...props }, ref) => {
+  const { t } = useTranslation()
   const { orientation, scrollNext, canScrollNext } = useCarousel()
 
   return (
@@ -246,7 +250,7 @@ const CarouselNext = React.forwardRef<
       {...props}
     >
       <ArrowRight className="h-4 w-4" />
-      <span className="sr-only">Next slide</span>
+      <span className="sr-only">{t("web.ui.carousel.nextSlide")}</span>
     </Button>
   )
 })

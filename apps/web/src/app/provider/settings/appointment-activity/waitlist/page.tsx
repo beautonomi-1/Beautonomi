@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 import { Save, Bell, MessageSquare, Clock, Users } from "lucide-react";
 
 export default function WaitlistSettings() {
+  const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +63,7 @@ export default function WaitlistSettings() {
     } catch (error) {
       console.error("Failed to load settings:", error);
       const message =
-        error instanceof Error ? error.message : "Could not load waitlist settings.";
+        error instanceof Error ? error.message : t("web.provider.settings.pages.appointment-activity/waitlist.couldNotLoad");
       setLoadError(message);
       toast.error(message);
     } finally {
@@ -85,10 +87,10 @@ export default function WaitlistSettings() {
         enable_virtual_waiting_room: settings.enableVirtualWaitingRoom,
         show_estimated_wait_time: settings.showEstimatedWaitTime,
       });
-      toast.success("Waitlist settings saved successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/waitlist.waitlistSettingsSavedSuccessfully"));
     } catch (error: any) {
       console.error("Failed to save settings:", error);
-      toast.error(error.message || "Failed to save settings");
+      toast.error(error.message || t("web.provider.settings.pages.appointment-activity/waitlist.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -97,13 +99,13 @@ export default function WaitlistSettings() {
   return (
     <div>
       <PageHeader
-        title="Waitlist Settings"
-        subtitle="Configure intelligent waitlist and virtual waiting room preferences"
+        title={t("web.provider.settings.categories.appointmentActivity.items.waitlist.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.waitlist.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Waitlist" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.appointment-activity/waitlist.waitlist") },
         ]}
       />
 
@@ -117,7 +119,7 @@ export default function WaitlistSettings() {
             className="shrink-0 border-red-300 text-red-900 hover:bg-red-100"
             onClick={() => void loadSettings()}
           >
-            Retry
+            {t("web.provider.common.retry")}
           </Button>
         </div>
       ) : null}
@@ -129,10 +131,10 @@ export default function WaitlistSettings() {
             <div>
               <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                 <Bell className="w-5 h-5" />
-                Intelligent Waitlist
+                {t("web.provider.settings.pages.appointment-activity/waitlist.intelligentTitle")}
               </h3>
               <p className="text-sm text-gray-600">
-                Automatically notify clients when appointments become available
+                {t("web.provider.settings.pages.appointment-activity/waitlist.intelligentSubtitle")}
               </p>
             </div>
 
@@ -148,16 +150,16 @@ export default function WaitlistSettings() {
               />
               <div className="flex-1">
                 <Label className="text-base font-medium cursor-pointer">
-                  Enable Intelligent Waitlist
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.enableIntelligent")}
                 </Label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Automatically notify waitlist clients when appointment slots open up
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.enableIntelligentHint")}
                 </p>
               </div>
             </div>
 
             {settings.enableIntelligentWaitlist && (
-              <div className="ml-0 sm:ml-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-start gap-4 p-3 bg-white rounded-lg">
                   <Switch
                     checked={settings.autoNotifyOnAvailability}
@@ -168,10 +170,10 @@ export default function WaitlistSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-sm font-medium cursor-pointer">
-                      Auto-notify when slots become available
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.autoNotify")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Automatically send notifications to waitlist clients when appointments are cancelled or new slots open
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.autoNotifyHint")}
                     </p>
                   </div>
                 </div>
@@ -186,17 +188,17 @@ export default function WaitlistSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-sm font-medium cursor-pointer">
-                      Notify high priority entries first
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.notifyPriority")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-1">
-                      High priority waitlist entries will be notified before normal priority entries
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.notifyPriorityHint")}
                     </p>
                   </div>
                 </div>
 
                 <div>
                   <Label htmlFor="notificationDelay" className="text-sm font-medium">
-                    Notification Delay (minutes)
+                    {t("web.provider.settings.pages.appointment-activity/waitlist.notificationDelay")}
                   </Label>
                   <Input
                     id="notificationDelay"
@@ -213,7 +215,7 @@ export default function WaitlistSettings() {
                     className="mt-1.5 max-w-[120px]"
                   />
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Wait this many minutes before sending notifications (helps prevent spam if multiple slots open)
+                    {t("web.provider.settings.pages.appointment-activity/waitlist.notificationDelayHint")}
                   </p>
                 </div>
 
@@ -227,14 +229,13 @@ export default function WaitlistSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-sm font-medium cursor-pointer">
-                      Auto-booking for waitlist entries
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.autoBooking")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Automatically create bookings for waitlist clients when matching slots become available. 
-                      Clients will still receive notifications, but their booking will be created automatically.
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.autoBookingHint")}
                     </p>
                     <p className="text-xs text-orange-600 mt-1 font-medium">
-                      Note: Auto-booked appointments will be in "pending" status and require payment confirmation.
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.autoBookingNote")}
                     </p>
                   </div>
                 </div>
@@ -249,10 +250,10 @@ export default function WaitlistSettings() {
             <div>
               <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                 <Users className="w-5 h-5" />
-                Virtual Waiting Room
+                {t("web.provider.settings.pages.appointment-activity/waitlist.virtualTitle")}
               </h3>
               <p className="text-sm text-gray-600">
-                Allow clients to check in and wait virtually
+                {t("web.provider.settings.pages.appointment-activity/waitlist.virtualSubtitle")}
               </p>
             </div>
 
@@ -268,16 +269,16 @@ export default function WaitlistSettings() {
               />
               <div className="flex-1">
                 <Label className="text-base font-medium cursor-pointer">
-                  Enable Virtual Waiting Room
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.enableVirtual")}
                 </Label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Allow clients to check in themselves and wait virtually before their appointment
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.enableVirtualHint")}
                 </p>
               </div>
             </div>
 
             {settings.enableVirtualWaitingRoom && (
-              <div className="ml-0 sm:ml-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-start gap-4 p-3 bg-white rounded-lg">
                   <Switch
                     checked={settings.allowClientSelfCheckIn}
@@ -288,10 +289,10 @@ export default function WaitlistSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-sm font-medium cursor-pointer">
-                      Allow client self check-in
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.selfCheckIn")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Clients can check themselves into the waiting room via online booking or mobile app
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.selfCheckInHint")}
                     </p>
                   </div>
                 </div>
@@ -306,10 +307,10 @@ export default function WaitlistSettings() {
                   />
                   <div className="flex-1">
                     <Label className="text-sm font-medium cursor-pointer">
-                      Show estimated wait time
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.showWaitTime")}
                     </Label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Display estimated wait time to clients in the waiting room
+                      {t("web.provider.settings.pages.appointment-activity/waitlist.showWaitTimeHint")}
                     </p>
                   </div>
                 </div>
@@ -324,10 +325,10 @@ export default function WaitlistSettings() {
             <div>
               <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                 <MessageSquare className="w-5 h-5" />
-                Online Waitlist
+                {t("web.provider.settings.pages.appointment-activity/waitlist.onlineTitle")}
               </h3>
               <p className="text-sm text-gray-600">
-                Allow clients to join waitlist from online booking
+                {t("web.provider.settings.pages.appointment-activity/waitlist.onlineSubtitle")}
               </p>
             </div>
 
@@ -343,10 +344,10 @@ export default function WaitlistSettings() {
               />
               <div className="flex-1">
                 <Label className="text-base font-medium cursor-pointer">
-                  Allow clients to join waitlist online
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.allowOnline")}
                 </Label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Clients can add themselves to the waitlist when no appointments are available in online booking
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.allowOnlineHint")}
                 </p>
               </div>
             </div>
@@ -359,7 +360,7 @@ export default function WaitlistSettings() {
             <div>
               <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                 <Clock className="w-5 h-5" />
-                General Settings
+                {t("web.provider.settings.pages.appointment-activity/waitlist.generalSettings")}
               </h3>
             </div>
 
@@ -368,7 +369,7 @@ export default function WaitlistSettings() {
             <div className="space-y-4">
               <div>
                 <Label htmlFor="maxWaitlistSize" className="text-sm font-medium">
-                  Maximum Waitlist Size
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.maxSize")}
                 </Label>
                 <Input
                   id="maxWaitlistSize"
@@ -385,13 +386,13 @@ export default function WaitlistSettings() {
                   className="mt-1.5 max-w-[120px]"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
-                  Maximum number of active waitlist entries allowed
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.maxSizeHint")}
                 </p>
               </div>
 
               <div>
                 <Label htmlFor="autoRemoveAfterDays" className="text-sm font-medium">
-                  Auto-remove after (days)
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.autoRemove")}
                 </Label>
                 <Input
                   id="autoRemoveAfterDays"
@@ -408,7 +409,7 @@ export default function WaitlistSettings() {
                   className="mt-1.5 max-w-[120px]"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
-                  Automatically remove waitlist entries after this many days if not converted to appointment
+                  {t("web.provider.settings.pages.appointment-activity/waitlist.autoRemoveHint")}
                 </p>
               </div>
             </div>
@@ -422,8 +423,8 @@ export default function WaitlistSettings() {
             disabled={isSaving}
             className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Save className="w-4 h-4 mr-2" />
-            {isSaving ? "Saving..." : "Save Settings"}
+            <Save className="w-4 h-4 me-2" />
+            {isSaving ? t("web.provider.common.saving") : t("web.provider.common.saveSettings")}
           </Button>
         </div>
       </div>

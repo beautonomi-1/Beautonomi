@@ -1,22 +1,19 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import Link from "next/link";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
-
-export const metadata: Metadata = {
-  title: "Data & Account Deletion | Beautonomi",
-  description:
-    "Learn how to request deletion of your Beautonomi account and personal data. Understand what is deleted, what is retained, and applicable retention periods.",
-  alternates: {
-    canonical: "/data-deletion",
-    languages: getHreflangAlternateUrls("/data-deletion"),
-  },
-  robots: { index: true, follow: true },
-};
 
 const SUPPORT_EMAIL = "support@beautonomi.com";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/data-deletion",
+    titleKey: "web.seo.dataDeletionTitle",
+    descriptionKey: "web.seo.dataDeletionDescription",
+  });
+}
 
 export default function DataDeletionPage() {
   return (
@@ -129,7 +126,7 @@ export default function DataDeletionPage() {
             deletion:
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full text-sm text-start border-collapse">
               <thead>
                 <tr className="bg-gray-50">
                   <th className="border border-gray-200 px-4 py-2 font-medium text-gray-700">Data type</th>

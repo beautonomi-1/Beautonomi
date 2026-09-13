@@ -664,7 +664,7 @@ function ProductDetailContent() {
                   >
                     {cartMessage.text}
                     {cartMessage.type === "success" && (
-                      <Link href="/cart" className="ml-2 underline">
+                      <Link href="/cart" className="ms-2 underline">
                         View cart
                       </Link>
                     )}
@@ -784,7 +784,7 @@ function ProductDetailContent() {
                   {r.title ? <p className="mb-1 font-semibold text-gray-900">{r.title}</p> : null}
                   {r.comment ? <p className="text-sm leading-relaxed text-gray-600">{r.comment}</p> : null}
                   {r.provider_response ? (
-                    <div className="mt-3 border-l-2 border-pink-500 pl-3">
+                    <div className="mt-3 border-s-2 border-pink-500 ps-3">
                       <p className="text-xs text-gray-400">Provider response</p>
                       <p className="text-sm text-gray-700">{r.provider_response}</p>
                     </div>

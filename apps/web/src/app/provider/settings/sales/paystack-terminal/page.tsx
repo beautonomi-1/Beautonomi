@@ -1,7 +1,6 @@
 "use client";
 
-
-
+import { useTranslation } from "@beautonomi/i18n";
 import { useCallback, useEffect, useState } from "react";
 
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -167,6 +166,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 
 
 export default function PaystackTerminalSettingsPage() {
+  const { t } = useTranslation();
 
   const { isLoading: bundleLoading } = useConfigBundle();
 
@@ -239,7 +239,7 @@ export default function PaystackTerminalSettingsPage() {
 
     } catch (error) {
 
-      toast.error(apiErrorMessage(error, "Failed to load terminals"));
+      toast.error(apiErrorMessage(error, t("web.provider.settings.pages.sales/paystack-terminal.failedToLoadTerminals")));
 
     } finally {
 
@@ -271,7 +271,7 @@ export default function PaystackTerminalSettingsPage() {
 
       if (payload?.error) {
 
-        throw new Error(payload.error.message || "Failed to load terminal payments");
+        throw new Error(payload.error.message || t("web.provider.settings.pages.sales/paystack-terminal.failedToLoadTerminalPayments"));
 
       }
 
@@ -297,7 +297,7 @@ export default function PaystackTerminalSettingsPage() {
 
     } catch (error) {
 
-      toast.error(apiErrorMessage(error, "Failed to load terminal payments"));
+      toast.error(apiErrorMessage(error, t("web.provider.settings.pages.sales/paystack-terminal.failedToLoadTerminalPayments")));
 
     } finally {
 
@@ -409,13 +409,13 @@ export default function PaystackTerminalSettingsPage() {
 
       }
 
-      toast.success(payload?.data?.message || "Beautonomi Ops has been notified.");
+      toast.success(payload?.data?.message || t("web.provider.settings.pages.sales/paystack-terminal.opsNotified"));
 
       await loadTerminals();
 
     } catch (error) {
 
-      toastPlanGateError(error, apiErrorMessage(error, "Failed to request terminal setup"));
+      toastPlanGateError(error, apiErrorMessage(error, t("web.provider.settings.pages.sales/paystack-terminal.failedToRequestTerminalSetup")));
 
     } finally {
 
@@ -443,17 +443,17 @@ export default function PaystackTerminalSettingsPage() {
 
       if (payload?.error) {
 
-        throw new Error(payload.error.message || "Failed to request branded assets");
+        throw new Error(payload.error.message || t("web.provider.settings.pages.sales/paystack-terminal.failedToRequestBrandedAssets"));
 
       }
 
-      toast.success(payload?.data?.message || "Beautonomi Ops has been notified.");
+      toast.success(payload?.data?.message || t("web.provider.settings.pages.sales/paystack-terminal.opsNotified"));
 
       await loadTerminals();
 
     } catch (error) {
 
-      toast.error(apiErrorMessage(error, "Failed to request branded assets"));
+      toast.error(apiErrorMessage(error, t("web.provider.settings.pages.sales/paystack-terminal.failedToRequestBrandedAssets")));
 
     } finally {
 
@@ -467,13 +467,13 @@ export default function PaystackTerminalSettingsPage() {
 
   function assetLabel(status?: string | null) {
 
-    if (status === "ready") return "Ready";
+    if (status === "ready") return t("web.provider.settings.pages.sales/paystack-terminal.ready");
 
-    if (status === "link_ready") return "Link ready · QR/poster in progress";
+    if (status === "link_ready") return t("web.provider.settings.pages.sales/paystack-terminal.linkReady");
 
-    if (status === "poster_ready") return "Poster ready · link needed";
+    if (status === "poster_ready") return t("web.provider.settings.pages.sales/paystack-terminal.posterReady");
 
-    return "Setup needed";
+    return t("web.provider.settings.pages.sales/paystack-terminal.setupNeeded");
 
   }
 
@@ -481,19 +481,19 @@ export default function PaystackTerminalSettingsPage() {
 
   function amountMatchLabel(status?: string | null) {
 
-    if (status === "exact_match") return "Amount matches";
+    if (status === "exact_match") return t("web.provider.settings.pages.sales/paystack-terminal.amountMatches");
 
-    if (status === "partial_payment") return "Partial payment";
+    if (status === "partial_payment") return t("web.provider.settings.pages.sales/paystack-terminal.partialPayment");
 
-    if (status === "overpayment") return "Overpayment";
+    if (status === "overpayment") return t("web.provider.settings.pages.sales/paystack-terminal.overpayment");
 
-    if (status === "currency_mismatch") return "Currency mismatch";
+    if (status === "currency_mismatch") return t("web.provider.settings.pages.sales/paystack-terminal.currencyMismatch");
 
-    if (status === "ambiguous_amount_match") return "Ambiguous amount match";
+    if (status === "ambiguous_amount_match") return t("web.provider.settings.pages.sales/paystack-terminal.ambiguousAmountMatch");
 
-    if (status === "amount_only_match") return "Amount-only match";
+    if (status === "amount_only_match") return t("web.provider.settings.pages.sales/paystack-terminal.amountOnlyMatch");
 
-    return "Needs review";
+    return t("web.provider.settings.pages.sales/paystack-terminal.needsReview");
 
   }
 
@@ -511,7 +511,7 @@ export default function PaystackTerminalSettingsPage() {
 
         if (!payment.suggested_entity_type || !payment.suggested_entity_id) {
 
-          toast.error("No suggested target was found. Send this payment to admin review instead.");
+          toast.error(t("web.provider.settings.pages.sales/paystack-terminal.noSuggestedTargetWasFoundSend"));
 
           return;
 
@@ -547,11 +547,11 @@ export default function PaystackTerminalSettingsPage() {
 
       if (payload?.error) {
 
-        throw new Error(payload.error.message || "Failed to update allocation");
+        throw new Error(payload.error.message || t("web.provider.settings.pages.sales/paystack-terminal.failedToUpdateAllocation"));
 
       }
 
-      toast.success(action === "confirm" ? "Payment allocated" : "Payment sent for review");
+      toast.success(action === "confirm" ? t("web.provider.terminalPaymentAlert.allocated") : t("web.provider.settings.pages.sales/paystack-terminal.paymentSentForReview"));
 
       setReviewPayment(null);
 
@@ -559,7 +559,7 @@ export default function PaystackTerminalSettingsPage() {
 
     } catch (error) {
 
-      toast.error(apiErrorMessage(error, "Failed to update allocation"));
+      toast.error(apiErrorMessage(error, t("web.provider.settings.pages.sales/paystack-terminal.failedToUpdateAllocation")));
 
     } finally {
 
@@ -575,7 +575,7 @@ export default function PaystackTerminalSettingsPage() {
 
     await navigator.clipboard.writeText(code);
 
-    toast.success("Terminal code copied");
+    toast.success(t("web.provider.settings.pages.sales/paystack-terminal.terminalCodeCopied"));
 
   }
 
@@ -585,7 +585,7 @@ export default function PaystackTerminalSettingsPage() {
 
     await navigator.clipboard.writeText(link);
 
-    toast.success("Payment link copied");
+    toast.success(t("web.provider.settings.pages.sales/paystack-terminal.paymentLinkCopied"));
 
   }
 
@@ -607,7 +607,7 @@ export default function PaystackTerminalSettingsPage() {
 
     const qr = terminalQrSrc(terminal);
 
-    const name = terminal.display_name || terminal.name || "Pay here";
+    const name = terminal.display_name || terminal.name || t("web.provider.settings.pages.sales/paystack-terminal.payHere");
 
     const link = terminal.payment_link ?? terminal.terminal_url ?? "";
 
@@ -615,13 +615,13 @@ export default function PaystackTerminalSettingsPage() {
 
     if (!win) {
 
-      toast.error("Could not open the poster. Check your popup blocker.");
+      toast.error(t("web.provider.settings.pages.sales/paystack-terminal.couldNotOpenThePosterCheck"));
 
       return;
 
     }
 
-    win.document.write(`<!doctype html><html><head><title>${name} — Pay here</title>
+    win.document.write(`<!doctype html><html><head><title>${name} — ${t("web.provider.settings.pages.sales/paystack-terminal.payHere")}</title>
 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -649,15 +649,15 @@ export default function PaystackTerminalSettingsPage() {
 
   <h1>${name}</h1>
 
-  <p>Scan to pay with your phone</p>
+  <p>${t("web.provider.settings.pages.sales/paystack-terminal.scanToPay")}</p>
 
-  ${qr ? `<div class="qr"><img src="${qr}" alt="Payment QR code" /></div>` : "<p>QR code not available yet.</p>"}
+  ${qr ? `<div class="qr"><img src="${qr}" alt="${t("web.provider.settings.pages.sales/paystack-terminal.paymentQrAlt")}" /></div>` : `<p>${t("web.provider.settings.pages.sales/paystack-terminal.qrNotAvailable")}</p>`}
 
   <p class="code">${terminal.terminal_code}</p>
 
   ${link ? `<p class="link">${link}</p>` : ""}
 
-  <button onclick="window.print()" style="margin-top:24px;padding:12px 24px;font-size:16px;border-radius:8px;border:none;background:#0f172a;color:#fff;cursor:pointer">Print poster</button>
+  <button onclick="window.print()" style="margin-top:24px;padding:12px 24px;font-size:16px;border-radius:8px;border:none;background:#0f172a;color:#fff;cursor:pointer">${t("web.provider.settings.pages.sales/paystack-terminal.printPoster")}</button>
 
 </body></html>`);
 
@@ -695,9 +695,9 @@ export default function PaystackTerminalSettingsPage() {
 
       <SettingsDetailLayout
 
-        title="Paystack Terminal"
+        title={t("web.provider.settings.categories.sales.items.paystackTerminal.title")}
 
-        description="In-person QR and link payments that settle through Beautonomi payouts."
+        description={t("web.provider.settings.pages.sales/paystack-terminal.inPersonQrDescription")}
 
         backHref="/provider/settings"
 
@@ -705,7 +705,7 @@ export default function PaystackTerminalSettingsPage() {
 
         <SectionCard>
 
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t("web.provider.settings.pages.sales/paystack-terminal.loading")}</p>
 
         </SectionCard>
 
@@ -723,9 +723,9 @@ export default function PaystackTerminalSettingsPage() {
 
       <SettingsDetailLayout
 
-        title="Paystack Terminal"
+        title={t("web.provider.settings.pages.sales/paystack-terminal.paystackTerminal")}
 
-        description="In-person QR and link payments that settle through Beautonomi payouts."
+        description={t("web.provider.settings.pages.sales/paystack-terminal.inPersonQrDescription")}
 
         backHref="/provider/settings"
 
@@ -735,7 +735,7 @@ export default function PaystackTerminalSettingsPage() {
 
           <p className="text-sm text-muted-foreground">
 
-            Paystack Terminal payments are not enabled for this market. Contact Beautonomi support if you believe this is an error.
+            {t("web.provider.settings.pages.sales/paystack-terminal.notEnabledForMarket")}
 
           </p>
 
@@ -753,9 +753,9 @@ export default function PaystackTerminalSettingsPage() {
 
     <SettingsDetailLayout
 
-      title="Paystack Terminal"
+      title={t("web.provider.settings.pages.sales/paystack-terminal.paystackTerminal")}
 
-      description="Use admin-provisioned Paystack Virtual Terminals for in-person payments. Payments are verified by Paystack, reviewed in your payment inbox, and become payoutable after manual allocation and holds."
+      description={t("web.provider.settings.pages.sales/paystack-terminal.virtualTerminalsDescription")}
 
       backHref="/provider/settings"
 
@@ -767,7 +767,7 @@ export default function PaystackTerminalSettingsPage() {
 
           <AlertDescription>
 
-            Paystack sends WhatsApp alerts to the configured destination number, but Beautonomi maps payments by the Paystack terminal code. Once a Paystack payment is recorded by webhook or admin reconciliation, it appears here for manual allocation.
+            {t("web.provider.settings.pages.sales/paystack-terminal.whatsappAlertsBody")}
 
           </AlertDescription>
 
@@ -781,7 +781,7 @@ export default function PaystackTerminalSettingsPage() {
 
             <AlertDescription>
 
-              Your subscription plan does not include Paystack Terminal. Upgrade under Subscription to request terminal setup. <a href="/provider/subscription" className="underline font-medium">View plans</a>
+              {t("web.provider.settings.pages.sales/paystack-terminal.planDoesNotInclude")} <a href="/provider/subscription" className="underline font-medium">{t("web.provider.settings.pages.sales/paystack-terminal.viewPlans")}</a>
 
             </AlertDescription>
 
@@ -799,7 +799,7 @@ export default function PaystackTerminalSettingsPage() {
 
             <AlertDescription className="text-amber-900">
 
-              <span className="font-semibold">Setup request received.</span> Beautonomi Ops has been notified and will create your Paystack Virtual Terminal shortly. Your terminal, payment link, QR, and poster will appear here once ready.
+              <span className="font-semibold">{t("web.provider.settings.pages.sales/paystack-terminal.setupRequestReceived")}</span> {t("web.provider.settings.pages.sales/paystack-terminal.setupRequestReceivedBody")}
 
               {pendingRequests[0]?.request_notes ? (
 
@@ -821,7 +821,7 @@ export default function PaystackTerminalSettingsPage() {
 
             <AlertDescription>
 
-              <span className="font-semibold">Your last setup request needs changes.</span>
+              <span className="font-semibold">{t("web.provider.settings.pages.sales/paystack-terminal.lastRequestNeedsChanges")}</span>
 
               {rejectedRequest.rejection_reason ? (
 
@@ -831,7 +831,7 @@ export default function PaystackTerminalSettingsPage() {
 
               <span className="mt-2 block text-sm">
 
-                Submit a new request and Beautonomi Ops will retry your terminal setup.
+                {t("web.provider.settings.pages.sales/paystack-terminal.submitNewRequestHint")}
 
               </span>
 
@@ -839,7 +839,7 @@ export default function PaystackTerminalSettingsPage() {
 
                 <span className="mt-2 block text-sm">
 
-                  Our team has opened a support conversation — check your email or the Beautonomi provider app to reply.
+                  {t("web.provider.settings.pages.sales/paystack-terminal.supportConversationOpened")}
 
                 </span>
 
@@ -853,17 +853,17 @@ export default function PaystackTerminalSettingsPage() {
 
         <SectionCard>
 
-          <h2 className="text-lg font-semibold">Request terminal setup</h2>
+          <h2 className="text-lg font-semibold">{t("web.provider.settings.pages.sales/paystack-terminal.requestTerminalSetupTitle")}</h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
 
-            Beautonomi Ops creates or fetches your Virtual Terminal in Paystack, then imports the Paystack-generated code, payment link, QR, and poster here.
+            {t("web.provider.settings.pages.sales/paystack-terminal.requestTerminalSetupBody")}
 
           </p>
 
           <p className="mt-2 text-xs text-muted-foreground">
 
-            Once imported, you can share the Paystack payment link. Customer payments arrive with Paystack-generated references and are manually allocated in the payment inbox.
+            {t("web.provider.settings.pages.sales/paystack-terminal.onceImportedHint")}
 
           </p>
 
@@ -879,21 +879,21 @@ export default function PaystackTerminalSettingsPage() {
 
               {creating
 
-                ? "Requesting..."
+                ? t("web.provider.settings.pages.sales/paystack-terminal.requesting")
 
                 : hasPendingRequest
 
-                  ? "Setup request pending"
+                  ? t("web.provider.settings.pages.sales/paystack-terminal.setupRequestPending")
 
                   : !canRequestSetup
 
-                    ? "Not available on your plan"
+                    ? t("web.provider.settings.pages.sales/paystack-terminal.notAvailableOnPlan")
 
                     : rejectedRequest
 
-                      ? "Update & submit new request"
+                      ? t("web.provider.settings.pages.sales/paystack-terminal.updateSubmitNewRequest")
 
-                      : "Request Paystack Terminal setup"}
+                      : t("web.provider.settings.pages.sales/paystack-terminal.requestPaystackTerminalSetup")}
 
             </Button>
 
@@ -909,11 +909,11 @@ export default function PaystackTerminalSettingsPage() {
 
             <div>
 
-              <h2 className="text-lg font-semibold">Terminals</h2>
+              <h2 className="text-lg font-semibold">{t("web.provider.settings.pages.sales/paystack-terminal.terminals")}</h2>
 
               <p className="text-sm text-muted-foreground">
 
-                Use these terminal codes for QR/link collection and reconciliation.
+                {t("web.provider.settings.pages.sales/paystack-terminal.useTheseCodes")}
 
               </p>
 
@@ -921,7 +921,7 @@ export default function PaystackTerminalSettingsPage() {
 
             <Button variant="outline" onClick={() => void loadTerminals()} disabled={loading}>
 
-              Refresh
+              {t("common.refresh")}
 
             </Button>
 
@@ -933,7 +933,7 @@ export default function PaystackTerminalSettingsPage() {
 
             {loading ? (
 
-              <p className="text-sm text-muted-foreground">Loading terminals...</p>
+              <p className="text-sm text-muted-foreground">{t("web.provider.settings.pages.sales/paystack-terminal.loadingTerminals")}</p>
 
             ) : terminals.length === 0 ? (
 
@@ -941,9 +941,9 @@ export default function PaystackTerminalSettingsPage() {
 
                 {hasPendingRequest
 
-                  ? "Your terminal will appear here once Ops has completed the setup."
+                  ? t("web.provider.settings.pages.sales/paystack-terminal.terminalAppearsOnceReady")
 
-                  : "No Paystack Terminals yet."}
+                  : t("web.provider.settings.pages.sales/paystack-terminal.noPaystackTerminalsYet")}
 
               </p>
 
@@ -983,11 +983,11 @@ export default function PaystackTerminalSettingsPage() {
 
                       <p className="mt-1 text-xs text-muted-foreground">
 
-                        Currency: {terminal.currency}
+                        {t("web.provider.settings.pages.sales/paystack-terminal.currencyLabel", { currency: terminal.currency })}
 
                         {terminal.last_payment_at
 
-                          ? ` · Last payment: ${new Date(terminal.last_payment_at).toLocaleString()}`
+                          ? t("web.provider.settings.pages.sales/paystack-terminal.lastPayment", { date: new Date(terminal.last_payment_at).toLocaleString() })
 
                           : ""}
 
@@ -997,9 +997,7 @@ export default function PaystackTerminalSettingsPage() {
 
                         <p className="mt-1 text-xs text-muted-foreground">
 
-                          Payment notifications sent to WhatsApp ending{" "}
-
-                          {terminal.notification_whatsapp.replace(/\D/g, "").slice(-4)}
+                          {t("web.provider.settings.pages.sales/paystack-terminal.notificationsWhatsappEnding", { last4: terminal.notification_whatsapp.replace(/\D/g, "").slice(-4) })}
 
                         </p>
 
@@ -1009,7 +1007,7 @@ export default function PaystackTerminalSettingsPage() {
 
                         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
 
-                          Ops still needs to add or refresh Paystack-generated assets before this terminal is fully ready.
+                          {t("web.provider.settings.pages.sales/paystack-terminal.opsNeedsAssets")}
 
                         </p>
 
@@ -1029,13 +1027,13 @@ export default function PaystackTerminalSettingsPage() {
 
                                 src={terminalQrSrc(terminal) ?? undefined}
 
-                                alt="Paystack Terminal QR code"
+                                alt={t("web.provider.settings.pages.sales/paystack-terminal.paystackTerminalQrAlt")}
 
                                 className="h-40 w-40 rounded-md border bg-white object-contain p-1"
 
                               />
 
-                              <span className="text-[11px] text-muted-foreground">Customer scans to pay</span>
+                              <span className="text-[11px] text-muted-foreground">{t("web.provider.settings.pages.sales/paystack-terminal.customerScansToPay")}</span>
 
                             </div>
 
@@ -1051,7 +1049,7 @@ export default function PaystackTerminalSettingsPage() {
 
                                 src={terminal.poster_url}
 
-                                alt="Paystack Terminal poster"
+                                alt={t("web.provider.settings.pages.sales/paystack-terminal.paystackTerminalPosterAlt")}
 
                                 className="h-40 w-auto rounded-md border object-contain"
 
@@ -1059,7 +1057,7 @@ export default function PaystackTerminalSettingsPage() {
 
                               <span className="mt-1 block text-center text-[11px] text-muted-foreground">
 
-                                Tap to view full poster
+                                {t("web.provider.settings.pages.sales/paystack-terminal.tapToViewPoster")}
 
                               </span>
 
@@ -1083,7 +1081,7 @@ export default function PaystackTerminalSettingsPage() {
 
                       >
 
-                        Copy code
+                        {t("web.provider.settings.pages.sales/paystack-terminal.copyCode")}
 
                       </Button>
 
@@ -1099,7 +1097,7 @@ export default function PaystackTerminalSettingsPage() {
 
                           >
 
-                            Copy link
+                            {t("web.provider.settings.pages.sales/paystack-terminal.copyLink")}
 
                           </Button>
 
@@ -1125,7 +1123,7 @@ export default function PaystackTerminalSettingsPage() {
 
                           >
 
-                            Open QR poster
+                            {t("web.provider.settings.pages.sales/paystack-terminal.openQrPoster")}
 
                           </Button>
 
@@ -1139,7 +1137,7 @@ export default function PaystackTerminalSettingsPage() {
 
                           <a href={terminal.qr_url} target="_blank" rel="noreferrer">
 
-                            Show QR
+                            {t("web.provider.settings.pages.sales/paystack-terminal.showQr")}
 
                           </a>
 
@@ -1153,7 +1151,7 @@ export default function PaystackTerminalSettingsPage() {
 
                           <a href={terminal.poster_url} download target="_blank" rel="noreferrer">
 
-                            Download poster
+                            {t("web.provider.settings.pages.sales/paystack-terminal.downloadPoster")}
 
                           </a>
 
@@ -1165,7 +1163,7 @@ export default function PaystackTerminalSettingsPage() {
 
                         <Button variant="outline" onClick={() => printTerminalPoster(terminal)}>
 
-                          Print poster
+                          {t("web.provider.settings.pages.sales/paystack-terminal.printPoster")}
 
                         </Button>
 
@@ -1183,7 +1181,7 @@ export default function PaystackTerminalSettingsPage() {
 
                         >
 
-                          {requestingAssetsId === terminal.id ? "Requesting..." : "Request branded QR/poster"}
+                          {requestingAssetsId === terminal.id ? t("web.provider.settings.pages.sales/paystack-terminal.requesting") : t("web.provider.settings.pages.sales/paystack-terminal.requestBrandedQrPoster")}
 
                         </Button>
 
@@ -1211,11 +1209,11 @@ export default function PaystackTerminalSettingsPage() {
 
             <div>
 
-              <h2 className="text-lg font-semibold">Payment inbox</h2>
+              <h2 className="text-lg font-semibold">{t("web.provider.settings.pages.sales/paystack-terminal.paymentInbox")}</h2>
 
               <p className="text-sm text-muted-foreground">
 
-                Paystack verifies these payments and generates the transaction references. Allocate each payment to the correct booking, sale, or order.
+                {t("web.provider.settings.pages.sales/paystack-terminal.paymentInboxHint")}
 
               </p>
 
@@ -1233,7 +1231,7 @@ export default function PaystackTerminalSettingsPage() {
 
                   onChange={(event) => setSelectedTerminalId(event.target.value || null)}
 
-                  aria-label="Filter inbox by terminal"
+                  aria-label={t("web.provider.settings.pages.sales/paystack-terminal.filterInboxByTerminal")}
 
                 >
 
@@ -1253,7 +1251,7 @@ export default function PaystackTerminalSettingsPage() {
 
               <Button variant="outline" onClick={() => void loadPayments()} disabled={loadingPayments}>
 
-                Refresh
+                {t("common.refresh")}
 
               </Button>
 
@@ -1271,11 +1269,11 @@ export default function PaystackTerminalSettingsPage() {
 
                 <div>
 
-                  <h3 className="text-base font-semibold text-emerald-950">Payment received</h3>
+                  <h3 className="text-base font-semibold text-emerald-950">{t("web.provider.settings.pages.sales/paystack-terminal.paymentReceived")}</h3>
 
                   <p className="mt-1 text-sm text-emerald-800">
 
-                    Check the amount and any booking/order note before choosing where to allocate this Paystack-verified payment.
+                    {t("web.provider.settings.pages.sales/paystack-terminal.checkAmountBeforeAllocate")}
 
                   </p>
 
@@ -1287,13 +1285,13 @@ export default function PaystackTerminalSettingsPage() {
 
                   <p className="text-xs text-gray-600">
 
-                    Expected:{" "}
+                    {t("web.provider.settings.pages.sales/paystack-terminal.expected")}{" "}
 
                     {reviewPayment.expected_amount != null
 
                       ? `${reviewPayment.currency} ${Number(reviewPayment.expected_amount).toFixed(2)}`
 
-                      : "No expected amount"}
+                      : t("web.provider.settings.pages.sales/paystack-terminal.noExpectedAmount")}
 
                   </p>
 
@@ -1303,19 +1301,19 @@ export default function PaystackTerminalSettingsPage() {
 
                   </p>
 
-                  <p className="mt-2 font-mono text-xs text-gray-600">Paystack ref: {reviewPayment.paystack_reference}</p>
+                  <p className="mt-2 font-mono text-xs text-gray-600">{t("web.provider.settings.pages.sales/paystack-terminal.paystackRef", { ref: reviewPayment.paystack_reference })}</p>
 
-                  <p className="text-xs text-gray-600">Booking/order note: {reviewPayment.customer_reference || "Not supplied"}</p>
+                  <p className="text-xs text-gray-600">{t("web.provider.settings.pages.sales/paystack-terminal.bookingOrderNote", { note: reviewPayment.customer_reference || t("web.provider.settings.pages.sales/paystack-terminal.notSupplied") })}</p>
 
                   <p className="text-xs text-gray-600">
 
-                    Suggested target:{" "}
+                    {t("web.provider.settings.pages.sales/paystack-terminal.suggestedTarget")}{" "}
 
                     {reviewPayment.suggested_entity_type && reviewPayment.suggested_entity_id
 
-                      ? `${reviewPayment.suggested_entity_type} ${reviewPayment.suggested_entity_id.slice(0, 8)}...`
+                      ? t("web.provider.settings.pages.sales/paystack-terminal.suggestedTargetValue", { type: reviewPayment.suggested_entity_type, id: reviewPayment.suggested_entity_id.slice(0, 8) })
 
-                      : "No confident match"}
+                      : t("web.provider.settings.pages.sales/paystack-terminal.noConfidentMatch")}
 
                   </p>
 
@@ -1333,7 +1331,7 @@ export default function PaystackTerminalSettingsPage() {
 
                     >
 
-                      Approve match
+                      {t("web.provider.settings.pages.sales/paystack-terminal.approveMatch")}
 
                     </Button>
 
@@ -1349,7 +1347,7 @@ export default function PaystackTerminalSettingsPage() {
 
                   >
 
-                    {reviewPayment.suggested_entity_id ? "Admin review" : "Send to admin to allocate"}
+                    {reviewPayment.suggested_entity_id ? t("web.provider.settings.pages.sales/paystack-terminal.adminReview") : t("web.provider.settings.pages.sales/paystack-terminal.sendToAdminToAllocate")}
 
                   </Button>
 
@@ -1363,13 +1361,13 @@ export default function PaystackTerminalSettingsPage() {
 
                   >
 
-                    Incorrect ref
+                    {t("web.provider.settings.pages.sales/paystack-terminal.incorrectRef")}
 
                   </Button>
 
                   <Button variant="ghost" onClick={() => dismissReview(reviewPayment.id)}>
 
-                    Dismiss
+                    {t("web.provider.common.dismiss")}
 
                   </Button>
 
@@ -1387,11 +1385,11 @@ export default function PaystackTerminalSettingsPage() {
 
             {loadingPayments ? (
 
-              <p className="text-sm text-muted-foreground">Loading terminal payments...</p>
+              <p className="text-sm text-muted-foreground">{t("web.provider.settings.pages.sales/paystack-terminal.loadingTerminalPayments")}</p>
 
             ) : payments.length === 0 ? (
 
-              <p className="text-sm text-muted-foreground">No terminal payments yet.</p>
+              <p className="text-sm text-muted-foreground">{t("web.provider.settings.pages.sales/paystack-terminal.noTerminalPaymentsYet")}</p>
 
             ) : (
 
@@ -1419,7 +1417,7 @@ export default function PaystackTerminalSettingsPage() {
 
                       <p className="mt-1 text-xs text-muted-foreground">
 
-                        Booking/order note: {payment.customer_reference || "Not supplied"}
+                        {t("web.provider.settings.pages.sales/paystack-terminal.bookingOrderNote", { note: payment.customer_reference || t("web.provider.settings.pages.sales/paystack-terminal.notSupplied") })}
 
                       </p>
 
@@ -1429,7 +1427,7 @@ export default function PaystackTerminalSettingsPage() {
 
                       <Button variant="outline" onClick={() => setReviewPayment(payment)}>
 
-                        Review payment
+                        {t("web.provider.settings.pages.sales/paystack-terminal.reviewPayment")}
 
                       </Button>
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React, { useState, useEffect } from "react";
@@ -76,6 +78,7 @@ interface BillingHistoryItem {
 }
 
 export default function BillingSettings() {
+  const { t } = useTranslation();
   const [billingData, setBillingData] = useState<BillingData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -134,7 +137,7 @@ export default function BillingSettings() {
       });
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError ? err.message : "Failed to load billing information";
+        err instanceof FetchError ? err.message : t("web.provider.settings.pages.billing.failedToLoadBillingInformationFallback");
       setError(errorMessage);
       console.error("Error loading billing data:", err);
     } finally {
@@ -150,14 +153,14 @@ export default function BillingSettings() {
         (!billingForm.address.city || !billingForm.address.country)
       ) {
         toast.error(
-          "Please complete the address (city and country are required if address is provided)"
+t("web.provider.settings.pages.billing.completeAddressRequired")
         );
         return;
       }
     }
 
     if (billingForm.phone?.trim() && !isCompleteE164(billingForm.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.settings.pages.billing.enterAValidPhoneNumberOr"));
       return;
     }
 
@@ -169,11 +172,11 @@ export default function BillingSettings() {
         billingAddress: billingForm.address,
       });
       setShowBillingDialog(false);
-      toast.success("Billing information updated successfully");
+      toast.success(t("web.provider.settings.pages.billing.billingInformationUpdatedSuccessfully"));
       loadBillingData();
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError ? err.message : "Failed to update billing information";
+        err instanceof FetchError ? err.message : t("web.provider.settings.pages.billing.failedToUpdateBillingInformation");
       toast.error(errorMessage);
       console.error("Error saving billing data:", err);
     } finally {
@@ -182,20 +185,20 @@ export default function BillingSettings() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Billing" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.billing.billing") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Billing details and Invoices"
-        subtitle="Manage your billing information and view invoices"
+        title={t("web.provider.settings.categories.appointmentActivity.items.billing.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.billing.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading billing information..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.billing.loadingBillingInformation")} />
       </SettingsDetailLayout>
     );
   }
@@ -203,12 +206,12 @@ export default function BillingSettings() {
   if (error && !billingData) {
     return (
       <SettingsDetailLayout
-        title="Billing details and Invoices"
-        subtitle="Manage your billing information and view invoices"
+        title={t("web.provider.settings.categories.appointmentActivity.items.billing.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.billing.description")}
         breadcrumbs={breadcrumbs}
       >
         <EmptyState
-          title="Failed to load billing information"
+          title={t("web.provider.settings.pages.billing.failedToLoadBillingInformation")}
           description={error}
           action={{
             label: "Retry",
@@ -221,29 +224,29 @@ export default function BillingSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Billing details and Invoices"
-      subtitle="Manage your billing information and view invoices"
+      title={t("web.provider.settings.pages.billing.billingDetailsAndInvoices")}
+      subtitle={t("web.provider.settings.pages.billing.manageYourBillingInformationAndView")}
       breadcrumbs={breadcrumbs}
     >
       {/* Billing Address */}
-      <SectionCard title="Billing Address" className="w-full">
+      <SectionCard title={t("web.provider.settings.pages.billing.billingAddress")} className="w-full">
         {billingData?.billingAddress || billingForm.email || billingForm.phone ? (
           <div className="space-y-4">
             {billingForm.email && (
               <div>
-                <Label className="text-sm font-medium text-gray-700">Billing Email</Label>
+<Label className="text-sm font-medium text-gray-700">{t("web.provider.settings.pages.billing.billingEmail")}</Label>
                 <p className="text-sm text-gray-600 mt-1">{billingForm.email}</p>
               </div>
             )}
             {billingForm.phone && (
               <div>
-                <Label className="text-sm font-medium text-gray-700">Billing Phone</Label>
+<Label className="text-sm font-medium text-gray-700">{t("web.provider.settings.pages.billing.billingPhone")}</Label>
                 <p className="text-sm text-gray-600 mt-1">{billingForm.phone}</p>
               </div>
             )}
             {billingForm.address && (
               <div>
-                <Label className="text-sm font-medium text-gray-700">Billing Address</Label>
+                <Label className="text-sm font-medium text-gray-700">{t("web.provider.settings.pages.billing.billingAddress")}</Label>
                 <p className="text-sm text-gray-600 mt-1">
                   {billingForm.address.address_line1}
                   {billingForm.address.city && `, ${billingForm.address.city}`}
@@ -256,21 +259,21 @@ export default function BillingSettings() {
               variant="outline"
               className="w-full sm:w-auto"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Update Billing Details
+              <Plus className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.billing.updateBillingDetails")}
             </Button>
           </div>
         ) : (
           <Alert className="border-gray-200 bg-gray-50">
             <AlertDescription className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <span className="text-sm text-gray-600">No billing address added</span>
+<span className="text-sm text-gray-600">{t("web.provider.settings.pages.billing.noBillingAddressAdded")}</span>
               <Button
                 size="sm"
                 className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
                 onClick={() => setShowBillingDialog(true)}
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add billing details
+                <Plus className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.billing.addBillingDetails")}
               </Button>
             </AlertDescription>
           </Alert>
@@ -278,19 +281,19 @@ export default function BillingSettings() {
       </SectionCard>
 
       {/* Default Payment Method */}
-      <SectionCard title="Default Payment Method" className="w-full">
+      <SectionCard title={t("web.provider.settings.pages.billing.defaultPaymentMethod")} className="w-full">
         <PaymentMethodsSection
           paymentMethods={billingData?.paymentMethods || []}
           onRefresh={loadBillingData}
         />
       </SectionCard>
 
-      <SectionCard title="Subscription, Ads & Marketing Billing History" className="w-full">
+      <SectionCard title={t("web.provider.settings.pages.billing.subscriptionAdsMarketingBillingHistory")} className="w-full">
         <BillingHistorySection items={billingData?.billingHistory || []} />
       </SectionCard>
 
       {/* Sales & Fees */}
-      <SectionCard title="Sales & Fees" className="w-full">
+      <SectionCard title={t("web.provider.settings.pages.billing.salesFees")} className="w-full">
         <InvoicesSection invoices={billingData?.invoices || []} onRefresh={loadBillingData} />
       </SectionCard>
 
@@ -298,37 +301,37 @@ export default function BillingSettings() {
       <Dialog open={showBillingDialog} onOpenChange={setShowBillingDialog}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Billing Details</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.billing.billingDetails")}</DialogTitle>
             <DialogDescription>
-              Update your billing address and contact information
+{t("web.provider.settings.pages.billing.updateBillingAddressAndContact")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 sm:space-y-6">
             <div>
               <Label htmlFor="billingEmail" className="text-sm sm:text-base">
-                Billing Email
+{t("web.provider.settings.pages.billing.billingEmail")}
               </Label>
               <Input
                 id="billingEmail"
                 type="email"
                 value={billingForm.email}
                 onChange={(e) => setBillingForm({ ...billingForm, email: e.target.value })}
-                placeholder="billing@example.com"
+                placeholder={t("web.provider.settings.pages.billing.billingExampleCom")}
                 className="mt-1 w-full"
               />
             </div>
             <div>
               <PhoneInput
                 inputId="settings-billing-phone"
-                label="Billing Phone"
+label={t("web.provider.settings.pages.billing.billingPhone")}
                 value={billingForm.phone}
                 onChange={(e164) => setBillingForm({ ...billingForm, phone: e164 })}
-                placeholder="Phone number"
+                placeholder={t("web.provider.settings.pages.billing.phoneNumber")}
                 className="mt-1 w-full"
               />
             </div>
             <div>
-              <Label className="text-sm sm:text-base mb-2 block">Billing Address</Label>
+              <Label className="text-sm sm:text-base mb-2 block">{t("web.provider.settings.pages.billing.billingAddress")}</Label>
               <AddressForm
                 initialAddress={billingForm.address}
                 onSave={(address) => setBillingForm({ ...billingForm, address })}
@@ -343,7 +346,7 @@ export default function BillingSettings() {
               onClick={() => setShowBillingDialog(false)}
               className="w-full sm:w-auto"
             >
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSaveBilling}
@@ -352,11 +355,11 @@ export default function BillingSettings() {
             >
               {isSaving ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+{t("web.provider.common.saving")}
                 </>
               ) : (
-                "Save Changes"
+t("web.provider.settings.common.saveChanges")
               )}
             </Button>
           </DialogFooter>
@@ -374,6 +377,7 @@ function PaymentMethodsSection({
   paymentMethods: any[];
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -390,7 +394,7 @@ function PaymentMethodsSection({
   const handleAddPaymentMethod = async () => {
     try {
       await fetcher.post("/api/provider/payment-methods", formData);
-      toast.success("Payment method added successfully");
+      toast.success(t("web.provider.settings.pages.billing.paymentMethodAddedSuccessfully"));
       setShowAddDialog(false);
       setFormData({
         type: "credit_card",
@@ -404,19 +408,19 @@ function PaymentMethodsSection({
       });
       onRefresh();
     } catch {
-      toast.error("Failed to add payment method");
+      toast.error(t("web.provider.settings.pages.billing.failedToAddPaymentMethod"));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this payment method?")) return;
+if (!confirm(t("web.provider.settings.pages.billing.removePaymentMethodConfirm"))) return;
     try {
       setIsDeleting(id);
       await fetcher.delete(`/api/provider/payment-methods/${id}`);
-      toast.success("Payment method removed");
+      toast.success(t("web.provider.settings.pages.billing.paymentMethodRemoved"));
       onRefresh();
     } catch {
-      toast.error("Failed to remove payment method");
+      toast.error(t("web.provider.settings.pages.billing.failedToRemovePaymentMethod"));
     } finally {
       setIsDeleting(null);
     }
@@ -425,10 +429,10 @@ function PaymentMethodsSection({
   const handleSetDefault = async (id: string) => {
     try {
       await fetcher.patch(`/api/provider/payment-methods/${id}`, { is_default: true });
-      toast.success("Default payment method updated");
+      toast.success(t("web.provider.settings.pages.billing.defaultPaymentMethodUpdated"));
       onRefresh();
     } catch {
-      toast.error("Failed to update default payment method");
+      toast.error(t("web.provider.settings.pages.billing.failedToUpdateDefaultPaymentMethod"));
     }
   };
 
@@ -436,14 +440,14 @@ function PaymentMethodsSection({
     return (
       <Alert className="border-gray-200 bg-gray-50">
         <AlertDescription className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <span className="text-sm text-gray-600">No payment method set</span>
+<span className="text-sm text-gray-600">{t("web.provider.settings.pages.billing.noPaymentMethodSet")}</span>
           <Button
             size="sm"
             className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             onClick={() => setShowAddDialog(true)}
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add payment method
+            <Plus className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.billing.addPaymentMethod")}
           </Button>
         </AlertDescription>
       </Alert>
@@ -454,11 +458,11 @@ function PaymentMethodsSection({
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-gray-600">
-          {paymentMethods.length} payment method{paymentMethods.length !== 1 ? "s" : ""}
+{t("web.provider.settings.pages.billing.paymentMethodCount", { count: paymentMethods.length })}
         </p>
         <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add payment method
+          <Plus className="w-4 h-4 me-2" />
+          {t("web.provider.settings.pages.billing.addPaymentMethod")}
         </Button>
       </div>
 
@@ -475,14 +479,14 @@ function PaymentMethodsSection({
                   <p className="font-medium text-sm">{method.name}</p>
                   {method.is_default && (
                     <Badge variant="outline" className="text-xs">
-                      Default
+{t("web.provider.common.default")}
                     </Badge>
                   )}
                 </div>
                 {method.last4 && <p className="text-xs text-gray-500">•••• {method.last4}</p>}
                 {method.expiry_month && method.expiry_year && (
                   <p className="text-xs text-gray-500">
-                    Expires {method.expiry_month}/{method.expiry_year}
+{t("web.provider.settings.pages.billing.expires", { month: method.expiry_month, year: method.expiry_year })}
                   </p>
                 )}
               </div>
@@ -490,7 +494,7 @@ function PaymentMethodsSection({
             <div className="flex items-center gap-2">
               {!method.is_default && (
                 <Button size="sm" variant="ghost" onClick={() => handleSetDefault(method.id)}>
-                  Set as default
+{t("web.provider.settings.pages.billing.setAsDefault")}
                 </Button>
               )}
               <Button
@@ -510,12 +514,12 @@ function PaymentMethodsSection({
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Payment Method</DialogTitle>
-            <DialogDescription>Add a payment method for paying platform fees</DialogDescription>
+<DialogTitle>{t("web.provider.settings.pages.billing.addPaymentMethodTitle")}</DialogTitle>
+<DialogDescription>{t("web.provider.settings.pages.billing.addPaymentMethodDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Type</Label>
+<Label>{t("web.provider.common.type")}</Label>
               <Select
                 value={formData.type}
                 onValueChange={(value) => setFormData({ ...formData, type: value })}
@@ -524,51 +528,51 @@ function PaymentMethodsSection({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="credit_card">Credit Card</SelectItem>
-                  <SelectItem value="debit_card">Debit Card</SelectItem>
-                  <SelectItem value="bank_account">Bank Account</SelectItem>
+<SelectItem value="credit_card">{t("web.provider.settings.pages.billing.creditCard")}</SelectItem>
+<SelectItem value="debit_card">{t("web.provider.settings.pages.billing.debitCard")}</SelectItem>
+<SelectItem value="bank_account">{t("web.provider.settings.pages.billing.bankAccount")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Name</Label>
+<Label>{t("web.provider.common.name")}</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Visa ending in 1234"
+                placeholder={t("web.provider.settings.pages.billing.eGVisaEndingIn1234")}
               />
             </div>
             {(formData.type === "credit_card" || formData.type === "debit_card") && (
               <>
                 <div>
-                  <Label>Last 4 digits</Label>
+<Label>{t("web.provider.settings.pages.billing.last4Digits")}</Label>
                   <Input
                     value={formData.last4}
                     onChange={(e) => setFormData({ ...formData, last4: e.target.value })}
-                    placeholder="1234"
+                    placeholder={t("web.provider.settings.pages.billing.n1234")}
                     maxLength={4}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Expiry Month</Label>
+<Label>{t("web.provider.settings.pages.billing.expiryMonth")}</Label>
                     <Input
                       type="number"
                       min="1"
                       max="12"
                       value={formData.expiry_month}
                       onChange={(e) => setFormData({ ...formData, expiry_month: e.target.value })}
-                      placeholder="MM"
+                      placeholder={t("web.provider.settings.pages.billing.mm")}
                     />
                   </div>
                   <div>
-                    <Label>Expiry Year</Label>
+<Label>{t("web.provider.settings.pages.billing.expiryYear")}</Label>
                     <Input
                       type="number"
                       min={new Date().getFullYear()}
                       value={formData.expiry_year}
                       onChange={(e) => setFormData({ ...formData, expiry_year: e.target.value })}
-                      placeholder="YYYY"
+                      placeholder={t("web.provider.settings.pages.billing.yyyy")}
                     />
                   </div>
                 </div>
@@ -577,15 +581,15 @@ function PaymentMethodsSection({
             {formData.type === "bank_account" && (
               <>
                 <div>
-                  <Label>Bank Name</Label>
+<Label>{t("web.provider.settings.pages.billing.bankName")}</Label>
                   <Input
                     value={formData.bank_name}
                     onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                    placeholder="e.g., Standard Bank"
+                    placeholder={t("web.provider.settings.pages.billing.eGStandardBank")}
                   />
                 </div>
                 <div>
-                  <Label>Account Type</Label>
+<Label>{t("web.provider.settings.pages.billing.accountType")}</Label>
                   <Select
                     value={formData.account_type}
                     onValueChange={(value) => setFormData({ ...formData, account_type: value })}
@@ -594,8 +598,8 @@ function PaymentMethodsSection({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="checking">Checking</SelectItem>
-                      <SelectItem value="savings">Savings</SelectItem>
+<SelectItem value="checking">{t("web.provider.settings.pages.billing.checking")}</SelectItem>
+<SelectItem value="savings">{t("web.provider.settings.pages.billing.savings")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -610,16 +614,16 @@ function PaymentMethodsSection({
                 className="rounded"
               />
               <Label htmlFor="is_default" className="cursor-pointer">
-                Set as default payment method
+{t("web.provider.settings.pages.billing.setAsDefaultPaymentMethod")}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button onClick={handleAddPaymentMethod} className="bg-primary hover:bg-primary-hover">
-              Add Payment Method
+{t("web.provider.settings.pages.billing.addPaymentMethodCta")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -629,22 +633,20 @@ function PaymentMethodsSection({
 }
 
 function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const fallbackCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
   const formatCurrency = (amount: number, currency?: string | null) => {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || fallbackCurrency,
-    }).format(Number(amount || 0));
+    return formatMoney(Number(amount || 0), currency || fallbackCurrency);
   };
 
   if (items.length === 0) {
     return (
       <div className="py-8 sm:py-12 text-center">
         <EmptyState
-          title="No subscription, ads or marketing payments yet"
-          description="Subscription renewals, paid ad campaign orders, and marketing credit top-ups will appear here once payment is confirmed."
+          title={t("web.provider.settings.pages.billing.noSubscriptionAdsOrMarketingPayments")}
+description={t("web.provider.settings.pages.billing.noHistoryDescription")}
           icon={CreditCard}
         />
       </div>
@@ -656,12 +658,12 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
       {items.map((item) => {
         const isAds = item.type === "ads";
         const isMarketing = item.type === "marketing_credit";
-        const typeLabel = isMarketing ? "Marketing credits" : isAds ? "Ads" : "Subscription";
+const typeLabel = isMarketing ? t("web.provider.settings.pages.billing.marketingCredits") : isAds ? t("web.provider.settings.pages.billing.ads") : t("web.provider.settings.pages.billing.subscription");
         const fallbackLabel = isMarketing
-          ? "Marketing credit top-up"
+          ? t("web.provider.settings.pages.billing.marketingCreditTopUp")
           : isAds
-            ? "Ads campaign payment"
-            : "Subscription payment";
+            ? t("web.provider.settings.pages.billing.adsCampaignPayment")
+            : t("web.provider.settings.pages.billing.subscriptionPayment");
         const iconClasses = isMarketing
           ? "bg-emerald-50 text-emerald-700"
           : isAds
@@ -699,7 +701,7 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <FileText className="h-3.5 w-3.5" /> Receipt
+<FileText className="h-3.5 w-3.5" /> {t("web.provider.settings.pages.billing.receipt")}
                 </a>
               ) : null}
             </div>
@@ -718,6 +720,7 @@ function InvoicesSection({
   invoices: any[];
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -746,18 +749,15 @@ function InvoicesSection({
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: invoiceCurrency,
-    }).format(amount);
+    return formatMoney(amount, invoiceCurrency);
   };
 
   if (invoices.length === 0) {
     return (
       <div className="py-8 sm:py-12 text-center">
         <EmptyState
-          title="No invoices yet"
-          description="Your platform fee invoices will appear here"
+          title={t("web.provider.settings.pages.billing.noInvoicesYet")}
+description={t("web.provider.settings.pages.billing.noInvoicesDescription")}
           icon={FileText}
         />
       </div>
@@ -768,19 +768,19 @@ function InvoicesSection({
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <p className="text-sm text-gray-600">
-          {invoices.length} invoice{invoices.length !== 1 ? "s" : ""}
+{t("web.provider.settings.pages.billing.invoiceCount", { count: invoices.length })}
         </p>
         <Select value={selectedStatus} onValueChange={setSelectedStatus}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="paid">Paid</SelectItem>
-            <SelectItem value="partially_paid">Partially Paid</SelectItem>
-            <SelectItem value="overdue">Overdue</SelectItem>
+<SelectItem value="all">{t("web.provider.common.allStatuses")}</SelectItem>
+<SelectItem value="draft">{t("web.provider.settings.pages.billing.draft")}</SelectItem>
+<SelectItem value="sent">{t("web.provider.settings.pages.billing.sent")}</SelectItem>
+<SelectItem value="paid">{t("web.provider.settings.pages.billing.paid")}</SelectItem>
+<SelectItem value="partially_paid">{t("web.provider.settings.pages.billing.partiallyPaid")}</SelectItem>
+<SelectItem value="overdue">{t("web.provider.settings.pages.billing.overdue")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -802,11 +802,11 @@ function InvoicesSection({
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
               <div>
-                <span className="text-xs text-gray-500">Issue Date</span>
+<span className="text-xs text-gray-500">{t("web.provider.settings.pages.billing.issueDate")}</span>
                 <p className="text-gray-900">{new Date(invoice.issue_date).toLocaleDateString()}</p>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Due Date</span>
+<span className="text-xs text-gray-500">{t("web.provider.settings.pages.billing.dueDate")}</span>
                 <p className="text-gray-900">{new Date(invoice.due_date).toLocaleDateString()}</p>
               </div>
             </div>
@@ -845,13 +845,13 @@ function InvoicesSection({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Invoice #</TableHead>
-              <TableHead>Period</TableHead>
-              <TableHead>Issue Date</TableHead>
-              <TableHead>Due Date</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+<TableHead>{t("web.provider.settings.pages.billing.invoiceNumber")}</TableHead>
+<TableHead>{t("web.provider.settings.pages.billing.period")}</TableHead>
+<TableHead>{t("web.provider.settings.pages.billing.issueDate")}</TableHead>
+<TableHead>{t("web.provider.settings.pages.billing.dueDate")}</TableHead>
+<TableHead>{t("web.provider.common.amount")}</TableHead>
+<TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+<TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -868,7 +868,7 @@ function InvoicesSection({
                   {formatCurrency(invoice.total_amount)}
                 </TableCell>
                 <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-end">
                   <div className="flex justify-end gap-2">
                     <Button
                       size="sm"

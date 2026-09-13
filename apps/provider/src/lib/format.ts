@@ -2,7 +2,7 @@
  * Formatting utilities for currency, dates, durations, etc.
  */
 import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday, isValid, parseISO } from "date-fns";
-import { formatMoney, formatMoneyCompact, normalizeCurrencyCode } from "@beautonomi/utils";
+import { formatMoney, formatMoneyCompact, getDefaultMoneyLocale, normalizeCurrencyCode } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 function parseIsoSafe(dateStr: string | null | undefined): Date | null {
@@ -17,12 +17,19 @@ export function formatCurrency(
   locale?: string,
 ): string {
   const code = normalizeCurrencyCode(currency);
-  const resolvedLocale = locale ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "en-ZA";
+  const resolvedLocale =
+    locale ?? getDefaultMoneyLocale() ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "en-ZA";
   return formatMoney(amount, code, resolvedLocale);
 }
 
-export function formatCurrencyShort(amount: number, currency = getTenantDefaultCurrency()): string {
-  return formatMoneyCompact(amount, currency);
+export function formatCurrencyShort(
+  amount: number,
+  currency = getTenantDefaultCurrency(),
+  locale?: string,
+): string {
+  const resolvedLocale =
+    locale ?? getDefaultMoneyLocale() ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "en-ZA";
+  return formatMoneyCompact(amount, currency, resolvedLocale);
 }
 
 export function formatDate(dateStr: string | null | undefined, fmt = "MMM d, yyyy"): string {

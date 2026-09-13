@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import MaintenanceView from "./MaintenanceView";
 import type { MaintenanceScope, PublicMaintenanceResponse } from "@/lib/maintenance-types";
 import { resolveWebMaintenanceFetch } from "@/lib/maintenance-web-path-scope";
+import { fetchDeduped } from "@/lib/client/fetch-dedupe";
 
 function maintenanceScopeFromResolution(
   r: ReturnType<typeof resolveWebMaintenanceFetch>
@@ -47,7 +48,7 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
     }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/public/maintenance?scope=${fetchScope}`, { cache: "no-store" })
+    fetchDeduped(`/api/public/maintenance?scope=${fetchScope}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: PublicMaintenanceResponse) => {
         if (!cancelled) {

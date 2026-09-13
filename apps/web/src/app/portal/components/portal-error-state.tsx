@@ -68,7 +68,7 @@ export function PortalErrorState({
         <p className="text-gray-600 mb-6">{displayMessage}</p>
 
         {!isNoToken && (
-          <div className="mb-6 text-left bg-gray-50 rounded-lg p-4">
+          <div className="mb-6 text-start bg-gray-50 rounded-lg p-4">
             <h3 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
               <Mail className="h-4 w-4" />
               Request a new link
@@ -83,7 +83,7 @@ export function PortalErrorState({
                       window.location.href = linkResult.portalUrl!;
                     }}
                   >
-                    <ExternalLink className="h-4 w-4 mr-1" />
+                    <ExternalLink className="h-4 w-4 me-1" />
                     Open Booking
                   </Button>
                   <Button
@@ -94,7 +94,7 @@ export function PortalErrorState({
                       toast.success("Link copied!");
                     }}
                   >
-                    <Copy className="h-4 w-4 mr-1" />
+                    <Copy className="h-4 w-4 me-1" />
                     Copy
                   </Button>
                 </div>

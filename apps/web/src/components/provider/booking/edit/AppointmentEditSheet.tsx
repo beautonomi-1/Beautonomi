@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, CalendarClock, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import type { Appointment, ServiceItem, TeamMember } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { formatApiErrorMessage } from "@/lib/http/api-error";
@@ -59,6 +60,7 @@ export function AppointmentEditSheet({
   onRefresh,
   onRequestRefund,
 }: AppointmentEditSheetProps) {
+  const { t } = useTranslation();
   const {
     isOpen,
     mode,
@@ -288,7 +290,7 @@ export function AppointmentEditSheet({
 
       const updated = await providerApi.updateAppointment(selectedAppointmentId, patch as Partial<Appointment>);
       updateSelectedAppointment(updated);
-      toast.success("Booking updated");
+      toast.success(t("web.provider.appointmentEditSheet.updated"));
       onSuccess?.(updated);
       onRefresh?.();
       switchToViewMode();
@@ -297,7 +299,7 @@ export function AppointmentEditSheet({
       if (conflict.isConflict) {
         setConflictOpen(true);
       } else {
-        toast.error(formatApiErrorMessage(error, "Failed to update booking"));
+        toast.error(formatApiErrorMessage(error, t("web.provider.appointmentEditSheet.updateFailed")));
       }
     } finally {
       setSaving(false);
@@ -311,7 +313,7 @@ export function AppointmentEditSheet({
       updateSelectedAppointment(fresh);
       hydrateFromAppointment(fresh);
     } catch (error) {
-      toast.error(formatApiErrorMessage(error, "Failed to reload booking"));
+      toast.error(formatApiErrorMessage(error, t("web.provider.appointmentEditSheet.reloadFailed")));
     }
   };
 
@@ -320,17 +322,17 @@ export function AppointmentEditSheet({
       <button
         type="button"
         onClick={switchToViewMode}
-        className="p-2 -ml-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Back"
+        className="p-2 -ms-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t("web.provider.appointmentEditSheet.backA11y")}
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
-      <h2 className="text-lg font-semibold text-gray-900 flex-1 truncate">Edit booking</h2>
+      <h2 className="text-lg font-semibold text-gray-900 flex-1 truncate">{t("web.provider.appointmentEditSheet.title")}</h2>
       <button
         type="button"
         onClick={closeSidebar}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t("web.provider.appointmentEditSheet.closeA11y")}
       >
         <X className="h-5 w-5" />
       </button>
@@ -345,17 +347,17 @@ export function AppointmentEditSheet({
         onClick={() => setRescheduleOpen(true)}
         disabled={!selectedAppointment}
       >
-        <CalendarClock className="mr-2 h-4 w-4" />
-        Reschedule
+        <CalendarClock className="me-2 h-4 w-4" />
+        {t("web.provider.appointmentEditSheet.reschedule")}
       </BookingActionButton>
       <BookingActionButton disabled={isSaving || serviceLines.length === 0} onClick={handleSave}>
         {isSaving ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Saving…
+            <Loader2 className="me-2 h-4 w-4 animate-spin" />
+            {t("web.provider.appointmentEditSheet.saving")}
           </>
         ) : (
-          "Save changes"
+          t("web.provider.appointmentEditSheet.saveChanges")
         )}
       </BookingActionButton>
     </div>
@@ -376,14 +378,13 @@ export function AppointmentEditSheet({
           {!canEditAppointments ? (
             <PermissionGateInline
               allowed={false}
-              message="You do not have permission to edit appointments."
+              message={t("web.provider.appointmentEditSheet.noPermission")}
             />
           ) : null}
           {editOverpaid > 0 ? (
             <BookingSectionCard className="border-amber-200 bg-amber-50">
               <p className="text-sm text-amber-950">
-                Overpaid by <span className="font-semibold">{formatMoney(editOverpaid)}</span>. Issue a
-                refund after saving if the total changed.
+                {t("web.provider.appointmentEditSheet.overpaid", { amount: formatMoney(editOverpaid) })}
               </p>
               {onRequestRefund ? (
                 <BookingActionButton
@@ -391,7 +392,7 @@ export function AppointmentEditSheet({
                   variant="outline"
                   onClick={onRequestRefund}
                 >
-                  Issue refund
+                  {t("web.provider.appointmentEditSheet.issueRefund")}
                 </BookingActionButton>
               ) : (
                 <BookingActionButton
@@ -399,7 +400,7 @@ export function AppointmentEditSheet({
                   variant="outline"
                   onClick={switchToViewMode}
                 >
-                  View to refund
+                  {t("web.provider.appointmentEditSheet.viewToRefund")}
                 </BookingActionButton>
               )}
             </BookingSectionCard>
@@ -421,14 +422,14 @@ export function AppointmentEditSheet({
             <BookingSectionCard key={`${line.serviceId}-${index}`}>
               <div className="flex items-center justify-between mb-2">
                 <BookingSectionLabel>
-                  {serviceLines.length > 1 ? `Service ${index + 1}` : "Service"}
+                  {serviceLines.length > 1 ? t("web.provider.appointmentEditSheet.serviceN", { n: index + 1 }) : t("web.provider.appointmentEditSheet.service")}
                 </BookingSectionLabel>
                 {serviceLines.length > 1 ? (
                   <button
                     type="button"
                     className="p-2 text-red-600 touch-manipulation"
                     onClick={() => removeServiceLine(index)}
-                    aria-label="Remove service"
+                    aria-label={t("web.provider.appointmentEditSheet.removeServiceA11y")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -439,7 +440,7 @@ export function AppointmentEditSheet({
                 onValueChange={(serviceId) => handleServiceChange(index, serviceId)}
               >
                 <SelectTrigger className="rounded-xl min-h-[44px]">
-                  <SelectValue placeholder="Select service" />
+                  <SelectValue placeholder={t("web.provider.appointmentEditSheet.selectService")} />
                 </SelectTrigger>
                 <SelectContent>
                   {services.map((svc) => (
@@ -451,13 +452,13 @@ export function AppointmentEditSheet({
               </Select>
               {teamMembers.length > 0 ? (
                 <div className="mt-2">
-                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Staff</label>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">{t("web.provider.appointmentEditSheet.staff")}</label>
                   <Select
                     value={line.staffId ?? selectedAppointment?.team_member_id ?? ""}
                     onValueChange={(staffId) => handleStaffChange(index, staffId)}
                   >
                     <SelectTrigger className="rounded-xl min-h-[44px]">
-                      <SelectValue placeholder="Assign staff" />
+                      <SelectValue placeholder={t("web.provider.appointmentEditSheet.assignStaff")} />
                     </SelectTrigger>
                     <SelectContent>
                       {teamMembers.map((member) => (
@@ -471,7 +472,7 @@ export function AppointmentEditSheet({
               ) : null}
               {(addonsByServiceId[line.serviceId]?.length ?? 0) > 0 ? (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs font-medium text-gray-600">Add-ons</p>
+                  <p className="text-xs font-medium text-gray-600">{t("web.provider.appointmentEditSheet.addons")}</p>
                   {addonsByServiceId[line.serviceId]?.map((addon) => (
                     <label
                       key={addon.id}
@@ -493,15 +494,15 @@ export function AppointmentEditSheet({
           ))}
 
           <BookingActionButton variant="outline" onClick={addServiceLine}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add service
+            <Plus className="me-2 h-4 w-4" />
+            {t("web.provider.appointmentEditSheet.addService")}
           </BookingActionButton>
 
           <EditProductsSection products={productLines} onChange={setProductLines} />
 
           <BookingSectionCard>
             <BookingSectionLabel htmlFor="edit-discount" className="mb-2">
-              Manual discount
+              {t("web.provider.appointmentEditSheet.manualDiscount")}
             </BookingSectionLabel>
             <Input
               id="edit-discount"
@@ -515,14 +516,14 @@ export function AppointmentEditSheet({
             />
             {preservedDiscountTotal > 0 ? (
               <p className="text-xs text-gray-500 mt-1">
-                Promo/loyalty discounts ({preservedDiscountTotal.toFixed(2)}) are preserved automatically.
+                {t("web.provider.appointmentEditSheet.preservedDiscounts", { amount: preservedDiscountTotal.toFixed(2) })}
               </p>
             ) : null}
           </BookingSectionCard>
 
           <BookingSectionCard>
             <BookingSectionLabel htmlFor="edit-notes" className="mb-2">
-              Notes
+              {t("web.provider.appointmentEditSheet.notes")}
             </BookingSectionLabel>
             <Textarea
               id="edit-notes"
@@ -530,7 +531,7 @@ export function AppointmentEditSheet({
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               className="rounded-xl"
-              placeholder="Booking notes"
+              placeholder={t("web.provider.appointmentEditSheet.notesPlaceholder")}
             />
           </BookingSectionCard>
           </fieldset>

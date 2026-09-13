@@ -21,6 +21,7 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const isJoinPage = pathname === "/provider/join" || pathname?.startsWith("/provider/join/");
   const isEulaPage = pathname === "/provider/eula" || pathname?.startsWith("/provider/eula/");
   const isEmbedPage = pathname === "/provider/embed";
+  const isSignupPage = pathname === "/provider/signup";
   const isSubscriptionCheckout = pathname === "/provider/subscription-checkout";
   const isAdsPaymentReturn =
     pathname === "/provider/settings/ads/payment-return" ||
@@ -30,8 +31,16 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
     (pathname?.startsWith("/provider/get-started/") ?? false);
 
   // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
-  // Partner EULA is a public legal page (App Store / in-app links) — no RoleGuard or portal shell
-  if (isOnboardingPage || isJoinPage || isEulaPage || isEmbedPage || isSubscriptionCheckout || isAdsPaymentReturn) {
+  // Partner EULA / public signup are entry pages — no RoleGuard or portal shell
+  if (
+    isOnboardingPage ||
+    isJoinPage ||
+    isEulaPage ||
+    isEmbedPage ||
+    isSignupPage ||
+    isSubscriptionCheckout ||
+    isAdsPaymentReturn
+  ) {
     return <>{children}</>;
   }
 

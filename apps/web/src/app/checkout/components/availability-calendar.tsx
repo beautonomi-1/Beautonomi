@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Clock, X, Loader2 } from "lucide-react";
 import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 import { fetcher } from "@/lib/http/fetcher";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface TimeSlot {
   id: string;
@@ -71,7 +72,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   // Convert ISO time to 12-hour format
   const formatTimeDisplay = (isoString: string): string => {
     const date = new Date(isoString);
-    return date.toLocaleTimeString("en-US", {
+    return date.toLocaleTimeString(getDefaultMoneyLocale(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -242,7 +243,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
     if (date.toDateString() === today.toDateString()) return "Today";
     if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
-    return date.toLocaleDateString("en-US", { weekday: "short" });
+    return date.toLocaleDateString(getDefaultMoneyLocale(), { weekday: "short" });
   };
 
   return (
@@ -328,7 +329,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-[#FF0077]" />
-          <span className="ml-2 text-gray-600">Loading availability...</span>
+          <span className="ms-2 text-gray-600">Loading availability...</span>
         </div>
       )}
 

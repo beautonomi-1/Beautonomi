@@ -24,8 +24,13 @@ import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { PreferencesTrigger } from "@/components/global/PreferencesTrigger";
+import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
 
 export function ProviderTopbar() {
+  const { t } = useTranslation();
+  const openPreferences = useOpenGlobalPreferences();
   const pathname = usePathname();
   const { provider, salons, selectedLocationId, setSelectedLocation, setupCompletion, setupStatusKnown } = useProviderPortal();
   // Use AuthProvider directly — it already holds avatar_url/full_name and handles
@@ -55,37 +60,37 @@ export function ProviderTopbar() {
   const mobilePageTitle = (() => {
     if (!pathname) return provider?.business_name || branding?.site_name || "Beautonomi";
     const segments: [string, string][] = [
-      ["/provider/calendar", "Calendar"],
-      ["/provider/dashboard", "Dashboard"],
-      ["/provider/clients", "Clients"],
-      ["/provider/bookings", "Bookings"],
-      ["/provider/appointments", "Bookings"],
-      ["/provider/sales", "Sales"],
-      ["/provider/finance", "Finance"],
-      ["/provider/analytics", "Analytics"],
-      ["/provider/reports", "Reports"],
-      ["/provider/messaging", "Messages"],
-      ["/provider/settings", "Settings"],
-      ["/provider/team", "Team"],
-      ["/provider/catalogue", "Catalogue"],
-      ["/provider/ecommerce", "E-Commerce"],
-      ["/provider/notifications", "Notifications"],
-      ["/provider/waitlist", "Waitlist"],
-      ["/provider/waiting-room", "Waiting Room"],
-      ["/provider/explore", "Explore"],
-      ["/provider/packages", "Packages"],
-      ["/provider/payouts", "Payouts"],
-      ["/provider/reviews", "Reviews"],
-      ["/provider/schedule", "Schedule"],
-      ["/provider/forms", "Forms"],
-      ["/provider/resources", "Resources"],
-      ["/provider/subscription", "Subscription"],
-      ["/provider/orders", "Orders"],
-      ["/provider/recurring-appointments", "Recurring"],
-      ["/provider/express-booking", "Booking links"],
-      ["/provider/front-desk", "Front desk"],
-      ["/provider/more", "More"],
-      ["/provider/gamification", "Rewards"],
+      ["/provider/calendar", t("web.provider.topbar.mobileTitles.calendar")],
+      ["/provider/dashboard", t("web.provider.topbar.mobileTitles.dashboard")],
+      ["/provider/clients", t("web.provider.topbar.mobileTitles.clients")],
+      ["/provider/bookings", t("web.provider.topbar.mobileTitles.bookings")],
+      ["/provider/appointments", t("web.provider.topbar.mobileTitles.bookings")],
+      ["/provider/sales", t("web.provider.topbar.mobileTitles.sales")],
+      ["/provider/finance", t("web.provider.topbar.mobileTitles.finance")],
+      ["/provider/analytics", t("web.provider.topbar.mobileTitles.analytics")],
+      ["/provider/reports", t("web.provider.topbar.mobileTitles.reports")],
+      ["/provider/messaging", t("web.provider.topbar.mobileTitles.messages")],
+      ["/provider/settings", t("web.provider.topbar.mobileTitles.settings")],
+      ["/provider/team", t("web.provider.topbar.mobileTitles.team")],
+      ["/provider/catalogue", t("web.provider.topbar.mobileTitles.catalogue")],
+      ["/provider/ecommerce", t("web.provider.topbar.mobileTitles.ecommerce")],
+      ["/provider/notifications", t("web.provider.topbar.mobileTitles.notifications")],
+      ["/provider/waitlist", t("web.provider.topbar.mobileTitles.waitlist")],
+      ["/provider/waiting-room", t("web.provider.topbar.mobileTitles.waitingRoom")],
+      ["/provider/explore", t("web.provider.topbar.mobileTitles.explore")],
+      ["/provider/packages", t("web.provider.topbar.mobileTitles.packages")],
+      ["/provider/payouts", t("web.provider.topbar.mobileTitles.payouts")],
+      ["/provider/reviews", t("web.provider.topbar.mobileTitles.reviews")],
+      ["/provider/schedule", t("web.provider.topbar.mobileTitles.schedule")],
+      ["/provider/forms", t("web.provider.topbar.mobileTitles.forms")],
+      ["/provider/resources", t("web.provider.topbar.mobileTitles.resources")],
+      ["/provider/subscription", t("web.provider.topbar.mobileTitles.subscription")],
+      ["/provider/orders", t("web.provider.topbar.mobileTitles.orders")],
+      ["/provider/recurring-appointments", t("web.provider.topbar.mobileTitles.recurring")],
+      ["/provider/express-booking", t("web.provider.topbar.mobileTitles.bookingLinks")],
+      ["/provider/front-desk", t("web.provider.topbar.mobileTitles.frontDesk")],
+      ["/provider/more", t("web.provider.topbar.mobileTitles.more")],
+      ["/provider/gamification", t("web.provider.topbar.mobileTitles.rewards")],
     ];
     for (const [prefix, title] of segments) {
       if (pathname.startsWith(prefix)) return title;
@@ -103,7 +108,7 @@ export function ProviderTopbar() {
             className="hidden md:flex items-center justify-center flex-shrink-0 rounded-lg bg-white p-1 shadow-sm ring-1 ring-primary/20 hover:ring-primary/35 transition-shadow"
           >
             <PlatformLogo
-              alt={branding?.site_name ? `${branding.site_name} logo` : "Beautonomi logo"}
+              alt={branding?.site_name ? t("web.provider.topbar.logoAlt", { name: branding.site_name }) : t("web.provider.topbar.logoAlt", { name: "Beautonomi" })}
               className="h-7 w-auto max-h-7 object-contain"
             />
           </Link>
@@ -128,7 +133,7 @@ export function ProviderTopbar() {
             isSearchFocused && "scale-[1.02]"
           )}>
             <ProviderGlobalSearch
-              placeholder="Search clients, appointments, services..."
+              placeholder={t("web.provider.topbar.searchPlaceholder")}
               inputClassName={cn(
                 "transition-all duration-200",
                 isSearchFocused && "bg-white ring-2"
@@ -146,7 +151,7 @@ export function ProviderTopbar() {
         <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 flex-shrink-0 min-w-0 overflow-x-hidden box-border">
           {/* Setup Progress - Desktop */}
           {setupStatusKnown && setupCompletion < 100 && (
-            <Link href="/provider/get-started" className="hidden sm:block flex-shrink-0 ml-1">
+            <Link href="/provider/get-started" className="hidden sm:block flex-shrink-0 ms-1">
                 <Badge
                   variant="outline"
                   className={cn(
@@ -165,7 +170,7 @@ export function ProviderTopbar() {
                   }}
                 >
                 <Sparkles className="w-3 h-3" />
-                {setupCompletion}% Complete
+                {t("web.provider.topbar.setupComplete", { percent: setupCompletion })}
               </Badge>
             </Link>
           )}
@@ -218,6 +223,14 @@ export function ProviderTopbar() {
             </div>
           )}
 
+          <div className="flex-shrink-0">
+            <PreferencesTrigger
+              variant="header"
+              iconOnly
+              onClick={() => openPreferences({ surface: "navbar" })}
+            />
+          </div>
+
           {/* Notifications */}
           <div className="flex-shrink-0">
             <ProviderNotificationsDropdown />
@@ -236,7 +249,7 @@ export function ProviderTopbar() {
                 <Avatar className="w-8 h-8 ring-2 ring-gray-100">
                   <AvatarImage
                     src={user?.avatar_url || undefined}
-                    alt={user?.full_name || "User"}
+                    alt={user?.full_name || t("web.provider.topbar.userFallback")}
                     onError={(e) => { e.currentTarget.style.display = "none"; }}
                   />
                   <AvatarFallback
@@ -250,10 +263,10 @@ export function ProviderTopbar() {
                 </Avatar>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-medium truncate max-w-[100px]">
-                    {user?.full_name || provider?.owner_name || "User"}
+                    {user?.full_name || provider?.owner_name || t("web.provider.topbar.userFallback")}
                   </span>
                   <span className="text-[10px] text-gray-500 truncate max-w-[100px]">
-                    {provider?.business_name || "Business"}
+                    {provider?.business_name || t("web.provider.topbar.businessFallback")}
                   </span>
                 </div>
                 <ChevronDown className="w-4 h-4 hidden lg:block text-gray-400" />
@@ -262,35 +275,40 @@ export function ProviderTopbar() {
             <DropdownMenuContent align="end" className="w-56">
               {/* User Info Header */}
               <div className="px-3 py-2 border-b">
-                <p className="font-medium">{user?.full_name || provider?.owner_name || "User"}</p>
+                <p className="font-medium">{user?.full_name || provider?.owner_name || t("web.provider.topbar.userFallback")}</p>
                 <p className="text-xs text-gray-500 truncate">{provider?.business_name}</p>
               </div>
               
               <DropdownMenuItem asChild>
                 <Link href="/provider/account/profile" className="cursor-pointer">
-                  My Profile
+                  {t("web.provider.topbar.menu.myProfile")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/provider/settings" className="cursor-pointer">
-                  Business Settings
+                  {t("web.provider.topbar.menu.businessSettings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/provider/subscription" className="cursor-pointer">
-                  Subscription
+                  {t("web.provider.topbar.menu.subscription")}
                 </Link>
               </DropdownMenuItem>
               {/* Account routes stay inside the provider shell, but reuse user-scoped APIs. */}
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/provider/account/login-and-security" className="cursor-pointer">
-                  Login & Security
+                  {t("web.provider.topbar.menu.loginSecurity")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/provider/account/privacy-and-sharing" className="cursor-pointer">
-                  Privacy & Sharing
+                  {t("web.provider.topbar.menu.privacySharing")}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/provider/account/preferences" className="cursor-pointer">
+                  {t("common.appLanguage")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -298,28 +316,28 @@ export function ProviderTopbar() {
                   href="/provider/account/data-rights"
                   className="cursor-pointer"
                 >
-                  Data Rights & Export
+                  {t("web.provider.topbar.menu.dataRights")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/help" className="cursor-pointer">
-                  Help Centre
+                  {t("web.provider.topbar.menu.helpCentre")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/learn" className="cursor-pointer">
-                  Learning Center
+                  {t("web.provider.topbar.menu.learningCenter")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/help/submit-ticket" className="cursor-pointer">
-                  Contact support
+                  {t("web.provider.topbar.menu.contactSupport")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/provider/resources" className="cursor-pointer">
-                  Resources
+                  {t("web.provider.topbar.menu.resources")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -327,7 +345,7 @@ export function ProviderTopbar() {
                 onClick={handleLogout}
                 className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
               >
-                Sign Out
+                {t("web.provider.topbar.menu.signOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -337,7 +355,7 @@ export function ProviderTopbar() {
       {/* Mobile Search Bar — collapsed by default, tap to expand */}
       <div className="md:hidden px-3 pb-2 -mt-0.5 w-full max-w-full box-border overflow-x-hidden">
         <ProviderGlobalSearch
-          placeholder="Search..."
+          placeholder={t("web.provider.topbar.searchPlaceholderMobile")}
           inputClassName="h-9 w-full max-w-full box-border text-sm"
         />
       </div>

@@ -4,6 +4,7 @@
  */
 import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -44,7 +45,19 @@ interface AnalyticsResponse {
   period: { start_date: string | null; end_date: string | null };
 }
 
+const PERIOD_KEYS = {
+  week: "periodWeek",
+  month: "periodMonth",
+  quarter: "periodQuarter",
+} as const;
+
 export default function ServiceZonesAnalyticsScreen() {
+  const { t } = useTranslation();
+  const sz = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.serviceZonesAnalytics.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
   const { provider } = useProvider();
@@ -69,7 +82,7 @@ export default function ServiceZonesAnalyticsScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading zone analytics..." />
+        <LoadingState message={sz("loading")} />
       </ScreenContainer>
     );
   }
@@ -77,7 +90,7 @@ export default function ServiceZonesAnalyticsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Zone analytics" showBack subtitle="At-home booking performance" />
+        <ScreenHeader title={sz("title")} showBack subtitle={sz("subtitle")} />
         <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -89,9 +102,9 @@ export default function ServiceZonesAnalyticsScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Zone analytics"
+        title={sz("title")}
         showBack
-        subtitle="At-home booking performance"
+        subtitle={sz("subtitle")}
       />
       <View style={twStyle("mb-3 flex-row")}>
         {(["week", "month", "quarter"] as const).map((p, i) => (
@@ -99,26 +112,26 @@ export default function ServiceZonesAnalyticsScreen() {
             key={p}
             style={[twStyle(`flex-1 rounded-xl border py-2 ${
               period === p ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"
-            }`), i < 2 ? { marginRight: 8 } : undefined]}
+            }`), i < 2 ? { marginEnd: 8 } : undefined]}
             onPress={() => setPeriod(p)}
           >
             <Text
-              style={twStyle(`text-center text-sm font-medium capitalize ${
+              style={twStyle(`text-center text-sm font-medium ${
                 period === p ? "text-indigo-700" : "text-gray-600"
               }`)}
             >
-              {p}
+              {sz(PERIOD_KEYS[p])}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
       {summary && (
         <>
-          <SectionHeader title="Summary" />
+          <SectionHeader title={sz("summary")} />
           <View style={twStyle("mb-4 flex-row flex-wrap")}>
-            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginEnd: 12, marginBottom: 12 }]}>
               <StatCard
-                title="Zones"
+                title={sz("statZones")}
                 value={`${summary.active_zones}/${summary.total_zones}`}
                 icon="map-outline"
                 iconColor="#6366f1"
@@ -126,9 +139,9 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginEnd: 12, marginBottom: 12 }]}>
               <StatCard
-                title="At-home bookings"
+                title={sz("statAtHome")}
                 value={String(summary.total_at_home_bookings)}
                 icon="car-outline"
                 iconColor="#22c55e"
@@ -136,9 +149,9 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginEnd: 12, marginBottom: 12 }]}>
               <StatCard
-                title="Revenue"
+                title={sz("statRevenue")}
                 value={formatCurrency(summary.total_revenue)}
                 icon="cash-outline"
                 iconColor="#f59e0b"
@@ -146,9 +159,9 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginEnd: 12, marginBottom: 12 }]}>
               <StatCard
-                title="Travel fees"
+                title={sz("statTravelFees")}
                 value={formatCurrency(summary.total_travel_fees)}
                 icon="navigate-outline"
                 iconColor="#0891b2"
@@ -159,12 +172,12 @@ export default function ServiceZonesAnalyticsScreen() {
           </View>
         </>
       )}
-      <SectionHeader title="By zone" />
+      <SectionHeader title={sz("byZone")} />
       {zones.length === 0 ? (
         <EmptyState
           icon="map-outline"
-          title="No zone data"
-          description="Add service zones and complete at-home bookings to see analytics."
+          title={sz("emptyTitle")}
+          description={sz("emptyDescription")}
         />
       ) : (
         <View>
@@ -185,27 +198,27 @@ export default function ServiceZonesAnalyticsScreen() {
                       z.is_active ? "text-green-700" : "text-gray-500"
                     }`)}
                   >
-                    {z.is_active ? "Active" : "Inactive"}
+                    {z.is_active ? sz("active") : sz("inactive")}
                   </Text>
                 </View>
               </View>
               <View style={twStyle("mt-2 flex-row flex-wrap")}>
-                <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 12 }]}>
-                  Bookings: {z.total_bookings} ({z.completed_bookings} completed)
+                <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 12 }]}>
+                  {sz("bookingsLine", { total: z.total_bookings, completed: z.completed_bookings })}
                 </Text>
-                <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 12 }]}>
-                  Revenue: {formatCurrency(z.total_revenue)}
+                <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 12 }]}>
+                  {sz("revenueLine", { amount: formatCurrency(z.total_revenue) })}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  Travel: {formatCurrency(z.total_travel_fees)}
+                  {sz("travelLine", { amount: formatCurrency(z.total_travel_fees) })}
                 </Text>
               </View>
               <View style={twStyle("mt-1 flex-row")}>
-                <Text style={[twStyle("text-[10px] text-gray-400"), { marginRight: 8 }]}>
-                  Completion: {z.completion_rate.toFixed(0)}%
+                <Text style={[twStyle("text-[10px] text-gray-400"), { marginEnd: 8 }]}>
+                  {sz("completionLine", { percent: z.completion_rate.toFixed(0) })}
                 </Text>
                 <Text style={twStyle("text-[10px] text-gray-400")}>
-                  Avg: {formatCurrency(z.average_booking_value)}
+                  {sz("avgLine", { amount: formatCurrency(z.average_booking_value) })}
                 </Text>
               </View>
             </View>

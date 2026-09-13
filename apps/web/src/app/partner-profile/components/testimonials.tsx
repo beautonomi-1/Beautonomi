@@ -185,7 +185,7 @@ const Testimonials = () => {
               onClick={handleClosePopup}
               className="h-7 w-7 cursor-pointer"
             />
-            <div className="max-h-[80vh] overflow-y-auto flex flex-col md:flex-row gap-14 pr-6">
+            <div className="max-h-[80vh] overflow-y-auto flex flex-col md:flex-row gap-14 pe-6">
               <div className="">
                 <Ratings isMultiColumn={false} />
               </div>
@@ -216,7 +216,7 @@ const Testimonials = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center border rounded-full pl-4 mb-9">
+                <div className="flex items-center border rounded-full ps-4 mb-9">
                   <Image src={Search} alt="" />
                   <Input placeholder="Search reviews" />
                 </div>

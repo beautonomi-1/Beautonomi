@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useState } from "react";
 import { Loader2, QrCode, X } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +23,7 @@ export function GroupPaystackTerminalSheet({
   expectedAmount,
 }: GroupPaystackTerminalSheetProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const [preparing, setPreparing] = useState(false);
   const [terminalCode, setTerminalCode] = useState<string | null>(null);
   const [paymentLink, setPaymentLink] = useState<string | null>(null);
@@ -28,7 +31,7 @@ export function GroupPaystackTerminalSheet({
 
   const prepare = async () => {
     if (expectedAmount <= 0) {
-      toast.error("No outstanding balance to collect");
+      toast.error(t("web.provider.groupPaystackTerminal.noBalance"));
       return;
     }
     setPreparing(true);
@@ -48,14 +51,14 @@ export function GroupPaystackTerminalSheet({
       });
       const terminal = response?.data?.terminal;
       if (!terminal?.terminal_code) {
-        toast.error("No Paystack Terminal is ready — set one up in Settings → Sales");
+        toast.error(t("web.provider.groupPaystackTerminal.noTerminal"));
         return;
       }
       setTerminalCode(terminal.terminal_code);
       setPaymentLink(terminal.payment_link ?? null);
       setQrUrl(terminal.qr_url ?? null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not prepare Paystack Terminal");
+      toast.error(err instanceof Error ? err.message : t("web.provider.groupPaystackTerminal.prepareFailed"));
     } finally {
       setPreparing(false);
     }
@@ -75,8 +78,8 @@ export function GroupPaystackTerminalSheet({
       mode="view"
       header={
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold flex-1">Paystack Terminal</h2>
-          <button type="button" onClick={() => onOpenChange(false)} className="p-2" aria-label="Close">
+          <h2 className="text-lg font-semibold flex-1">{t("web.provider.groupPaystackTerminal.title")}</h2>
+          <button type="button" onClick={() => onOpenChange(false)} className="p-2" aria-label={t("web.a11y.close")}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -84,7 +87,7 @@ export function GroupPaystackTerminalSheet({
     >
       <div className="space-y-4 pb-4">
         <BookingSectionCard>
-          <BookingSectionLabel className="mb-2">Amount due</BookingSectionLabel>
+          <BookingSectionLabel className="mb-2">{t("web.provider.groupPaystackTerminal.amountDue")}</BookingSectionLabel>
           <p className="text-2xl font-bold">{formatMoney(expectedAmount)}</p>
         </BookingSectionCard>
 
@@ -92,22 +95,22 @@ export function GroupPaystackTerminalSheet({
           <BookingActionButton disabled={preparing} onClick={() => void prepare()}>
             {preparing ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Preparing…
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
+{t("web.provider.groupPaystackTerminal.preparing")}
               </>
             ) : (
               <>
-                <QrCode className="mr-2 h-4 w-4" />
-                Generate QR / link
+                <QrCode className="me-2 h-4 w-4" />
+{t("web.provider.groupPaystackTerminal.generateQr")}
               </>
             )}
           </BookingActionButton>
         ) : (
           <BookingSectionCard>
-            <p className="text-sm text-gray-600 mb-2">Terminal code: {terminalCode}</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.groupPaystackTerminal.terminalCode", { code: terminalCode })}</p>
             {qrUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrUrl} alt="Paystack terminal QR" className="mx-auto max-w-[220px] rounded-lg border" />
+              <img src={qrUrl} alt={t("web.provider.groupPaystackTerminal.qrAlt")} className="mx-auto max-w-[220px] rounded-lg border" />
             ) : null}
             {paymentLink ? (
               <a
@@ -116,7 +119,7 @@ export function GroupPaystackTerminalSheet({
                 rel="noopener noreferrer"
                 className="mt-3 block text-sm font-semibold text-green-700 underline"
               >
-                Open payment link
+{t("web.provider.groupPaystackTerminal.openLink")}
               </a>
             ) : null}
           </BookingSectionCard>

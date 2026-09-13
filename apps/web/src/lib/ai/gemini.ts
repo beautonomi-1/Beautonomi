@@ -20,6 +20,7 @@ export interface CallGeminiParams {
   timeoutMs?: number;
   /** Used only for Sentry tagging on failures (e.g. `ai.provider.content_studio`, `agent.support-triage`). */
   featureKey?: string;
+  images?: Array<{ url?: string; base64?: string; mime?: string }>;
 }
 
 export interface CallGeminiResult {
@@ -125,8 +126,21 @@ export async function callGemini(params: CallGeminiParams & { providerId?: strin
     generationConfig.responseSchema = schema;
   }
 
+  const parts: Array<Record<string, unknown>> = [{ text: user }];
+  for (const img of params.images ?? []) {
+    if (img.url) {
+      parts.push({
+        file_data: { mime_type: img.mime ?? "image/jpeg", file_uri: img.url },
+      });
+    } else if (img.base64) {
+      parts.push({
+        inline_data: { mime_type: img.mime ?? "image/jpeg", data: img.base64 },
+      });
+    }
+  }
+
   const body: Record<string, any> = {
-    contents: [{ parts: [{ text: user }] }],
+    contents: [{ parts }],
     generationConfig,
   };
   if (system) {

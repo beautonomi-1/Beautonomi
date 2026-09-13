@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Become a partner",
-  description:
-    "Grow your beauty business with Beautonomi — booking, payments, and tools built for mobile pros.",
-  alternates: {
-    canonical: "/become-a-partner",
-    languages: getHreflangAlternateUrls("/become-a-partner"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/become-a-partner",
+    titleKey: "web.seo.becomePartnerTitle",
+    descriptionKey: "web.seo.becomePartnerDescription",
+  });
+}
 
 export default function BecomeAPartnerLayout({ children }: { children: React.ReactNode }) {
   return children;

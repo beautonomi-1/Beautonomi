@@ -24,4 +24,12 @@ describe("getBookingNextStepCard", () => {
     );
     expect(card.title).toBe("Verify arrival");
   });
+
+  it("shows close-out card when needs_close_out is true", () => {
+    const card = getBookingNextStepCard(
+      { status: "confirmed", needs_close_out: true, suggested_close_out_action: "review" },
+      opts,
+    );
+    expect(card.title).toBe("Needs close-out");
+  });
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -121,8 +123,8 @@ interface Payout {
   rejected_at?: string | null;
 }
 
-function formatPayoutDisplayStatus(payout: Pick<Payout, "status" | "rejected_at">): string {
-  if (payout.status === "failed" && payout.rejected_at) return "Rejected";
+function formatPayoutDisplayStatus(payout: Pick<Payout, "status" | "rejected_at">, t: (key: string) => string): string {
+  if (payout.status === "failed" && payout.rejected_at) return t("web.provider.finance.rejected");
   return formatStatusLabel(payout.status);
 }
 
@@ -152,6 +154,7 @@ interface NextPayoutDateData {
 }
 
 export default function ProviderFinance() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { selectedLocationId, provider: portalProvider } = useProviderPortal();
   const { hasPermission } = usePermissions();
@@ -252,17 +255,17 @@ export default function ProviderFinance() {
       }>(url, { staleTimeMs: 0, timeoutMs: 120_000 });
       const payload = response.data;
       if (!payload?.earnings) {
-        throw new Error("Invalid finance response");
+        throw new Error(t("web.provider.finance.invalidResponse"));
       }
       setEarnings(payload.earnings);
       setTransactions(Array.isArray(payload.transactions) ? payload.transactions : []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load finance data";
+          : t("web.provider.finance.loadFailed");
       setError(errorMessage);
       console.error("Error loading finance data:", err);
     } finally {
@@ -316,7 +319,7 @@ export default function ProviderFinance() {
       setBanks(banksList);
     } catch (err) {
       console.warn("Failed to load banks:", err);
-      toast.error("Failed to load bank list");
+      toast.error(t("web.provider.finance.loadBankListFailed"));
     } finally {
       setIsLoadingBanks(false);
     }
@@ -335,11 +338,11 @@ export default function ProviderFinance() {
 
   const handleVerifyBankAccount = async () => {
     if (!bankForm.account_number.trim() || !bankForm.bank_code) {
-      toast.error("Enter an account number and select a bank first.");
+      toast.error(t("web.provider.finance.enterAccountAndBank"));
       return;
     }
     if (bankForm.account_number.trim().length < 8 || bankForm.account_number.trim().length > 20) {
-      toast.error("Account number must be 8-20 digits.");
+      toast.error(t("web.provider.finance.accountDigits"));
       return;
     }
     try {
@@ -355,10 +358,10 @@ export default function ProviderFinance() {
       if (name) {
         setBankForm((prev) => ({ ...prev, account_name: name }));
         setVerifiedAccountName(name);
-        toast.success("Bank account verified");
+        toast.success(t("web.provider.finance.bankVerified"));
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Bank account verification failed");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.finance.bankVerifyFailed"));
     } finally {
       setIsVerifyingBank(false);
     }
@@ -366,11 +369,11 @@ export default function ProviderFinance() {
 
   const handleAddPayoutAccountInline = async () => {
     if (!bankForm.account_number.trim() || !bankForm.bank_code || !bankForm.account_name.trim()) {
-      toast.error("Account number, bank, and account name are required.");
+      toast.error(t("web.provider.finance.accountBankNameRequired"));
       return;
     }
     if (bankForm.account_number.trim().length < 8 || bankForm.account_number.trim().length > 20) {
-      toast.error("Account number must be 8-20 digits.");
+      toast.error(t("web.provider.finance.accountDigits"));
       return;
     }
     try {
@@ -388,7 +391,7 @@ export default function ProviderFinance() {
         ...(verifiedAccountName ? { verified_account_name: verifiedAccountName } : {}),
         email: bankForm.email.trim() || undefined,
       });
-      toast.success("Bank account added");
+      toast.success(t("web.provider.finance.bankAdded"));
       resetBankForm();
       setShowInlineBankForm(false);
       await loadPayoutAccounts();
@@ -407,7 +410,7 @@ export default function ProviderFinance() {
             account.account_name.trim().toLowerCase() === accountNameNorm,
         );
         if (alreadySaved) {
-          toast.success("Bank account is already saved. Your list has been refreshed.");
+          toast.success(t("web.provider.settings.pages.payout-accounts.bankAccountIsAlreadySavedYour"));
           resetBankForm();
           setShowInlineBankForm(false);
           await loadPayoutAccounts();
@@ -416,7 +419,7 @@ export default function ProviderFinance() {
       } catch {
         // fall through
       }
-      toast.error(err instanceof FetchError ? err.message : "Failed to add bank account");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.finance.addBankFailed"));
     } finally {
       setIsSavingBank(false);
     }
@@ -424,22 +427,22 @@ export default function ProviderFinance() {
 
   const handleRequestPayout = async () => {
     if (!payoutAmount || parseFloat(payoutAmount) <= 0) {
-      toast.error("Please enter a valid payout amount");
+      toast.error(t("web.provider.finance.validPayoutAmount"));
       return;
     }
 
     const requested = roundMoney2(parseFloat(payoutAmount));
     const minimumPayout = earnings?.minimum_payout_amount ?? 100;
     if (requested < minimumPayout) {
-      toast.error(`Minimum payout is ${fmt(minimumPayout)}`);
+      toast.error(t("web.provider.finance.minimumPayout", { amount: fmt(minimumPayout) }));
       return;
     }
     if (earnings?.payout_balance_unavailable) {
-      toast.error("Withdrawable balance is still loading. Try again in a moment.");
+      toast.error(t("web.provider.finance.withdrawLoadingMoment"));
       return;
     }
     if (!earnings || requested > roundMoney2(earnings.available_balance)) {
-      toast.error("Insufficient balance for this payout");
+      toast.error(t("web.provider.finance.insufficientBalance"));
       return;
     }
 
@@ -452,7 +455,7 @@ export default function ProviderFinance() {
         bank_account_id: selectedBankId || primaryId || undefined,
       });
       
-      toast.success("Payout request submitted successfully");
+      toast.success(t("web.provider.finance.payoutSubmitted"));
       setShowPayoutDialog(false);
       setShowInlineBankForm(false);
       setPayoutAmount("");
@@ -464,7 +467,7 @@ export default function ProviderFinance() {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to request payout";
+          : t("web.provider.finance.requestPayoutFailed");
       toast.error(errorMessage);
       console.error("Error requesting payout:", err);
     } finally {
@@ -492,7 +495,7 @@ export default function ProviderFinance() {
       const multiLocation = (portalProvider?.locations?.length ?? 0) > 1;
       if (multiLocation && selectedLocationId) {
         const proceed = window.confirm(
-          "This CSV export covers all locations, not just the branch you're currently viewing. Continue?",
+          t("web.provider.finance.exportAllLocationsConfirm"),
         );
         if (!proceed) return;
       }
@@ -501,16 +504,16 @@ export default function ProviderFinance() {
       // Browser will download due to Content-Disposition on the response.
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
-      alert("Failed to start export");
+      alert(t("web.provider.finance.exportFailed"));
     }
   };
 
   const rangeLabel =
-    dateRange === "today" ? "Today" :
-    dateRange === "week" ? "This week (Mon–today)" :
-    dateRange === "month" ? "This month" :
-    dateRange === "year" ? "This year" :
-    "All time";
+    dateRange === "today" ? t("web.provider.finance.rangeToday") :
+    dateRange === "week" ? t("web.provider.finance.rangeWeekMonToday") :
+    dateRange === "month" ? t("web.provider.finance.rangeThisMonth") :
+    dateRange === "year" ? t("web.provider.finance.rangeThisYear") :
+    t("web.provider.finance.rangeAllTime");
 
   const handleTransactionClick = async (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -545,8 +548,8 @@ export default function ProviderFinance() {
   if (isLoading) {
     return (
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
-        <PageHeader title="Finance & Earnings" subtitle="Track earnings, payouts, and customer payments" />
-        <LoadingTimeout loadingMessage="Loading finance data..." />
+        <PageHeader title={t("web.provider.finance.pageTitle")} subtitle={t("web.provider.finance.pageSubtitleShort")} />
+        <LoadingTimeout loadingMessage={t("web.provider.finance.loading")} />
       </div>
     );
   }
@@ -554,12 +557,12 @@ export default function ProviderFinance() {
   if (error || !earnings) {
     return (
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
-        <PageHeader title="Finance & Earnings" />
+        <PageHeader title={t("web.provider.finance.pageTitle")} />
         <EmptyState
-          title="Failed to load finance data"
-          description={error || "Unable to load earnings information"}
+          title={t("web.provider.finance.loadFailed")}
+          description={error || t("web.provider.finance.unableToLoad")}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadFinanceData,
           }}
         />
@@ -571,12 +574,12 @@ export default function ProviderFinance() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]} redirectTo="/provider/dashboard">
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
         <PageHeader
-          title="Finance & Earnings"
-          subtitle="Track earnings for the selected period, request payouts, and search customer payments in one place"
+          title={t("web.provider.finance.pageTitle")}
+          subtitle={t("web.provider.finance.pageSubtitle")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Finance" },
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.sidebar.items.finance") },
           ]}
           actions={
             <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
@@ -584,8 +587,8 @@ export default function ProviderFinance() {
             <Dialog open={showPayoutDialog} onOpenChange={setShowPayoutDialog}>
               <DialogTrigger asChild>
                 <Button className="provider-btn-brand px-5" onClick={openPayoutDialog}>
-                  <ArrowUpRight className="w-4 h-4 mr-2" />
-                  Request Payout
+                  <ArrowUpRight className="w-4 h-4 me-2" />
+                  {t("web.provider.finance.requestPayout")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
@@ -594,32 +597,32 @@ export default function ProviderFinance() {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50">
                       <ArrowUpRight className="h-4 w-4 text-emerald-700" />
                     </span>
-                    Request payout
+                    {t("web.provider.finance.requestPayoutTitle")}
                   </DialogTitle>
                   <DialogDescription>
-                    Withdraw from your all-time platform-held payout balance. Period earnings are shown separately on this page.
+                    {t("web.provider.finance.requestPayoutBody")}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Available</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">{t("web.provider.finance.available")}</p>
                       <p className="mt-1 text-2xl font-semibold text-emerald-950">
                         {earnings.payout_balance_unavailable ? "—" : fmt(earnings.available_balance)}
                       </p>
                     </div>
                     <div className="rounded-2xl border bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Minimum</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.finance.minimum")}</p>
                       <p className="mt-1 text-lg font-semibold text-gray-950">{fmt(earnings.minimum_payout_amount ?? 100)}</p>
                     </div>
                     <div className="rounded-2xl border bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">In queue</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.finance.inQueue")}</p>
                       <p className="mt-1 text-lg font-semibold text-gray-950">{fmt(earnings.pending_payouts)}</p>
                     </div>
                   </div>
 
                   <div>
-                    <Label htmlFor="payout-amount">Payout Amount ({currencyCode}) * — min {fmt(earnings.minimum_payout_amount ?? 100)}</Label>
+                    <Label htmlFor="payout-amount">{t("web.provider.finance.payoutAmountLabel", { currency: currencyCode, amount: fmt(earnings.minimum_payout_amount ?? 100) })}</Label>
                     <Input
                       id="payout-amount"
                       type="number"
@@ -628,22 +631,22 @@ export default function ProviderFinance() {
                       step="0.01"
                       value={payoutAmount}
                       onChange={(e) => setPayoutAmount(e.target.value)}
-                      placeholder="Enter amount"
+                      placeholder={t("web.provider.finance.enterAmount")}
                       className="mt-1"
                     />
                     {earnings.payout_balance_unavailable ? (
                       <p className="text-sm text-amber-700 mt-1">
-                        Withdrawable balance could not be loaded. Refresh the page and try again.
+                        {t("web.provider.finance.withdrawLoadFailed")}
                       </p>
                     ) : null}
                     {payoutAmount && roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) && (
                       <p className="text-sm text-red-600 mt-1">
-                        Below minimum payout ({fmt(earnings.minimum_payout_amount ?? 100)})
+                        {t("web.provider.finance.belowMinimum", { amount: fmt(earnings.minimum_payout_amount ?? 100) })}
                       </p>
                     )}
                     {payoutAmount && !earnings.payout_balance_unavailable && roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance) && (
                       <p className="text-sm text-red-600 mt-1">
-                        Amount exceeds available balance
+                        {t("web.provider.finance.exceedsBalance")}
                       </p>
                     )}
                   </div>
@@ -651,9 +654,9 @@ export default function ProviderFinance() {
                   <div className="rounded-2xl border bg-gray-50 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <Label>Bank account</Label>
+                        <Label>{t("provider.mobile.screens.moreTab.bankAccountFallback")}</Label>
                         <p className="mt-1 text-xs text-gray-500">
-                          Add or select the account that should receive this payout.
+                          {t("web.provider.finance.addOrSelectAccount")}
                         </p>
                       </div>
                       <Button
@@ -665,8 +668,8 @@ export default function ProviderFinance() {
                           if (!showInlineBankForm) void loadBanks(bankForm.country);
                         }}
                       >
-                        <Plus className="mr-1 h-3.5 w-3.5" />
-                        {showInlineBankForm ? "Hide form" : "Add account"}
+                        <Plus className="me-1 h-3.5 w-3.5" />
+                        {showInlineBankForm ? t("web.provider.finance.hideForm") : t("web.provider.finance.addAccount")}
                       </Button>
                     </div>
 
@@ -681,8 +684,8 @@ export default function ProviderFinance() {
                             <option key={a.id} value={a.id} disabled={!a.active}>
                               {a.account_name} ****{a.account_number_last4}
                               {a.bank_name ? ` (${a.bank_name})` : ""}
-                              {a.is_primary ? " — Primary" : ""}
-                              {!a.active ? " — Inactive" : ""}
+                              {a.is_primary ? t("web.provider.finance.primarySuffix") : ""}
+                              {!a.active ? t("web.provider.finance.inactiveSuffix") : ""}
                             </option>
                           ))}
                         </select>
@@ -693,7 +696,7 @@ export default function ProviderFinance() {
                       <div className="mt-4 space-y-3 rounded-xl border bg-white p-4">
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
-                            <Label>Country</Label>
+                            <Label>{t("web.provider.finance.country")}</Label>
                             <select
                               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                               value={bankForm.country}
@@ -710,7 +713,7 @@ export default function ProviderFinance() {
                             </select>
                           </div>
                           <div>
-                            <Label>Bank</Label>
+                            <Label>{t("web.provider.finance.bank")}</Label>
                             <select
                               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                               value={bankForm.bank_code}
@@ -720,7 +723,7 @@ export default function ProviderFinance() {
                                 setVerifiedAccountName(null);
                               }}
                             >
-                              <option value="">{isLoadingBanks ? "Loading banks..." : "Select bank"}</option>
+                              <option value="">{isLoadingBanks ? t("web.provider.finance.loadingBanks") : t("web.provider.finance.selectBank")}</option>
                               {banks.map((bank) => (
                                 <option key={bank.code} value={bank.code}>
                                   {bank.name}
@@ -737,7 +740,7 @@ export default function ProviderFinance() {
                           }
                         >
                           <div>
-                            <Label>Account number</Label>
+                            <Label>{t("web.provider.finance.accountNumber")}</Label>
                             <Input
                               value={bankForm.account_number}
                               onChange={(e) => {
@@ -745,7 +748,7 @@ export default function ProviderFinance() {
                                 setVerifiedAccountName(null);
                               }}
                               maxLength={20}
-                              placeholder="Enter bank account number"
+                              placeholder={t("web.provider.finance.enterBankAccountNumber")}
                             />
                           </div>
                           {showVerifyAccountButton ? (
@@ -757,17 +760,17 @@ export default function ProviderFinance() {
                                 disabled={isVerifyingBank}
                               >
                                 {isVerifyingBank ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
                                 ) : (
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  <CheckCircle2 className="me-2 h-4 w-4" />
                                 )}
-                                Verify
+                                {t("web.provider.bookings.detail.atHome.verify")}
                               </Button>
                             </div>
                           ) : null}
                         </div>
                         <div>
-                          <Label>Account holder name</Label>
+                          <Label>{t("web.provider.finance.accountHolderName")}</Label>
                           <Input
                             value={bankForm.account_name}
                             onChange={(e) => {
@@ -777,39 +780,39 @@ export default function ProviderFinance() {
                                 setVerifiedAccountName(null);
                               }
                             }}
-                            placeholder="Account holder name"
+                            placeholder={t("web.provider.finance.accountHolderName")}
                           />
                           {verifiedAccountName && (
                             <p className="mt-1 flex items-center gap-1 text-xs text-emerald-700">
                               <CheckCircle2 className="h-3 w-3" />
-                              Verified as {verifiedAccountName}
+                              {t("web.provider.finance.verifiedAs", { name: verifiedAccountName })}
                             </p>
                           )}
                         </div>
                         <div>
-                          <Label>Email (optional)</Label>
+                          <Label>{t("web.provider.finance.emailOptional")}</Label>
                           <Input
                             type="email"
                             value={bankForm.email}
                             onChange={(e) => setBankForm((prev) => ({ ...prev, email: e.target.value }))}
-                            placeholder="recipient@example.com"
+                            placeholder={t("web.provider.finance.recipientEmailPlaceholder")}
                           />
                         </div>
                         <Button type="button" onClick={handleAddPayoutAccountInline} disabled={isSavingBank} className="w-full">
-                          {isSavingBank ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building2 className="mr-2 h-4 w-4" />}
-                          Save bank account
+                          {isSavingBank ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Building2 className="me-2 h-4 w-4" />}
+                          {t("web.provider.finance.saveBankAccount")}
                         </Button>
                       </div>
                     )}
                   </div>
 
                   <div>
-                    <Label htmlFor="payout-notes">Notes (Optional)</Label>
+                    <Label htmlFor="payout-notes">{t("web.provider.finance.notesOptional")}</Label>
                     <Textarea
                       id="payout-notes"
                       value={payoutNotes}
                       onChange={(e) => setPayoutNotes(e.target.value)}
-                      placeholder="Add any notes about this payout request"
+                      placeholder={t("web.provider.finance.payoutNotesPlaceholder")}
                       className="mt-1"
                       rows={3}
                     />
@@ -825,14 +828,14 @@ export default function ProviderFinance() {
                       setPayoutNotes("");
                     }}
                   >
-                    Cancel
+                    {t("web.provider.common.cancel")}
                   </Button>
                   <Button
                     onClick={handleRequestPayout}
                     disabled={isRequestingPayout || earnings.payout_balance_unavailable || payoutAccounts.length === 0 || !payoutAmount || roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) || roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance)}
                     className="bg-primary hover:bg-primary-hover"
                   >
-                    {isRequestingPayout ? "Submitting..." : "Request Payout"}
+                    {isRequestingPayout ? t("web.provider.finance.submitting") : t("web.provider.finance.requestPayout")}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -840,23 +843,23 @@ export default function ProviderFinance() {
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 <Lock className="h-4 w-4 flex-shrink-0" />
-                <span>You don&apos;t have permission to request payouts. Contact your administrator.</span>
+                <span>{t("web.provider.finance.noPayoutPermission")}</span>
               </div>
             )}
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export ledger
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.finance.exportLedger")}
             </Button>
             <Button variant="outline" asChild>
               <Link href="/provider/settings/payout-accounts" className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
-                Bank accounts
+                {t("web.provider.finance.bankAccounts")}
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/provider/payouts/statements" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
-                Statements
+                {t("web.provider.finance.statements")}
               </Link>
             </Button>
             <Button
@@ -867,7 +870,7 @@ export default function ProviderFinance() {
               className="flex items-center gap-2"
             >
               <FileText className="w-4 h-4" />
-              VAT Reports
+              {t("web.provider.finance.vatReports")}
             </Button>
           </div>
           }
@@ -879,7 +882,7 @@ export default function ProviderFinance() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">{rangeLabel} — total earned (ledger)</p>
+              <p className="text-sm text-gray-600">{t("web.provider.finance.rangeTotalEarned", { range: rangeLabel })}</p>
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold">
@@ -892,20 +895,19 @@ export default function ProviderFinance() {
                 }`}
               >
                 {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
-                {earnings.growth_percentage}% vs comparison period
+                {t("web.provider.finance.vsComparison", { value: earnings.growth_percentage })}
               </p>
             ) : null}
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              Services, tips, travel, cancellation fees, and walk-in add-ons from ledger rows in the
-              selected period. Not the same as all-time available payout balance.
+              {t("web.provider.finance.periodEarningsHint")}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Gift card / membership sales below are liability movements — do not add them to earnings totals.
+              {t("web.provider.finance.giftCardMembershipNote")}
             </p>
           </SectionCard>
           <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">All-time available to withdraw</p>
+              <p className="text-sm text-gray-600">{t("web.provider.finance.allTimeAvailable")}</p>
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-bold text-green-600">
@@ -913,33 +915,32 @@ export default function ProviderFinance() {
             </p>
             {earnings.payout_balance_unavailable ? (
               <p className="text-xs font-medium text-amber-800 mt-2">
-                Withdrawable balance could not be loaded. Period earnings above are still from the ledger.
+                {t("web.provider.finance.withdrawLoadPeriodOk")}
               </p>
             ) : null}
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              All payoutable platform-held earnings minus completed payouts and your pending requests
+              {t("web.provider.finance.payoutableHintPrefix")}
               {(earnings.payout_hold_days ?? 0) > 0
-                ? `, after a ${earnings.payout_hold_days}-day hold on new earnings`
+                ? `${t("web.provider.finance.payoutableHintHold", { days: earnings.payout_hold_days })}`
                 : ""}
-              . Cash settled outside the app is not included.
+              {t("web.provider.finance.payoutableHintSuffix")}
             </p>
             {earnings.has_negative_payout_balance ? (
               <p className="text-xs font-medium text-amber-800 mt-2">
-                Balance owed to platform: {fmt(earnings.balance_owed_to_platform ?? 0)} (raw ledger balance{" "}
-                {fmt(earnings.raw_payout_balance ?? 0)}). Withdrawable amount is floored at 0 until settled.
+                {t("web.provider.finance.balanceOwed", { owed: fmt(earnings.balance_owed_to_platform ?? 0), raw: fmt(earnings.raw_payout_balance ?? 0) })}
               </p>
             ) : null}
           </SectionCard>
           <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Payout requests in queue</p>
+              <p className="text-sm text-gray-600">{t("web.provider.finance.payoutsInQueue")}</p>
               <Calendar className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-bold text-yellow-600">
               {fmt(earnings.pending_payouts)}
             </p>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              Sum of your requests still pending or processing (already deducted from available balance).
+              {t("web.provider.finance.payoutsInQueueHint")}
             </p>
           </SectionCard>
         </div>
@@ -947,44 +948,43 @@ export default function ProviderFinance() {
         {/* How your available balance is calculated (recognized revenue -> withdrawable) */}
         {earnings.payout_reconciliation ? (
           <SectionCard className="p-5 sm:p-6">
-            <h3 className="text-sm font-semibold text-gray-900">How your available balance is calculated</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t("provider.mobile.components.payoutReconciliation.title")}</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Headline revenue reports can read higher than withdrawable because they include cash you collected
-              directly. Here is the full bridge:
+              {t("web.provider.finance.reconIntro")}
             </p>
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex items-center justify-between">
-                <dt className="text-gray-700">Recognized payoutable earnings (net of refunds)</dt>
+                <dt className="text-gray-700">{t("provider.mobile.components.payoutReconciliation.recognizedEarnings")}</dt>
                 <dd className="font-medium text-gray-900">{fmt(earnings.payout_reconciliation.recognized_payoutable_earnings)}</dd>
               </div>
               {(earnings.payout_reconciliation.excluded_provider_collected ?? 0) > 0 ? (
                 <div className="flex items-center justify-between text-gray-500">
-                  <dt>Excluded: cash / Yoco / EFT you collected directly (not held by us)</dt>
+                  <dt>{t("web.provider.finance.excludedCollected")}</dt>
                   <dd>{fmt(earnings.payout_reconciliation.excluded_provider_collected)}</dd>
                 </div>
               ) : null}
               <div className="flex items-center justify-between text-gray-500">
                 <dt>
-                  − On hold
-                  {(earnings.payout_hold_days ?? 0) > 0 ? ` (clears ${earnings.payout_hold_days} days after each booking)` : ""}
+                  {t("provider.mobile.components.payoutReconciliation.onHold")}
+                  {(earnings.payout_hold_days ?? 0) > 0 ? t("web.provider.finance.onHoldClears", { days: earnings.payout_hold_days }) : ""}
                 </dt>
                 <dd>{fmt(earnings.payout_reconciliation.on_hold)}</dd>
               </div>
               <div className="flex items-center justify-between text-gray-500">
-                <dt>− Pending / processing payout requests</dt>
+                <dt>{t("web.provider.finance.pendingProcessingRequests")}</dt>
                 <dd>{fmt(earnings.payout_reconciliation.pending_payouts)}</dd>
               </div>
               <div className="flex items-center justify-between text-gray-500">
-                <dt>− Already paid out</dt>
+                <dt>{t("provider.mobile.components.payoutReconciliation.alreadyPaidOut")}</dt>
                 <dd>{fmt(earnings.payout_reconciliation.already_paid_out)}</dd>
               </div>
               <div className="flex items-center justify-between border-t pt-2 mt-2">
-                <dt className="font-semibold text-gray-900">= Available to withdraw</dt>
+                <dt className="font-semibold text-gray-900">{t("provider.mobile.components.payoutReconciliation.available")}</dt>
                 <dd className="font-semibold text-green-600">{fmt(earnings.payout_reconciliation.available_balance)}</dd>
               </div>
             </dl>
             <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
-              Note: subscription and ads are billed to your card separately and are never deducted from this balance.
+              {t("web.provider.finance.reconFooter")}
             </p>
           </SectionCard>
         ) : null}
@@ -992,29 +992,29 @@ export default function ProviderFinance() {
         {/* Revenue Streams */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Service earnings ({rangeLabel})</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.serviceEarnings", { range: rangeLabel })}</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.period_provider_earnings ?? earnings.bookings_earnings_this_period ?? 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">From provider_earnings ledger rows (bookings, products, etc.)</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.serviceEarningsHint")}</p>
           </div>
           {(earnings.product_sales_earnings_total ?? 0) > 0 && (
             <div className="provider-card provider-card-padding">
-              <p className="text-sm text-gray-600 mb-2">Product Sales</p>
+              <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.productSales")}</p>
               <p className="text-2xl font-semibold text-indigo-600">
                 {fmt(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0)}
               </p>
-              <p className="text-xs text-gray-500 mt-1">Online product orders (incl. tax &amp; shipping)</p>
+              <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.productSalesHint")}</p>
             </div>
           )}
           {(earnings.platform_fees_deducted ?? 0) > 0 && (
             <div className="provider-card provider-card-padding">
-              <p className="text-sm text-gray-600 mb-2">Platform Fees Deducted</p>
+              <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.platformFeesDeducted")}</p>
               <p className="text-2xl font-semibold text-orange-600">
                 {fmt(earnings.platform_fees_deducted_this_period ?? earnings.platform_fees_deducted ?? 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Customer-paid booking &amp; shop platform fees (ledger), not your % commission line
+                {t("web.provider.finance.platformFeesHint")}
               </p>
             </div>
           )}
@@ -1022,26 +1022,26 @@ export default function ProviderFinance() {
             (earnings.loyalty_discounts_this_period ?? 0) > 0 ||
             (earnings.promo_discounts_this_period ?? 0) > 0) && (
             <div className="bg-white border rounded-lg p-6 md:col-span-2 lg:col-span-3">
-              <p className="text-sm font-medium text-gray-800 mb-2">Discounts on bookings ({rangeLabel})</p>
+              <p className="text-sm font-medium text-gray-800 mb-2">{t("web.provider.finance.discountsOnBookings", { range: rangeLabel })}</p>
               <p className="text-xs text-gray-500 mb-4">
-                Already included in what the customer paid — informational only, not added on top of earnings.
+                {t("web.provider.finance.discountsHint")}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(earnings.membership_discounts_this_period ?? 0) > 0 && (
                   <div>
-                    <p className="text-xs text-gray-600">Membership discount</p>
+                    <p className="text-xs text-gray-600">{t("web.provider.finance.membershipDiscount")}</p>
                     <p className="text-lg font-semibold text-slate-800">{fmt(earnings.membership_discounts_this_period ?? 0)}</p>
                   </div>
                 )}
                 {(earnings.loyalty_discounts_this_period ?? 0) > 0 && (
                   <div>
-                    <p className="text-xs text-gray-600">Loyalty discount</p>
+                    <p className="text-xs text-gray-600">{t("web.provider.finance.loyaltyDiscount")}</p>
                     <p className="text-lg font-semibold text-slate-800">{fmt(earnings.loyalty_discounts_this_period ?? 0)}</p>
                   </div>
                 )}
                 {(earnings.promo_discounts_this_period ?? 0) > 0 && (
                   <div>
-                    <p className="text-xs text-gray-600">Promo / coupon discount</p>
+                    <p className="text-xs text-gray-600">{t("web.provider.finance.promoDiscount")}</p>
                     <p className="text-lg font-semibold text-slate-800">{fmt(earnings.promo_discounts_this_period ?? 0)}</p>
                   </div>
                 )}
@@ -1049,73 +1049,73 @@ export default function ProviderFinance() {
             </div>
           )}
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Travel Fees</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.travelFees")}</p>
             <p className="text-2xl font-semibold text-purple-600">
               {fmt(earnings.travel_fees_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Travel fee ledger rows (separate from service earnings)</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.travelFeesHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.giftCardSales")}</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.gift_card_sales_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (liability / float)</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.giftCardSalesHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Membership Sales</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.membershipSales")}</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.membership_sales_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (deferred revenue)</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.membershipSalesHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Refunds</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.refunds")}</p>
             <p className="text-2xl font-semibold text-red-600">
               {fmt(earnings.refunds_this_period || 0)}
             </p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Walk-in add-ons</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.walkInAddons")}</p>
             <p className="text-2xl font-semibold text-gray-700">
               {fmt(earnings.walk_in_additional_charges_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.walkInAddonsHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Tips</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.tips")}</p>
             <p className="text-2xl font-semibold text-emerald-600">
               {fmt(earnings.tips_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Tips from customers</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.tipsHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Cancellation Fees</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.cancellationFees")}</p>
             <p className="text-2xl font-semibold text-amber-600">
               {fmt(earnings.cancellation_fees_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Fees from booking cancellations</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.cancellationFeesHint")}</p>
           </div>
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Additional Charges</p>
+            <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.additionalCharges")}</p>
             <p className="text-2xl font-semibold text-blue-600">
               {fmt(earnings.additional_charges_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Extra charges added to bookings</p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.additionalChargesHint")}</p>
           </div>
         </div>
 
         {/* Monthly Comparison */}
         <div className="bg-white border rounded-lg p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Earnings comparison</h2>
+            <h2 className="text-xl font-semibold">{t("web.provider.finance.earningsComparison")}</h2>
             <div className="flex gap-2">
               {([
-                { value: "today", label: "Today" },
-                { value: "week", label: "This week" },
-                { value: "month", label: "This month" },
-                { value: "year", label: "This year" },
-                { value: "all", label: "All time" },
+                { value: "today", label: t("web.provider.finance.rangeToday") },
+                { value: "week", label: t("web.provider.finance.rangeThisWeek") },
+                { value: "month", label: t("web.provider.finance.rangeThisMonth") },
+                { value: "year", label: t("web.provider.finance.rangeThisYear") },
+                { value: "all", label: t("web.provider.finance.rangeAllTime") },
               ] as const).map((option) => (
                 <button
                   key={option.value}
@@ -1133,16 +1133,16 @@ export default function ProviderFinance() {
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Selected period (total earned)</p>
+              <p className="text-sm text-gray-600 mb-1">{t("web.provider.finance.selectedPeriodEarned")}</p>
               <p className="text-2xl font-semibold">
                 {fmt(earnings.recognized_revenue_total ?? 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Service earnings only: {fmt(earnings.period_provider_earnings ?? earnings.this_month ?? 0)}
+                {t("web.provider.finance.serviceEarningsOnly", { amount: fmt(earnings.period_provider_earnings ?? earnings.this_month ?? 0) })}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 mb-1">Previous comparison (total earned)</p>
+              <p className="text-sm text-gray-600 mb-1">{t("web.provider.finance.previousComparison")}</p>
               <p className="text-2xl font-semibold">
                 {fmt(earnings.recognized_revenue_last_period ?? 0)}
               </p>
@@ -1153,7 +1153,7 @@ export default function ProviderFinance() {
                   }`}
                 >
                   {earnings.growth_percentage >= 0 ? "+" : ""}
-                  {earnings.growth_percentage}% vs previous period
+                  {t("web.provider.finance.vsPreviousPeriod", { value: earnings.growth_percentage })}
                 </p>
               ) : null}
             </div>
@@ -1162,11 +1162,11 @@ export default function ProviderFinance() {
 
         {nextPayoutDate ? (
           <div className="bg-white border rounded-lg p-6 mb-8">
-            <h2 className="text-xl font-semibold mb-2">Payout schedule</h2>
+            <h2 className="text-xl font-semibold mb-2">{t("web.provider.finance.payoutSchedule")}</h2>
             <p className="text-sm text-gray-600">{nextPayoutDate.next_payout_description}</p>
             {nextPayoutDate.next_payout_date ? (
               <p className="text-lg font-medium text-gray-900 mt-2">
-                Next scheduled payout:{" "}
+                {t("web.provider.finance.nextScheduledPayout")}{" "}
                 {new Date(nextPayoutDate.next_payout_date).toLocaleDateString(undefined, {
                   weekday: "long",
                   year: "numeric",
@@ -1176,8 +1176,7 @@ export default function ProviderFinance() {
               </p>
             ) : null}
             <p className="text-xs text-gray-500 mt-2">
-              Schedule: {nextPayoutDate.payout_schedule.replace(/_/g, " ")} · Minimum{" "}
-              {fmt(nextPayoutDate.minimum_payout_amount)} · Hold {nextPayoutDate.payout_hold_days} days
+              {t("web.provider.finance.scheduleMeta", { schedule: nextPayoutDate.payout_schedule.replace(/_/g, " "), amount: fmt(nextPayoutDate.minimum_payout_amount), days: nextPayoutDate.payout_hold_days })}
             </p>
           </div>
         ) : null}
@@ -1192,32 +1191,32 @@ export default function ProviderFinance() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-xl font-semibold">Payouts &amp; bank accounts</h2>
+              <h2 className="text-xl font-semibold">{t("web.provider.finance.payoutsAndBanks")}</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Withdraw available balance to your verified payout accounts. Download statements for accounting.
+                {t("web.provider.finance.payoutsAndBanksHint")}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" asChild>
-                <Link href="/provider/settings/payout-accounts">Manage bank accounts</Link>
+                <Link href="/provider/settings/payout-accounts">{t("web.provider.finance.manageBankAccounts")}</Link>
               </Button>
               <Button variant="outline" size="sm" asChild>
-                <Link href="/provider/payouts/statements">Payout statements</Link>
+                <Link href="/provider/payouts/statements">{t("web.provider.finance.payoutStatements")}</Link>
               </Button>
             </div>
           </div>
 
           <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              Linked bank accounts
+              {t("web.provider.finance.linkedBankAccounts")}
             </p>
             {payoutAccounts.length === 0 ? (
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <p className="text-sm text-gray-600 flex-1">
-                  No payout bank account yet. Add one before you can request a withdrawal.
+                  {t("web.provider.finance.noBankYet")}
                 </p>
                 <Button size="sm" asChild>
-                  <Link href="/provider/settings/payout-accounts">Add bank account</Link>
+                  <Link href="/provider/settings/payout-accounts">{t("web.provider.finance.addBankAccount")}</Link>
                 </Button>
               </div>
             ) : (
@@ -1229,10 +1228,10 @@ export default function ProviderFinance() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {account.bank_name || "Bank account"}
+                        {account.bank_name || t("provider.mobile.screens.moreTab.bankAccountFallback")}
                         {account.is_primary ? (
-                          <span className="ml-2 text-[10px] font-semibold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                            Primary
+                          <span className="ms-2 text-[10px] font-semibold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                            {t("web.provider.finance.primary")}
                           </span>
                         ) : null}
                       </p>
@@ -1241,7 +1240,7 @@ export default function ProviderFinance() {
                         {account.account_number_last4
                           ? ` · •••• ${account.account_number_last4}`
                           : ""}
-                        {!account.active ? " · Inactive" : ""}
+                        {!account.active ? t("web.provider.finance.inactiveDot") : ""}
                       </p>
                     </div>
                     <Building2 className="h-4 w-4 text-gray-300 shrink-0" />
@@ -1252,20 +1251,20 @@ export default function ProviderFinance() {
           </div>
 
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-gray-900">Payout history</h3>
+            <h3 className="text-base font-semibold text-gray-900">{t("web.provider.finance.payoutHistory")}</h3>
             <span className="text-xs text-gray-500">
-              {payouts.length} {payouts.length === 1 ? "request" : "requests"}
+              {payouts.length} {t("web.provider.finance.request", { count: payouts.length })}
             </span>
           </div>
 
           {payouts.length === 0 ? (
             <EmptyState
-              title="No payouts yet"
-              description="When you request a withdrawal, each transfer appears here with status and dates."
+              title={t("provider.mobile.screens.payouts.emptyTitle")}
+              description={t("web.provider.finance.noPayoutsDesc")}
               action={
                 canRequestPayout
                   ? {
-                      label: payoutAccounts.length === 0 ? "Set up bank account" : "Request payout",
+                      label: payoutAccounts.length === 0 ? t("provider.mobile.screens.moreTab.setUpBankAccount") : t("provider.mobile.screens.moreTab.requestPayout"),
                       onClick: () => {
                         if (payoutAccounts.length === 0) {
                           window.location.href = "/provider/settings/payout-accounts";
@@ -1286,27 +1285,27 @@ export default function ProviderFinance() {
                   className="flex items-center justify-between py-4 border-b last:border-0"
                 >
                   <div className="flex-1">
-                    <p className="font-medium">Payout request — {fmt(payout.amount)}</p>
+                    <p className="font-medium">{t("web.provider.finance.payoutRequestAmount", { amount: fmt(payout.amount) })}</p>
                     <p className="text-sm text-gray-600">
-                      Requested:{" "}
+                      {t("web.provider.finance.requested")}{" "}
                       {new Date(payout.requested_at).toLocaleDateString(undefined, {
                         year: "numeric",
                         month: "long",
                         day: "numeric",
                       })}
                       {payout.processed_at
-                        ? ` · Processed: ${new Date(payout.processed_at).toLocaleDateString(undefined, {
+                        ? t("web.provider.finance.processed", { date: new Date(payout.processed_at).toLocaleDateString(undefined, {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
-                          })}`
+                          }) })
                         : ""}
                     </p>
                     {payout.notes ? (
                       <p className="text-sm text-gray-500 mt-1">{payout.notes}</p>
                     ) : null}
                     {payout.status === "failed" && payout.rejected_at && payout.failure_reason ? (
-                      <p className="text-sm text-red-600 mt-1">Reason: {payout.failure_reason}</p>
+                      <p className="text-sm text-red-600 mt-1">{t("web.provider.finance.reason", { reason: payout.failure_reason })}</p>
                     ) : null}
                   </div>
                   <span
@@ -1322,7 +1321,7 @@ export default function ProviderFinance() {
                               : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {formatPayoutDisplayStatus(payout)}
+                    {formatPayoutDisplayStatus(payout, t)}
                   </span>
                 </div>
               ))}
@@ -1334,12 +1333,10 @@ export default function ProviderFinance() {
         <div className="provider-card provider-card-padding">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold">Transaction History</h2>
+              <h2 className="text-xl font-semibold">{t("web.provider.finance.transactionHistory")}</h2>
               {(portalProvider?.locations?.length ?? 0) > 1 && selectedLocationId ? (
                 <p className="text-sm text-gray-500 mt-1">
-                  Cards and earnings totals use the selected branch. This ledger list uses{" "}
-                  <span className="font-medium text-gray-600">transaction_feed=all</span> — payouts and other rows without a
-                  single-branch booking can still appear for the whole organization in this date range.
+                  {t("web.provider.finance.ledgerScopedNote")}
                 </p>
               ) : null}
             </div>
@@ -1347,8 +1344,8 @@ export default function ProviderFinance() {
 
           {transactions.length === 0 ? (
             <EmptyState
-              title="No transactions yet"
-              description="Your transaction history will appear here"
+              title={t("web.provider.finance.noTransactionsYet")}
+              description={t("web.provider.finance.noTransactionsDesc")}
             />
           ) : (
             <div className="space-y-4">
@@ -1368,15 +1365,15 @@ export default function ProviderFinance() {
         <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Transaction Details</DialogTitle>
+              <DialogTitle>{t("web.provider.finance.transactionDetails")}</DialogTitle>
               <DialogDescription>
-                Detailed information about this transaction
+                {t("web.provider.finance.transactionDetailsDesc")}
               </DialogDescription>
             </DialogHeader>
             
             {isLoadingDetails ? (
               <div className="py-8 text-center">
-                <p className="text-gray-600">Loading transaction details...</p>
+                <p className="text-gray-600">{t("web.provider.finance.loadingTransactionDetails")}</p>
               </div>
             ) : selectedTransaction ? (
               <FinanceTransactionDetailBody
@@ -1386,7 +1383,7 @@ export default function ProviderFinance() {
               />
             ) : (
               <div className="py-8 text-center">
-                <p className="text-gray-600">No additional details available</p>
+                <p className="text-gray-600">{t("web.provider.finance.noAdditionalDetails")}</p>
               </div>
             )}
           </DialogContent>
@@ -1437,6 +1434,7 @@ function FinanceTransactionDetailBody({
   transactionDetails: Record<string, unknown> | null;
   fmt: (amount: number) => string;
 }) {
+  const { t } = useTranslation();
   const { signedPrimary, primaryClass } = providerFacingLedgerDisplay(transaction);
   const hasNetSplit =
     transaction.net !== undefined && transaction.net !== transaction.amount;
@@ -1444,14 +1442,14 @@ function FinanceTransactionDetailBody({
   return (
     <div className="space-y-6 py-4">
       <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="font-semibold mb-3">Transaction Overview</h3>
+        <h3 className="font-semibold mb-3">{t("web.provider.finance.transactionOverview")}</h3>
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span className="text-gray-600">Description:</span>
+            <span className="text-gray-600">{t("web.provider.finance.description")}</span>
             <span className="font-medium">{transaction.description}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Date:</span>
+            <span className="text-gray-600">{t("web.provider.finance.date")}</span>
             <span className="font-medium">
               {new Date(transaction.date).toLocaleDateString(undefined, {
                 year: "numeric",
@@ -1463,11 +1461,11 @@ function FinanceTransactionDetailBody({
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Status:</span>
+            <span className="text-gray-600">{t("web.provider.finance.status")}</span>
             <span className="font-medium">{formatStatusLabel(transaction.status)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Type:</span>
+            <span className="text-gray-600">{t("web.provider.finance.type")}</span>
             <span className="font-medium">
               {formatStatusLabel(transaction.transaction_type || transaction.type)}
             </span>
@@ -1476,19 +1474,19 @@ function FinanceTransactionDetailBody({
       </div>
 
       <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="font-semibold mb-3">Amount Breakdown</h3>
+        <h3 className="font-semibold mb-3">{t("web.provider.finance.amountBreakdown")}</h3>
         <div className="space-y-2">
           {hasNetSplit ? (
             <>
               <div className="flex justify-between">
-                <span className="text-gray-600">Gross Amount:</span>
+                <span className="text-gray-600">{t("web.provider.finance.grossAmount")}</span>
                 <span className="font-medium">
                   {fmt(transaction.amount)}
                 </span>
               </div>
               {transaction.fees && transaction.fees > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Fees:</span>
+                  <span className="text-gray-600">{t("web.provider.finance.fees")}</span>
                   <span className="font-medium text-red-600">
                     -{fmt(transaction.fees)}
                   </span>
@@ -1496,14 +1494,14 @@ function FinanceTransactionDetailBody({
               )}
               {transaction.commission && transaction.commission > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Platform Commission:</span>
+                  <span className="text-gray-600">{t("web.provider.finance.platformCommission")}</span>
                   <span className="font-medium text-red-600">
                     -{fmt(transaction.commission)}
                   </span>
                 </div>
               )}
               <div className="flex justify-between pt-2 border-t">
-                <span className="font-semibold">Net Amount:</span>
+                <span className="font-semibold">{t("web.provider.finance.netAmount")}</span>
                 <span className={`font-semibold ${primaryClass}`}>
                   {fmt(signedPrimary)}
                 </span>
@@ -1511,7 +1509,7 @@ function FinanceTransactionDetailBody({
             </>
           ) : (
             <div className="flex justify-between">
-              <span className="font-semibold">Amount:</span>
+              <span className="font-semibold">{t("web.provider.finance.amount")}</span>
               <span className={`font-semibold ${primaryClass}`}>
                 {fmt(signedPrimary)}
               </span>
@@ -1522,41 +1520,41 @@ function FinanceTransactionDetailBody({
 
       {transactionDetails && transaction.booking_id ? (
         <div className="bg-gray-50 rounded-lg p-4">
-          <h3 className="font-semibold mb-3">Booking Details</h3>
+          <h3 className="font-semibold mb-3">{t("web.provider.finance.bookingDetails")}</h3>
           <div className="space-y-2">
             {transactionDetails.booking_number && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Booking Number:</span>
+                <span className="text-gray-600">{t("web.provider.finance.bookingNumber")}</span>
                 <span className="font-medium">{String(transactionDetails.booking_number)}</span>
               </div>
             )}
             {transactionDetails.total_amount && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Booking Total:</span>
+                <span className="text-gray-600">{t("web.provider.finance.bookingTotal")}</span>
                 <span className="font-medium">{fmt(Number(transactionDetails.total_amount))}</span>
               </div>
             )}
             {transactionDetails.service_fee_amount && Number(transactionDetails.service_fee_amount) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Platform Fee:</span>
+                <span className="text-gray-600">{t("web.provider.finance.platformFee")}</span>
                 <span className="font-medium">{fmt(Number(transactionDetails.service_fee_amount))}</span>
               </div>
             )}
             {transactionDetails.tax_amount && Number(transactionDetails.tax_amount) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Tax (VAT):</span>
+                <span className="text-gray-600">{t("web.provider.finance.taxVat")}</span>
                 <span className="font-medium">{fmt(Number(transactionDetails.tax_amount))}</span>
               </div>
             )}
             {transactionDetails.travel_fee && Number(transactionDetails.travel_fee) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Travel Fee:</span>
+                <span className="text-gray-600">{t("web.provider.finance.travelFee")}</span>
                 <span className="font-medium">{fmt(Number(transactionDetails.travel_fee))}</span>
               </div>
             )}
             {transactionDetails.booking_source && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Booking Source:</span>
+                <span className="text-gray-600">{t("web.provider.finance.bookingSource")}</span>
                 <span className="font-medium capitalize">
                   {String(transactionDetails.booking_source).replace("_", " ")}
                 </span>

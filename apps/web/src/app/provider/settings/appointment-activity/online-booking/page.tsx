@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -20,6 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  buildBookingButtonScriptSnippet,
+  buildBookingIframeSnippet,
+} from "@beautonomi/utils";
 interface MangomintSettings {
   staff_selection_mode: "client_chooses" | "anyone_default" | "hidden_auto_assign";
   require_auth_step: "checkout" | "before_time_selection";
@@ -47,7 +52,34 @@ interface BookingLinkData {
   online_booking_enabled: boolean;
 }
 
+function publicOriginFromBookingLink(link: BookingLinkData): string {
+  try {
+    return new URL(link.embed_url || link.url).origin;
+  } catch {
+    return "";
+  }
+}
+
+function bookingEmbedSnippets(link: BookingLinkData) {
+  const origin = publicOriginFromBookingLink(link);
+  return {
+    iframe: buildBookingIframeSnippet({ origin, slug: link.slug, height: 800 }),
+    scriptIframe: buildBookingButtonScriptSnippet({
+      origin,
+      slug: link.slug,
+      mode: "iframe",
+      height: 800,
+    }),
+    scriptButton: buildBookingButtonScriptSnippet({
+      origin,
+      slug: link.slug,
+      mode: "button",
+    }),
+  };
+}
+
 export default function OnlineBookingSettings() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<OnlineBookingSettings>({
     enabled: true,
     advanceNoticeHours: 24,
@@ -115,7 +147,7 @@ export default function OnlineBookingSettings() {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to load online booking settings";
+          : t("web.provider.settings.pages.appointment-activity/online-booking.failedToLoadOnlineBooking");
       setError(errorMessage);
       console.error("Error loading online booking settings:", err);
     } finally {
@@ -133,12 +165,12 @@ export default function OnlineBookingSettings() {
       );
       setMangomint(response.data);
       setOriginalMangomint(response.data);
-      toast.success("Booking flow settings updated");
+      toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.bookingFlowSettingsUpdated"));
     } catch (err) {
       toast.error(
         err instanceof FetchError
           ? err.message
-          : "Failed to update booking flow settings"
+          : t("web.provider.settings.pages.appointment-activity/online-booking.failedToUpdateBookingFlow")
       );
     } finally {
       setIsSavingMangomint(false);
@@ -155,7 +187,7 @@ export default function OnlineBookingSettings() {
       setQrDataUrl(dataUrl);
       setShowQr(true);
     } catch {
-      toast.error("Failed to generate QR code");
+      toast.error(t("web.provider.settings.pages.appointment-activity/online-booking.failedToGenerateQrCode"));
     }
   };
 
@@ -165,12 +197,12 @@ export default function OnlineBookingSettings() {
       
       // Validate settings before saving
       if (settings.advanceNoticeHours < 0 || settings.advanceNoticeHours > 168) {
-        toast.error("Advance notice must be between 0 and 168 hours");
+        toast.error(t("web.provider.settings.pages.appointment-activity/online-booking.advanceNoticeMustBeBetween0"));
         return;
       }
       
       if (settings.cancellationHours < 0 || settings.cancellationHours > 168) {
-        toast.error("Cancellation notice must be between 0 and 168 hours");
+        toast.error(t("web.provider.settings.pages.appointment-activity/online-booking.cancellationNoticeMustBeBetween0"));
         return;
       }
 
@@ -182,12 +214,12 @@ export default function OnlineBookingSettings() {
       // Update with response data to ensure consistency
       setSettings(response.data);
       setOriginalSettings(response.data);
-      toast.success("Online booking settings updated successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.onlineBookingSettingsUpdatedSuccessfully"));
     } catch (err) {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to update online booking settings";
+          : t("web.provider.settings.pages.appointment-activity/online-booking.failedToUpdateOnlineBooking");
       toast.error(errorMessage);
       console.error("Error saving online booking settings:", err);
     } finally {
@@ -203,20 +235,20 @@ export default function OnlineBookingSettings() {
     JSON.stringify(mangomint) !== JSON.stringify(originalMangomint);
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Online Booking" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.appointment-activity/online-booking.onlineBooking") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Online Booking"
-        subtitle="Configure online booking preferences"
+        title={t("web.provider.settings.categories.appointmentActivity.items.onlineBooking.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.onlineBooking.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading online booking settings..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.appointment-activity/online-booking.loadingOnlineBookingSettings")} />
       </SettingsDetailLayout>
     );
   }
@@ -224,15 +256,15 @@ export default function OnlineBookingSettings() {
   if (error && !originalSettings) {
     return (
       <SettingsDetailLayout
-        title="Online Booking"
-        subtitle="Configure online booking preferences"
+        title={t("web.provider.settings.categories.appointmentActivity.items.onlineBooking.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.onlineBooking.description")}
         breadcrumbs={breadcrumbs}
       >
         <EmptyState
-          title="Failed to load settings"
+          title={t("web.provider.settings.pages.appointment-activity/online-booking.failedToLoadSettings")}
           description={error}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadSettings,
           }}
         />
@@ -242,10 +274,10 @@ export default function OnlineBookingSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Online Booking"
-      subtitle="Configure online booking preferences"
+      title={t("web.provider.settings.pages.appointment-activity/online-booking.onlineBooking")}
+      subtitle={t("web.provider.settings.pages.appointment-activity/online-booking.configureOnlineBookingPreferences")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Changes"}
+      saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.common.saveChanges")}
       saveDisabled={isSaving || !hasChanges}
       breadcrumbs={breadcrumbs}
     >
@@ -254,10 +286,10 @@ export default function OnlineBookingSettings() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex-1">
               <Label className="text-base sm:text-lg font-medium block mb-2">
-                Enable Online Booking
+                {t("web.provider.settings.pages.appointment-activity/online-booking.enableOnlineBooking")}
               </Label>
               <p className="text-sm text-gray-600">
-                Allow clients to book appointments online through your booking page
+                {t("web.provider.settings.pages.appointment-activity/online-booking.enableOnlineBookingHint")}
               </p>
             </div>
             <div className="flex-shrink-0">
@@ -276,14 +308,14 @@ export default function OnlineBookingSettings() {
                 <Alert className="border-blue-200 bg-blue-50">
                   <Info className="w-4 h-4 text-blue-600" />
                   <AlertDescription className="text-sm text-blue-800">
-                    Configure advance notice and cancellation requirements for online bookings.
+                    {t("web.provider.settings.pages.appointment-activity/online-booking.configureNoticeAlert")}
                   </AlertDescription>
                 </Alert>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
                     <Label htmlFor="advanceNoticeHours" className="text-sm sm:text-base font-medium block mb-2">
-                      Advance Notice (Hours)
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.advanceNoticeHours")}
                     </Label>
                     <Input
                       id="advanceNoticeHours"
@@ -302,13 +334,13 @@ export default function OnlineBookingSettings() {
                       className="w-full"
                     />
                     <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                      Minimum hours in advance clients must book
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.advanceNoticeHint")}
                     </p>
                   </div>
 
                   <div>
                     <Label htmlFor="cancellationHours" className="text-sm sm:text-base font-medium block mb-2">
-                      Cancellation Notice (Hours)
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.cancellationNoticeHours")}
                     </Label>
                     <Input
                       id="cancellationHours"
@@ -327,7 +359,7 @@ export default function OnlineBookingSettings() {
                       className="w-full"
                     />
                     <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                      Minimum hours before appointment for cancellation
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.cancellationNoticeHint")}
                     </p>
                   </div>
                 </div>
@@ -337,7 +369,7 @@ export default function OnlineBookingSettings() {
                 <div className="border-t pt-6 space-y-6">
                   <h3 className="font-medium flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
-                    Direct booking link
+                    {t("web.provider.settings.pages.appointment-activity/online-booking.directBookingLink")}
                   </h3>
                   <div className="flex gap-2">
                     <Input
@@ -351,7 +383,7 @@ export default function OnlineBookingSettings() {
                       onClick={() => {
                         navigator.clipboard.writeText(bookingLink.url);
                         setCopiedField("url");
-                        toast.success("Link copied to clipboard");
+                        toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.linkCopiedToClipboard"));
                         setTimeout(() => setCopiedField(null), 2000);
                       }}
                     >
@@ -365,7 +397,7 @@ export default function OnlineBookingSettings() {
                       variant="outline"
                       size="icon"
                       onClick={() => generateQr(bookingLink.url)}
-                      title="Show QR code"
+                      title={t("web.provider.settings.pages.appointment-activity/online-booking.showQrCode")}
                     >
                       <QrCode className="h-4 w-4" />
                     </Button>
@@ -374,28 +406,28 @@ export default function OnlineBookingSettings() {
                     <div className="flex flex-col items-center gap-2 p-4 bg-muted/30 rounded-lg">
                       <img
                         src={qrDataUrl}
-                        alt="Booking QR code"
+                        alt={t("web.provider.settings.pages.appointment-activity/online-booking.bookingQrAlt")}
                         className="w-48 h-48 object-contain"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Clients can scan to open your booking page
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.clientsCanScan")}
                       </p>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setShowQr(false)}
                       >
-                        Close
+                        {t("web.provider.common.close")}
                       </Button>
                     </div>
                   )}
                   <p className="text-xs text-gray-500">
-                    Share this link so clients can book directly.
+                    {t("web.provider.settings.pages.appointment-activity/online-booking.shareLinkHint")}
                   </p>
 
                   {/* Embed URL */}
                   <div className="space-y-2">
-                    <Label className="font-medium">Embed URL (for iframes)</Label>
+                    <Label className="font-medium">{t("web.provider.settings.pages.appointment-activity/online-booking.embedUrl")}</Label>
                     <div className="flex gap-2">
                       <Input
                         readOnly
@@ -408,7 +440,7 @@ export default function OnlineBookingSettings() {
                         onClick={() => {
                           navigator.clipboard.writeText(bookingLink.embed_url);
                           setCopiedField("embed_url");
-                          toast.success("Embed URL copied");
+                          toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.embedUrlCopied"));
                           setTimeout(() => setCopiedField(null), 2000);
                         }}
                       >
@@ -423,23 +455,22 @@ export default function OnlineBookingSettings() {
 
                   {/* Iframe snippet */}
                   <div className="space-y-2">
-                    <Label className="font-medium">Embed with iframe</Label>
+                    <Label className="font-medium">{t("web.provider.settings.pages.appointment-activity/online-booking.embedIframe")}</Label>
                     <p className="text-xs text-gray-500 mb-2">
-                      Paste this code into your website to show the full booking flow in an iframe.
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.embedIframeHint")}
                     </p>
                     <div className="relative group">
-                      <pre className="p-3 pr-10 bg-muted rounded-md text-xs overflow-x-auto">
-                        <code>{`<iframe src="${bookingLink.embed_url}" width="100%" height="800" frameborder="0" title="Book an appointment"></iframe>`}</code>
+                      <pre className="p-3 pe-10 bg-muted rounded-md text-xs overflow-x-auto">
+                        <code>{bookingEmbedSnippets(bookingLink).iframe}</code>
                       </pre>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="absolute top-2 right-2 h-7 w-7"
                         onClick={() => {
-                          const snippet = `<iframe src="${bookingLink.embed_url}" width="100%" height="800" frameborder="0" title="Book an appointment"></iframe>`;
-                          navigator.clipboard.writeText(snippet);
+                          navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).iframe);
                           setCopiedField("iframe");
-                          toast.success("Iframe code copied");
+                          toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.iframeCodeCopied"));
                           setTimeout(() => setCopiedField(null), 2000);
                         }}
                       >
@@ -452,32 +483,54 @@ export default function OnlineBookingSettings() {
                     </div>
                   </div>
 
-                  {/* Script embed instructions */}
+                  {/* Script embed: in-page widget */}
                   <div className="space-y-2">
-                    <Label className="font-medium">Embed with script (Book Now button)</Label>
+                    <Label className="font-medium">{t("web.provider.settings.pages.appointment-activity/online-booking.embedScriptWidget")}</Label>
                     <p className="text-xs text-gray-500 mb-2">
-                      Add a &quot;Book Now&quot; button that opens the booking page in a new tab. Replace{" "}
-                      <code className="bg-muted px-1 rounded">{bookingLink.slug || "your-slug"}</code>{" "}
-                      with your provider slug if using a different domain.
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.embedScriptWidgetHint")}
                     </p>
                     <div className="relative">
-                      <pre className="p-3 pr-10 bg-muted rounded-md text-xs overflow-x-auto">
-                        <code>{`<script src="${bookingLink.script_url || `${new URL(bookingLink.url).origin}/embed/booking-button.js`}"
-  data-provider="${bookingLink.slug}"
-  data-utm-source="website">
-</script>
-<button id="beautonomi-book-now">Book Now</button>`}</code>
+                      <pre className="p-3 pe-10 bg-muted rounded-md text-xs overflow-x-auto">
+                        <code>{bookingEmbedSnippets(bookingLink).scriptIframe}</code>
                       </pre>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="absolute top-2 right-2 h-7 w-7"
                         onClick={() => {
-                          const scriptUrl = bookingLink.script_url || `${new URL(bookingLink.url).origin}/embed/booking-button.js`;
-                          const snippet = `<script src="${scriptUrl}"\n  data-provider="${bookingLink.slug}"\n  data-utm-source="website">\n</script>\n<button id="beautonomi-book-now">Book Now</button>`;
-                          navigator.clipboard.writeText(snippet);
+                          navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).scriptIframe);
+                          setCopiedField("script_iframe");
+                          toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.widgetCodeCopied"));
+                          setTimeout(() => setCopiedField(null), 2000);
+                        }}
+                      >
+                        {copiedField === "script_iframe" ? (
+                          <Check className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Script embed instructions */}
+                  <div className="space-y-2">
+                    <Label className="font-medium">{t("web.provider.settings.pages.appointment-activity/online-booking.embedScriptButton")}</Label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.embedScriptButtonHint", { slug: bookingLink.slug || "your-slug" })}
+                    </p>
+                    <div className="relative">
+                      <pre className="p-3 pe-10 bg-muted rounded-md text-xs overflow-x-auto">
+                        <code>{bookingEmbedSnippets(bookingLink).scriptButton}</code>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-7 w-7"
+                        onClick={() => {
+                          navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).scriptButton);
                           setCopiedField("script");
-                          toast.success("Script embed code copied");
+                          toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.scriptEmbedCodeCopied"));
                           setTimeout(() => setCopiedField(null), 2000);
                         }}
                       >
@@ -489,7 +542,7 @@ export default function OnlineBookingSettings() {
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500">
-                      Or add <code className="bg-muted px-1 rounded">data-beautonomi-book</code> to any element to make it open the booking page on click.
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.orAddDataAttr", { attr: "data-beautonomi-book" })}
                     </p>
                   </div>
                 </div>
@@ -497,14 +550,13 @@ export default function OnlineBookingSettings() {
 
               {mangomint && (
                 <div className="border-t pt-6 space-y-6">
-                  <h3 className="font-medium">Booking flow settings</h3>
+                  <h3 className="font-medium">{t("web.provider.settings.pages.appointment-activity/online-booking.bookingFlowSettings")}</h3>
                   <p className="text-sm text-muted-foreground">
-                    Control how clients book: staff selection, payment options,
-                    and deposit requirements.
+                    {t("web.provider.settings.pages.appointment-activity/online-booking.bookingFlowHint")}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
-                      <Label className="block mb-2">Staff selection</Label>
+                      <Label className="block mb-2">{t("web.provider.settings.pages.appointment-activity/online-booking.staffSelection")}</Label>
                       <Select
                         value={mangomint.staff_selection_mode}
                         onValueChange={(v) =>
@@ -519,13 +571,13 @@ export default function OnlineBookingSettings() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="client_chooses">
-                            Client chooses staff
+                            {t("web.provider.settings.pages.appointment-activity/online-booking.clientChoosesStaff")}
                           </SelectItem>
                           <SelectItem value="anyone_default">
-                            Anyone available (default)
+                            {t("web.provider.settings.pages.appointment-activity/online-booking.anyoneAvailable")}
                           </SelectItem>
                           <SelectItem value="hidden_auto_assign">
-                            Hidden (auto-assign)
+                            {t("web.provider.settings.pages.appointment-activity/online-booking.hiddenAutoAssign")}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -542,7 +594,7 @@ export default function OnlineBookingSettings() {
                         }
                       />
                       <Label htmlFor="allow_pay_in_person" className="cursor-pointer">
-                        Allow pay at venue
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.allowPayAtVenue")}
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 pt-8">
@@ -558,10 +610,10 @@ export default function OnlineBookingSettings() {
                       />
                       <div>
                         <Label htmlFor="on_demand_accept_enabled" className="cursor-pointer">
-                          Accept on-demand requests
+                          {t("web.provider.settings.pages.appointment-activity/online-booking.acceptOnDemand")}
                         </Label>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Let clients use &quot;Request now&quot;; you can accept or decline within the time window.
+                          {t("web.provider.settings.pages.appointment-activity/online-booking.acceptOnDemandHint")}
                         </p>
                       </div>
                     </div>
@@ -569,7 +621,7 @@ export default function OnlineBookingSettings() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
                       <Label className="block mb-2">
-                        Min. notice (minutes)
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.minNoticeMinutes")}
                       </Label>
                       <Input
                         type="number"
@@ -587,12 +639,12 @@ export default function OnlineBookingSettings() {
                         }
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Set to 0 to let clients book the first available slot. Service buffers and travel time still apply.
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.minNoticeHint")}
                       </p>
                     </div>
                     <div>
                       <Label className="block mb-2">
-                        Max. advance (days)
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.maxAdvanceDays")}
                       </Label>
                       <Input
                         type="number"
@@ -624,18 +676,18 @@ export default function OnlineBookingSettings() {
                         }
                       />
                       <Label htmlFor="deposit_required" className="cursor-pointer">
-                        Require deposit for online bookings
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.requireDeposit")}
                       </Label>
                     </div>
                     {mangomint.deposit_required && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 ps-6">
                         <div>
-                          <Label className="block mb-2">Deposit amount (fixed)</Label>
+                          <Label className="block mb-2">{t("web.provider.settings.pages.appointment-activity/online-booking.depositAmount")}</Label>
                           <Input
                             type="number"
                             min={0}
                             step={0.01}
-                            placeholder="Optional"
+                            placeholder={t("web.provider.settings.pages.appointment-activity/online-booking.optional")}
                             value={mangomint.deposit_amount ?? ""}
                             onChange={(e) => {
                               const v = e.target.value;
@@ -648,13 +700,13 @@ export default function OnlineBookingSettings() {
                           />
                         </div>
                         <div>
-                          <Label className="block mb-2">Deposit % (alternate)</Label>
+                          <Label className="block mb-2">{t("web.provider.settings.pages.appointment-activity/online-booking.depositPercent")}</Label>
                           <Input
                             type="number"
                             min={0}
                             max={100}
                             step={0.1}
-                            placeholder="Optional"
+                            placeholder={t("web.provider.settings.pages.appointment-activity/online-booking.optional")}
                             value={mangomint.deposit_percent ?? ""}
                             onChange={(e) => {
                               const v = e.target.value;
@@ -666,7 +718,7 @@ export default function OnlineBookingSettings() {
                             }}
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            Use either amount or %
+                            {t("web.provider.settings.pages.appointment-activity/online-booking.useAmountOrPct")}
                           </p>
                         </div>
                       </div>
@@ -677,7 +729,7 @@ export default function OnlineBookingSettings() {
                       onClick={handleSaveMangomint}
                       disabled={isSavingMangomint}
                     >
-                      {isSavingMangomint ? "Saving..." : "Save booking flow settings"}
+                      {isSavingMangomint ? t("web.provider.common.saving") : t("web.provider.settings.pages.appointment-activity/online-booking.saveBookingFlow")}
                     </Button>
                   )}
                 </div>
@@ -689,7 +741,7 @@ export default function OnlineBookingSettings() {
             <Alert className="border-amber-200 bg-amber-50">
               <Info className="w-4 h-4 text-amber-600" />
               <AlertDescription className="text-sm text-amber-800">
-                Online booking is currently disabled. Clients will not be able to book appointments online.
+                {t("web.provider.settings.pages.appointment-activity/online-booking.onlineBookingDisabled")}
               </AlertDescription>
             </Alert>
           )}

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
+import { useTranslation } from "@beautonomi/i18n";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 
 type VerifyResponse = {
@@ -29,6 +30,8 @@ export default function BookingPaymentCallbackPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
+  const prefix = "web.accountSettings.bookingPaymentCallback";
   const bookingId = params.id as string;
   const payRemaining = searchParams.get("pay_remaining") === "1";
   const reference = searchParams.get("reference") || searchParams.get("trxref");
@@ -39,9 +42,7 @@ export default function BookingPaymentCallbackPage() {
   const verify = useCallback(async () => {
     if (!reference?.trim()) {
       setStatus("error");
-      setMessage(
-        "No payment reference in the link. If you paid, wait a moment and check your booking — confirmation may still be processing."
-      );
+      setMessage(t(`${prefix}.noReference`));
       return;
     }
 
@@ -61,31 +62,26 @@ export default function BookingPaymentCallbackPage() {
         setMessage(
           payRemaining
             ? amt
-              ? `Your remaining balance (${amt}) has been confirmed.`
-              : "Your remaining balance has been confirmed."
+              ? t(`${prefix}.remainingConfirmedAmount`, { amount: amt })
+              : t(`${prefix}.remainingConfirmed`)
             : amt
-              ? `Payment of ${amt} for the additional charge has been confirmed.`
-              : "Additional charge payment has been confirmed."
+              ? t(`${prefix}.chargeConfirmedAmount`, { amount: amt })
+              : t(`${prefix}.chargeConfirmed`)
         );
         return;
       }
       if (res.status === "failed") {
         setStatus("error");
-        setMessage(
-          data?.message ||
-            "We could not confirm this payment. Check your booking or contact support if money was debited."
-        );
+        setMessage(data?.message || t(`${prefix}.confirmFailed`));
         return;
       }
       setStatus("success");
-      setMessage(
-        "Payment received. We are finalizing your booking now — please refresh in a moment.",
-      );
-    } catch (e) {
+      setMessage(t(`${prefix}.finalizing`));
+    } catch {
       setStatus("success");
-      setMessage("Payment received. We are finalizing your booking now — please refresh in a moment.");
+      setMessage(t(`${prefix}.finalizing`));
     }
-  }, [reference, bookingId, payRemaining]);
+  }, [reference, bookingId, payRemaining, t]);
 
   useEffect(() => {
     verify();
@@ -123,10 +119,10 @@ export default function BookingPaymentCallbackPage() {
   // link in the standalone web view (they can still tap the link sooner).
   useEffect(() => {
     if (status !== "error" || !bookingId) return;
-    const t = setTimeout(() => {
+    const timeout = setTimeout(() => {
       router.replace(`/account-settings/bookings/${bookingId}`);
     }, 4500);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timeout);
   }, [status, bookingId, router]);
 
   return (
@@ -136,10 +132,10 @@ export default function BookingPaymentCallbackPage() {
           <>
             <Loader2 className="w-12 h-12 text-pink-500 animate-spin mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Confirming payment
+              {t(`${prefix}.confirmingTitle`)}
             </h2>
             <p className="text-gray-500">
-              Verifying with Paystack…
+              {t(`${prefix}.verifyingPaystack`)}
             </p>
           </>
         )}
@@ -150,17 +146,17 @@ export default function BookingPaymentCallbackPage() {
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Payment successful
+              {t(`${prefix}.successTitle`)}
             </h2>
             <p className="text-gray-500 mb-6">{message}</p>
             <p className="text-sm text-gray-400 mb-4">
-              You can close this window or use the link below.
+              {t(`${prefix}.closeOrLink`)}
             </p>
             <Link
               href={`/account-settings/bookings/${bookingId}`}
               className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
             >
-              View booking
+              {t(`${prefix}.viewBooking`)}
             </Link>
           </>
         )}
@@ -171,14 +167,14 @@ export default function BookingPaymentCallbackPage() {
               <XCircle className="w-10 h-10 text-red-600" />
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Could not confirm payment
+              {t(`${prefix}.errorTitle`)}
             </h2>
-            <p className="text-gray-500 mb-6">{message || "Something went wrong."}</p>
+            <p className="text-gray-500 mb-6">{message || t(`${prefix}.somethingWentWrong`)}</p>
             <Link
               href={`/account-settings/bookings/${bookingId}`}
               className="inline-flex items-center gap-2 px-6 py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
             >
-              Back to booking
+              {t(`${prefix}.backToBooking`)}
             </Link>
           </>
         )}

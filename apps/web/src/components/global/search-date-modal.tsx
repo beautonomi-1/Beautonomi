@@ -1,4 +1,6 @@
 "use client"
+
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
@@ -16,6 +18,7 @@ interface SearchDateModalProps {
 }
 
 const SearchDateModal: React.FC<SearchDateModalProps> = ({ dateRange = { from: undefined, to: undefined }, onDateSelect }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"dates" | "months" | "flexible">("dates");
   const numberOfMonths = useResponsive({ mobile: 1, tablet: 1, desktop: 2 });
 
@@ -37,13 +40,13 @@ const SearchDateModal: React.FC<SearchDateModalProps> = ({ dateRange = { from: u
       >
         <TabsList className="flex justify-center max-w-sm mx-auto rounded-full bg-[#EBEBEB]">
           <TabsTrigger className="w-full rounded-full" value="dates">
-            Dates
+            {t("web.layout.searchDateModal.dates")}
           </TabsTrigger>
           <TabsTrigger className="w-full rounded-full" value="months">
-            Months
+            {t("web.layout.searchDateModal.months")}
           </TabsTrigger>
           <TabsTrigger className="w-full rounded-full" value="flexible">
-            Flexible
+            {t("web.layout.searchDateModal.flexible")}
           </TabsTrigger>
         </TabsList>
           <TabsContent value="dates">

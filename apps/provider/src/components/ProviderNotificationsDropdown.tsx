@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
 } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
@@ -63,8 +64,8 @@ type NotificationsResponse = {
   total_unread?: number;
 };
 
-function formatDateTimeSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateTimeSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   return parsed.toLocaleString();
@@ -80,6 +81,12 @@ export interface ProviderNotificationsDropdownProps {
 }
 
 export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: ProviderNotificationsDropdownProps) {
+  const { t } = useTranslation();
+  const nd = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.notificationsDropdown.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const swipeRegistry = useNotificationSwipeRegistry();
   const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, resetNotificationUnreadBias } = useNotificationsCount();
@@ -118,7 +125,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
       if (prevData) mutate(prevData);
       resetNotificationUnreadBias();
       await refreshCount();
-      Alert.alert("Error", res.error || "Could not mark notifications as read.");
+      Alert.alert(nd("errorTitle"), res.error || nd("markReadFailed"));
       return;
     }
     const body = (res.data as { total_unread?: number; data?: { total_unread?: number } } | undefined) ?? {};
@@ -132,7 +139,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
     replaceUnreadCount(serverNotifUnread);
     await refresh();
     await refreshCount();
-  }, [markAllRead, refresh, refreshCount, data, mutate, replaceUnreadCount, resetNotificationUnreadBias]);
+  }, [markAllRead, refresh, refreshCount, data, mutate, replaceUnreadCount, resetNotificationUnreadBias, nd]);
 
   const handleSeeAll = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -194,7 +201,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
       if (delErr) {
         if (prevData) mutate(prevData);
         if (wasUnread) adjustUnreadCount(1);
-        Alert.alert("Error", delErr);
+        Alert.alert(nd("errorTitle"), delErr);
         return;
       }
       await refresh();
@@ -205,16 +212,16 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
 
   const confirmDelete = useCallback(
     (n: Notification) => {
-      Alert.alert("Delete notification?", "This removes it from your list.", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(nd("deleteTitle"), nd("deleteBody"), [
+        { text: nd("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: nd("delete"),
           style: "destructive",
           onPress: () => void deleteNotification(n),
         },
       ]);
     },
-    [deleteNotification],
+    [deleteNotification, nd],
   );
 
   if (!visible) return null;
@@ -225,7 +232,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
       <RNPressable
         style={twStyle("flex-1 bg-black/40")}
         onPress={onClose}
-        accessibilityLabel="Close notifications"
+        accessibilityLabel={nd("closeA11y")}
         accessibilityRole="button"
       >
         <View style={[twStyle("pt-16 px-4"), { maxHeight: "85%" }]}>
@@ -234,10 +241,10 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
             onPress={(e) => e.stopPropagation()}
           >
             <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-4 py-3")}>
-              <View style={twStyle("flex-1 pr-3")}>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>Notifications</Text>
+              <View style={twStyle("flex-1 pe-3")}>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{nd("title")}</Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                  Tap to open (marks read). Swipe left to delete. Use Mark all read for the rest.
+                  {nd("subtitle")}
                 </Text>
               </View>
               <View style={twStyle("flex-row items-center")}>
@@ -245,10 +252,10 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                   <TouchableOpacity
                     onPress={handleMarkAllRead}
                     disabled={markingRead}
-                    style={[twStyle("rounded-lg bg-gray-100 px-3 py-1.5"), { marginRight: 8 }]}
+                    style={[twStyle("rounded-lg bg-gray-100 px-3 py-1.5"), { marginEnd: 8 }]}
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                      {markingRead ? "…" : "Mark all read"}
+                      {markingRead ? nd("marking") : nd("markAllRead")}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -267,20 +274,20 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
               {loading && !data ? (
                 <View style={twStyle("py-12 items-center")}>
                   <ActivityIndicator size="small" color={Colors.primary} />
-                  <Text style={twStyle("mt-2 text-sm text-gray-500")}>Loading…</Text>
+                  <Text style={twStyle("mt-2 text-sm text-gray-500")}>{nd("loading")}</Text>
                 </View>
               ) : error ? (
                 <View style={twStyle("py-8 px-4 items-center")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Couldn’t load notifications</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{nd("loadFailed")}</Text>
                   <TouchableOpacity onPress={() => refresh()} style={twStyle("mt-2")}>
-                    <Text style={twStyle("text-sm font-medium text-primary")}>Retry</Text>
+                    <Text style={twStyle("text-sm font-medium text-primary")}>{nd("retry")}</Text>
                   </TouchableOpacity>
                 </View>
               ) : notifications.length === 0 ? (
                 <View style={twStyle("py-10 px-4 items-center")}>
                   <Ionicons name="notifications-outline" size={40} color="#9ca3af" />
-                  <Text style={twStyle("mt-3 text-center text-gray-600")}>No notifications</Text>
-                  <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>You’re all caught up</Text>
+                  <Text style={twStyle("mt-3 text-center text-gray-600")}>{nd("empty")}</Text>
+                  <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>{nd("emptyHint")}</Text>
                 </View>
               ) : (
                 <View style={twStyle("pb-2")}>
@@ -299,16 +306,16 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                           `mx-3 mt-2 rounded-xl border p-3 active:opacity-90 ${read ? "border-gray-100 bg-gray-50/50" : "border-indigo-100 bg-indigo-50/30"}`,
                         )}
                         accessibilityRole="button"
-                        accessibilityLabel={`${n.title ?? "Notification"}. ${n.message ?? ""}`}
-                        accessibilityHint="Swipe left to delete. Opens related screen."
+                        accessibilityLabel={`${n.title ?? nd("notificationFallback")}. ${n.message ?? ""}`}
+                        accessibilityHint={nd("swipeHint")}
                       >
                         <View style={twStyle("flex-row items-start justify-between")}>
-                          <View style={[twStyle("flex-1 min-w-0"), { marginRight: 8 }]}>
+                          <View style={[twStyle("flex-1 min-w-0"), { marginEnd: 8 }]}>
                             <Text
                               style={twStyle(`font-medium ${read ? "text-gray-700" : "text-gray-900"}`)}
                               numberOfLines={1}
                             >
-                              {n.title ?? "Notification"}
+                              {n.title ?? nd("notificationFallback")}
                             </Text>
                             {n.message ? (
                               <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={2}>
@@ -316,7 +323,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                               </Text>
                             ) : null}
                             {n.timestamp ? (
-                              <Text style={twStyle("mt-1.5 text-xs text-gray-400")}>{formatDateTimeSafe(n.timestamp)}</Text>
+                              <Text style={twStyle("mt-1.5 text-xs text-gray-400")}>{formatDateTimeSafe(n.timestamp, "—")}</Text>
                             ) : null}
                           </View>
                           {!read && <View style={twStyle("h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5")} />}
@@ -332,7 +339,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
 
             <View style={twStyle("border-t border-gray-100 px-4 py-3 bg-gray-50/50")}>
               <TouchableOpacity onPress={handleSeeAll} style={twStyle("py-2.5 rounded-xl bg-gray-900")} activeOpacity={0.8}>
-                <Text style={twStyle("text-center font-medium text-white")}>See all notifications</Text>
+                <Text style={twStyle("text-center font-medium text-white")}>{nd("seeAll")}</Text>
               </TouchableOpacity>
             </View>
           </RNPressable>

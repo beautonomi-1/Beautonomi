@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { CalendarDisplayPreferences } from "@/lib/provider-portal/types";
@@ -19,6 +20,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
 
 export default function CalendarDisplayPreferencesPage() {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [_isSaving, setIsSaving] = useState(false);
   const [_preferences, setPreferences] = useState<CalendarDisplayPreferences | null>(null);
@@ -65,7 +67,7 @@ export default function CalendarDisplayPreferencesPage() {
       });
     } catch (error) {
       console.error("Failed to load preferences:", error);
-      toast.error("Failed to load display preferences");
+      toast.error(t("web.provider.settings.pages.calendar/display-preferences.failedToLoadDisplayPreferences"));
     } finally {
       setIsLoading(false);
     }
@@ -75,50 +77,50 @@ export default function CalendarDisplayPreferencesPage() {
     setIsSaving(true);
     try {
       await providerApi.updateCalendarDisplayPreferences(formData);
-      toast.success("Display preferences saved");
+      toast.success(t("web.provider.settings.pages.calendar/display-preferences.displayPreferencesSaved"));
       loadPreferences();
     } catch (error) {
       console.error("Failed to save preferences:", error);
-      toast.error("Failed to save display preferences");
+      toast.error(t("web.provider.settings.pages.calendar/display-preferences.failedToSaveDisplayPreferences"));
     } finally {
       setIsSaving(false);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Calendar", href: "/provider/calendar" },
-    { label: "Display Preferences" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.calendar/display-preferences.calendar"), href: "/provider/calendar" },
+    { label: t("web.provider.settings.pages.calendar/display-preferences.displayPreferences") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Calendar Display Preferences"
-        subtitle="Customize how your calendar is displayed"
+        title={t("web.provider.settings.categories.appointmentActivity.items.calendarDisplay.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.calendarDisplay.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading display preferences..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.calendar/display-preferences.loadingDisplayPreferences")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Calendar Display Preferences"
-      subtitle="Customize how your calendar is displayed"
+      title={t("web.provider.settings.categories.appointmentActivity.items.calendarDisplay.title")}
+      subtitle={t("web.provider.settings.categories.appointmentActivity.items.calendarDisplay.description")}
       onSave={handleSave}
       breadcrumbs={breadcrumbs}
     >
       <SectionCard className="space-y-6">
         <div>
-          <h3 className="text-lg font-semibold mb-4">View Settings</h3>
+          <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.calendar/display-preferences.viewSettings")}</h3>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="default_view">Default View</Label>
+                <Label htmlFor="default_view">{t("web.provider.settings.pages.calendar/display-preferences.defaultView")}</Label>
                 <Select
                   value={formData.default_view}
                   onValueChange={(value) =>
@@ -129,15 +131,15 @@ export default function CalendarDisplayPreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="3-days">3 Days</SelectItem>
-                    <SelectItem value="week">Week</SelectItem>
-                    <SelectItem value="month">Month</SelectItem>
+                    <SelectItem value="day">{t("web.provider.settings.pages.calendar/display-preferences.day")}</SelectItem>
+                    <SelectItem value="3-days">{t("web.provider.settings.pages.calendar/display-preferences.threeDays")}</SelectItem>
+                    <SelectItem value="week">{t("web.provider.settings.pages.calendar/display-preferences.week")}</SelectItem>
+                    <SelectItem value="month">{t("web.provider.settings.pages.calendar/display-preferences.month")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="week_starts_on">Week Starts On</Label>
+                <Label htmlFor="week_starts_on">{t("web.provider.settings.pages.calendar/display-preferences.weekStartsOn")}</Label>
                 <Select
                   value={formData.week_starts_on.toString()}
                   onValueChange={(value) =>
@@ -148,13 +150,13 @@ export default function CalendarDisplayPreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">Sunday</SelectItem>
-                    <SelectItem value="1">Monday</SelectItem>
-                    <SelectItem value="2">Tuesday</SelectItem>
-                    <SelectItem value="3">Wednesday</SelectItem>
-                    <SelectItem value="4">Thursday</SelectItem>
-                    <SelectItem value="5">Friday</SelectItem>
-                    <SelectItem value="6">Saturday</SelectItem>
+                    <SelectItem value="0">{t("web.provider.common.weekday.sunday")}</SelectItem>
+                    <SelectItem value="1">{t("web.provider.common.weekday.monday")}</SelectItem>
+                    <SelectItem value="2">{t("web.provider.common.weekday.tuesday")}</SelectItem>
+                    <SelectItem value="3">{t("web.provider.common.weekday.wednesday")}</SelectItem>
+                    <SelectItem value="4">{t("web.provider.common.weekday.thursday")}</SelectItem>
+                    <SelectItem value="5">{t("web.provider.common.weekday.friday")}</SelectItem>
+                    <SelectItem value="6">{t("web.provider.common.weekday.saturday")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -163,11 +165,11 @@ export default function CalendarDisplayPreferencesPage() {
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold mb-4">Time Settings</h3>
+          <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.calendar/display-preferences.timeSettings")}</h3>
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="start_hour">Start Hour</Label>
+                <Label htmlFor="start_hour">{t("web.provider.settings.pages.calendar/display-preferences.startHour")}</Label>
                 <Input
                   id="start_hour"
                   type="number"
@@ -180,7 +182,7 @@ export default function CalendarDisplayPreferencesPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="end_hour">End Hour</Label>
+                <Label htmlFor="end_hour">{t("web.provider.settings.pages.calendar/display-preferences.endHour")}</Label>
                 <Input
                   id="end_hour"
                   type="number"
@@ -193,7 +195,7 @@ export default function CalendarDisplayPreferencesPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="time_slot_interval">Time Slot Interval (minutes)</Label>
+                <Label htmlFor="time_slot_interval">{t("web.provider.settings.pages.calendar/display-preferences.timeSlotInterval")}</Label>
                 <Select
                   value={formData.time_slot_interval.toString()}
                   onValueChange={(value) =>
@@ -204,9 +206,9 @@ export default function CalendarDisplayPreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="15">15 minutes</SelectItem>
-                    <SelectItem value="30">30 minutes</SelectItem>
-                    <SelectItem value="60">60 minutes</SelectItem>
+                    <SelectItem value="15">{t("web.provider.settings.pages.calendar/display-preferences.minutes15")}</SelectItem>
+                    <SelectItem value="30">{t("web.provider.settings.pages.calendar/display-preferences.minutes30")}</SelectItem>
+                    <SelectItem value="60">{t("web.provider.settings.pages.calendar/display-preferences.minutes60")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -215,7 +217,7 @@ export default function CalendarDisplayPreferencesPage() {
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold mb-4">Display Options</h3>
+          <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.calendar/display-preferences.displayOptions")}</h3>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Checkbox
@@ -226,7 +228,7 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_weekends" className="cursor-pointer">
-                Show weekends
+                {t("web.provider.settings.pages.calendar/display-preferences.showWeekends")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -238,7 +240,7 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_time_labels" className="cursor-pointer">
-                Show time labels
+                {t("web.provider.settings.pages.calendar/display-preferences.showTimeLabels")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -250,7 +252,7 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_duration" className="cursor-pointer">
-                Show appointment duration
+                {t("web.provider.settings.pages.calendar/display-preferences.showDuration")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -262,7 +264,7 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_resource_assignments" className="cursor-pointer">
-                Show resource assignments
+                {t("web.provider.settings.pages.calendar/display-preferences.showResourceAssignments")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -274,7 +276,7 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_waitlist_entries" className="cursor-pointer">
-                Show waitlist entries
+                {t("web.provider.settings.pages.calendar/display-preferences.showWaitlistEntries")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -286,17 +288,17 @@ export default function CalendarDisplayPreferencesPage() {
                 }
               />
               <Label htmlFor="show_time_blocks" className="cursor-pointer">
-                Show time blocks
+                {t("web.provider.settings.pages.calendar/display-preferences.showTimeBlocks")}
               </Label>
             </div>
           </div>
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold mb-4">Appointment Display</h3>
+          <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.calendar/display-preferences.appointmentDisplay")}</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="appointment_height">Appointment Height</Label>
+              <Label htmlFor="appointment_height">{t("web.provider.settings.pages.calendar/display-preferences.appointmentHeight")}</Label>
               <Select
                 value={formData.appointment_height}
                 onValueChange={(value) =>
@@ -307,14 +309,14 @@ export default function CalendarDisplayPreferencesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="compact">Compact</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="expanded">Expanded</SelectItem>
+                  <SelectItem value="compact">{t("web.provider.settings.pages.calendar/display-preferences.compact")}</SelectItem>
+                  <SelectItem value="normal">{t("web.provider.settings.pages.calendar/display-preferences.normal")}</SelectItem>
+                  <SelectItem value="expanded">{t("web.provider.settings.pages.calendar/display-preferences.expanded")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="color_by">Color By</Label>
+              <Label htmlFor="color_by">{t("web.provider.settings.pages.calendar/display-preferences.colorBy")}</Label>
               <Select
                 value={formData.color_by}
                 onValueChange={(value) =>
@@ -325,9 +327,9 @@ export default function CalendarDisplayPreferencesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                  <SelectItem value="team_member">Team Member</SelectItem>
+                  <SelectItem value="service">{t("web.provider.settings.pages.calendar/display-preferences.service")}</SelectItem>
+                  <SelectItem value="status">{t("web.provider.settings.pages.calendar/display-preferences.status")}</SelectItem>
+                  <SelectItem value="team_member">{t("web.provider.settings.pages.calendar/display-preferences.teamMember")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

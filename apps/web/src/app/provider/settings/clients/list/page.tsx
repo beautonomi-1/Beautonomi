@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React, { useState, useEffect } from "react";
@@ -73,6 +75,7 @@ interface ServicedCustomer {
 }
 
 export default function ClientListPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [activeTab, setActiveTab] = useState<"all" | "saved" | "serviced">("all");
@@ -104,7 +107,7 @@ export default function ClientListPage() {
           console.error("Error loading saved clients:", error);
           const errorMessage = error instanceof FetchError
             ? error.message
-            : error?.error?.message || "Failed to load saved clients";
+            : error?.error?.message || t("web.provider.settings.pages.clients/list.failedToLoadSaved");
           toast.error(errorMessage);
           setClients([]);
         }
@@ -120,14 +123,14 @@ export default function ClientListPage() {
           console.error("Error loading serviced customers:", error);
           const errorMessage = error instanceof FetchError
             ? error.message
-            : error?.error?.message || "Failed to load serviced customers";
+            : error?.error?.message || t("web.provider.settings.pages.clients/list.failedToLoadServiced");
           toast.error(errorMessage);
           setServicedCustomers([]);
         }
       }
     } catch (error: any) {
       console.error("Error loading clients:", error);
-      toast.error("Failed to load clients");
+      toast.error(t("web.provider.settings.pages.clients/list.failedToLoadClients"));
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +143,7 @@ export default function ClientListPage() {
         notes: clientNotes.trim() || null,
         tags: clientTags.length > 0 ? clientTags : null,
       });
-      toast.success("Client saved successfully");
+      toast.success(t("web.provider.settings.pages.clients/list.clientSavedSuccessfully"));
       setIsAddClientModalOpen(false);
       setClientNotes("");
       setClientTags([]);
@@ -150,7 +153,7 @@ export default function ClientListPage() {
       console.error("Error saving client:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save client";
+        : error?.error?.message || t("web.provider.settings.pages.clients/list.failedToSaveClient");
       toast.error(errorMessage);
     }
   };
@@ -160,13 +163,13 @@ export default function ClientListPage() {
       await fetcher.patch(`/api/provider/clients/${clientId}`, {
         is_favorite: !isFavorite,
       });
-      toast.success(isFavorite ? "Removed from favorites" : "Added to favorites");
+      toast.success(isFavorite ? t("web.provider.settings.pages.clients/list.removedFromFavorites") : t("web.provider.settings.pages.clients/list.addedToFavorites"));
       await loadClients();
     } catch (error: any) {
       console.error("Error updating favorite:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to update favorite";
+        : error?.error?.message || t("web.provider.settings.pages.clients/list.failedToUpdateFavorite");
       toast.error(errorMessage);
     }
   };
@@ -206,7 +209,7 @@ export default function ClientListPage() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Never";
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString(getDefaultMoneyLocale(), {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -214,21 +217,18 @@ export default function ClientListPage() {
   };
 
   const formatCurrency = (amount: number, currency: string = tenantCurrency) => {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency,
-    }).format(amount);
+    return formatMoney(amount, currency);
   };
 
   return (
     <SettingsDetailLayout
-      title="Client List"
-      subtitle="Manage your clients - view serviced customers and saved clients"
+      title={t("web.provider.settings.categories.clients.items.clientList.title")}
+      subtitle={t("web.provider.settings.categories.clients.items.clientList.description")}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Client List" }
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.clients/list.clientList") }
       ]}
     >
       <div className="space-y-6">
@@ -238,10 +238,10 @@ export default function ClientListPage() {
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Search clients by name, email, phone, or notes..."
+                placeholder={t("web.provider.settings.pages.clients/list.searchClientsByNameEmailPhone")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="ps-10"
               />
             </div>
             <Button
@@ -249,7 +249,7 @@ export default function ClientListPage() {
               className="flex items-center gap-2"
             >
               <Plus className="h-4 w-4" />
-              Add Client
+              {t("web.provider.settings.pages.clients/list.addClient")}
             </Button>
           </div>
         </SectionCard>
@@ -257,24 +257,24 @@ export default function ClientListPage() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="all">All Clients</TabsTrigger>
-            <TabsTrigger value="saved">Saved Clients</TabsTrigger>
-            <TabsTrigger value="serviced">Serviced Customers</TabsTrigger>
+            <TabsTrigger value="all">{t("web.provider.settings.pages.clients/list.allClients")}</TabsTrigger>
+            <TabsTrigger value="saved">{t("web.provider.settings.pages.clients/list.savedClients")}</TabsTrigger>
+            <TabsTrigger value="serviced">{t("web.provider.settings.pages.clients/list.servicedCustomers")}</TabsTrigger>
           </TabsList>
 
           {isLoading ? (
             <SectionCard className="mt-6">
-              <LoadingTimeout loadingMessage="Loading clients..." />
+              <LoadingTimeout loadingMessage={t("web.provider.settings.pages.clients/list.loadingClients")} />
             </SectionCard>
           ) : (
             <>
               {/* All Clients Tab */}
               <TabsContent value="all" className="mt-6">
                 <div className="space-y-4">
-                  {/* Saved Clients Section */}
+                  {/* {t("web.provider.settings.pages.clients/list.saved")} Clients Section */}
                   {filteredClients.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4">Saved Clients</h3>
+                      <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.clients/list.savedClients")}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredClients.map((client) => (
                           <ClientCard
@@ -292,7 +292,7 @@ export default function ClientListPage() {
                   {/* Serviced Customers Section */}
                   {filteredServiced.filter((c) => !c.is_saved).length > 0 && (
                     <div className={filteredClients.length > 0 ? "mt-8" : ""}>
-                      <h3 className="text-lg font-semibold mb-4">Serviced Customers</h3>
+                      <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.clients/list.servicedCustomers")}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredServiced
                           .filter((c) => !c.is_saved)
@@ -315,10 +315,10 @@ export default function ClientListPage() {
                   {filteredClients.length === 0 &&
                     filteredServiced.filter((c) => !c.is_saved).length === 0 && (
                       <EmptyState
-                        title="No clients found"
-                        description="Start by completing bookings or saving clients manually"
+                        title={t("web.provider.settings.categories.clients.items.clientList.title")}
+                        description={t("web.provider.settings.pages.clients/list.startByCompleting")}
                         action={{
-                          label: "Add Client",
+                          label: t("web.provider.settings.pages.clients/list.addClient"),
                           onClick: () => setIsAddClientModalOpen(true),
                         }}
                       />
@@ -326,7 +326,7 @@ export default function ClientListPage() {
                 </div>
               </TabsContent>
 
-              {/* Saved Clients Tab */}
+              {/* {t("web.provider.settings.pages.clients/list.saved")} Clients Tab */}
               <TabsContent value="saved" className="mt-6">
                 {filteredClients.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -342,8 +342,8 @@ export default function ClientListPage() {
                   </div>
                 ) : (
                   <EmptyState
-                    title="No saved clients"
-                    description="Save clients from your serviced customers list"
+                    title={t("web.provider.settings.pages.clients/list.noSavedClients")}
+                    description={t("web.provider.settings.pages.clients/list.saveFromServiced")}
                   />
                 )}
               </TabsContent>
@@ -367,8 +367,8 @@ export default function ClientListPage() {
                   </div>
                 ) : (
                   <EmptyState
-                    title="No serviced customers"
-                    description="Customers will appear here after completing bookings"
+                    title={t("web.provider.settings.pages.clients/list.noServicedCustomers")}
+                    description={t("web.provider.settings.pages.clients/list.customersWillAppear")}
                   />
                 )}
               </TabsContent>
@@ -377,25 +377,25 @@ export default function ClientListPage() {
         </Tabs>
       </div>
 
-      {/* Add Client Modal */}
+      {/* {t("web.provider.settings.pages.clients/list.addClient")} Modal */}
       <Dialog open={isAddClientModalOpen} onOpenChange={setIsAddClientModalOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-[500px] p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Add Client</DialogTitle>
+            <DialogTitle>{t("web.provider.settings.pages.clients/list.addClient")}</DialogTitle>
             <DialogDescription>
               {selectedCustomerId
-                ? "Add notes and tags to save this customer to your client list"
-                : "Select a customer from your serviced customers to save"}
+                ? t("web.provider.settings.pages.clients/list.addNotesAndTags")
+                : t("web.provider.settings.pages.clients/list.selectCustomerToSave")}
             </DialogDescription>
           </DialogHeader>
 
           {selectedCustomerId ? (
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="notes">Notes</Label>
+                <Label htmlFor="notes">{t("web.provider.common.notes")}</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Add notes about this client..."
+                  placeholder={t("web.provider.settings.pages.clients/list.addNotesAboutThisClient")}
                   value={clientNotes}
                   onChange={(e) => setClientNotes(e.target.value)}
                   rows={4}
@@ -403,11 +403,11 @@ export default function ClientListPage() {
               </div>
 
               <div>
-                <Label htmlFor="tags">Tags</Label>
+                <Label htmlFor="tags">{t("web.provider.settings.pages.clients/list.tags")}</Label>
                 <div className="flex gap-2 mb-2">
                   <Input
                     id="tags"
-                    placeholder="Add a tag..."
+                    placeholder={t("web.provider.settings.pages.clients/list.addATag")}
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     onKeyPress={(e) => {
@@ -418,7 +418,7 @@ export default function ClientListPage() {
                     }}
                   />
                   <Button onClick={handleAddTag} size="sm">
-                    Add
+                    {t("web.provider.common.add")}
                   </Button>
                 </div>
                 {clientTags.length > 0 && (
@@ -432,7 +432,7 @@ export default function ClientListPage() {
                         {tag}
                         <button
                           onClick={() => handleRemoveTag(tag)}
-                          className="ml-1 hover:text-red-500"
+                          className="ms-1 hover:text-red-500"
                         >
                           ×
                         </button>
@@ -452,25 +452,24 @@ export default function ClientListPage() {
                     setClientTags([]);
                   }}
                 >
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
                 <Button onClick={() => handleSaveClient(selectedCustomerId)}>
-                  Save Client
+                  {t("web.provider.settings.pages.clients/list.saveClient")}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="py-4">
               <p className="text-sm text-gray-600 mb-4">
-                Please select a customer from the "Serviced Customers" tab first, then click
-                "Save" to add them to your client list.
+                {t("web.provider.settings.pages.clients/list.selectCustomerHint")}
               </p>
               <Button
                 variant="outline"
                 onClick={() => setIsAddClientModalOpen(false)}
                 className="w-full"
               >
-                Close
+                {t("web.provider.common.close")}
               </Button>
             </div>
           )}
@@ -492,6 +491,7 @@ function ClientCard({
   formatDate: (date: string | null) => string;
   formatCurrency: (amount: number, currency?: string) => string;
 }) {
+  const { t } = useTranslation();
   return (
     <SectionCard className="p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-3">
@@ -503,7 +503,7 @@ function ClientCard({
             </AvatarFallback>
           </Avatar>
           <div>
-            <h4 className="font-semibold">{client.customer.full_name || "Customer"}</h4>
+            <h4 className="font-semibold">{client.customer.full_name || t("web.provider.common.customer")}</h4>
             <p className="text-sm text-gray-500">{client.customer.email}</p>
           </div>
         </div>
@@ -536,11 +536,11 @@ function ClientCard({
       <div className="space-y-2 text-sm border-t pt-3">
         <div className="flex items-center gap-2 text-gray-600">
           <Calendar className="h-4 w-4" />
-          <span>Last service: {formatDate(client.last_service_date)}</span>
+          <span>{t("web.provider.settings.pages.clients/list.lastService", { date: formatDate(client.last_service_date) })}</span>
         </div>
         <div className="flex items-center gap-2 text-gray-600">
           <User className="h-4 w-4" />
-          <span>{client.total_bookings} booking{client.total_bookings !== 1 ? "s" : ""}</span>
+          <span>{t("web.provider.settings.pages.clients/list.bookings", { count: client.total_bookings })}</span>
         </div>
         <div className="flex items-center gap-2 text-gray-600">
           <DollarSign className="h-4 w-4" />
@@ -551,18 +551,18 @@ function ClientCard({
             <div className="flex items-center gap-2">
               <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
               <span>
-                {client.customer.rating_average.toFixed(1)} combined (
-                {client.customer.review_count || 0}{" "}
-                {(client.customer.review_count || 0) === 1 ? "rating" : "ratings"})
+                {t("web.provider.settings.pages.clients/list.combinedRating", { rating: client.customer.rating_average.toFixed(1), count: client.customer.review_count || 0 })}
               </span>
             </div>
             {(client.customer.customer_review_rating_count ?? 0) > 0 &&
               (client.customer.customer_booking_rating_count ?? 0) > 0 && (
-                <p className="text-xs text-muted-foreground pl-6">
-                  Reviews {Number(client.customer.customer_review_rating_avg ?? 0).toFixed(1)} (
-                  {client.customer.customer_review_rating_count}) · After visits{" "}
-                  {Number(client.customer.customer_booking_rating_avg ?? 0).toFixed(1)} (
-                  {client.customer.customer_booking_rating_count})
+                <p className="text-xs text-muted-foreground ps-6">
+                  {t("web.provider.settings.pages.clients/list.reviewsAfterVisits", {
+                    reviewAvg: Number(client.customer.customer_review_rating_avg ?? 0).toFixed(1),
+                    reviewCount: client.customer.customer_review_rating_count,
+                    visitAvg: Number(client.customer.customer_booking_rating_avg ?? 0).toFixed(1),
+                    visitCount: client.customer.customer_booking_rating_count,
+                  })}
                 </p>
               )}
           </div>
@@ -584,6 +584,7 @@ function ServicedCustomerCard({
   formatDate: (date: string | null) => string;
   formatCurrency: (amount: number, currency?: string) => string;
 }) {
+  const { t } = useTranslation();
   return (
     <SectionCard className="p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-3">
@@ -595,18 +596,18 @@ function ServicedCustomerCard({
             </AvatarFallback>
           </Avatar>
           <div>
-            <h4 className="font-semibold">{customer.customer.full_name || "Customer"}</h4>
+            <h4 className="font-semibold">{customer.customer.full_name || t("web.provider.common.customer")}</h4>
             <p className="text-sm text-gray-500">{customer.customer.email}</p>
           </div>
         </div>
         {!customer.is_saved && (
           <Button size="sm" variant="outline" onClick={onSave}>
-            Save
+            {t("web.provider.common.save")}
           </Button>
         )}
         {customer.is_saved && (
           <Badge variant="secondary" className="text-xs">
-            Saved
+            {t("web.provider.settings.pages.clients/list.saved")}
           </Badge>
         )}
       </div>
@@ -618,9 +619,7 @@ function ServicedCustomerCard({
         </div>
         <div className="flex items-center gap-2 text-gray-600">
           <User className="h-4 w-4" />
-          <span>
-            {customer.total_bookings} booking{customer.total_bookings !== 1 ? "s" : ""}
-          </span>
+          <span>{t("web.provider.settings.pages.clients/list.bookings", { count: customer.total_bookings })}</span>
         </div>
         <div className="flex items-center gap-2 text-gray-600">
           <DollarSign className="h-4 w-4" />
@@ -631,18 +630,18 @@ function ServicedCustomerCard({
             <div className="flex items-center gap-2">
               <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
               <span>
-                {customer.customer.rating_average.toFixed(1)} combined (
-                {customer.customer.review_count || 0}{" "}
-                {(customer.customer.review_count || 0) === 1 ? "rating" : "ratings"})
+                {t("web.provider.settings.pages.clients/list.combinedRating", { rating: customer.customer.rating_average.toFixed(1), count: customer.customer.review_count || 0 })}
               </span>
             </div>
             {(customer.customer.customer_review_rating_count ?? 0) > 0 &&
               (customer.customer.customer_booking_rating_count ?? 0) > 0 && (
-                <p className="text-xs text-muted-foreground pl-6">
-                  Reviews {Number(customer.customer.customer_review_rating_avg ?? 0).toFixed(1)} (
-                  {customer.customer.customer_review_rating_count}) · After visits{" "}
-                  {Number(customer.customer.customer_booking_rating_avg ?? 0).toFixed(1)} (
-                  {customer.customer.customer_booking_rating_count})
+                <p className="text-xs text-muted-foreground ps-6">
+                  {t("web.provider.settings.pages.clients/list.reviewsAfterVisits", {
+                    reviewAvg: Number(customer.customer.customer_review_rating_avg ?? 0).toFixed(1),
+                    reviewCount: customer.customer.customer_review_rating_count,
+                    visitAvg: Number(customer.customer.customer_booking_rating_avg ?? 0).toFixed(1),
+                    visitCount: customer.customer.customer_booking_rating_count,
+                  })}
                 </p>
               )}
           </div>

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 
 const PRESET_MINUTES = [5, 10, 15, 20, 30, 45, 60] as const;
@@ -11,6 +12,13 @@ export type EtaPickerProps = {
 };
 
 export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
+  const { t } = useTranslation();
+  const ep = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookings.etaPicker.${key}`, opts) as string,
+    [t],
+  );
+
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const isCustom =
@@ -30,7 +38,7 @@ export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
 
   return (
     <View>
-      <Text style={twStyle("text-xs text-gray-500 mb-2")}>Estimated arrival</Text>
+      <Text style={twStyle("text-xs text-gray-500 mb-2")}>{ep("estimatedArrival")}</Text>
       <View style={twStyle("flex-row flex-wrap")}>
         {PRESET_MINUTES.map((min) => (
           <TouchableOpacity
@@ -43,14 +51,14 @@ export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
                   value === min ? "bg-primary border-primary" : "bg-white border-gray-300"
                 }`,
               ),
-              { marginRight: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
+              { marginEnd: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`${min} minutes`}
+            accessibilityLabel={ep("minutesA11y", { minutes: min })}
             accessibilityState={{ selected: value === min }}
           >
             <Text style={twStyle(`text-sm font-medium ${value === min ? "text-white" : "text-gray-700"}`)}>
-              {min} min
+              {ep("minutesShort", { minutes: min })}
             </Text>
           </TouchableOpacity>
         ))}
@@ -66,14 +74,14 @@ export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
                 value === null ? "bg-primary border-primary" : "bg-white border-gray-300"
               }`,
             ),
-            { marginRight: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
+            { marginEnd: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Not sure"
+          accessibilityLabel={ep("notSure")}
           accessibilityState={{ selected: value === null }}
         >
           <Text style={twStyle(`text-sm font-medium ${value === null ? "text-white" : "text-gray-700"}`)}>
-            Not sure
+            {ep("notSure")}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -85,12 +93,12 @@ export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
                 customMode || isCustom ? "bg-primary/10 border-primary" : "bg-white border-gray-300"
               }`,
             ),
-            { marginRight: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
+            { marginEnd: 8, marginBottom: 8, opacity: disabled ? 0.5 : 1 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Custom ETA"
+          accessibilityLabel={ep("custom")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Custom</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{ep("custom")}</Text>
         </TouchableOpacity>
       </View>
       {customMode ? (
@@ -98,19 +106,19 @@ export function EtaPicker({ value, onChange, disabled }: EtaPickerProps) {
           <TextInput
             value={customValue}
             onChangeText={setCustomValue}
-            placeholder="Minutes"
+            placeholder={ep("customPlaceholder")}
             keyboardType="number-pad"
             editable={!disabled}
-            style={twStyle("border border-gray-300 rounded-lg px-3 py-2 w-24 mr-2 bg-white")}
+            style={twStyle("border border-gray-300 rounded-lg px-3 py-2 w-24 me-2 bg-white")}
           />
           <TouchableOpacity
             disabled={disabled}
             onPress={applyCustom}
             style={twStyle("rounded-lg bg-primary px-3 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Set custom ETA"
+            accessibilityLabel={ep("apply")}
           >
-            <Text style={twStyle("text-white text-sm font-semibold")}>Set</Text>
+            <Text style={twStyle("text-white text-sm font-semibold")}>{ep("apply")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

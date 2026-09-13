@@ -188,6 +188,26 @@ export async function PATCH(
 
     if (error) return handleApiError(error, "Failed to update post");
 
+    if (!is_hidden) {
+      try {
+        const { data: postRow } = await supabaseAdmin
+          .from("explore_posts")
+          .select("id, caption, status")
+          .eq("id", id)
+          .maybeSingle();
+        if (postRow?.status === "published") {
+          const { upsertPostEmbedding } = await import("@/lib/ai/embeddings");
+          const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
+          const environment = env === "production" ? "production" : env === "staging" ? "staging" : "development";
+          void upsertPostEmbedding(id, String(postRow.caption ?? ""), environment).catch((err) =>
+            console.warn("[admin/explore/posts] embedding upsert failed:", err),
+          );
+        }
+      } catch {
+        // embeddings optional
+      }
+    }
+
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({
       actor_user_id: user.id,

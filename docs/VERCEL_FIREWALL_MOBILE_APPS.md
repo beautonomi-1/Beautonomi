@@ -26,6 +26,7 @@ Custom WAF rate limits on `/api/public/search` only affect those paths. Bot Prot
 |-----------|-----|------|
 | Bypass authenticated API | Path starts with `/api/` **AND** Header `Authorization` exists | **Bypass** |
 | Bypass mobile apps | Path starts with `/api/` **AND** Header `X-App` equals `provider` or `customer` | **Bypass** |
+| Bypass mobile apps (UA) | Path starts with `/api/` **AND** Header `User-Agent` contains `BeautonomiApp` | **Bypass** |
 | Bypass webhooks | Path starts with `/api/webhooks/` | **Bypass** |
 | Bypass cron | Path starts with `/api/cron/` | **Bypass** |
 
@@ -44,7 +45,14 @@ After bypass rules publish:
 
 1. Provider app: sign out → sign in → home loads without `portal_exhausted`
 2. Sentry: no new `HTML_ERROR` / 429 on `www.beautonomi.com/api/*`
-3. `GET /api/me/portal` with `Authorization: Bearer …` returns JSON 200
+3. `GET /api/me/portal` with `Authorization: Bearer …` and `User-Agent: BeautonomiApp/provider` returns JSON 200
+
+## App-side headers (2026-04)
+
+Mobile apps send on every API request:
+
+- `X-App`: `provider` or `customer`
+- `User-Agent`: `BeautonomiApp/provider` or `BeautonomiApp/customer` (via `api-client` and `withWebApiTenantHeaders`)
 
 ## Related
 

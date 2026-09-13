@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -17,6 +18,7 @@ interface ReceiptData {
 }
 
 export default function ReceiptTemplateSettings() {
+  const { t } = useTranslation();
   const [header, setHeader] = useState<string>("");
   const [footer, setFooter] = useState<string>("");
   const [prefix, setPrefix] = useState<string>("REC");
@@ -34,7 +36,7 @@ export default function ReceiptTemplateSettings() {
         setPrefix(res.data.receipt_prefix || "REC");
         setNextNumber(String(res.data.receipt_next_number || 1));
       } catch {
-        toast.error("Failed to load receipt settings");
+        toast.error(t("web.provider.settings.pages.sales/receipt-template.failedToLoadReceiptSettings"));
       } finally {
         setIsLoading(false);
       }
@@ -45,11 +47,11 @@ export default function ReceiptTemplateSettings() {
   const onSave = async () => {
     const num = parseInt(nextNumber);
     if (isNaN(num) || num < 1) {
-      toast.error("Next receipt number must be at least 1");
+      toast.error(t("web.provider.settings.pages.sales/receipt-template.nextReceiptNumberMustBeAt"));
       return;
     }
     if (prefix.length > 20) {
-      toast.error("Receipt prefix must be 20 characters or less");
+      toast.error(t("web.provider.settings.pages.sales/receipt-template.receiptPrefixMustBe20Characters"));
       return;
     }
     try {
@@ -64,9 +66,9 @@ export default function ReceiptTemplateSettings() {
       setFooter(res.data.receipt_footer || "");
       setPrefix(res.data.receipt_prefix || "REC");
       setNextNumber(String(res.data.receipt_next_number || 1));
-      toast.success("Receipt template saved");
+      toast.success(t("web.provider.settings.pages.sales/receipt-template.receiptTemplateSaved"));
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save receipt template");
+      toast.error(e?.message || t("web.provider.settings.pages.sales/receipt-template.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -76,68 +78,68 @@ export default function ReceiptTemplateSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Receipt Template"
-      subtitle="Customize your receipt design"
+      title={t("web.provider.settings.categories.sales.items.receiptTemplate.title")}
+      subtitle={t("web.provider.settings.categories.sales.items.receiptTemplate.description")}
       onSave={onSave}
       isSaving={isSaving}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-        { label: "Receipt Template" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.sales/receipt-template.sales"), href: "/provider/settings/sales/yoco-integration" },
+        { label: t("web.provider.settings.pages.sales/receipt-template.receiptTemplate") },
       ]}
     >
       {isLoading ? (
         <SectionCard>
-          <div className="text-center py-8 text-gray-500">Loading receipt settings...</div>
+<div className="text-center py-8 text-gray-500">{t("web.provider.settings.pages.sales/receipt-template.loading")}</div>
         </SectionCard>
       ) : (
         <div className="space-y-6">
           <SectionCard>
             <div className="space-y-4">
               <div>
-                <Label>Receipt Header</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-template.header")}</Label>
                 <Textarea
-                  placeholder="Business name, address, registration details..."
+                  placeholder={t("web.provider.settings.pages.sales/receipt-template.businessNameAddressRegistrationDetails")}
                   className="mt-2"
                   rows={3}
                   value={header}
                   onChange={(e) => setHeader(e.target.value)}
                 />
-                <p className="text-xs text-gray-500 mt-1">{header.length}/2000 characters</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.sales/receipt-template.charCount", { count: header.length })}</p>
               </div>
 
               <div>
-                <Label>Receipt Footer</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-template.footer")}</Label>
                 <Textarea
-                  placeholder="Thank you message, return policy, terms..."
+                  placeholder={t("web.provider.settings.pages.sales/receipt-template.thankYouMessageReturnPolicyTerms")}
                   className="mt-2"
                   rows={3}
                   value={footer}
                   onChange={(e) => setFooter(e.target.value)}
                 />
-                <p className="text-xs text-gray-500 mt-1">{footer.length}/2000 characters</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.sales/receipt-template.charCount", { count: footer.length })}</p>
               </div>
             </div>
           </SectionCard>
 
           <SectionCard>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4">Receipt Numbering</h3>
+<h3 className="text-sm font-semibold text-gray-900 mb-4">{t("web.provider.settings.pages.sales/receipt-template.numbering")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label>Prefix</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-template.prefix")}</Label>
                 <Input
                   className="mt-1"
                   value={prefix}
                   onChange={(e) => setPrefix(e.target.value.toUpperCase())}
-                  placeholder="REC"
+                  placeholder={t("web.provider.settings.pages.sales/receipt-template.rec")}
                   maxLength={20}
                 />
-                <p className="text-xs text-gray-500 mt-1">Up to 20 characters</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.sales/receipt-template.upTo20")}</p>
               </div>
               <div>
-                <Label>Next Number</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-template.nextNumber")}</Label>
                 <Input
                   className="mt-1"
                   type="number"
@@ -146,7 +148,7 @@ export default function ReceiptTemplateSettings() {
                   onChange={(e) => setNextNumber(e.target.value)}
                   placeholder="1"
                 />
-                <p className="text-xs text-gray-500 mt-1">Next receipt: <span className="font-mono">{previewNumber}</span></p>
+<p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.sales/receipt-template.nextReceipt")} <span className="font-mono">{previewNumber}</span></p>
               </div>
             </div>
           </SectionCard>

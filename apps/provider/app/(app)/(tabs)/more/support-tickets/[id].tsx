@@ -21,6 +21,7 @@ import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Message = {
   id: string;
@@ -55,17 +56,17 @@ type Ticket = {
   updated_at: string;
 };
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString();
 }
 
-function formatDateTimeSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateTimeSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleString();
 }
 
@@ -85,6 +86,41 @@ function statusColor(status: string): string {
 }
 
 export default function SupportTicketDetailScreen() {
+  const { t } = useTranslation();
+  const st = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.supportTicketDetail.${key}`, opts) as string;
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      open: "statusOpen",
+      in_progress: "statusInProgress",
+      waiting_customer: "statusWaitingCustomer",
+      resolved: "statusResolved",
+      closed: "statusClosed",
+    };
+    return map[status] ? st(map[status]) : status.replace(/_/g, " ");
+  };
+  const priorityLabel = (priority: string) => {
+    const map: Record<string, string> = {
+      low: "priorityLow",
+      medium: "priorityMedium",
+      high: "priorityHigh",
+      urgent: "priorityUrgent",
+    };
+    return map[priority] ? st(map[priority]) : priority;
+  };
+  const contextLabel = (ctx: string) => {
+    const map: Record<string, string> = {
+      booking: "contextBooking",
+      product_order: "contextProductOrder",
+      gift_card: "contextGiftCard",
+      payment: "contextPayment",
+      provider_onboarding: "contextProviderOnboarding",
+      account: "contextAccount",
+      technical: "contextTechnical",
+      other: "contextOther",
+    };
+    return map[ctx] ? st(map[ctx]) : ctx.replace(/_/g, " ");
+  };
   const router = useRouter();
   const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string }>();
@@ -124,7 +160,7 @@ export default function SupportTicketDetailScreen() {
       if (res.error) {
         setTicket(null);
         setMessages([]);
-        setLoadError(typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not load ticket"));
+        setLoadError(typeof res.error === "string" ? res.error : (res.error?.message ?? st("loadFailedFallback")));
         return;
       }
       const payload = res.data as { ticket?: Ticket; messages?: Message[] } | null | undefined;
@@ -139,7 +175,7 @@ export default function SupportTicketDetailScreen() {
     } catch (e) {
       setTicket(null);
       setMessages([]);
-      setLoadError(e instanceof Error ? e.message : "Could not load ticket");
+      setLoadError(e instanceof Error ? e.message : st("loadFailedFallback"));
     } finally {
       setLoading(false);
     }
@@ -224,9 +260,9 @@ export default function SupportTicketDetailScreen() {
         attachments: attachmentsToSend,
       }) as { data?: unknown; error?: { message?: string } };
       if (res.error) {
-        const errMsg = typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not send reply");
+        const errMsg = typeof res.error === "string" ? res.error : (res.error?.message ?? st("sendReplyFallback"));
         setSending(false);
-        Alert.alert("Could not send", errMsg);
+        Alert.alert(st("sendFailedTitle"), errMsg);
         return;
       }
       setReply("");
@@ -234,11 +270,11 @@ export default function SupportTicketDetailScreen() {
       const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
       const localMessage: Message = {
         id: sentMessage?.id ?? `local-${Date.now()}`,
-        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? "(attachment)" : "")),
+        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? st("attachmentOnlyMessage") : "")),
         is_internal: false,
         created_at: sentMessage?.created_at ?? new Date().toISOString(),
         user_id: sentMessage?.user_id ?? user?.id ?? "",
-        author_name: "You",
+        author_name: st("you"),
         is_mine: true,
         attachments: sentMessage?.attachments ?? attachmentsToSend,
       };
@@ -247,7 +283,7 @@ export default function SupportTicketDetailScreen() {
       trackSupportTicketReply(id);
       await loadTicket();
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not send reply");
+      Alert.alert(st("errorTitle"), e instanceof Error ? e.message : st("sendReplyFallback"));
     } finally {
       setSending(false);
     }
@@ -278,21 +314,21 @@ export default function SupportTicketDetailScreen() {
         { method: "POST", body: formData },
       ) as { data?: { attachments?: SupportAttachment[] }; error?: { message?: string } | string };
       if (res.error) {
-        const msg = typeof res.error === "string" ? res.error : res.error.message || "Could not upload image";
-        Alert.alert("Could not upload", msg);
+        const msg = typeof res.error === "string" ? res.error : res.error.message || st("uploadFailedFallback");
+        Alert.alert(st("uploadFailedTitle"), msg);
         return;
       }
       const attachments = res.data?.attachments ?? [];
       setPendingAttachments((prev) => [...prev, ...attachments].slice(0, 6));
     } catch (e) {
-      Alert.alert("Could not upload", e instanceof Error ? e.message : "Could not upload image");
+      Alert.alert(st("uploadFailedTitle"), e instanceof Error ? e.message : st("uploadFailedFallback"));
     } finally {
       setUploadingAttachment(false);
     }
   };
 
   const openAttachment = (attachment: SupportAttachment) => {
-    Linking.openURL(attachment.url).catch(() => Alert.alert("Could not open attachment"));
+    Linking.openURL(attachment.url).catch(() => Alert.alert(st("openFailedTitle")));
   };
 
   const submitCsat = async () => {
@@ -305,21 +341,21 @@ export default function SupportTicketDetailScreen() {
         comment: csatComment.trim() || null,
       }) as { error?: { message?: string } | string };
       if (res.error) {
-        Alert.alert("Could not submit rating", typeof res.error === "string" ? res.error : res.error.message || "Please try again");
+        Alert.alert(st("csatSubmitFailedTitle"), typeof res.error === "string" ? res.error : res.error.message || st("csatSubmitFailedFallback"));
         return;
       }
       invalidateSupportTicketsListCache();
       Alert.alert(
-        "Thanks for your feedback",
+        st("csatThanksTitle"),
         wasFirstSubmit
-          ? "Your rating has been saved and this ticket is now closed."
-          : "Your rating has been updated. Thank you!",
+          ? st("csatSavedClosed")
+          : st("csatUpdated"),
       );
       setCsatExpanded(false);
       await loadTicket();
       setTimeout(() => scrollViewRef.current?.scrollTo({ y: 0, animated: true }), 200);
     } catch (e) {
-      Alert.alert("Could not submit rating", e instanceof Error ? e.message : "Please try again");
+      Alert.alert(st("csatSubmitFailedTitle"), e instanceof Error ? e.message : st("csatSubmitFailedFallback"));
     } finally {
       setSubmittingCsat(false);
     }
@@ -328,9 +364,9 @@ export default function SupportTicketDetailScreen() {
   if (!id) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Ticket" onBack={() => router.back()} />
+        <ScreenHeader title={st("ticketTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center")}>
-          <Text style={twStyle("text-gray-500")}>Invalid ticket</Text>
+          <Text style={twStyle("text-gray-500")}>{st("invalidTicket")}</Text>
         </View>
       </ScreenContainer>
     );
@@ -339,7 +375,7 @@ export default function SupportTicketDetailScreen() {
   if (loading && !ticket) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Ticket" onBack={() => router.back()} />
+        <ScreenHeader title={st("ticketTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center")}>
           <ActivityIndicator size="large" color="#6366f1" />
         </View>
@@ -350,20 +386,20 @@ export default function SupportTicketDetailScreen() {
   if (!ticket) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Ticket" onBack={() => router.back()} />
+        <ScreenHeader title={st("ticketTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           {loadError ? (
             <ErrorState message={loadError} onRetry={loadTicket} />
           ) : (
             <>
-              <Text style={twStyle("text-gray-500 text-center")}>Ticket not found</Text>
+              <Text style={twStyle("text-gray-500 text-center")}>{st("ticketNotFound")}</Text>
               <TouchableOpacity
                 onPress={() => router.back()}
                 style={twStyle("mt-4")}
-                accessibilityLabel="Back to ticket list"
+                accessibilityLabel={st("backToListA11y")}
                 accessibilityRole="button"
               >
-                <Text style={twStyle("text-indigo-600 font-medium")}>Back to list</Text>
+                <Text style={twStyle("text-indigo-600 font-medium")}>{st("backToList")}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -395,31 +431,37 @@ export default function SupportTicketDetailScreen() {
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(ticket.status)}`)}>
                 <Text style={twStyle("text-xs font-medium text-gray-800")}>
-                  {ticket.status.replace("_", " ")}
+                  {statusLabel(ticket.status)}
                 </Text>
               </View>
               <Text style={twStyle("text-xs text-gray-500")}>
-                {formatDateSafe(ticket.created_at)}
+                {formatDateSafe(ticket.created_at, st("emptyValue"))}
               </Text>
             </View>
             <Text style={twStyle("text-lg font-semibold text-gray-900 mb-2")}>{ticket.subject}</Text>
             <Text style={twStyle("mb-4 text-xs text-gray-500")}>
               {ticket.category
-                ? `Category: ${labelForSupportTicketCategory(String(ticket.category))} · `
-                : ""}
-              Priority: {ticket.priority}
+                ? st("categoryPriority", {
+                    category: labelForSupportTicketCategory(String(ticket.category)),
+                    priority: priorityLabel(ticket.priority),
+                  })
+                : st("priorityOnly", { priority: priorityLabel(ticket.priority) })}
             </Text>
             {ticket.support_context_type ? (
               <Text style={twStyle("mb-4 text-xs text-gray-600")}>
-                About: {ticket.support_context_type.replace(/_/g, " ")}
-                {ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}
+                {ticket.support_context_label
+                  ? st("aboutContextWithLabel", {
+                      context: contextLabel(ticket.support_context_type),
+                      label: ticket.support_context_label,
+                    })
+                  : st("aboutContext", { context: contextLabel(ticket.support_context_type) })}
               </Text>
             ) : null}
 
             {messages.map((m) => {
               const isOwn = m.is_mine ?? (m.user_id === user?.id);
-              const authorLabel = isOwn ? "You" : (m.author_name ?? "Support Team");
-              const initials = authorLabel === "You" ? "Me" : authorLabel.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              const authorLabel = isOwn ? st("you") : (m.author_name ?? st("supportTeam"));
+              const initials = isOwn ? st("youInitials") : authorLabel.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
               const attachments = Array.isArray(m.attachments) ? m.attachments : [];
               return (
                 <View
@@ -479,7 +521,7 @@ export default function SupportTicketDetailScreen() {
                                   color: isOwn ? "#fff" : Colors.gray[700],
                                 }}
                               >
-                                📎 {attachment.name || `Attachment ${index + 1}`}
+                                📎 {attachment.name || st("attachmentFallback", { index: index + 1 })}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -487,7 +529,7 @@ export default function SupportTicketDetailScreen() {
                       </View>
                     )}
                     <Text style={{ marginTop: 4, fontSize: 10, color: isOwn ? "rgba(255,255,255,0.65)" : "#9CA3AF", textAlign: isOwn ? "right" : "left" }}>
-                      {formatDateTimeSafe(m.created_at)}
+                      {formatDateTimeSafe(m.created_at, st("emptyValue"))}
                     </Text>
                   </View>
                 </View>
@@ -496,16 +538,16 @@ export default function SupportTicketDetailScreen() {
 
             {messages.length === 0 ? (
               <Text style={twStyle("mt-3 mb-1 text-center text-sm text-gray-500")}>
-                No visible messages are available for this ticket yet.
+                {st("emptyThread")}
               </Text>
             ) : null}
 
             {canReply && (
               <View style={twStyle("mt-4")}>
-                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add a reply</Text>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("addReply")}</Text>
                 <TextInput
                   style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                  placeholder="Type your message..."
+                  placeholder={st("messagePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   value={reply}
                   onChangeText={setReply}
@@ -527,14 +569,14 @@ export default function SupportTicketDetailScreen() {
                           paddingVertical: 8,
                         }}
                       >
-                        <Text numberOfLines={1} style={{ flex: 1, marginRight: 8, fontSize: 12, color: Colors.gray[700] }}>
-                          {attachment.name || `Attachment ${index + 1}`}
+                        <Text numberOfLines={1} style={{ flex: 1, marginEnd: 8, fontSize: 12, color: Colors.gray[700] }}>
+                          {attachment.name || st("attachmentFallback", { index: index + 1 })}
                         </Text>
                         <TouchableOpacity
                           onPress={() => setPendingAttachments((prev) => prev.filter((_, i) => i !== index))}
                           accessibilityRole="button"
                         >
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#DC2626" }}>Remove</Text>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#DC2626" }}>{st("remove")}</Text>
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -549,11 +591,11 @@ export default function SupportTicketDetailScreen() {
                   {uploadingAttachment ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
-                    <Text style={twStyle("text-indigo-600 font-semibold")}>Attach image</Text>
+                    <Text style={twStyle("text-indigo-600 font-semibold")}>{st("attachImage")}</Text>
                   )}
                 </TouchableOpacity>
                 <ActionButton
-                  label={sending ? "Sending…" : "Send reply"}
+                  label={sending ? st("sending") : st("sendReply")}
                   onPress={handleReply}
                   fullWidth
                   disabled={sending || (!reply.trim() && pendingAttachments.length === 0)}
@@ -571,13 +613,13 @@ export default function SupportTicketDetailScreen() {
                 >
                   <Text style={twStyle("text-sm font-medium text-gray-700")}>
                     {typeof ticket.csat_score === "number" && !csatExpanded
-                      ? "Thanks for your feedback"
+                      ? st("thanksFeedback")
                       : typeof ticket.csat_score === "number"
-                        ? "Update your rating"
-                        : "Rate this support experience"}
+                        ? st("updateYourRating")
+                        : st("rateExperience")}
                   </Text>
                   <Text style={twStyle("text-xs font-semibold text-indigo-600")}>
-                    {csatExpanded ? "Hide" : typeof ticket.csat_score === "number" ? "Update" : "Show"}
+                    {csatExpanded ? st("hide") : typeof ticket.csat_score === "number" ? st("update") : st("show")}
                   </Text>
                 </TouchableOpacity>
                 {csatExpanded ? (
@@ -605,7 +647,7 @@ export default function SupportTicketDetailScreen() {
                     </View>
                     <TextInput
                       style={twStyle("mb-3 min-h-[72px] rounded-xl border border-gray-200 px-4 py-3 text-base text-gray-900")}
-                      placeholder="Optional comment"
+                      placeholder={st("optionalCommentPlaceholder")}
                       placeholderTextColor="#9ca3af"
                       value={csatComment}
                       onChangeText={setCsatComment}
@@ -615,10 +657,10 @@ export default function SupportTicketDetailScreen() {
                     <ActionButton
                       label={
                         submittingCsat
-                          ? "Submitting…"
+                          ? st("submitting")
                           : typeof ticket.csat_score === "number"
-                            ? "Save rating"
-                            : "Submit rating"
+                            ? st("saveRating")
+                            : st("submitRating")
                       }
                       onPress={submitCsat}
                       fullWidth
@@ -628,20 +670,21 @@ export default function SupportTicketDetailScreen() {
                 ) : typeof ticket.csat_score === "number" ? (
                   <View>
                     <Text style={twStyle("text-sm font-semibold text-gray-700")}>
-                      Your rating: {ticket.csat_score}/5
-                      {ticket.csat_comment ? `\n“${ticket.csat_comment}”` : ""}
+                      {ticket.csat_comment
+                        ? st("yourRatingWithComment", { score: ticket.csat_score, comment: ticket.csat_comment })
+                        : st("yourRating", { score: ticket.csat_score })}
                     </Text>
                     <Text
                       style={twStyle(
                         "mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700",
                       )}
                     >
-                      This ticket is closed. We appreciate you taking a moment to rate support.
+                      {st("csatClosedBanner")}
                     </Text>
                   </View>
                 ) : null}
                 <Text style={twStyle("mt-4 text-sm text-gray-500")}>
-                  This ticket is {ticket.status}. Submit a new ticket from Settings → Contact support to continue.
+                  {st("closedNote", { status: statusLabel(ticket.status) })}
                 </Text>
               </View>
             )}

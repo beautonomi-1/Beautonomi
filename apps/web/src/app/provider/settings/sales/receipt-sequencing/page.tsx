@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -9,6 +10,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 
 export default function ReceiptSequencingSettings() {
+  const { t } = useTranslation();
   const [prefix, setPrefix] = useState("REC");
   const [nextNumber, setNextNumber] = useState<number>(1);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,7 +24,7 @@ export default function ReceiptSequencingSettings() {
         setPrefix(res.data.receipt_prefix || "REC");
         setNextNumber(Number(res.data.receipt_next_number || 1));
       } catch {
-        toast.error("Failed to load receipt sequencing settings");
+        toast.error(t("web.provider.settings.pages.sales/receipt-sequencing.failedToLoadReceiptSequencingSettings"));
       }
     };
     load();
@@ -39,9 +41,9 @@ export default function ReceiptSequencingSettings() {
       });
       setPrefix(res.data.receipt_prefix || "REC");
       setNextNumber(Number(res.data.receipt_next_number || 1));
-      toast.success("Receipt sequencing saved");
+      toast.success(t("web.provider.settings.pages.sales/receipt-sequencing.receiptSequencingSaved"));
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save receipt sequencing");
+toast.error(e?.message || t("web.provider.settings.pages.sales/receipt-sequencing.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -49,24 +51,24 @@ export default function ReceiptSequencingSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Receipt Sequencing"
-      subtitle="Configure receipt numbering"
+      title={t("web.provider.settings.categories.sales.items.receiptSequencing.title")}
+      subtitle={t("web.provider.settings.categories.sales.items.receiptSequencing.description")}
       onSave={onSave}
       isSaving={isSaving}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-        { label: "Receipt Sequencing" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.sales/receipt-sequencing.sales"), href: "/provider/settings/sales/yoco-integration" },
+        { label: t("web.provider.settings.pages.sales/receipt-sequencing.receiptSequencing") },
       ]}
     >
 
       <SectionCard>
         <div>
-          <Label>Receipt Prefix</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-sequencing.receiptPrefix")}</Label>
           <Input
-            placeholder="REC"
+            placeholder={t("web.provider.settings.pages.sales/receipt-sequencing.rec")}
             className="mt-2"
             value={prefix}
             onChange={(e) => setPrefix(e.target.value)}
@@ -74,7 +76,7 @@ export default function ReceiptSequencingSettings() {
         </div>
 
         <div>
-          <Label>Starting Number</Label>
+<Label>{t("web.provider.settings.pages.sales/receipt-sequencing.startingNumber")}</Label>
           <Input
             type="number"
             placeholder="1"

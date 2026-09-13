@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { motion } from "framer-motion";
 import {
@@ -45,6 +47,7 @@ const itemColors: Record<string, string> = {
 };
 
 export default function ActionCards({ topItems, onItemClick }: ActionCardsProps) {
+  const { t } = useTranslation();
   if (topItems.length === 0) return null;
 
   return (
@@ -82,14 +85,14 @@ export default function ActionCards({ topItems, onItemClick }: ActionCardsProps)
                   {icon}
                 </div>
               </div>
-              <div className="flex-1 min-w-0 text-left">
+              <div className="flex-1 min-w-0 text-start">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="text-sm font-semibold text-current">
                     {item.label}
                   </p>
                   {isUrgent && (
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
-                      Soon
+                      {t("web.global.profile.actionSoon")}
                     </span>
                   )}
                 </div>

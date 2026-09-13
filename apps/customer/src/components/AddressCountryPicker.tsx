@@ -20,6 +20,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT } from "@/constants/layout";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface AddressCountryPickerProps {
   /** Display name as stored on the address (e.g. "South Africa"), not an ISO code. */
@@ -38,10 +39,14 @@ export interface AddressCountryPickerProps {
 export function AddressCountryPicker({
   value,
   onChange,
-  label = "Country",
+  label,
   disabled = false,
   required = false,
 }: AddressCountryPickerProps) {
+  const { t } = useTranslation();
+  const cp = (key: string, opts?: Record<string, unknown>) =>
+    t(`customer.mobile.components.countryPicker.${key}`, opts) as string;
+  const resolvedLabel = label ?? cp("labelCountry");
   const [countries, setCountries] = useState<VerificationCountryOption[]>(
     STATIC_VERIFICATION_COUNTRIES,
   );
@@ -83,14 +88,14 @@ export function AddressCountryPicker({
   return (
     <View>
       <Text style={{ fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 }}>
-        {label}
+        {resolvedLabel}
         {required && <Text style={{ color: Colors.primary }}> *</Text>}
       </Text>
       <TouchableOpacity
         onPress={() => !disabled && setOpen(true)}
         disabled={disabled || loading}
         accessibilityRole="button"
-        accessibilityLabel={displayText ? `Country: ${displayText}` : "Select country"}
+        accessibilityLabel={displayText ? cp("countrySelectedA11y", { name: displayText }) : cp("selectCountryA11y")}
         style={{
           borderRadius: RADIUS_INPUT,
           borderWidth: 1,
@@ -104,7 +109,7 @@ export function AddressCountryPicker({
         }}
       >
         <Text style={{ fontSize: 15, color: displayText ? "#1E293B" : "#94A3B8" }}>
-          {loading && !displayText ? "Loading countries…" : displayText || "Select country"}
+          {loading && !displayText ? cp("loadingCountries") : displayText || cp("selectCountry")}
         </Text>
         <Ionicons name="chevron-down" size={18} color="#94A3B8" />
       </TouchableOpacity>
@@ -128,7 +133,7 @@ export function AddressCountryPicker({
             </View>
             <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select country
+                {cp("selectCountry")}
               </Text>
               <View
                 style={{
@@ -142,13 +147,13 @@ export function AddressCountryPicker({
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={cp("searchCountry")}
                   placeholderTextColor="#9CA3AF"
                   value={search}
                   onChangeText={setSearch}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  accessibilityLabel="Search country"
+                  accessibilityLabel={cp("searchCountryA11y")}
                 />
               </View>
             </View>
@@ -172,7 +177,7 @@ export function AddressCountryPicker({
                     borderColor: "#F9FAFB",
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Select ${item.name}`}
+                  accessibilityLabel={cp("selectItemA11y", { name: item.name })}
                 >
                   <Text
                     style={{

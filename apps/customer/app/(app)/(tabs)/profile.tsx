@@ -31,8 +31,10 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney, resolveProfileEmailVerificationState } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantLocaleTag } from "@/lib/locale";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -40,10 +42,20 @@ function formatMemberSince(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return null;
-  return parsed.toLocaleDateString("en-US", {
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
     month: "long",
     year: "numeric",
   });
+}
+
+function useProfileTabCopy() {
+  const { t } = useTranslation();
+  const pt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`customer.mobile.screens.profileTab.${key}`, opts) as string,
+    [t],
+  );
+  return { t, pt };
 }
 
 type ReferralBannerState = {
@@ -55,7 +67,7 @@ type ReferralBannerState = {
 
 export default function ProfileScreen() {
   useScreenTracking("Profile");
-  const { t } = useTranslation();
+  const { t, pt } = useProfileTabCopy();
   const { user, signOut } = useAuth();
   const { totalUnread } = useNotifications();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -259,7 +271,7 @@ export default function ProfileScreen() {
       .filter(Boolean)
       .join(" ") ||
     user.email?.split("@")[0] ||
-    "User";
+    pt("displayNameFallback");
 
   const avatarUrl =
     profileData?.avatarUrl ??
@@ -311,13 +323,13 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }} accessibilityLabel="Profile screen" accessibilityRole="none">
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }} accessibilityLabel={pt("screenA11y")} accessibilityRole="none">
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: tabScrollPaddingBottom, ...contentContainerStyle }}
         contentInsetAdjustmentBehavior="automatic"
-        accessibilityLabel="Profile content"
+        accessibilityLabel={pt("contentA11y")}
         accessibilityRole="none"
         refreshControl={
           <RefreshControl
@@ -330,7 +342,7 @@ export default function ProfileScreen() {
         {/* ── Profile header ── */}
         <View style={[contentContainerStyle, { backgroundColor: Colors.white, paddingBottom: 24 }]}>
           <View style={{ paddingHorizontal: contentPadding, paddingTop: 16, marginBottom: 20 }}>
-            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{pt("title")}</Text>
           </View>
 
         {profileLoadError && (
@@ -339,9 +351,9 @@ export default function ProfileScreen() {
             style={{ marginHorizontal: contentPadding, marginBottom: 12, backgroundColor: "#FEF2F2", borderRadius: 8, padding: 12, flexDirection: "row", alignItems: "center" }}
             activeOpacity={0.7}
           >
-            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
-            <Text style={{ flex: 1, fontSize: 13, color: "#991B1B" }}>Couldn&apos;t load profile details.</Text>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Retry</Text>
+            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" style={{ marginEnd: 8 }} />
+            <Text style={{ flex: 1, fontSize: 13, color: "#991B1B" }}>{pt("loadError")}</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>{pt("retry")}</Text>
           </TouchableOpacity>
         )}
 
@@ -351,7 +363,7 @@ export default function ProfileScreen() {
           }
           activeOpacity={0.7}
           style={{ paddingHorizontal: contentPadding }}
-          accessibilityLabel="Show profile, opens personal info"
+          accessibilityLabel={pt("showProfileA11y")}
           accessibilityRole="button"
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -389,13 +401,13 @@ export default function ProfileScreen() {
               )}
             </View>
 
-            <View style={{ flex: 1, marginLeft: 16 }}>
+            <View style={{ flex: 1, marginStart: 16 }}>
               <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
                 {displayName}
               </Text>
               {memberSince ? (
                 <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>
-                  Member since {memberSince}
+                  {pt("memberSince", { date: memberSince })}
                 </Text>
               ) : null}
               {/* Client rating (provider → customer): always show row so empty state is visible (Uber-style). */}
@@ -407,10 +419,10 @@ export default function ProfileScreen() {
                   {profileData.reviewCount > 0 ? (
                     <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
                       <Ionicons name="star" size={15} color="#EAB308" />
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900], marginLeft: 5 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900], marginStart: 5 }}>
                         {profileData.ratingAverage.toFixed(1)}
                       </Text>
-                      <Text style={{ fontSize: 13, color: Colors.gray[500], marginLeft: 6 }}>
+                      <Text style={{ fontSize: 13, color: Colors.gray[500], marginStart: 6 }}>
                         {t("customer.profileTab.clientRatingCount", { count: profileData.reviewCount })}
                       </Text>
                     </View>
@@ -422,34 +434,34 @@ export default function ProfileScreen() {
                 </View>
               ) : null}
               <Text style={{ fontSize: 14, fontWeight: "500", marginTop: 4, color: Colors.primary }}>
-                Show profile
+                {pt("showProfile")}
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
+            <DirectionalIcon name="chevron-forward" size={20} color="#d1d5db" />
           </View>
         </TouchableOpacity>
 
         {/* Verification badges: green check when done, red cross when mandatory and missing */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, marginTop: 16 }}>
-          <View style={{ marginRight: 12 }}>
+          <View style={{ marginEnd: 12 }}>
             <VerificationBadge
               icon="mail-outline"
-              label="Email"
+              label={pt("badgeEmail")}
               verified={emailVerified}
               required={emailVerificationRequired}
             />
           </View>
-          <View style={{ marginRight: 12 }}>
+          <View style={{ marginEnd: 12 }}>
             <VerificationBadge
               icon="call-outline"
-              label="Phone"
+              label={pt("badgePhone")}
               verified={phoneVerified}
             />
           </View>
           <VerificationBadge
             icon="shield-checkmark-outline"
-            label="Identity"
+            label={pt("badgeIdentity")}
             verified={isVerified}
           />
         </View>
@@ -457,10 +469,10 @@ export default function ProfileScreen() {
           onPress={() => router.push("/(app)/account-settings/login-and-security")}
           style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 4 }}
           activeOpacity={0.7}
-          accessibilityLabel="Change email or phone number"
+          accessibilityLabel={pt("changeEmailOrPhoneA11y")}
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Change email or phone →</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{pt("changeEmailOrPhone")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -487,17 +499,17 @@ export default function ProfileScreen() {
                   backgroundColor: Colors.primaryLight,
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 12,
+                  marginEnd: 12,
                 }}
               >
                 <Ionicons name="sparkles" size={22} color={Colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-                  Complete your profile
+                  {pt("completeProfileTitle")}
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-                  Make booking easier and help providers give you the best experience
+                  {pt("completeProfileBody")}
                 </Text>
                 {/* Progress bar */}
                 <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
@@ -508,7 +520,7 @@ export default function ProfileScreen() {
                       backgroundColor: Colors.gray[100],
                       borderRadius: 3,
                       overflow: "hidden",
-                      marginRight: 10,
+                      marginEnd: 10,
                     }}
                   >
                     <View
@@ -545,7 +557,7 @@ export default function ProfileScreen() {
                         name={iconName as keyof typeof Ionicons.glyphMap}
                         size={18}
                         color={iconColor}
-                        style={{ marginRight: 8 }}
+                        style={{ marginEnd: 8 }}
                       />
                       <Text
                         style={{
@@ -565,7 +577,7 @@ export default function ProfileScreen() {
                         onPress={() => { haptic.light(); router.push(route as any); }}
                         style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8, paddingVertical: 4 }}
                         activeOpacity={0.7}
-                        accessibilityLabel={`Complete: ${item.label}`}
+                        accessibilityLabel={pt("completeItemA11y", { label: item.label })}
                         accessibilityRole="button"
                       >
                         {rowContent}
@@ -586,7 +598,7 @@ export default function ProfileScreen() {
               activeOpacity={0.7}
             >
               <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>
-                Account settings →
+                {pt("accountSettingsLink")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -608,20 +620,20 @@ export default function ProfileScreen() {
               backgroundColor: "#DCFCE7",
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 12,
+              marginEnd: 12,
             }}
           >
             <Ionicons name="trophy" size={22} color="#22C55E" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-              {loyaltyPoints.toLocaleString()} points
+              {pt("loyaltyPoints", { count: loyaltyPoints.toLocaleString(getTenantLocaleTag()) })}
             </Text>
             <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-              Earn points on every booking
+              {pt("earnPoints")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
@@ -664,37 +676,37 @@ export default function ProfileScreen() {
       {/* ── Settings ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
-          Settings
+          {pt("settingsSection")}
         </Text>
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
           <MenuItem
             icon="settings-outline"
-            label="Account settings"
+            label={pt("accountSettings")}
             onPress={() => router.push("/(app)/account-settings")}
           />
           <MenuItem
             icon="card-outline"
-            label="Payment methods"
+            label={pt("paymentMethods")}
             onPress={() =>
               router.push("/(app)/account-settings/payments")
             }
           />
           <MenuItem
             icon="notifications-outline"
-            label="Notifications"
+            label={pt("notifications")}
             onPress={() => router.push("/(app)/notifications")}
             badge={totalUnread > 0 ? totalUnread : undefined}
           />
           <MenuItem
             icon="globe-outline"
-            label="Language & region"
+            label={pt("languageRegion")}
             onPress={() =>
               router.push("/(app)/account-settings/preferences")
             }
           />
           <MenuItem
             icon="shield-checkmark-outline"
-            label="Privacy & sharing"
+            label={pt("privacySharing")}
             onPress={() =>
               router.push("/(app)/account-settings/privacy-and-sharing")
             }
@@ -756,7 +768,7 @@ export default function ProfileScreen() {
                   backgroundColor: "rgba(255, 0, 119, 0.1)",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginLeft: 12,
+                  marginStart: 12,
                 }}
               >
                 <Ionicons name="gift" size={22} color={Colors.primary} />
@@ -769,7 +781,7 @@ export default function ProfileScreen() {
       {/* ── Support ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
-          Support
+          {pt("supportSection")}
         </Text>
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
           <MenuItem
@@ -779,12 +791,12 @@ export default function ProfileScreen() {
           />
           <MenuItem
             icon="help-circle-outline"
-            label="Help centre"
+            label={pt("helpCentre")}
             onPress={() => router.push("/(app)/help")}
           />
           <MenuItem
             icon="chatbubble-ellipses-outline"
-            label="Give us feedback"
+            label={pt("giveFeedback")}
             onPress={() => {
               if (Platform.OS === "ios" || Platform.OS === "android") {
                 void recordManualStoreReview(user?.id);
@@ -799,7 +811,7 @@ export default function ProfileScreen() {
           />
           <MenuItem
             icon="information-circle-outline"
-            label="About Beautonomi"
+            label={pt("aboutBeautonomi")}
             onPress={() => router.push("/(app)/about")}
             last
           />
@@ -829,20 +841,20 @@ export default function ProfileScreen() {
               backgroundColor: "#F0FDF4",
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 12,
+              marginEnd: 12,
             }}
           >
             <Ionicons name="storefront-outline" size={22} color="#16A34A" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-              Become a beauty provider
+              {pt("becomeProvider")}
             </Text>
             <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>
-              Offer your services on Beautonomi
+              {pt("becomeProviderBody")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
@@ -861,10 +873,10 @@ export default function ProfileScreen() {
           }
           style={{ paddingVertical: 16, alignItems: "center" }}
           accessibilityRole="button"
-          accessibilityLabel="Log out"
+          accessibilityLabel={pt("logOut")}
         >
           <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>
-            Log out
+            {pt("logOut")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -872,7 +884,7 @@ export default function ProfileScreen() {
       {/* ── Footer ── */}
       <View style={{ alignItems: "center", marginTop: 8, paddingBottom: 16 }}>
         <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
-          Beautonomi v{getAppNativeVersion()}
+          {pt("appVersion", { version: getAppNativeVersion() })}
         </Text>
       </View>
       </ScrollView>
@@ -882,6 +894,7 @@ export default function ProfileScreen() {
 
 /* ─── Logged-out state ─── */
 function LoggedOutProfile() {
+  const { pt } = useProfileTabCopy();
   const tabScrollPaddingBottom = useTabContentPaddingBottom(24);
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white }}>
@@ -891,9 +904,9 @@ function LoggedOutProfile() {
         contentContainerStyle={{ paddingBottom: tabScrollPaddingBottom }}
       >
       <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
-        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{pt("title")}</Text>
         <Text style={{ fontSize: 16, color: Colors.gray[500], marginTop: 8 }}>
-          Log in to start booking beauty services, managing your appointments, and more.
+          {pt("guestPrompt")}
         </Text>
       </View>
 
@@ -903,18 +916,18 @@ function LoggedOutProfile() {
           style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center" }}
           accessibilityRole="button"
         >
-          <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Log in</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{pt("logIn")}</Text>
         </TouchableOpacity>
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 16 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-            Don&apos;t have an account?{" "}
+            {pt("dontHaveAccount")}{" "}
           </Text>
           <TouchableOpacity
             onPress={() => router.push("/(auth)/signup")}
           >
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
-              Sign up
+              {pt("signUp")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -928,17 +941,17 @@ function LoggedOutProfile() {
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, overflow: "hidden" }}>
           <MenuItem
             icon="settings-outline"
-            label="Settings"
+            label={pt("settingsSection")}
             onPress={() => router.push("/(app)/account-settings/preferences")}
           />
           <MenuItem
             icon="help-circle-outline"
-            label="Help centre"
+            label={pt("helpCentre")}
             onPress={() => router.push("/(app)/help")}
           />
           <MenuItem
             icon="information-circle-outline"
-            label="About Beautonomi"
+            label={pt("aboutBeautonomi")}
             onPress={() => router.push("/(app)/about")}
             last
           />
@@ -947,7 +960,7 @@ function LoggedOutProfile() {
 
       <View style={{ alignItems: "center", marginTop: 32, paddingBottom: 16 }}>
         <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
-          Beautonomi v{getAppNativeVersion()}
+          {pt("appVersion", { version: getAppNativeVersion() })}
         </Text>
       </View>
       </ScrollView>
@@ -974,7 +987,7 @@ function VerificationBadge({
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Ionicons name={iconName as any} size={16} color={color} />
-      <Text style={{ fontSize: 12, marginLeft: 4, color: textColor }}>
+      <Text style={{ fontSize: 12, marginStart: 4, color: textColor }}>
         {label}
       </Text>
     </View>
@@ -1053,6 +1066,7 @@ function MenuItem({
   last?: boolean;
   badge?: number;
 }) {
+  const { t } = useTranslation();
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -1067,7 +1081,7 @@ function MenuItem({
         name={icon}
         size={20}
         color={Colors.gray[600]}
-        style={{ marginRight: 14 }}
+        style={{ marginEnd: 14 }}
       />
       <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{label}</Text>
       {badge != null && badge > 0 ? (
@@ -1080,15 +1094,15 @@ function MenuItem({
             alignItems: "center",
             justifyContent: "center",
             paddingHorizontal: 6,
-            marginRight: 8,
+            marginEnd: 8,
           }}
         >
           <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
-            {badge > 99 ? "99+" : badge}
+            {badge > 99 ? t("customer.mobile.screens.profileTab.badgeOverflow") : badge}
           </Text>
         </View>
       ) : null}
-      <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+      <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[300]} />
     </TouchableOpacity>
   );
 }

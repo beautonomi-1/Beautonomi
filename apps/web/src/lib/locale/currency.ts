@@ -91,54 +91,42 @@ export function formatCurrency(
   options?: {
     showSymbol?: boolean;
     showCode?: boolean;
+    locale?: string;
   }
 ): string {
   const amountNum = typeof amount === "string" ? parseFloat(amount) : amount;
-  
+
   if (isNaN(amountNum)) {
     return "0";
   }
 
-  // If currency code provided, use it; otherwise get from platform settings
   const code = currencyCode || cachedSettings?.default_currency || LAST_RESORT_CURRENCY;
-  
-  // Currency symbols map
-  const currencySymbols: { [key: string]: string } = {
-    ZAR: "R",
-    USD: "$",
-    EUR: "€",
-    GBP: "£",
-    AED: "د.إ",
-    JPY: "¥",
-    CNY: "¥",
-    INR: "₹",
-    AUD: "A$",
-    CAD: "C$",
-  };
-
-  const symbol = currencySymbols[code] || code;
+  const locale = options?.locale || "en-ZA";
   const showSymbol = options?.showSymbol !== false;
   const showCode = options?.showCode || false;
 
-  // Format number with appropriate decimal places
-  const formatted = amountNum.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  try {
+    const parts = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).formatToParts(amountNum);
 
-  if (showCode && !showSymbol) {
-    return `${code} ${formatted}`;
+    if (showCode && showSymbol) {
+      return `${parts.map((p) => p.value).join("")} (${code})`;
+    }
+    if (showCode && !showSymbol) {
+      const withoutSymbol = parts.filter((p) => p.type !== "currency").map((p) => p.value).join("");
+      return `${code} ${withoutSymbol}`;
+    }
+    if (!showSymbol && !showCode) {
+      return parts.filter((p) => p.type !== "currency").map((p) => p.value).join("");
+    }
+    return parts.map((p) => p.value).join("");
+  } catch {
+    return `${code} ${amountNum.toFixed(2)}`;
   }
-
-  if (showSymbol && !showCode) {
-    return `${symbol}${formatted}`;
-  }
-
-  if (showCode && showSymbol) {
-    return `${symbol}${formatted} (${code})`;
-  }
-
-  return formatted;
 }
 
 /**
@@ -163,20 +151,17 @@ export function parseCurrency(currencyString: string): number {
  * Get currency symbol for a currency code
  */
 export function getCurrencySymbol(currencyCode: string): string {
-  const currencySymbols: { [key: string]: string } = {
-    ZAR: "R",
-    USD: "$",
-    EUR: "€",
-    GBP: "£",
-    AED: "د.إ",
-    JPY: "¥",
-    CNY: "¥",
-    INR: "₹",
-    AUD: "A$",
-    CAD: "C$",
-  };
-
-  return currencySymbols[currencyCode] || currencyCode;
+  const code = (currencyCode || LAST_RESORT_CURRENCY).trim().toUpperCase();
+  try {
+    const parts = new Intl.NumberFormat("en-ZA", {
+      style: "currency",
+      currency: code,
+    }).formatToParts(0);
+    const symbol = parts.find((p) => p.type === "currency")?.value;
+    return symbol || code;
+  } catch {
+    return code;
+  }
 }
 
 /**

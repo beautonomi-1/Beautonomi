@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ interface OnDemandRequestRow {
 }
 
 export function OnDemandIncomingOverlay() {
+  const { t } = useTranslation();
   const onDemandConfig = useModuleConfig("on_demand");
   const [incomingRequest, setIncomingRequest] = useState<OnDemandRequestRow | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -109,14 +112,14 @@ export function OnDemandIncomingOverlay() {
       );
       const payload = (res as { data?: { request: OnDemandRequestRow; booking_id: string } }).data;
       if (payload?.booking_id) {
-        toast.success("Request accepted");
+        toast.success(t("web.providerExtras.requestAccepted"));
         window.location.href = `/provider/bookings/${payload.booking_id}`;
       } else {
-        toast.success("Request accepted");
+        toast.success(t("web.providerExtras.requestAccepted"));
         setIncomingRequest(null);
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to accept");
+      toast.error(e instanceof Error ? e.message : t("web.providerExtras.failedToAccept"));
     } finally {
       setAccepting(false);
     }
@@ -128,10 +131,10 @@ export function OnDemandIncomingOverlay() {
     setDeclining(true);
     try {
       await fetcher.post(`/api/provider/on-demand/requests/${incomingRequest.id}/decline`, {});
-      toast.success("Request declined");
+      toast.success(t("web.accountSettings.customRequests.requestDeclined"));
       setIncomingRequest(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to decline");
+      toast.error(e instanceof Error ? e.message : t("web.providerExtras.failedToDecline"));
     } finally {
       setDeclining(false);
     }
@@ -141,10 +144,10 @@ export function OnDemandIncomingOverlay() {
   if (!incomingRequest || incomingRequest.status !== "requested") return null;
 
   const uiCopy = (onDemandConfig.ui_copy ?? {}) as Record<string, string>;
-  const title = uiCopy.provider_incoming_title ?? "Incoming request";
-  const subtitle = uiCopy.provider_incoming_subtitle ?? "A client is requesting a booking now";
-  const acceptCta = uiCopy.provider_accept_cta ?? "Accept";
-  const declineCta = uiCopy.provider_decline_cta ?? "Decline";
+  const title = uiCopy.provider_incoming_title ?? t("web.providerExtras.incomingRequest");
+  const subtitle = uiCopy.provider_incoming_subtitle ?? t("web.providerExtras.incomingSubtitle");
+  const acceptCta = uiCopy.provider_accept_cta ?? t("provider.acceptBooking");
+  const declineCta = uiCopy.provider_decline_cta ?? t("web.accountSettings.customRequests.decline");
 
   const content = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
@@ -158,7 +161,7 @@ export function OnDemandIncomingOverlay() {
         </div>
         {incomingRequest.request_payload?.services && (
           <p className="text-gray-500 text-sm mb-4">
-            {(incomingRequest.request_payload.services as any[]).length} service(s) selected
+{t("web.providerExtras.servicesSelected", { count: (incomingRequest.request_payload.services as any[]).length })}
           </p>
         )}
         {secondsLeft !== null && (
@@ -166,7 +169,7 @@ export function OnDemandIncomingOverlay() {
             <span className="text-2xl font-mono font-semibold text-gray-900">
               {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
             </span>
-            <p className="text-xs text-gray-500 mt-1">Time remaining</p>
+<p className="text-xs text-gray-500 mt-1">{t("web.providerExtras.timeRemaining")}</p>
           </div>
         )}
         <div className="flex gap-3">
@@ -175,7 +178,7 @@ export function OnDemandIncomingOverlay() {
             disabled={accepting || declining}
             className="flex-1"
           >
-            {accepting ? "Accepting..." : acceptCta}
+{accepting ? t("web.providerExtras.accepting") : acceptCta}
           </Button>
           <Button
             variant="outline"
@@ -183,7 +186,7 @@ export function OnDemandIncomingOverlay() {
             disabled={accepting || declining}
             className="flex-1"
           >
-            {declining ? "Declining..." : declineCta}
+{declining ? t("web.providerExtras.declining") : declineCta}
           </Button>
         </div>
       </div>

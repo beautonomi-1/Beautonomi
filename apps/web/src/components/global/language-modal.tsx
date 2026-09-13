@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslation } from "@beautonomi/i18n";
+
 import { X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/button";
@@ -16,18 +20,19 @@ const LanguageModal = ({
   selectedLanguages,
   setSelectedLanguages,
 }: LanguageModalProps) => {
+  const { t } = useTranslation();
   const [currentSelection, setCurrentSelection] =
     useState<string[]>(selectedLanguages);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const availableLanguages = [
-    "English",
-    "Spanish",
-    "French",
-    "German",
-    "Chinese",
-    "Arabic",
-    "Armenian",
+  const languageOptions = [
+    { id: "English", key: "english" },
+    { id: "Spanish", key: "spanish" },
+    { id: "French", key: "french" },
+    { id: "German", key: "german" },
+    { id: "Chinese", key: "chinese" },
+    { id: "Arabic", key: "arabic" },
+    { id: "Armenian", key: "armenian" },
   ];
 
   const toggleLanguage = (language: string) => {
@@ -43,8 +48,8 @@ const LanguageModal = ({
     closeModal();
   };
 
-  const filteredLanguages = availableLanguages.filter((language) =>
-    language.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredLanguages = languageOptions.filter((language) =>
+    language.id.toLowerCase().includes(searchQuery.toLowerCase()) || t(`web.layout.languageModal.${language.key}`).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -52,11 +57,11 @@ const LanguageModal = ({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white rounded-lg p-6 max-w-lg w-full h-[80vh] overflow-y-auto">
           <X className="h-5 w-5 cursor-pointer mb-7" onClick={closeModal} />
-          <h2 className="text-[26px] font-medium mb-4">Languages you speak</h2>
+          <h2 className="text-[26px] font-medium mb-4">{t("web.layout.languageModal.title")}</h2>
           <div className="border rounded-full border-secondary mb-8 flex items-center">
             <Input
               type="text"
-              placeholder="Search for a language"
+              placeholder={t("web.layout.languageModal.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="rounded-full flex-grow"
@@ -65,23 +70,23 @@ const LanguageModal = ({
           <div className="flex flex-col gap-2">
             {filteredLanguages.map((language) => (
               <div
-                key={language}
+                key={language.id}
                 className="flex items-center justify-between border-b pb-6 mb-6"
               >
                 <span className="text-base font-light text-secondary">
-                  {language}
+                  {t(`web.layout.languageModal.${language.key}`)}
                 </span>
                 <input
                   type="checkbox"
-                  checked={currentSelection.includes(language)}
-                  onChange={() => toggleLanguage(language)}
+                  checked={currentSelection.includes(language.id)}
+                  onChange={() => toggleLanguage(language.id)}
                   className="h-5 w-5"
                 />
               </div>
             ))}
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button onClick={handleSave}>Save</Button>
+            <Button onClick={handleSave}>{t("common.save")}</Button>
           </div>
         </div>
       </div>

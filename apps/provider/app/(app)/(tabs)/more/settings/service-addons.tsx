@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -68,11 +69,11 @@ const EMPTY_FORM: AddonForm = {
   requires_service: false,
 };
 
-const TYPE_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Service", value: "service" },
-  { label: "Product", value: "product" },
-  { label: "Upgrade", value: "upgrade" },
+const TYPE_FILTER_DEFS = [
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "typeService", value: "service" },
+  { labelKey: "typeProduct", value: "product" },
+  { labelKey: "typeUpgrade", value: "upgrade" },
 ];
 
 function typeStyle(t: AddonType) {
@@ -84,6 +85,15 @@ function typeStyle(t: AddonType) {
 }
 
 export default function ServiceAddonsScreen() {
+  const { t } = useTranslation();
+  const sa = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.serviceAddons." + key, opts) as string,
+    [t],
+  );
+  const typeFilters = TYPE_FILTER_DEFS.map((f) => ({ label: sa(f.labelKey), value: f.value }));
+  const typeName = (type: AddonType) =>
+    type === "service" ? sa("typeService") : type === "product" ? sa("typeProduct") : sa("typeUpgrade");
   const tenantCurrency = getTenantDefaultCurrency();
   useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -145,12 +155,12 @@ export default function ServiceAddonsScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Addon name is required");
+      Alert.alert(sa("requiredTitle"), sa("nameRequired"));
       return;
     }
     const price = parseFloat(form.price);
     if (isNaN(price) || price < 0) {
-      Alert.alert("Invalid", "Price must be 0 or more");
+      Alert.alert(sa("invalidTitle"), sa("invalidPrice"));
       return;
     }
 
@@ -169,10 +179,10 @@ export default function ServiceAddonsScreen() {
 
     if (editingAddon) {
       const { error } = await updateAddon(`/api/provider/addons/${editingAddon.id}`, payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(sa("errorTitle"), error); return; }
     } else {
       const { error } = await createAddon(payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(sa("errorTitle"), error); return; }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowForm(false);
@@ -180,14 +190,14 @@ export default function ServiceAddonsScreen() {
   }
 
   function handleDelete(addon: ServiceAddon) {
-    Alert.alert("Delete Addon", `Remove "${addon.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(sa("deleteTitle"), sa("deleteBody", { name: addon.name }), [
+      { text: sa("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: sa("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteAddon(`/api/provider/addons/${addon.id}`);
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(sa("errorTitle"), error);
           else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); refresh(); }
         },
       },
@@ -197,9 +207,9 @@ export default function ServiceAddonsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Service Addons"
+        title={sa("title")}
         showBack
-        subtitle={`${addons?.length ?? 0} addons`}
+        subtitle={sa("subtitle", { count: addons?.length ?? 0 })}
         rightAction={
           <TouchableOpacity style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")} onPress={openNew}>
             <Ionicons name="add" size={20} color="#fff" />
@@ -207,9 +217,9 @@ export default function ServiceAddonsScreen() {
         }
       />
 
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search addons..." />
+      <SearchBar value={search} onChangeText={setSearch} placeholder={sa("searchPlaceholder")} />
       <View style={twStyle("mt-2 mb-3")}>
-        <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
+        <FilterChipGroup options={typeFilters} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
       {loading && !addons && !loadError ? (
@@ -219,8 +229,8 @@ export default function ServiceAddonsScreen() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="add-circle-outline"
-          title="No addons"
-          description={search || typeFilter !== "all" ? "Try adjusting your filters" : "Create service addons to offer clients during booking"}
+          title={sa("emptyTitle")}
+          description={search || typeFilter !== "all" ? sa("emptyFiltered") : sa("emptyDesc")}
         />
       ) : (
         <FlatList
@@ -244,11 +254,11 @@ export default function ServiceAddonsScreen() {
                   <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${ts.bg}`)}>
                     <Ionicons name={ts.icon} size={18} color={ts.color} />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <View style={twStyle("flex-row items-center")}>
                       <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>{addon.name}</Text>
                       {addon.is_recommended && (
-                        <View style={twStyle("ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5")}>
+                        <View style={twStyle("ms-1.5 rounded-full bg-amber-50 px-1.5 py-0.5")}>
                           <Ionicons name="star" size={10} color="#f59e0b" />
                         </View>
                       )}
@@ -257,20 +267,20 @@ export default function ServiceAddonsScreen() {
                       <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>{addon.description}</Text>
                     )}
                     <View style={twStyle("mt-1.5 flex-row items-center")}>
-                      <View style={[twStyle(`rounded-full px-2 py-0.5 ${ts.bg}`), { marginRight: 8 }]}>
-                        <Text style={twStyle(`text-[10px] font-medium capitalize ${ts.text}`)}>{addon.type}</Text>
+                      <View style={[twStyle(`rounded-full px-2 py-0.5 ${ts.bg}`), { marginEnd: 8 }]}>
+                        <Text style={twStyle(`text-[10px] font-medium ${ts.text}`)}>{typeName(addon.type)}</Text>
                       </View>
                       {addon.duration_minutes && (
-                        <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 8 }]}>{addon.duration_minutes} min</Text>
+                        <Text style={[twStyle("text-[11px] text-gray-400"), { marginEnd: 8 }]}>{sa("durationMin", { count: addon.duration_minutes })}</Text>
                       )}
                       {!addon.is_active && (
                         <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
-                          <Text style={twStyle("text-[10px] text-gray-500")}>Inactive</Text>
+                          <Text style={twStyle("text-[10px] text-gray-500")}>{sa("inactive")}</Text>
                         </View>
                       )}
                     </View>
                   </View>
-                  <View style={twStyle("items-end ml-2")}>
+                  <View style={twStyle("items-end ms-2")}>
                     <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(addon.price)}</Text>
                     <TouchableOpacity style={twStyle("mt-1 rounded-lg bg-red-50 p-1.5")} onPress={() => handleDelete(addon)}>
                       <Ionicons name="trash-outline" size={12} color="#ef4444" />
@@ -284,42 +294,42 @@ export default function ServiceAddonsScreen() {
       )}
 
       {/* Addon Form */}
-      <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editingAddon ? "Edit Addon" : "New Addon"}>
+      <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editingAddon ? sa("editTitle") : sa("newTitle")}>
         <View>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sa("nameLabel")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => updateForm("name", t)}
-            placeholder="e.g. Deep Conditioning Treatment"
+            placeholder={sa("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Type *</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{sa("typeLabel")}</Text>
           <View style={twStyle("mb-3")}>
             <FilterChipGroup
-              options={TYPE_FILTERS.filter((t) => t.value !== "all")}
+              options={typeFilters.filter((f) => f.value !== "all")}
               selected={form.type}
               onSelect={(v) => updateForm("type", v)}
             />
           </View>
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price ({tenantCurrency}) *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sa("priceLabel", { currency: tenantCurrency })}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.price}
             onChangeText={(t) => updateForm("price", t)}
-            placeholder="0.00"
+            placeholder={sa("pricePlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
           />
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sa("description")}</Text>
           <TextInput
             style={twStyle("mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => updateForm("description", t)}
-            placeholder="Brief description..."
+            placeholder={sa("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             textAlignVertical="top"
@@ -327,7 +337,7 @@ export default function ServiceAddonsScreen() {
 
           {form.type === "service" && (
             <>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Extra Duration (minutes)</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sa("extraDuration")}</Text>
               <TextInput
                 style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.duration_minutes}
@@ -339,38 +349,38 @@ export default function ServiceAddonsScreen() {
             </>
           )}
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Quantity Per Booking</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sa("maxQuantity")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.max_quantity}
             onChangeText={(t) => updateForm("max_quantity", t)}
-            placeholder="Leave blank for unlimited"
+            placeholder={sa("maxQuantityPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />
 
           <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Recommended</Text>
-              <Text style={twStyle("text-[11px] text-gray-500")}>Highlight this addon during booking</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{sa("recommended")}</Text>
+              <Text style={twStyle("text-[11px] text-gray-500")}>{sa("recommendedHint")}</Text>
             </View>
             <Switch value={form.is_recommended} onValueChange={(v) => updateForm("is_recommended", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 
           <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Requires Service</Text>
-              <Text style={twStyle("text-[11px] text-gray-500")}>Can only be added with a service</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{sa("requiresService")}</Text>
+              <Text style={twStyle("text-[11px] text-gray-500")}>{sa("requiresServiceHint")}</Text>
             </View>
             <Switch value={form.requires_service} onValueChange={(v) => updateForm("requires_service", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 
           <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{sa("active")}</Text>
             <Switch value={form.is_active} onValueChange={(v) => updateForm("is_active", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 
-          <ActionButton label={editingAddon ? "Save Changes" : "Create Addon"} onPress={handleSave} loading={creating || updating} fullWidth />
+          <ActionButton label={editingAddon ? sa("saveChanges") : sa("createAddon")} onPress={handleSave} loading={creating || updating} fullWidth />
         </View>
       </BottomSheet>
     </ScreenContainer>

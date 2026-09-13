@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { deriveProviderPortalNotificationUrl } from "@/lib/provider/derive-provider-notification-url";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 interface Notification {
   id: string;
@@ -110,15 +111,15 @@ const getPriorityColor = (priority: string) => {
   }
 };
 
-const formatTimeAgo = (timestamp: string) => {
+const formatTimeAgo = (timestamp: string, t: TFunction) => {
   const now = new Date();
   const time = new Date(timestamp);
   const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'Just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  if (diffInSeconds < 60) return t("web.provider.notificationsDropdown.justNow");
+  if (diffInSeconds < 3600) return t("web.provider.notificationsDropdown.minutesAgo", { count: Math.floor(diffInSeconds / 60) });
+  if (diffInSeconds < 86400) return t("web.provider.notificationsDropdown.hoursAgo", { count: Math.floor(diffInSeconds / 3600) });
+  if (diffInSeconds < 604800) return t("web.provider.notificationsDropdown.daysAgo", { count: Math.floor(diffInSeconds / 86400) });
   return time.toLocaleDateString();
 };
 
@@ -137,6 +138,7 @@ function deriveNotificationUrl(notification: Notification): string | undefined {
 }
 
 export function ProviderNotificationsDropdown() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
@@ -165,14 +167,14 @@ export function ProviderNotificationsDropdown() {
       }
       console.error("Failed to load notifications:", error);
       if (!silent) {
-        toast.error("Failed to load notifications");
+        toast.error(t("web.provider.notificationsDropdown.loadFailed"));
         setNotifications([]);
         setTotalUnread(0);
       }
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, t]);
 
   useEffect(() => {
     // Only fetch notifications when user is authenticated (avoids 401 from API)
@@ -263,7 +265,7 @@ export function ProviderNotificationsDropdown() {
           ),
         );
         setTotalUnread(unreadBefore);
-        toast.error("Could not mark notification as read");
+        toast.error(t("web.provider.notificationsDropdown.markReadFailed"));
         return;
       }
     }
@@ -275,7 +277,7 @@ export function ProviderNotificationsDropdown() {
         router.push(url);
       } catch (e) {
         console.error('Navigation failed:', e);
-        toast.error('Could not open link for this notification');
+        toast.error(t("web.provider.notificationsDropdown.openFailed"));
       }
     } else {
       setExpandedId((prev) => (prev === notification.id ? null : notification.id));
@@ -290,7 +292,7 @@ export function ProviderNotificationsDropdown() {
     e.stopPropagation();
     if (
       typeof window !== "undefined" &&
-      !window.confirm("Delete this notification? It will be removed from your list.")
+      !window.confirm(t("web.provider.notificationsDropdown.deleteConfirm"))
     ) {
       return;
     }
@@ -310,7 +312,7 @@ export function ProviderNotificationsDropdown() {
       console.error("Failed to delete notification:", error);
       setNotifications(prevList);
       setTotalUnread(prevUnread);
-      toast.error("Failed to delete notification");
+      toast.error(t("web.provider.notificationsDropdown.deleteFailed"));
     }
   };
 
@@ -322,12 +324,12 @@ export function ProviderNotificationsDropdown() {
     try {
       await fetcher.post("/api/provider/notifications/mark-all-read", {});
       deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
-      toast.success("All notifications marked as read");
+      toast.success(t("web.provider.notificationsDropdown.markAllReadSuccess"));
     } catch (error) {
       console.error("Failed to mark all as read:", error);
       setNotifications(prevNotifications);
       setTotalUnread(prevUnread);
-      toast.error("Failed to mark all as read");
+      toast.error(t("web.provider.notificationsDropdown.markAllReadFailed"));
     }
   };
 
@@ -361,16 +363,16 @@ export function ProviderNotificationsDropdown() {
       <PopoverContent align="end" className="w-[95vw] sm:w-96 p-0 max-h-[85vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-3 p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
           <div>
-            <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
+            <h3 className="font-semibold text-base sm:text-lg">{t("web.provider.notificationsDropdown.title")}</h3>
             <p className="mt-0.5 text-xs text-gray-500">
-              Tap to open · Trash removes from list · Mark all read clears new
+              {t("web.provider.notificationsDropdown.hint")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {totalUnread > 0 && (
               <>
                 <Badge variant="secondary" className="text-xs">
-                  {totalUnread} new
+                  {t("web.provider.notificationsDropdown.newCount", { count: totalUnread })}
                 </Badge>
                 <Button
                   variant="ghost"
@@ -378,7 +380,7 @@ export function ProviderNotificationsDropdown() {
                   onClick={handleMarkAllRead}
                   className="text-xs h-7 px-2 min-h-[28px] touch-manipulation"
                 >
-                  Mark all read
+                  {t("web.provider.notificationsDropdown.markAllRead")}
                 </Button>
               </>
             )}
@@ -397,18 +399,18 @@ export function ProviderNotificationsDropdown() {
           {isLoading ? (
             <div className="p-8 text-center text-gray-500">
               <Clock className="w-8 h-8 mx-auto mb-2 animate-spin" />
-              <p className="text-sm">Loading notifications...</p>
+              <p className="text-sm">{t("web.provider.notificationsDropdown.loading")}</p>
             </div>
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm">No new notifications</p>
+              <p className="text-sm">{t("web.provider.notificationsDropdown.empty")}</p>
               <Link
                 href="/provider/settings/notifications"
                 className="text-xs text-primary hover:underline mt-2 inline-block"
                 onClick={() => setOpen(false)}
               >
-                Manage notifications
+                {t("web.provider.notificationsDropdown.manage")}
               </Link>
             </div>
           ) : (
@@ -433,7 +435,7 @@ export function ProviderNotificationsDropdown() {
                       }}
                       onClick={() => void handleNotificationClick(notification)}
                       className={cn(
-                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors cursor-pointer",
+                        "w-full text-start p-3 sm:p-4 hover:bg-gray-50 transition-colors cursor-pointer",
                         !notification.read && "bg-blue-50/50"
                       )}
                     >
@@ -462,7 +464,7 @@ export function ProviderNotificationsDropdown() {
                                 type="button"
                                 onClick={(e) => void handleDeleteNotification(e, notification)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
-                                title="Delete notification"
+                                title={t("web.provider.notificationsDropdown.deleteA11y")}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -473,7 +475,7 @@ export function ProviderNotificationsDropdown() {
                           </p>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">
-                              {formatTimeAgo(notification.timestamp)}
+                              {formatTimeAgo(notification.timestamp, t)}
                             </span>
                             {!derivedUrl && (
                               <span className="text-xs text-gray-400">
@@ -485,7 +487,7 @@ export function ProviderNotificationsDropdown() {
                       </div>
                     </div>
                     {isExpanded && !derivedUrl && (
-                      <div className="px-4 pb-3 pt-0 ml-12 text-xs text-gray-500 space-y-1 border-b">
+                      <div className="px-4 pb-3 pt-0 ms-12 text-xs text-gray-500 space-y-1 border-b">
                         <p className="text-gray-600">{notification.message}</p>
                         {notification.metadata && Object.keys(notification.metadata).length > 0 && (
                           <div className="text-gray-400 space-y-0.5">
@@ -509,7 +511,7 @@ export function ProviderNotificationsDropdown() {
             className="text-sm text-primary hover:underline text-center block"
             onClick={() => setOpen(false)}
           >
-            View all notifications
+            {t("web.provider.notificationsDropdown.viewAll")}
           </Link>
         </div>
       </PopoverContent>

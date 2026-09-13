@@ -6,6 +6,7 @@ import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency, formatStatusLabel } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 type PaystackRow = {
   id: string;
@@ -42,15 +43,16 @@ function isFeatureOffPayload(data: unknown): boolean {
 const CURRENCY_TOTAL_KEYS = new Set(["received", "allocated", "unallocated", "held", "eligible", "declined"]);
 
 export function PaystackReconciliationReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const pr = (key: string) => t(`provider.mobile.components.paystackReconciliation.${key}`) as string;
   if (isFeatureOffPayload(data)) {
     return (
       <View style={twStyle("items-center px-6 py-12")}>
         <Text style={twStyle("text-center text-base font-semibold text-gray-800")}>
-          Paystack Terminal not enabled
+          {pr("notEnabledTitle")}
         </Text>
         <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
-          This reconciliation report is only available when Paystack Virtual Terminal is active on your account.
-          Contact your administrator to enable it.
+          {pr("notEnabledBody")}
         </Text>
       </View>
     );
@@ -77,7 +79,7 @@ export function PaystackReconciliationReportView({ data }: { data: unknown }) {
       </View>
 
       {rows.length === 0 ? (
-        <Text style={twStyle("text-sm text-gray-500")}>No Paystack Terminal payments in this window.</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>{pr("empty")}</Text>
       ) : (
         <View style={twStyle("overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
           {rows.map((row, idx) => (
@@ -92,7 +94,7 @@ export function PaystackReconciliationReportView({ data }: { data: unknown }) {
               </Text>
               <Text style={twStyle("mt-0.5 font-mono text-xs text-gray-500")}>{row.paystack_reference}</Text>
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                {row.terminal?.name || row.terminal?.terminal_code || "Terminal"} ·{" "}
+                {row.terminal?.name || row.terminal?.terminal_code || pr("terminalFallback")} ·{" "}
                 {format(new Date(row.created_at), "MMM d, yyyy HH:mm")}
               </Text>
               <Text style={twStyle("mt-1 text-xs text-gray-600")}>

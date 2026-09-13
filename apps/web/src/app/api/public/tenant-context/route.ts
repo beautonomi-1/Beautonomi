@@ -4,6 +4,7 @@ import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-mark
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getServerUserSafe } from "@/lib/supabase/auth-errors";
 import {
   evaluateMarketAvailability,
   getSupportedMarketCountries,
@@ -27,8 +28,8 @@ export async function GET(request: NextRequest) {
     let preferredHomeTenantId: string | null = null;
     try {
       const userSupabase = await getSupabaseServer(request);
-      const { data: authData } = await userSupabase.auth.getUser();
-      const uid = authData.user?.id;
+      const authUser = await getServerUserSafe(userSupabase);
+      const uid = authUser?.id;
       if (uid) {
         const { data: userRow } = await userSupabase
           .from("users")

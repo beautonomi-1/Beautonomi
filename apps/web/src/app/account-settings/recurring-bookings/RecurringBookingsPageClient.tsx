@@ -28,6 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Pause, Play, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import BackButton from "../components/back-button";
+import { useTranslation } from "@beautonomi/i18n";
 import type { RecurringBookingListItem, SimpleFrequency } from "./recurring-list-types";
 
 type RecurringBooking = RecurringBookingListItem;
@@ -102,6 +103,7 @@ export default function RecurringBookingsPage({
 }: {
   initialRecurring: RecurringBookingListItem[] | null;
 }) {
+  const { t } = useTranslation();
   const initialSnapshot = useRef(initialRecurring);
   const [recurring, setRecurring] = useState<RecurringBooking[]>(() => initialRecurring ?? []);
   const [isLoading, setIsLoading] = useState(() => initialRecurring === null);
@@ -139,7 +141,7 @@ export default function RecurringBookingsPage({
       });
       setRecurring(response.data?.recurring ?? []);
     } catch (err) {
-      setError(err instanceof FetchError ? err.message : "Failed to load recurring bookings");
+      setError(err instanceof FetchError ? err.message : t("web.accountSettings.recurringBookings.loadFailed"));
       console.error("Error loading recurring bookings:", err);
     } finally {
       setIsLoading(false);
@@ -151,33 +153,33 @@ export default function RecurringBookingsPage({
       await fetcher.patch(`/api/recurring-bookings/${id}`, {
         is_active: !isActive,
       });
-      toast.success(isActive ? "Recurring booking paused" : "Recurring booking resumed");
+      toast.success(isActive ? t("web.accountSettings.recurringBookings.pausedToast") : t("web.accountSettings.recurringBookings.resumedToast"));
       loadRecurring();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update recurring booking");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.recurringBookings.updateFailed"));
     }
   };
 
   const handleCancel = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this recurring booking?")) {
+    if (!confirm(t("web.accountSettings.recurringBookings.cancelConfirm"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/recurring-bookings/${id}`);
-      toast.success("Recurring booking cancelled");
+      toast.success(t("web.accountSettings.recurringBookings.cancelledToast"));
       loadRecurring();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to cancel recurring booking");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.recurringBookings.cancelFailed"));
     }
   };
 
   const getFrequencyLabel = (booking: RecurringBooking) => {
     const freq = normalizeFrequency(booking.frequency, booking.recurrence_rule);
     const labels: Record<string, string> = {
-      weekly: "Weekly",
-      biweekly: "Bi-weekly",
-      monthly: "Monthly",
+      weekly: t("web.accountSettings.recurringBookings.freqWeekly"),
+      biweekly: t("web.accountSettings.recurringBookings.freqBiweekly"),
+      monthly: t("web.accountSettings.recurringBookings.freqMonthly"),
     };
     return labels[freq] || String(booking.frequency || freq);
   };
@@ -221,7 +223,7 @@ export default function RecurringBookingsPage({
   const saveSchedule = async () => {
     if (!editingBooking) return;
     if (!editSeriesNoEnd && !editEndDate.trim()) {
-      toast.error("Choose an end date or turn on “No end date”.");
+      toast.error(t("web.accountSettings.recurringBookings.endDateRequired"));
       return;
     }
     setSavingSchedule(true);
@@ -236,12 +238,12 @@ export default function RecurringBookingsPage({
         payload.end_date = editEndDate.trim();
       }
       await fetcher.patch(`/api/recurring-bookings/${editingBooking.id}`, payload);
-      toast.success("Schedule updated");
+      toast.success(t("web.accountSettings.recurringBookings.scheduleUpdated"));
       setScheduleSheetOpen(false);
       setEditingBooking(null);
       await loadRecurring();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update schedule");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.recurringBookings.updateScheduleFailed"));
     } finally {
       setSavingSchedule(false);
     }
@@ -250,7 +252,7 @@ export default function RecurringBookingsPage({
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading recurring bookings..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.recurringBookings.loading")} />
         </div>
     );
   }
@@ -258,7 +260,7 @@ export default function RecurringBookingsPage({
   return (
     <div className="container mx-auto px-4 py-8">
         <BackButton href="/account-settings" />
-        <h1 className="text-3xl font-bold mb-6">Recurring Bookings</h1>
+        <h1 className="text-3xl font-bold mb-6">{t("web.accountSettings.recurringBookings.title")}</h1>
 
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -270,12 +272,12 @@ export default function RecurringBookingsPage({
           {recurring.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center space-y-4">
-                <p className="text-gray-600">No recurring bookings yet</p>
+                <p className="text-gray-600">{t("web.accountSettings.recurringBookings.emptyTitle")}</p>
                 <p className="text-sm text-gray-500 max-w-md mx-auto">
-                  Book a salon and turn on &quot;Repeat this booking&quot; at checkout (web or app, signed in), or ask your provider to set up a series for you.
+                  {t("web.accountSettings.recurringBookings.emptyBody")}
                 </p>
                 <Button asChild variant="default">
-                  <Link href="/search">Find a salon</Link>
+                  <Link href="/search">{t("web.accountSettings.recurringBookings.findSalon")}</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -291,7 +293,7 @@ export default function RecurringBookingsPage({
                           href={`/partner-profile?slug=${encodeURIComponent(booking.provider.slug)}`}
                           className="text-sm font-medium text-primary hover:underline mt-1 inline-block"
                         >
-                          View salon profile
+                          {t("web.accountSettings.recurringBookings.viewSalonProfile")}
                         </Link>
                       ) : null}
                       {booking.service_name && (
@@ -300,10 +302,10 @@ export default function RecurringBookingsPage({
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant={booking.status === "cancelled" ? "secondary" : booking.is_active ? "default" : "secondary"}>
                           {booking.status === "cancelled"
-                            ? "Cancelled"
+                            ? t("web.accountSettings.recurringBookings.statusCancelled")
                             : booking.is_active
-                              ? "Active"
-                              : "Paused"}
+                              ? t("web.accountSettings.recurringBookings.statusActive")
+                              : t("web.accountSettings.recurringBookings.statusPaused")}
                         </Badge>
                         <Badge variant="outline">{getFrequencyLabel(booking)}</Badge>
                         {booking.payment_method && (
@@ -320,7 +322,7 @@ export default function RecurringBookingsPage({
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
                       <div>
-                        <p className="text-sm font-semibold">Start Date</p>
+                        <p className="text-sm font-semibold">{t("web.accountSettings.recurringBookings.startDate")}</p>
                         <p className="text-sm text-gray-600">
                           {new Date(booking.start_date).toLocaleDateString()}
                         </p>
@@ -330,20 +332,20 @@ export default function RecurringBookingsPage({
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div>
-                          <p className="text-sm font-semibold">End Date</p>
+                          <p className="text-sm font-semibold">{t("web.accountSettings.recurringBookings.endDate")}</p>
                           <p className="text-sm text-gray-600">
                             {new Date(booking.end_date).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">No fixed end date — runs until you pause or cancel.</p>
+                      <p className="text-sm text-muted-foreground">{t("web.accountSettings.recurringBookings.noFixedEndDate")}</p>
                     )}
                     {booking.next_date && (
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div>
-                          <p className="text-sm font-semibold">Next visit</p>
+                          <p className="text-sm font-semibold">{t("web.accountSettings.recurringBookings.nextVisit")}</p>
                           <p className="text-sm text-gray-600">
                             {new Date(booking.next_date + "T12:00:00").toLocaleDateString(undefined, {
                               weekday: "short",
@@ -358,16 +360,16 @@ export default function RecurringBookingsPage({
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-gray-400" />
                       <div>
-                        <p className="text-sm font-semibold">Preferred Time</p>
+                        <p className="text-sm font-semibold">{t("web.accountSettings.recurringBookings.preferredTime")}</p>
                         <p className="text-sm text-gray-600">{booking.preferred_time}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-gray-400" />
                       <div>
-                        <p className="text-sm font-semibold">Location</p>
+                        <p className="text-sm font-semibold">{t("web.accountSettings.recurringBookings.location")}</p>
                         <p className="text-sm text-gray-600">
-                          {booking.location_type === "at_home" ? "At Home" : "At Salon"}
+                          {booking.location_type === "at_home" ? t("web.accountSettings.recurringBookings.atHome") : t("web.accountSettings.recurringBookings.atSalon")}
                         </p>
                       </div>
                     </div>
@@ -376,10 +378,10 @@ export default function RecurringBookingsPage({
                   <div className="pt-3 border-t">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-semibold text-foreground touch-manipulation"
+                      className="flex w-full items-center justify-between gap-2 py-2 text-start text-sm font-semibold text-foreground touch-manipulation"
                       onClick={() => toggleUpcomingVisits(booking.id)}
                     >
-                      <span>Upcoming visits</span>
+                      <span>{t("web.accountSettings.recurringBookings.upcomingVisits")}</span>
                       {expandedVisitsId === booking.id ? (
                         <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground" />
                       ) : (
@@ -389,9 +391,9 @@ export default function RecurringBookingsPage({
                     {expandedVisitsId === booking.id && (
                       <div className="pb-2">
                         {loadingVisitsId === booking.id ? (
-                          <p className="text-sm text-muted-foreground py-2">Loading visits…</p>
+                          <p className="text-sm text-muted-foreground py-2">{t("web.accountSettings.recurringBookings.loadingVisits")}</p>
                         ) : (visitsBySeriesId[booking.id] ?? []).length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-2">No scheduled visits yet.</p>
+                          <p className="text-sm text-muted-foreground py-2">{t("web.accountSettings.recurringBookings.noScheduledVisits")}</p>
                         ) : (
                           <ul className="space-y-2">
                             {(visitsBySeriesId[booking.id] ?? []).map((visit) => (
@@ -421,8 +423,8 @@ export default function RecurringBookingsPage({
                         className="touch-manipulation min-h-10"
                         onClick={() => openScheduleEditor(booking)}
                       >
-                        <Pencil className="w-4 h-4 mr-1" />
-                        Edit schedule
+                        <Pencil className="w-4 h-4 me-1" />
+                        {t("web.accountSettings.recurringBookings.editSchedule")}
                       </Button>
                       <Button
                         variant="outline"
@@ -432,13 +434,13 @@ export default function RecurringBookingsPage({
                       >
                         {booking.is_active ? (
                           <>
-                            <Pause className="w-4 h-4 mr-1" />
-                            Pause
+                            <Pause className="w-4 h-4 me-1" />
+                            {t("web.accountSettings.recurringBookings.pause")}
                           </>
                         ) : (
                           <>
-                            <Play className="w-4 h-4 mr-1" />
-                            Resume
+                            <Play className="w-4 h-4 me-1" />
+                            {t("web.accountSettings.recurringBookings.resume")}
                           </>
                         )}
                       </Button>
@@ -448,8 +450,8 @@ export default function RecurringBookingsPage({
                         className="text-red-600 hover:text-red-700 touch-manipulation min-h-10"
                         onClick={() => handleCancel(booking.id)}
                       >
-                        <X className="w-4 h-4 mr-1" />
-                        Cancel
+                        <X className="w-4 h-4 me-1" />
+                        {t("web.accountSettings.recurringBookings.cancel")}
                       </Button>
                     </div>
                   )}
@@ -462,9 +464,9 @@ export default function RecurringBookingsPage({
         <Sheet open={scheduleSheetOpen} onOpenChange={setScheduleSheetOpen}>
           <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto sm:max-w-md sm:mx-auto rounded-t-xl">
             <SheetHeader>
-              <SheetTitle>Edit schedule</SheetTitle>
+              <SheetTitle>{t("web.accountSettings.recurringBookings.editScheduleTitle")}</SheetTitle>
               <SheetDescription>
-                Update cadence, preferred time, and optional end date. Auto-bookings follow these settings.
+                {t("web.accountSettings.recurringBookings.editScheduleDesc")}
               </SheetDescription>
             </SheetHeader>
             {editingBooking && (
@@ -473,7 +475,7 @@ export default function RecurringBookingsPage({
                   {editingBooking.provider.business_name}
                 </p>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-frequency">How often</Label>
+                  <Label htmlFor="edit-frequency">{t("web.accountSettings.recurringBookings.howOften")}</Label>
                   <Select
                     value={editFrequency}
                     onValueChange={(v) => setEditFrequency(v as SimpleFrequency)}
@@ -482,14 +484,14 @@ export default function RecurringBookingsPage({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Bi-weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="weekly">{t("web.accountSettings.recurringBookings.freqWeekly")}</SelectItem>
+                      <SelectItem value="biweekly">{t("web.accountSettings.recurringBookings.freqBiweekly")}</SelectItem>
+                      <SelectItem value="monthly">{t("web.accountSettings.recurringBookings.freqMonthly")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-time">Preferred time</Label>
+                  <Label htmlFor="edit-time">{t("web.accountSettings.recurringBookings.preferredTimeLabel")}</Label>
                   <Input
                     id="edit-time"
                     type="time"
@@ -511,16 +513,16 @@ export default function RecurringBookingsPage({
                   />
                   <div className="space-y-1">
                     <Label htmlFor="edit-no-end" className="font-medium cursor-pointer">
-                      No end date
+                      {t("web.accountSettings.recurringBookings.noEndDate")}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Uncheck to stop the series after a specific date.
+                      {t("web.accountSettings.recurringBookings.noEndDateHint")}
                     </p>
                   </div>
                 </div>
                 {!editSeriesNoEnd && (
                   <div className="space-y-2">
-                    <Label htmlFor="edit-end">End date</Label>
+                    <Label htmlFor="edit-end">{t("web.accountSettings.recurringBookings.endDateLabel")}</Label>
                     <Input
                       id="edit-end"
                       type="date"
@@ -540,7 +542,7 @@ export default function RecurringBookingsPage({
                 onClick={() => setScheduleSheetOpen(false)}
                 disabled={savingSchedule}
               >
-                Close
+                {t("web.accountSettings.recurringBookings.close")}
               </Button>
               <Button
                 type="button"
@@ -548,7 +550,7 @@ export default function RecurringBookingsPage({
                 disabled={savingSchedule || !editingBooking}
                 onClick={() => void saveSchedule()}
               >
-                {savingSchedule ? "Saving…" : "Save changes"}
+{savingSchedule ? t("web.accountSettings.recurringBookings.saving") : t("web.accountSettings.recurringBookings.saveChanges")}
               </Button>
             </SheetFooter>
           </SheetContent>

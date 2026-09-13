@@ -2,6 +2,7 @@ import { type ComponentProps } from "react";
 import { View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -23,6 +24,7 @@ export function ProviderPaymentSuccessCard({
   summaryRows?: ProviderPaymentSummaryRow[];
   footerHint?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={twStyle("w-full max-w-sm items-center rounded-3xl border border-emerald-100 bg-white p-7 shadow-sm")}>
       <View style={twStyle("mb-5 rounded-full bg-emerald-100 p-4")}>
@@ -57,10 +59,10 @@ export function ProviderPaymentSuccessCard({
 
       <View style={twStyle("mt-5 w-full rounded-2xl bg-emerald-50 px-4 py-3")}>
         <Text style={twStyle("text-center text-xs font-semibold uppercase tracking-wide text-emerald-700")}>
-          Payment successful
+          {t("provider.mobile.components.providerPaymentSuccessCard.badge")}
         </Text>
         <Text style={twStyle("mt-1 text-center text-sm text-emerald-900")}>
-          Customers can now discover your boosted listing.
+          {t("provider.mobile.components.providerPaymentSuccessCard.customersDiscover")}
         </Text>
       </View>
 

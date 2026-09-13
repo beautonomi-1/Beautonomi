@@ -225,6 +225,8 @@ export interface Appointment {
   notify_customer?: boolean;
   scheduled_date: string;
   scheduled_time: string;
+  /** ISO start instant from `bookings.scheduled_at` when the API included it. */
+  scheduled_at?: string | null;
   duration_minutes: number;
   price: number;
   status:
@@ -315,6 +317,10 @@ export interface Appointment {
   service_fee_amount?: number;
   /** Optional version for optimistic locking (PATCH) */
   version?: number;
+  customer_running_late_at?: string | null;
+  customer_running_late_minutes?: number | null;
+  provider_late_ack_at?: string | null;
+  contact_attempts?: Array<{ at: string; channel?: string; note?: string }> | null;
   /** Intake/consent/waiver answers from online checkout (`bookings.provider_form_responses`). */
   provider_form_responses?: Record<string, Record<string, unknown>> | null;
   /** Platform booking custom fields (from `custom_field_values` when loaded). */

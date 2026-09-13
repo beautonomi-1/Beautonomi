@@ -73,7 +73,7 @@ export default function PickingDesigns({ content }: PickingDesignsProps) {
         {/* Mobile scroll-snap carousel */}
         <div className="-mx-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-8 pb-4 scrollbar-hide md:hidden">
           {designs.map((design) => (
-            <div key={design.id} className="w-[78%] flex-none snap-center first:ml-0">
+            <div key={design.id} className="w-[78%] flex-none snap-center first:ms-0">
               <DesignCard design={design} purchaseUrl={purchaseUrl} />
             </div>
           ))}

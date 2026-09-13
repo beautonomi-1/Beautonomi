@@ -77,7 +77,7 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
         accessibilityLabel={t("customer.mobile.components.supportTicketCategory.chooseCategoryA11y")}
         accessibilityRole="button"
       >
-        <View style={{ flex: 1, marginRight: 8 }}>
+        <View style={{ flex: 1, marginEnd: 8 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 2 }}>
             {t("customer.mobile.components.supportTicketCategory.categoryFieldLabel")}
           </Text>
@@ -196,7 +196,7 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
             }}
             ListEmptyComponent={
               <View style={{ padding: 24, alignItems: "center" }}>
-                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>No categories match your search.</Text>
+                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>{t("customer.mobile.components.supportTicketCategory.noCategoriesMatch")}</Text>
               </View>
             }
             contentContainerStyle={{ paddingBottom: 40 }}

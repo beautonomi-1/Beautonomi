@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, ScrollView } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface MaintenanceConfig {
   enabled: boolean;
@@ -63,6 +64,7 @@ export default function MaintenanceScreen({
   config: MaintenanceConfig;
   scope: "customer_app" | "provider_app";
 }) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,12 +88,12 @@ export default function MaintenanceScreen({
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error ?? "Something went wrong. Please try again.");
+        setError(data?.error ?? t("provider.mobile.components.maintenance.genericError"));
         return;
       }
       setSubmitted(true);
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(t("provider.mobile.components.maintenance.genericError"));
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +122,7 @@ export default function MaintenanceScreen({
               <>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter your email"
+                  placeholder={t("provider.mobile.components.maintenance.emailPlaceholder")}
                   placeholderTextColor="#888"
                   value={email}
                   onChangeText={setEmail}
@@ -143,7 +145,7 @@ export default function MaintenanceScreen({
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.thanks}>Thanks! We will notify you when we are back.</Text>
+              <Text style={styles.thanks}>{t("provider.mobile.components.maintenance.thanksMessage")}</Text>
             )}
           </View>
         )}

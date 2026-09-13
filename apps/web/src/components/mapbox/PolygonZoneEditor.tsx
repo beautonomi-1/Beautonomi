@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save, X, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PolygonZoneEditorProps {
   onSave: (polygon: { coordinates: Array<{ longitude: number; latitude: number }> }) => void;
@@ -30,6 +31,7 @@ export default function PolygonZoneEditor({
   initialPolygon,
   providerLocation,
 }: PolygonZoneEditorProps) {
+  const { t } = useTranslation();
   const [polygonPoints, setPolygonPoints] = useState<
     Array<{ longitude: number; latitude: number; address?: string }>
   >(initialPolygon || []);
@@ -140,9 +142,9 @@ export default function PolygonZoneEditor({
   return (
     <div className="space-y-4">
       <div>
-        <Label>Add Points to Polygon</Label>
+        <Label>{t("web.mapbox.polygonEditor.addPoints")}</Label>
         <p className="text-xs text-gray-500 mb-2">
-          Add at least 3 points to create a polygon. You can add points by address or manually enter coordinates.
+          {t("web.mapbox.polygonEditor.addPointsHint")}
         </p>
 
         {/* Address Input */}
@@ -150,7 +152,7 @@ export default function PolygonZoneEditor({
           <Input
             value={addressInput}
             onChange={(e) => setAddressInput(e.target.value)}
-            placeholder="Search address..."
+            placeholder={t("web.mapbox.polygonEditor.searchAddress")}
             onKeyPress={(e) => {
               if (e.key === "Enter") {
                 handleAddPointFromAddress();
@@ -163,10 +165,10 @@ export default function PolygonZoneEditor({
             disabled={!addressInput.trim() || isGeocoding}
             variant="outline"
           >
-            {isGeocoding ? "Searching..." : "Add from Address"}
+            {isGeocoding ? t("web.mapbox.polygonEditor.searching") : t("web.mapbox.polygonEditor.addFromAddress")}
           </Button>
           <Button onClick={handleAddPointManually} variant="outline">
-            Add Manually
+            {t("web.mapbox.polygonEditor.addManually")}
           </Button>
         </div>
 
@@ -181,7 +183,7 @@ export default function PolygonZoneEditor({
                 <MapPin className="w-4 h-4 text-[#FF0077] flex-shrink-0" />
                 <div className="flex-1 grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs">Latitude</Label>
+                    <Label className="text-xs">{t("web.provider.locationTracker.latitude")}</Label>
                     <Input
                       type="number"
                       step="any"
@@ -193,7 +195,7 @@ export default function PolygonZoneEditor({
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Longitude</Label>
+                    <Label className="text-xs">{t("web.provider.locationTracker.longitude")}</Label>
                     <Input
                       type="number"
                       step="any"
@@ -223,7 +225,7 @@ export default function PolygonZoneEditor({
 
         {polygonPoints.length < 3 && (
           <p className="text-xs text-amber-600 mt-2">
-            Add at least {3 - polygonPoints.length} more point(s) to create a polygon
+            {t("web.mapbox.polygonEditor.needMorePoints", { count: 3 - polygonPoints.length })}
           </p>
         )}
       </div>
@@ -231,14 +233,14 @@ export default function PolygonZoneEditor({
       {!mapAvailable && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p className="text-xs text-blue-800">
-            <strong>Note:</strong> Map visualization is not available. You can still create polygon zones by adding points manually or using address search.
+            <strong>{t("checkout.noteTitle")}:</strong> {t("web.mapbox.polygonEditor.mapUnavailableBody")}
           </p>
         </div>
       )}
 
       <div className="flex justify-end gap-2 pt-4">
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           onClick={handleSave}
@@ -246,7 +248,7 @@ export default function PolygonZoneEditor({
           className="bg-[#FF0077] hover:bg-[#D60565]"
         >
           <Save className="w-4 h-4 mr-2" />
-          Save Polygon
+          {t("web.mapbox.polygonEditor.savePolygon")}
         </Button>
       </div>
     </div>

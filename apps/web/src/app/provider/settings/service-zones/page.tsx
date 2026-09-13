@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -59,6 +60,7 @@ const numberOrDefault = (value: unknown, fallback: number) => {
 const formatMoney = (value: unknown) => numberOrDefault(value, 0).toFixed(2);
 
 export default function ServiceZonesPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [zonesWithSelections, setZonesWithSelections] = useState<ZoneWithSelection[]>([]);
@@ -82,29 +84,29 @@ export default function ServiceZonesPage() {
   const tourSteps = [
     {
       id: "intro",
-      title: "Welcome to Service Zones",
-      description: "Service zones define where you offer at-home services. Select zones that match your business location and set your travel fees.",
+      title: t("web.provider.settings.pages.service-zones.tourIntroTitle"),
+      description: t("web.provider.settings.pages.service-zones.tourIntroBody"),
       targetSelector: "[data-tour='page-header']",
       position: "bottom" as const,
     },
     {
       id: "suggested-zones",
-      title: "Suggested Zones",
-      description: "These zones match your primary business location. We recommend selecting them first for faster setup.",
+      title: t("web.provider.settings.pages.service-zones.tourSuggestedTitle"),
+      description: t("web.provider.settings.pages.service-zones.tourSuggestedBody"),
       targetSelector: "[data-tour='suggested-zones']",
       position: "bottom" as const,
     },
     {
       id: "selected-zones",
-      title: "Your Selected Zones",
-      description: "Zones you've selected will appear here. You can edit pricing or remove zones at any time.",
+      title: t("web.provider.settings.pages.service-zones.tourSelectedTitle"),
+      description: t("web.provider.settings.pages.service-zones.tourSelectedBody"),
       targetSelector: "[data-tour='selected-zones']",
       position: "bottom" as const,
     },
     {
       id: "available-zones",
-      title: "Available Zones",
-      description: "Browse all platform zones. Click 'Select Zone' to add them and set your custom pricing.",
+      title: t("web.provider.settings.pages.service-zones.tourAvailableTitle"),
+      description: t("web.provider.settings.pages.service-zones.tourAvailableBody"),
       targetSelector: "[data-tour='available-zones']",
       position: "top" as const,
     },
@@ -145,7 +147,7 @@ export default function ServiceZonesPage() {
       const response = await fetcher.get<{ data: ZoneWithSelection[] }>("/api/provider/zone-selections");
       setZonesWithSelections(response.data || []);
     } catch (error) {
-      toast.error("Failed to load platform zones");
+      toast.error(t("web.provider.settings.pages.service-zones.failedToLoadPlatformZones"));
       console.error("Error loading zones:", error);
     } finally {
       setIsLoading(false);
@@ -190,14 +192,14 @@ export default function ServiceZonesPage() {
         await fetcher.patch(`/api/provider/zone-selections/${editingSelection.id}`, {
           ...formData,
         });
-        toast.success("Zone selection updated");
+        toast.success(t("web.provider.settings.pages.service-zones.zoneSelectionUpdated"));
       } else {
         // Create new selection
         await fetcher.post("/api/provider/zone-selections", {
           platform_zone_id: selectedPlatformZone.id,
           ...formData,
         });
-        toast.success("Zone selected successfully");
+        toast.success(t("web.provider.settings.pages.service-zones.zoneSelectedSuccessfully"));
       }
 
       setIsDialogOpen(false);
@@ -208,7 +210,7 @@ export default function ServiceZonesPage() {
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to save zone selection"
+          : t("web.provider.settings.pages.service-zones.failedToSave")
       );
       console.error("Error saving selection:", error);
     } finally {
@@ -217,60 +219,60 @@ export default function ServiceZonesPage() {
   };
 
   const handleRemoveSelection = async (selectionId: string) => {
-    if (!confirm("Are you sure you want to remove this zone selection?")) {
+    if (!confirm(t("web.provider.settings.pages.service-zones.removeConfirm"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/provider/zone-selections/${selectionId}`);
-      toast.success("Zone selection removed");
+      toast.success(t("web.provider.settings.pages.service-zones.zoneSelectionRemoved"));
       loadZones();
     } catch (error) {
-      toast.error("Failed to remove zone selection");
+      toast.error(t("web.provider.settings.pages.service-zones.failedToRemoveZoneSelection"));
       console.error("Error removing selection:", error);
     }
   };
 
   const getZoneTypeLabel = (type: PlatformZone["zone_type"]) => {
     const labels: Record<PlatformZone["zone_type"], string> = {
-      postal_code: "Postal Code",
-      city: "City",
-      polygon: "Polygon",
-      radius: "Radius",
+      postal_code: t("web.provider.settings.pages.service-zones.postalCode"),
+      city: t("web.provider.settings.pages.service-zones.city"),
+      polygon: t("web.provider.settings.pages.service-zones.polygon"),
+      radius: t("web.provider.settings.pages.service-zones.radius"),
     };
     return labels[type];
   };
 
   const getZoneDetails = (zone: PlatformZone) => {
     if (zone.zone_type === "postal_code" && zone.postal_codes) {
-      return `${zone.postal_codes.length} postal codes`;
+      return t("web.provider.settings.pages.service-zones.postalCodesCount", { count: zone.postal_codes.length });
     }
     if (zone.zone_type === "city" && zone.cities) {
-      return `${zone.cities.length} cities`;
+      return t("web.provider.settings.pages.service-zones.citiesCount", { count: zone.cities.length });
     }
     if (zone.zone_type === "radius" && zone.radius_km) {
-      return `${zone.radius_km}km radius`;
+      return t("web.provider.settings.pages.service-zones.radiusKm", { km: zone.radius_km });
     }
     if (zone.zone_type === "polygon") {
-      return "Polygon zone";
+      return t("web.provider.settings.pages.service-zones.polygonZone");
     }
-    return "-";
+    return t("web.provider.common.hyphen");
   };
 
   const selectedZones = zonesWithSelections.filter((z) => z.is_selected);
   const availableZones = zonesWithSelections.filter((z) => !z.is_selected);
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Service Zones" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.service-zones.serviceZones") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
-        <LoadingTimeout loadingMessage="Loading platform zones..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.service-zones.loadingPlatformZones")} />
       </SettingsDetailLayout>
     );
   }
@@ -281,13 +283,13 @@ export default function ServiceZonesPage() {
         steps={tourSteps}
         storageKey="service-zones-tour-completed"
         onComplete={() => {
-          toast.success("Tour completed! You can restart it anytime from the help menu.");
+          toast.success(t("web.provider.settings.pages.service-zones.tourCompletedYouCanRestartIt"));
         }}
       />
       
       <PageHeader
-        title="Service Zones"
-        subtitle="Select platform zones where you provide at-home services and set your own pricing. You can only select from zones created by the platform administrator."
+        title={t("web.provider.settings.categories.appointmentActivity.items.serviceZones.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.serviceZones.description")}
         data-tour="page-header"
       />
 
@@ -301,15 +303,15 @@ export default function ServiceZonesPage() {
             }}
             className="text-sm"
           >
-            <Sparkles className="w-4 h-4 mr-2" />
-            Restart Tour
+            <Sparkles className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.service-zones.restartTour")}
           </Button>
           <Button
             variant="outline"
             onClick={() => window.location.href = "/provider/settings/service-zones/analytics"}
           >
-            <TrendingUp className="w-4 h-4 mr-2" />
-            View Analytics
+            <TrendingUp className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.service-zones.viewAnalytics")}
           </Button>
         </div>
 
@@ -320,10 +322,10 @@ export default function ServiceZonesPage() {
               <div>
                 <h3 className="font-semibold text-lg mb-1 flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-blue-600" />
-                  Suggested Zones (Based on Your Location)
+                  {t("web.provider.settings.pages.service-zones.suggestedTitle")}
                 </h3>
                 <p className="text-sm text-gray-600">
-                  These zones match your primary business location. We recommend selecting them first.
+                  {t("web.provider.settings.pages.service-zones.suggestedBody")}
                 </p>
               </div>
               <Button
@@ -351,7 +353,7 @@ export default function ServiceZonesPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <h4 className="font-semibold">{zone.name}</h4>
                           <Badge variant="default" className="bg-blue-600">
-                            Suggested
+                            {t("web.provider.settings.pages.service-zones.suggested")}
                           </Badge>
                           <Badge variant="outline">{getZoneTypeLabel(zone.zone_type)}</Badge>
                         </div>
@@ -360,7 +362,7 @@ export default function ServiceZonesPage() {
                         </p>
                         <div className="space-y-1 text-sm text-gray-600">
                           <p>
-                            <strong>Zone Details:</strong> {getZoneDetails(zone)}
+                            <strong>{t("web.provider.settings.pages.service-zones.zoneDetails")}</strong> {getZoneDetails(zone)}
                           </p>
                         </div>
                       </div>
@@ -370,16 +372,16 @@ export default function ServiceZonesPage() {
                           size="sm"
                           onClick={() => existingSelection && handleEditSelection(existingSelection)}
                         >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
+                          <Edit className="w-4 h-4 me-2" />
+                          {t("web.provider.common.edit")}
                         </Button>
                       ) : (
                         <Button
                           onClick={() => handleSelectZone(zone)}
                           className="bg-primary hover:bg-primary-hover"
                         >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Select Zone
+                          <Plus className="w-4 h-4 me-2" />
+                          {t("web.provider.settings.pages.service-zones.selectZone")}
                         </Button>
                       )}
                     </div>
@@ -393,7 +395,7 @@ export default function ServiceZonesPage() {
         {/* Selected Zones */}
         {selectedZones.length > 0 && (
           <SectionCard data-tour="selected-zones">
-            <h3 className="font-semibold text-lg mb-4">Your Selected Zones</h3>
+            <h3 className="font-semibold text-lg mb-4">{t("web.provider.settings.pages.service-zones.yourSelected")}</h3>
             <div className="grid gap-4">
               {selectedZones.map((zoneWithSelection) => (
                 <div
@@ -405,19 +407,19 @@ export default function ServiceZonesPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-semibold">{zoneWithSelection.platform_zone.name}</h4>
                         <Badge variant={zoneWithSelection.selection?.is_active ? "default" : "secondary"}>
-                          {zoneWithSelection.selection?.is_active ? "Active" : "Inactive"}
+{zoneWithSelection.selection?.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                         </Badge>
                         <Badge variant="outline">{getZoneTypeLabel(zoneWithSelection.platform_zone.zone_type)}</Badge>
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
                         <p>
-                          <strong>Your Travel Fee:</strong> {zoneWithSelection.selection?.currency || tenantCurrency} {formatMoney(zoneWithSelection.selection?.travel_fee)}
+                          <strong>{t("web.provider.settings.pages.service-zones.yourTravelFee")}</strong> {zoneWithSelection.selection?.currency || tenantCurrency} {formatMoney(zoneWithSelection.selection?.travel_fee)}
                         </p>
                         <p>
-                          <strong>Travel Time:</strong> {numberOrDefault(zoneWithSelection.selection?.travel_time_minutes, 30)} minutes
+                          <strong>{t("web.provider.settings.pages.service-zones.travelTime")}</strong> {t("web.provider.settings.pages.service-zones.minutesValue", { count: numberOrDefault(zoneWithSelection.selection?.travel_time_minutes, 30) })}
                         </p>
                         <p>
-                          <strong>Zone Details:</strong> {getZoneDetails(zoneWithSelection.platform_zone)}
+                          <strong>{t("web.provider.settings.pages.service-zones.zoneDetails")}</strong> {getZoneDetails(zoneWithSelection.platform_zone)}
                         </p>
                         {zoneWithSelection.platform_zone.description && (
                           <p className="mt-2 text-gray-500">{zoneWithSelection.platform_zone.description}</p>
@@ -451,11 +453,11 @@ export default function ServiceZonesPage() {
 
         {/* Available Zones */}
         <SectionCard data-tour="available-zones">
-          <h3 className="font-semibold text-lg mb-4">Available Platform Zones</h3>
+          <h3 className="font-semibold text-lg mb-4">{t("web.provider.settings.pages.service-zones.availablePlatform")}</h3>
           {availableZones.length === 0 ? (
             <EmptyState
-              title="No available zones"
-              description="All platform zones have been selected, or no platform zones are available. Contact support if you need additional zones."
+              title={t("web.provider.settings.pages.service-zones.noAvailableZones")}
+              description={t("web.provider.settings.pages.service-zones.allSelectedOrNone")}
             />
           ) : (
             <div className="grid gap-4">
@@ -472,7 +474,7 @@ export default function ServiceZonesPage() {
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
                         <p>
-                          <strong>Zone Details:</strong> {getZoneDetails(zoneWithSelection.platform_zone)}
+                          <strong>{t("web.provider.settings.pages.service-zones.zoneDetails")}</strong> {getZoneDetails(zoneWithSelection.platform_zone)}
                         </p>
                         {zoneWithSelection.platform_zone.description && (
                           <p className="mt-2 text-gray-500">{zoneWithSelection.platform_zone.description}</p>
@@ -483,8 +485,8 @@ export default function ServiceZonesPage() {
                       onClick={() => handleSelectZone(zoneWithSelection.platform_zone)}
                       className="bg-primary hover:bg-primary-hover"
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Select Zone
+                      <Plus className="w-4 h-4 me-2" />
+                      {t("web.provider.settings.pages.service-zones.selectZone")}
                     </Button>
                   </div>
                 </div>
@@ -496,7 +498,7 @@ export default function ServiceZonesPage() {
         {/* Map Visualization */}
         {selectedZones.length > 0 && (
           <SectionCard>
-            <h3 className="font-semibold mb-4">Zone Map</h3>
+            <h3 className="font-semibold mb-4">{t("web.provider.settings.pages.service-zones.zoneMap")}</h3>
             <ZoneMapViewer
               zones={selectedZones.map((z) => ({
                 id: z.platform_zone.id,
@@ -521,12 +523,12 @@ export default function ServiceZonesPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingSelection ? "Edit Zone Selection" : "Select Platform Zone"}
+              {editingSelection ? t("web.provider.settings.pages.service-zones.editSelection") : t("web.provider.settings.pages.service-zones.selectPlatform")}
             </DialogTitle>
             <DialogDescription>
               {selectedPlatformZone && (
                 <>
-                  Setting pricing for <strong>{selectedPlatformZone.name}</strong>. Customers can only book at-home services if their address is within this zone.
+                  {t("web.provider.settings.pages.service-zones.settingPricingFor", { name: selectedPlatformZone.name })}
                 </>
               )}
             </DialogDescription>
@@ -535,15 +537,15 @@ export default function ServiceZonesPage() {
           {selectedPlatformZone && (
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Platform Zone: {selectedPlatformZone.name}</p>
+                <p className="text-sm font-medium mb-2">{t("web.provider.settings.pages.service-zones.platformZone", { name: selectedPlatformZone.name })}</p>
                 <p className="text-xs text-gray-600">
-                  Type: {getZoneTypeLabel(selectedPlatformZone.zone_type)} • {getZoneDetails(selectedPlatformZone)}
+                  {t("web.provider.settings.pages.service-zones.typeDetails", { type: getZoneTypeLabel(selectedPlatformZone.zone_type), details: getZoneDetails(selectedPlatformZone) })}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="travel_fee">Travel Fee *</Label>
+                  <Label htmlFor="travel_fee">{t("web.provider.settings.pages.service-zones.travelFeeRequired")}</Label>
                   <Input
                     id="travel_fee"
                     type="number"
@@ -555,7 +557,7 @@ export default function ServiceZonesPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="currency">Currency *</Label>
+                  <Label htmlFor="currency">{t("web.provider.settings.pages.service-zones.currencyRequired")}</Label>
                   <Input
                     id="currency"
                     value={formData.currency}
@@ -567,7 +569,7 @@ export default function ServiceZonesPage() {
               </div>
 
               <div>
-                <Label htmlFor="travel_time_minutes">Travel Time (minutes) *</Label>
+                <Label htmlFor="travel_time_minutes">{t("web.provider.settings.pages.service-zones.travelTimeRequired")}</Label>
                 <Input
                   id="travel_time_minutes"
                   type="number"
@@ -579,12 +581,12 @@ export default function ServiceZonesPage() {
               </div>
 
               <div>
-                <Label htmlFor="description">Description (Optional)</Label>
+                <Label htmlFor="description">{t("web.provider.settings.pages.service-zones.descriptionOptional")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Optional notes about this zone"
+                  placeholder={t("web.provider.settings.pages.service-zones.optionalNotesAboutThisZone")}
                   rows={3}
                 />
               </div>
@@ -596,7 +598,7 @@ export default function ServiceZonesPage() {
                   onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked === true })}
                 />
                 <Label htmlFor="is_active" className="cursor-pointer">
-                  Active (accept bookings in this zone)
+                  {t("web.provider.settings.pages.service-zones.activeAccept")}
                 </Label>
               </div>
 
@@ -606,16 +608,16 @@ export default function ServiceZonesPage() {
                   setSelectedPlatformZone(null);
                   setEditingSelection(null);
                 }} disabled={isSaving}>
-                  Cancel
+                  {t("web.provider.common.cancel")}
                 </Button>
                 <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary-hover">
                   {isSaving ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                      {t("web.provider.common.saving")}
                     </>
                   ) : (
-                    editingSelection ? "Update" : "Select Zone"
+                    editingSelection ? t("web.provider.common.update") : t("web.provider.settings.pages.service-zones.selectZone")
                   )}
                 </Button>
               </div>

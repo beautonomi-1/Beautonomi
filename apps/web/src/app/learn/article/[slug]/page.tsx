@@ -6,11 +6,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getLearnArticle } from "@/lib/data/getLearnArticle";
 import { sanitizeLearnArticleHtml } from "@/lib/html/learn-article-html";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import { LearnBreadcrumb } from "../../components/learn-breadcrumb";
 import ArticleFeedback from "./article-feedback";
 import { LearnArticleHero } from "./learn-article-hero";
 import { LearnArticleBody } from "./learn-article-body";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 export const revalidate = 600;
 
@@ -21,17 +24,21 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const article = await getLearnArticle(slug);
   const origin = await getPublicSiteOriginFromHeaders();
   const path = `/learn/article/${encodeURIComponent(slug)}`;
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
 
   if (!article) {
     return {
-      title: "Article Not Found · Learning Center",
-      description: "The article you're looking for doesn't exist.",
+      title: t("web.seo.learnArticleNotFoundTitle") as string,
+      description: t("web.seo.learnArticleNotFoundDescription") as string,
       robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
     };
   }
 
-  const title = `${article.title} · Learning Center`;
-  const description = article.summary?.trim() || `Read ${article.title} on the Beautonomi Learning Center.`;
+  const title = `${article.title} ${t("web.seo.learnArticleTitleSuffix") as string}`;
+  const description =
+    article.summary?.trim() ||
+    (t("web.seo.learnArticleFallbackDescription", { title: article.title }) as string);
 
   return {
     title,
@@ -39,7 +46,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
     alternates: {
       canonical: `${origin}${path}`,
-      languages: getHreflangAlternateUrls(path),
+      languages: await hreflangForPath(path),
     },
     openGraph: {
       title,
@@ -104,7 +111,7 @@ function ArticleToc({ toc }: { toc: TocItem[] }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">In this article</p>
       <ul className="space-y-1.5">
         {toc.map(({ id, text, level }) => (
-          <li key={id} style={{ paddingLeft: level === 3 ? 12 : 0 }}>
+          <li key={id} style={{ paddingInlineStart: level === 3 ? 12 : 0 }}>
             <a href={`#${id}`} className="text-sm text-zinc-700 hover:text-primary focus:outline-none focus:underline">
               {text}
             </a>
@@ -127,7 +134,7 @@ export default async function LearnArticlePage({ params }: { params: Params }) {
 
   const cat = article.learning_categories;
   const publishedAt = article.published_at
-    ? new Date(article.published_at).toLocaleDateString("en-US", {
+    ? new Date(article.published_at).toLocaleDateString(getDefaultMoneyLocale(), {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -198,7 +205,7 @@ export default async function LearnArticlePage({ params }: { params: Params }) {
               {article.category_nav.next ? (
                 <Link
                   href={`/learn/article/${encodeURIComponent(article.category_nav.next.slug)}`}
-                  className="group flex items-center justify-end gap-2 rounded-xl border border-zinc-200/70 px-4 py-3 text-sm text-right hover:border-primary/25 hover:bg-primary/5 sm:col-start-2"
+                  className="group flex items-center justify-end gap-2 rounded-xl border border-zinc-200/70 px-4 py-3 text-sm text-end hover:border-primary/25 hover:bg-primary/5 sm:col-start-2"
                 >
                   <span className="min-w-0">
                     <span className="block text-xs text-zinc-500">Next</span>

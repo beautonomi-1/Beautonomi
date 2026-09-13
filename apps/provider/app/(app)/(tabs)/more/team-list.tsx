@@ -36,6 +36,8 @@ import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -79,11 +81,18 @@ interface TeamAccessPayload {
   can_view_team_roster_pii?: boolean;
 }
 
-const ROLES = [
-  { label: "Staff", value: "provider_staff" },
-  { label: "Manager", value: "provider_manager" },
-  { label: "Owner", value: "provider_owner" },
-];
+const ROLE_OPTIONS = [
+  { labelKey: "roleStaff", value: "provider_staff" },
+  { labelKey: "roleManager", value: "provider_manager" },
+  { labelKey: "roleOwner", value: "provider_owner" },
+] as const;
+
+function staffRoleLabel(role: string, tl: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (role === "provider_staff") return tl("roleStaff");
+  if (role === "provider_manager") return tl("roleManager");
+  if (role === "provider_owner") return tl("roleOwner");
+  return capitalizeFirst(role);
+}
 
 const EMPTY_FORM = {
   name: "",
@@ -101,6 +110,16 @@ const EMPTY_FORM = {
 /* ------------------------------------------------------------------ */
 
 export default function TeamListScreen() {
+  const { t } = useTranslation();
+  const tl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamList.${key}`, opts) as string,
+    [t],
+  );
+  const roles = useMemo(
+    () => ROLE_OPTIONS.map((r) => ({ value: r.value, label: tl(r.labelKey) })),
+    [tl],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
   const addIntentDone = useRef(false);
@@ -204,23 +223,23 @@ export default function TeamListScreen() {
   }, [staff]);
 
   const teamListSubtitle = useMemo(() => {
-    const base = `${totalCount} member${totalCount !== 1 ? "s" : ""}`;
+    const base = tl("subtitleCount", { count: totalCount });
     if (!selectedLocationId || !provider?.locations?.length) return base;
     const loc = provider.locations.find((l) => l.id === selectedLocationId);
-    return loc?.name ? `${base} · ${loc.name}` : base;
-  }, [totalCount, selectedLocationId, provider?.locations]);
+    return loc?.name ? tl("subtitleWithLocation", { base, location: loc.name }) : base;
+  }, [totalCount, selectedLocationId, provider?.locations, tl]);
 
   // --- Add member ---
   function openAddSheet() {
     if (isFreelancer) {
       Alert.alert(
-        "Salon account required",
-        "Upgrade from freelancer to add team members and unlock full team management.",
+        tl("salonRequiredTitle"),
+        tl("salonRequiredAdd"),
       );
       return;
     }
     if (!canManageTeam) {
-      Alert.alert("Permission", "Only owners or managers with “Manage team” can add staff.");
+      Alert.alert(tl("permissionTitle"), tl("permissionAdd"));
       return;
     }
     setForm({
@@ -281,12 +300,12 @@ export default function TeamListScreen() {
   async function handleEditSubmit() {
     if (!editingMember) return;
     if (!editForm.name.trim()) {
-      Alert.alert("Validation", "Name is required.");
+      Alert.alert(tl("validationTitle"), tl("nameRequired"));
       return;
     }
     const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
     if (phoneErr) {
-      Alert.alert("Invalid phone", phoneErr);
+      Alert.alert(tl("invalidPhoneTitle"), phoneErr);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -312,17 +331,17 @@ export default function TeamListScreen() {
       });
       if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !force) {
         Alert.alert(
-          "Upcoming bookings",
-          "This change affects upcoming bookings (removed services or locations). Save anyway?",
+          tl("upcomingBookingsTitle"),
+          tl("upcomingBookingsBody"),
           [
-            { text: "Cancel", style: "cancel" },
-            { text: "Save anyway", style: "destructive", onPress: () => void apply(true) },
+            { text: tl("cancel"), style: "cancel" },
+            { text: tl("saveAnyway"), style: "destructive", onPress: () => void apply(true) },
           ],
         );
         return;
       }
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(tl("errorTitle"), error);
       } else {
         setEditSheetOpen(false);
         setEditingMember(null);
@@ -337,33 +356,33 @@ export default function TeamListScreen() {
     if (!canManageTeam) {
       Alert.alert(
         member.name,
-        "Only owners or managers with “Manage team” can edit or remove team members.",
+        tl("permissionEdit"),
       );
       return;
     }
-    Alert.alert(member.name, "What would you like to do?", [
-      { text: "Edit", onPress: () => openEditSheet(member) },
+    Alert.alert(member.name, tl("whatToDo"), [
+      { text: tl("edit"), onPress: () => openEditSheet(member) },
       ...(canManageTeam && member.email
         ? [
             {
-              text: "Send password reset",
+              text: tl("sendPasswordReset"),
               onPress: async () => {
                 Alert.alert(
-                  "Send password reset",
-                  `Email a password reset link to ${member.name}?`,
+                  tl("sendPasswordReset"),
+                  tl("sendPasswordResetBody", { name: member.name }),
                   [
-                    { text: "Cancel", style: "cancel" },
+                    { text: tl("cancel"), style: "cancel" },
                     {
-                      text: "Send",
+                      text: tl("send"),
                       onPress: async () => {
                         const { error } = await postStaffAction(
                           `/api/provider/staff/${member.id}/reset-password`,
                           {},
                         );
-                        if (error) Alert.alert("Error", error);
+                        if (error) Alert.alert(tl("errorTitle"), error);
                         else {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert("Reset sent", "Password reset email has been sent.");
+                          Alert.alert(tl("resetSentTitle"), tl("resetSentBody"));
                         }
                       },
                     },
@@ -374,30 +393,30 @@ export default function TeamListScreen() {
           ]
         : []),
       {
-        text: member.is_active ? "Deactivate" : "Activate",
+        text: member.is_active ? tl("deactivate") : tl("activate"),
         onPress: async () => {
           const { error } = await updateMember(`/api/provider/staff/${member.id}`, {
             is_active: !member.is_active,
           });
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(tl("errorTitle"), error);
           else refresh();
         },
       },
       {
-        text: "Remove",
+        text: tl("remove"),
         style: "destructive",
         onPress: () => {
           Alert.alert(
-            "Remove team member",
-            `Remove ${member.name} from your team? This cannot be undone.`,
+            tl("removeTitle"),
+            tl("removeBody", { name: member.name }),
             [
-              { text: "Cancel", style: "cancel" },
+              { text: tl("cancel"), style: "cancel" },
               {
-                text: "Remove",
+                text: tl("remove"),
                 style: "destructive",
                 onPress: async () => {
                   const { error } = await deleteMember(`/api/provider/staff/${member.id}`, {});
-                  if (error) Alert.alert("Error", error);
+                  if (error) Alert.alert(tl("errorTitle"), error);
                   else refresh();
                 },
               },
@@ -405,26 +424,26 @@ export default function TeamListScreen() {
           );
         },
       },
-      { text: "Cancel", style: "cancel" },
+      { text: tl("cancel"), style: "cancel" },
     ]);
   }
 
   async function handleSubmit() {
     if (isFreelancer) {
-      Alert.alert("Salon account required", "Upgrade from freelancer to add team members.");
+      Alert.alert(tl("salonRequiredTitle"), tl("salonRequiredShort"));
       return;
     }
     if (!canManageTeam) {
-      Alert.alert("Permission", "You do not have permission to add team members.");
+      Alert.alert(tl("permissionTitle"), tl("permissionNoAdd"));
       return;
     }
     if (!form.name.trim() || !form.email.trim()) {
-      Alert.alert("Validation", "Name and email are required.");
+      Alert.alert(tl("validationTitle"), tl("nameEmailRequired"));
       return;
     }
     const phoneErr = form.phone.trim() ? validateE164Phone(form.phone) : null;
     if (phoneErr) {
-      Alert.alert("Invalid phone", phoneErr);
+      Alert.alert(tl("invalidPhoneTitle"), phoneErr);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -445,25 +464,25 @@ export default function TeamListScreen() {
       if (isPlanGateErrorCode(errorCode)) {
         showPlanGateAlert({ message: error, errorCode, router });
       } else {
-        Alert.alert("Error", error);
+        Alert.alert(tl("errorTitle"), error);
       }
     } else {
       setAddSheetOpen(false);
       refresh();
       Alert.alert(
-        "Team member added",
+        tl("addedTitle"),
         form.invite_email
-          ? "They have been added and an invite email was sent (Provider app download link included). Open their profile to review shifts, permissions, and resend if needed."
-          : "They have been added. Open their profile to send an invite or password reset, then set their shifts and permissions.",
+          ? tl("addedWithInvite")
+          : tl("addedWithoutInvite"),
         [
-          { text: "Later", style: "cancel" },
+          { text: tl("later"), style: "cancel" },
           createdMember?.id
             ? {
-                text: "Open profile",
+                text: tl("openProfile"),
                 onPress: () =>
                   router.push(`/(app)/(tabs)/more/team-member/${createdMember.id}` as never),
               }
-            : { text: "OK" },
+            : { text: tl("ok") },
         ],
       );
     }
@@ -473,7 +492,7 @@ export default function TeamListScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Team"
+        title={tl("title")}
         showBack
         subtitle={teamListSubtitle}
         rightAction={
@@ -481,11 +500,11 @@ export default function TeamListScreen() {
             <TouchableOpacity
               onPress={openAddSheet}
               style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
-              accessibilityLabel="Add team member"
+              accessibilityLabel={tl("addA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="add" size={18} color="#fff" />
-              <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>Add</Text>
+              <Text style={twStyle("ms-1 text-sm font-semibold text-white")}>{tl("add")}</Text>
             </TouchableOpacity>
           ) : undefined
         }
@@ -516,8 +535,7 @@ export default function TeamListScreen() {
                   style={twStyle("mb-3 mx-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5")}
                 >
                   <Text style={twStyle("text-sm text-amber-900")}>
-                    You have read-only team access. Ask an owner or manager with Manage team to add or edit
-                    members.
+                    {tl("readOnlyBanner")}
                   </Text>
                 </View>
               ) : null}
@@ -529,8 +547,8 @@ export default function TeamListScreen() {
                   ]}
                 >
                   <Text style={twStyle("text-sm text-gray-700")}>
-                    <Text style={twStyle("font-semibold text-[#FF0077]")}>You’re set up as a freelancer.</Text>{" "}
-                    To add team members and unlock advanced features, upgrade to a salon.
+                    <Text style={twStyle("font-semibold text-[#FF0077]")}>{tl("freelancerLead")}</Text>{" "}
+                    {tl("freelancerBody")}
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -539,13 +557,13 @@ export default function TeamListScreen() {
                         return;
                       }
                       const base = getWebProviderBaseUrl().replace(/\/$/, "");
-                      pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, "Upgrade");
+                      pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, tl("upgradeTitle"));
                     }}
                     style={twStyle("mt-3 self-start rounded-lg bg-[#FF0077] px-4 py-2.5")}
-                    accessibilityLabel="Upgrade to salon"
+                    accessibilityLabel={tl("upgradeToSalonA11y")}
                     accessibilityRole="button"
                   >
-                    <Text style={twStyle("text-sm font-semibold text-white")}>Upgrade to salon</Text>
+                    <Text style={twStyle("text-sm font-semibold text-white")}>{tl("upgradeToSalon")}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -553,12 +571,12 @@ export default function TeamListScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 4, gap: 12, paddingRight: 4 }}
+                contentContainerStyle={{ paddingBottom: 4, gap: 12, paddingEnd: 4 }}
                 style={twStyle("mb-4")}
               >
                 <View style={{ width: 132 }}>
                   <StatCard
-                    title="Total"
+                    title={tl("statTotal")}
                     value={String(totalCount)}
                     icon="people-outline"
                     compact
@@ -566,7 +584,7 @@ export default function TeamListScreen() {
                 </View>
                 <View style={{ width: 132 }}>
                   <StatCard
-                    title="Active"
+                    title={tl("statActive")}
                     value={String(activeCount)}
                     icon="checkmark-circle-outline"
                     iconColor="#22c55e"
@@ -576,7 +594,7 @@ export default function TeamListScreen() {
                 </View>
                 <View style={{ width: 152 }}>
                   <StatCard
-                    title="Service providers"
+                    title={tl("statServiceProviders")}
                     value={String(serviceProvidersCount)}
                     icon="briefcase-outline"
                     iconColor="#9333ea"
@@ -586,7 +604,7 @@ export default function TeamListScreen() {
                 </View>
                 <View style={{ width: 132 }}>
                   <StatCard
-                    title="On shift"
+                    title={tl("statOnShift")}
                     value={String(onShiftCount)}
                     icon="time-outline"
                     iconColor={Colors.primary}
@@ -596,7 +614,7 @@ export default function TeamListScreen() {
                 </View>
                 <View style={{ width: 132 }}>
                   <StatCard
-                    title="Avg rating"
+                    title={tl("statAvgRating")}
                     value={avgRating == null ? "—" : avgRating.toFixed(1)}
                     icon="star-outline"
                     iconColor="#f59e0b"
@@ -609,7 +627,7 @@ export default function TeamListScreen() {
               {/* ── Search & Filter ── */}
               <View style={twStyle("mb-3")}>
                 <SearchBar
-                  placeholder="Search by name, email, role..."
+                  placeholder={tl("searchPlaceholder")}
                   value={search}
                   onChangeText={setSearch}
                 />
@@ -617,9 +635,9 @@ export default function TeamListScreen() {
               <View style={twStyle("mb-3")}>
                 <FilterChipGroup
                   options={[
-                    { label: "All", value: "all" },
-                    { label: "Active", value: "active" },
-                    { label: "Inactive", value: "inactive" },
+                    { label: tl("filterAll"), value: "all" },
+                    { label: tl("filterActive"), value: "active" },
+                    { label: tl("filterInactive"), value: "inactive" },
                   ]}
                   selected={filter}
                   onSelect={setFilter}
@@ -627,7 +645,7 @@ export default function TeamListScreen() {
               </View>
               {rosterRedacted ? (
                 <Text style={twStyle("mb-3 text-xs text-gray-500 px-1")}>
-                  Colleague emails and phones are hidden. An owner can grant “View team” to show them.
+                  {tl("rosterRedacted")}
                 </Text>
               ) : null}
             </View>
@@ -636,19 +654,19 @@ export default function TeamListScreen() {
             filtered.length === 0 ? (
               <EmptyState
                 icon="people-outline"
-                title={selectedLocationId && !search && filter === "all" ? "No staff at this location" : "No team members"}
+                title={selectedLocationId && !search && filter === "all" ? tl("emptyLocationTitle") : tl("emptyTitle")}
                 description={
                   search || filter !== "all"
-                    ? "No results match your search or filter"
+                    ? tl("emptyFiltered")
                     : selectedLocationId
-                      ? "No one is assigned to this branch yet. Assign existing team members or add someone new."
-                      : "Add team members to manage your staff"
+                      ? tl("emptyLocationBody")
+                      : tl("emptyBody")
                 }
               />
             ) : null
           }
           renderItem={({ item: member, index }: { item: StaffMember; index: number }) => (
-            <View style={isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined}>
+            <View style={isTablet && index % 2 === 0 ? { marginEnd: 12 } : undefined}>
             <TouchableOpacity
               style={twStyle(`${
                 isTablet
@@ -660,7 +678,7 @@ export default function TeamListScreen() {
               }
               onLongPress={() => handleLongPress(member)}
               delayLongPress={400}
-              accessibilityLabel={`View ${member.name}`}
+              accessibilityLabel={tl("viewMemberA11y", { name: member.name })}
             >
               {isTablet ? (
                 <View style={twStyle("items-center")}>
@@ -673,20 +691,20 @@ export default function TeamListScreen() {
                     {member.name}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {capitalizeFirst(member.role)}
+                    {staffRoleLabel(member.role, tl)}
                   </Text>
                   <View style={twStyle("mt-2 flex-row items-center")}>
                     <View
-                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`)}
+                      style={twStyle(`me-1.5 h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`)}
                     />
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      {member.is_active ? "Active" : "Inactive"}
+                      {member.is_active ? tl("active") : tl("inactive")}
                     </Text>
                   </View>
                   {member.average_rating != null && (
                     <View style={twStyle("mt-1 flex-row items-center")}>
                       <Ionicons name="star" size={12} color="#f59e0b" />
-                      <Text style={twStyle("ml-0.5 text-xs text-gray-500")}>
+                      <Text style={twStyle("ms-0.5 text-xs text-gray-500")}>
                         {member.average_rating.toFixed(1)}
                       </Text>
                     </View>
@@ -704,12 +722,12 @@ export default function TeamListScreen() {
                     imageUrl={member.avatar_url}
                     size="md"
                   />
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <Text style={twStyle("text-base font-medium text-gray-900")}>
                       {member.name}
                     </Text>
                     <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      {capitalizeFirst(member.role)}
+                      {staffRoleLabel(member.role, tl)}
                       {member.locations?.[0]?.location_name
                         ? ` · ${member.locations[0].location_name}`
                         : ""}
@@ -717,17 +735,17 @@ export default function TeamListScreen() {
                   </View>
                   <View style={twStyle("flex-row items-center")}>
                     {member.average_rating != null && (
-                      <View style={[twStyle("flex-row items-center"), { marginRight: 8 }]}>
+                      <View style={[twStyle("flex-row items-center"), { marginEnd: 8 }]}>
                         <Ionicons name="star" size={12} color="#f59e0b" />
-                        <Text style={twStyle("ml-0.5 text-xs text-gray-500")}>
+                        <Text style={twStyle("ms-0.5 text-xs text-gray-500")}>
                           {member.average_rating.toFixed(1)}
                         </Text>
                       </View>
                     )}
                     <View
-                      style={[twStyle(`h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`), { marginRight: 8 }]}
+                      style={[twStyle(`h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`), { marginEnd: 8 }]}
                     />
-                    <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                    <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />
                   </View>
                 </>
               )}
@@ -745,44 +763,44 @@ export default function TeamListScreen() {
       <BottomSheet
         visible={addSheetOpen}
         onClose={() => setAddSheetOpen(false)}
-        title="Add Team Member"
-        subtitle="Create the staff profile, assign services/locations, then set shifts and access."
+        title={tl("addSheetTitle")}
+        subtitle={tl("addSheetSubtitle")}
         snapHeight="full"
       >
         {/* Name */}
         <FormField
-          label="Full Name *"
+          label={tl("fullNameRequired")}
           value={form.name}
           onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-          placeholder="Full name"
+          placeholder={tl("fullNamePlaceholder")}
         />
 
         {/* Contact */}
         <FormField
-          label="Email *"
+          label={tl("emailRequired")}
           value={form.email}
           onChangeText={(t) => setForm((p) => ({ ...p, email: t }))}
-          placeholder="email@example.com"
+          placeholder={tl("emailPlaceholder")}
           keyboardType="email-address"
         />
         <E164PhoneField
-          label="Phone"
+          label={tl("phone")}
           valueE164={form.phone}
           onChangeE164={(e164) => setForm((p) => ({ ...p, phone: e164 }))}
           compact
           muted
-          accessibilityLabel="Team member phone"
+          accessibilityLabel={tl("phoneA11y")}
         />
 
         {/* Role Selector */}
-        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("role")}</Text>
         <View style={twStyle("mb-3 flex-row flex-wrap")}>
-          {ROLES.map((r) => (
+          {roles.map((r) => (
             <TouchableOpacity
               key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${form.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8, marginBottom: 8 }]}
+              style={[twStyle(`rounded-full px-4 py-2 ${form.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8, marginBottom: 8 }]}
               onPress={() => setForm((p) => ({ ...p, role: r.value }))}
-              accessibilityLabel={`Select role ${r.label}`}
+              accessibilityLabel={tl("selectRoleA11y", { role: r.label })}
             >
               <Text
                 style={twStyle(`text-sm font-medium ${form.role === r.value ? "text-white" : "text-gray-600"}`)}
@@ -793,16 +811,15 @@ export default function TeamListScreen() {
           ))}
         </View>
         <Text style={twStyle("mb-3 text-xs leading-5 text-gray-500")}>
-          Staff can work assigned services. Managers can help manage bookings and team workflows depending on
-          permissions. Owner should only be used for trusted business owners.
+          {tl("roleHint")}
         </Text>
 
         {/* Commission Rate */}
         <FormField
-          label="Commission Rate (%)"
+          label={tl("commissionRate")}
           value={form.commission_rate}
           onChangeText={(t) => setForm((p) => ({ ...p, commission_rate: t }))}
-          placeholder="e.g. 30"
+          placeholder={tl("commissionPlaceholder")}
           keyboardType="numeric"
         />
 
@@ -810,7 +827,7 @@ export default function TeamListScreen() {
         {locations && locations.length > 0 && (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              Assign locations
+              {tl("assignLocations")}
             </Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {locations.map((loc, i) => {
@@ -820,14 +837,14 @@ export default function TeamListScreen() {
                     key={loc.id}
                     style={twStyle(`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`)}
                     onPress={() => toggleFormLocation(loc.id)}
-                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${loc.name}`}
+                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: loc.name }) : tl("selectA11y", { name: loc.name })}
                   >
                     <Ionicons
                       name={isSelected ? "checkbox" : "square-outline"}
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{loc.name}</Text>
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{loc.name}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -839,7 +856,7 @@ export default function TeamListScreen() {
         {services && services.length > 0 && (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              Assign services they can perform
+              {tl("assignServices")}
             </Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {services.map((svc, i) => {
@@ -849,14 +866,14 @@ export default function TeamListScreen() {
                     key={svc.id}
                     style={twStyle(`flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`)}
                     onPress={() => toggleFormService(svc.id)}
-                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${svc.title}`}
+                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: svc.title }) : tl("selectA11y", { name: svc.title })}
                   >
                     <Ionicons
                       name={isSelected ? "checkbox" : "square-outline"}
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{svc.title}</Text>
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{svc.title}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -868,10 +885,10 @@ export default function TeamListScreen() {
         <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
           <View>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Send invite email
+              {tl("sendInvite")}
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Resend + Provider app links. They join via /provider/join — not owner onboarding.
+              {tl("sendInviteHint")}
             </Text>
           </View>
           <Switch
@@ -879,13 +896,13 @@ export default function TeamListScreen() {
             onValueChange={(v) => setForm((p) => ({ ...p, invite_email: v }))}
             trackColor={{ false: "#d1d5db", true: "#6366f1" }}
             thumbColor="#fff"
-            accessibilityLabel="Toggle email invitation"
+            accessibilityLabel={tl("toggleInviteA11y")}
           />
         </View>
 
         {/* Submit */}
         <ActionButton
-          label="Add Team Member"
+          label={tl("addMemberCta")}
           onPress={handleSubmit}
           loading={creating}
           fullWidth
@@ -898,37 +915,37 @@ export default function TeamListScreen() {
       <BottomSheet
         visible={editSheetOpen}
         onClose={() => { setEditSheetOpen(false); setEditingMember(null); }}
-        title={`Edit ${editingMember?.name ?? "team member"}`}
+        title={tl("editTitle", { name: editingMember?.name ?? tl("teamMemberFallback") })}
         snapHeight="auto"
       >
         <FormField
-          label="Full Name *"
+          label={tl("fullNameRequired")}
           value={editForm.name}
           onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
-          placeholder="Full name"
+          placeholder={tl("fullNamePlaceholder")}
         />
 
         <E164PhoneField
-          label="Phone"
+          label={tl("phone")}
           valueE164={editForm.phone}
           onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
           compact
           muted
-          accessibilityLabel="Team member phone"
+          accessibilityLabel={tl("phoneA11y")}
         />
 
         {/* Role */}
-        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("role")}</Text>
         <View style={twStyle("mb-3 flex-row flex-wrap")}>
-          {ROLES.map((r) => (
+          {roles.map((r) => (
             <TouchableOpacity
               key={r.value}
               style={[
                 twStyle(`rounded-full px-4 py-2 ${editForm.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
-                { marginRight: 8, marginBottom: 8 },
+                { marginEnd: 8, marginBottom: 8 },
               ]}
               onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
-              accessibilityLabel={`Select role ${r.label}`}
+              accessibilityLabel={tl("selectRoleA11y", { role: r.label })}
             >
               <Text style={twStyle(`text-sm font-medium ${editForm.role === r.value ? "text-white" : "text-gray-600"}`)}>
                 {r.label}
@@ -938,17 +955,17 @@ export default function TeamListScreen() {
         </View>
 
         <FormField
-          label="Commission Rate (%)"
+          label={tl("commissionRate")}
           value={editForm.commission_rate}
           onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
-          placeholder="e.g. 30"
+          placeholder={tl("commissionPlaceholder")}
           keyboardType="numeric"
         />
 
         {/* Location Assignment */}
         {locations && locations.length > 0 && (
           <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Locations</Text>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("locations")}</Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {locations.map((loc, i) => {
                 const isSelected = editForm.location_ids.includes(loc.id);
@@ -964,14 +981,14 @@ export default function TeamListScreen() {
                           : [...p.location_ids, loc.id],
                       }))
                     }
-                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${loc.name}`}
+                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: loc.name }) : tl("selectA11y", { name: loc.name })}
                   >
                     <Ionicons
                       name={isSelected ? "checkbox" : "square-outline"}
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{loc.name}</Text>
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{loc.name}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -982,7 +999,7 @@ export default function TeamListScreen() {
         {services && services.length > 0 && (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              Assign Services
+              {tl("assignServicesShort")}
             </Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {services.map((svc, i) => {
@@ -994,14 +1011,14 @@ export default function TeamListScreen() {
                       `flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`,
                     )}
                     onPress={() => toggleEditFormService(svc.id)}
-                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${svc.title}`}
+                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: svc.title }) : tl("selectA11y", { name: svc.title })}
                   >
                     <Ionicons
                       name={isSelected ? "checkbox" : "square-outline"}
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{svc.title}</Text>
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{svc.title}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -1010,7 +1027,7 @@ export default function TeamListScreen() {
         )}
 
         <ActionButton
-          label="Save changes"
+          label={tl("saveChanges")}
           onPress={handleEditSubmit}
           loading={updating}
           fullWidth

@@ -3,6 +3,7 @@ import { DeviceEventEmitter, View, Text, Platform } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import { Ionicons } from "@expo/vector-icons";
 import { isScreenshotMode } from "@/config/public-env";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Offline indicator bar that appears at the top of the screen when the device
@@ -12,6 +13,7 @@ import { isScreenshotMode } from "@/config/public-env";
  * `useApi` hooks can silently refresh stale data without the user tapping Retry.
  */
 export function OfflineBar() {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(false);
   const wasOfflineRef = useRef(false);
   const screenshot = isScreenshotMode();
@@ -40,8 +42,8 @@ export function OfflineBar() {
         Platform.OS === "android" ? { paddingTop: 4, paddingBottom: 4 } : undefined,
       ]}
     >
-      <Ionicons name="cloud-offline-outline" size={16} color="#fff" style={{ marginRight: 8 }} />
-      <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>No internet connection</Text>
+      <Ionicons name="cloud-offline-outline" size={16} color="#fff" style={{ marginEnd: 8 }} />
+      <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>{t("customer.mobile.components.offlineBar.noConnection")}</Text>
     </View>
   );
 }

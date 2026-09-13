@@ -13,6 +13,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 
 interface WaitlistSettings {
@@ -42,6 +43,8 @@ const DEFAULT_SETTINGS: WaitlistSettings = {
 };
 
 export default function WaitlistSettingsScreen() {
+  const { t } = useTranslation();
+  const ws = (key: string) => t(`provider.mobile.screens.waitlistSettings.${key}`) as string;
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data: apiData, loading, error, refresh } = useApi<WaitlistSettings>("/api/provider/settings/waitlist");
@@ -82,7 +85,7 @@ export default function WaitlistSettingsScreen() {
       show_estimated_wait_time: local.showEstimatedWaitTime,
     });
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(ws("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -92,7 +95,7 @@ export default function WaitlistSettingsScreen() {
   if (loading && !apiData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Waitlist settings" onBack={() => router.back()} />
+        <ScreenHeader title={ws("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -103,7 +106,7 @@ export default function WaitlistSettingsScreen() {
   if (error && !apiData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Waitlist settings" onBack={() => router.back()} />
+        <ScreenHeader title={ws("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -114,7 +117,7 @@ export default function WaitlistSettingsScreen() {
   const row = (label: string, desc: string | null, children: React.ReactNode) => (
     <View style={twStyle("border-b border-gray-100 py-3.5")}>
       <View style={twStyle("flex-row items-center justify-between")}>
-        <View style={twStyle("flex-1 pr-4")}>
+        <View style={twStyle("flex-1 pe-4")}>
           <Text style={twStyle("text-sm font-medium text-gray-900")}>{label}</Text>
           {desc ? <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{desc}</Text> : null}
         </View>
@@ -125,7 +128,7 @@ export default function WaitlistSettingsScreen() {
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
-      <ScreenHeader title="Waitlist settings" onBack={() => router.back()} subtitle="Configure waitlist and waiting room" />
+      <ScreenHeader title={ws("title")} onBack={() => router.back()} subtitle={ws("subtitle")} />
       <KeyboardAvoidingView
         style={twStyle("flex-1")}
         behavior="padding"
@@ -138,32 +141,32 @@ export default function WaitlistSettingsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={twStyle("mt-2 mb-3 text-sm font-semibold text-gray-700")}>Intelligent waitlist</Text>
+          <Text style={twStyle("mt-2 mb-3 text-sm font-semibold text-gray-700")}>{ws("sectionIntelligent")}</Text>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white px-4")}>
             {row(
-              "Enable intelligent waitlist",
-              "Notify clients when slots become available",
+              ws("enableIntelligent"),
+              ws("enableIntelligentDesc"),
               <Switch value={local.enableIntelligentWaitlist} onValueChange={(v) => set("enableIntelligentWaitlist", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
             )}
             {local.enableIntelligentWaitlist && (
               <>
                 {row(
-                  "Auto-notify when slots open",
-                  "Send notifications when appointments are cancelled or new slots open",
+                  ws("autoNotify"),
+                  ws("autoNotifyDesc"),
                   <Switch value={local.autoNotifyOnAvailability} onValueChange={(v) => set("autoNotifyOnAvailability", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
                 )}
                 {row(
-                  "Notify high priority first",
-                  "High priority entries get notified before others",
+                  ws("notifyPriority"),
+                  ws("notifyPriorityDesc"),
                   <Switch value={local.notifyPriorityFirst} onValueChange={(v) => set("notifyPriorityFirst", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
                 )}
                 <View style={twStyle("border-b border-gray-100 py-3.5")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>Notification delay (minutes)</Text>
-                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Wait before sending to avoid spam</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{ws("notificationDelay")}</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{ws("notificationDelayDesc")}</Text>
                   <TextInput
                     style={twStyle("mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                     value={String(local.notificationDelayMinutes)}
-                    onChangeText={(t) => set("notificationDelayMinutes", Math.min(60, Math.max(0, parseInt(t, 10) || 0)))}
+                    onChangeText={(text) => set("notificationDelayMinutes", Math.min(60, Math.max(0, parseInt(text, 10) || 0)))}
                     keyboardType="number-pad"
                     maxLength={2}
                   />
@@ -172,62 +175,62 @@ export default function WaitlistSettingsScreen() {
             )}
           </View>
 
-          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>Virtual waiting room</Text>
+          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>{ws("sectionVirtual")}</Text>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white px-4")}>
             {row(
-              "Enable virtual waiting room",
-              "Clients can check in and wait virtually",
+              ws("enableVirtual"),
+              ws("enableVirtualDesc"),
               <Switch value={local.enableVirtualWaitingRoom} onValueChange={(v) => set("enableVirtualWaitingRoom", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
             )}
             {local.enableVirtualWaitingRoom && (
               <>
                 {row(
-                  "Allow client self check-in",
-                  "Clients can check themselves in via app or booking",
+                  ws("allowSelfCheckIn"),
+                  ws("allowSelfCheckInDesc"),
                   <Switch value={local.allowClientSelfCheckIn} onValueChange={(v) => set("allowClientSelfCheckIn", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
                 )}
                 {row(
-                  "Show estimated wait time",
-                  "Display estimated wait time in the waiting room",
+                  ws("showWaitTime"),
+                  ws("showWaitTimeDesc"),
                   <Switch value={local.showEstimatedWaitTime} onValueChange={(v) => set("showEstimatedWaitTime", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
                 )}
               </>
             )}
           </View>
 
-          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>Online waitlist</Text>
+          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>{ws("sectionOnline")}</Text>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white px-4")}>
             {row(
-              "Allow clients to join waitlist online",
-              "When no slots available in online booking",
+              ws("allowOnline"),
+              ws("allowOnlineDesc"),
               <Switch value={local.allowOnlineWaitlist} onValueChange={(v) => set("allowOnlineWaitlist", v)} trackColor={{ false: "#d1d5db", true: "#6366f1" }} />
             )}
           </View>
 
-          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>General</Text>
+          <Text style={twStyle("mt-6 mb-3 text-sm font-semibold text-gray-700")}>{ws("sectionGeneral")}</Text>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white px-4")}>
             <View style={twStyle("border-b border-gray-100 py-3.5")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Max waitlist size</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{ws("maxSize")}</Text>
               <TextInput
                 style={twStyle("mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                 value={String(local.maxWaitlistSize)}
-                onChangeText={(t) => set("maxWaitlistSize", Math.min(500, Math.max(10, parseInt(t, 10) || 50)))}
+                onChangeText={(text) => set("maxWaitlistSize", Math.min(500, Math.max(10, parseInt(text, 10) || 50)))}
                 keyboardType="number-pad"
               />
             </View>
             <View style={twStyle("py-3.5")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Auto-remove after (days)</Text>
-              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Remove entries not converted to appointment</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{ws("autoRemove")}</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{ws("autoRemoveDesc")}</Text>
               <TextInput
                 style={twStyle("mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                 value={String(local.autoRemoveAfterDays)}
-                onChangeText={(t) => set("autoRemoveAfterDays", Math.min(365, Math.max(1, parseInt(t, 10) || 30)))}
+                onChangeText={(text) => set("autoRemoveAfterDays", Math.min(365, Math.max(1, parseInt(text, 10) || 30)))}
                 keyboardType="number-pad"
               />
             </View>
           </View>
 
-          <ActionButton label="Save settings" onPress={handleSave} loading={saving} fullWidth style={twStyle("mt-6")} />
+          <ActionButton label={ws("save")} onPress={handleSave} loading={saving} fullWidth style={twStyle("mt-6")} />
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>

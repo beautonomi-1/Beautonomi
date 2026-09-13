@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useMemo } from "react";
 import {
   BarChart,
@@ -17,6 +18,7 @@ const PALETTE = ["#db2777", "#e11d48", "#ec4899", "#f472b6", "#f9a8d4", "#fbcfe8
 type Row = { clientName: string; totalSpent: number };
 
 export function ClientSpendBarChart({ rows, formatMoney }: { rows: Row[]; formatMoney: (n: number) => string }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows.map((r) => ({
@@ -28,7 +30,7 @@ export function ClientSpendBarChart({ rows, formatMoney }: { rows: Row[]; format
   );
 
   if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No clients to chart.</p>;
+    return <p className="py-8 text-center text-sm text-gray-500">{t("web.provider.reports.pages.clients/summary.noClientsToChart")}</p>;
   }
 
   return (

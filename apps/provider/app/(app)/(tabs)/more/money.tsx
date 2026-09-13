@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { FinanceHubShell } from "@/components/finance/FinanceHubShell";
 import { MoneyBranchFilter } from "@/components/finance/MoneyBranchFilter";
 import { useApi } from "@/hooks/useApi";
@@ -13,6 +14,8 @@ type TeamAccessPayload = {
 };
 
 export default function MoneyHubScreen() {
+  const { t } = useTranslation();
+  const mh = (key: string) => t(`provider.mobile.screens.moneyHub.${key}`) as string;
   const [moneyLocationId, setMoneyLocationId] = useState<string | null>(null);
 
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access", {
@@ -27,28 +30,28 @@ export default function MoneyHubScreen() {
     const all = [
       {
         id: "overview",
-        label: "Overview",
+        label: mh("tabOverview"),
         render: () => <FinanceOverviewContent locationId={moneyLocationId} />,
       },
       {
         id: "ledger",
-        label: "Ledger",
+        label: mh("tabLedger"),
         render: () => <TransactionsContent embedded locationId={moneyLocationId} />,
       },
       {
         id: "sales",
-        label: "Sales",
+        label: mh("tabSales"),
         render: () => <SalesHistoryContent embedded locationId={moneyLocationId} />,
       },
-      { id: "payouts", label: "Payouts", render: () => <PayoutsContent /> },
+      { id: "payouts", label: mh("tabPayouts"), render: () => <PayoutsContent /> },
     ];
     return canSeePayoutsTab ? all : all.filter((tab) => tab.id !== "payouts");
-  }, [canSeePayoutsTab, moneyLocationId]);
+  }, [canSeePayoutsTab, moneyLocationId, t]);
 
   return (
     <FinanceHubShell
-      title="Money"
-      subtitle="Earnings, ledger, sales & payouts"
+      title={mh("title")}
+      subtitle={mh("subtitle")}
       tabs={tabs}
       defaultTab="overview"
       headerExtra={

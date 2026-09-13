@@ -237,7 +237,7 @@ const PinCard = React.memo(function PinCard({
                 style={{
                   width: 24,
                   height: 24,
-                  marginRight: 6,
+                  marginEnd: 6,
                   borderRadius: 12,
                   backgroundColor: Colors.primary,
                   alignItems: "center",
@@ -281,14 +281,14 @@ const PinCard = React.memo(function PinCard({
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: post.caption ? 6 : 0 }}>
               <TouchableOpacity
                 onPress={() => { haptic.light(); onLike(post); }}
-                style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}
+                style={{ flexDirection: "row", alignItems: "center", marginEnd: 12 }}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <Ionicons
                   name={post.is_liked ? "heart" : "heart-outline"}
                   size={16}
                   color={post.is_liked ? Colors.primary : "#9CA3AF"}
-                  style={{ marginRight: 3 }}
+                  style={{ marginEnd: 3 }}
                 />
                 <Text style={{ fontSize: 12, color: post.is_liked ? Colors.primary : "#9CA3AF", fontWeight: "500" }}>
                   {post.like_count > 0 ? post.like_count : ""}
@@ -296,7 +296,7 @@ const PinCard = React.memo(function PinCard({
               </TouchableOpacity>
               {(post.comment_count ?? 0) > 0 ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Ionicons name="chatbubble-outline" size={14} color="#9CA3AF" style={{ marginRight: 3 }} />
+                  <Ionicons name="chatbubble-outline" size={14} color="#9CA3AF" style={{ marginEnd: 3 }} />
                   <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{post.comment_count}</Text>
                 </View>
               ) : null}
@@ -407,14 +407,14 @@ function CategoryChip({
         paddingVertical: 8,
         borderRadius: 999,
         backgroundColor: active ? "#111827" : "#F3F4F6",
-        marginRight: 8,
+        marginEnd: 8,
         opacity: disabled ? 0.6 : 1,
       }}
       accessibilityLabel={label}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
     >
-      <Ionicons name={icon} size={14} color={active ? "#fff" : "#6B7280"} style={{ marginRight: 5 }} />
+      <Ionicons name={icon} size={14} color={active ? "#fff" : "#6B7280"} style={{ marginEnd: 5 }} />
       <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#fff" : "#374151" }}>
         {label}
       </Text>
@@ -484,7 +484,7 @@ function MasonrySkeleton({
   const heights = [1.1, 0.8, 0.9, 1.3, 0.7, 1.0];
   return (
     <View style={{ flexDirection: "row", paddingHorizontal: contentPadding, paddingTop: 8 }}>
-      <View style={{ flex: 1, marginRight: GAP }}>
+      <View style={{ flex: 1, marginEnd: GAP }}>
         {[0, 2, 4].map((i) => (
           <View key={i} style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#F3F4F6", marginBottom: i < 4 ? GAP : 0 }}>
             <Skeleton width={cardWidth} height={cardWidth * heights[i]} borderRadius={0} />
@@ -958,7 +958,7 @@ export default function ExploreScreen() {
               />
               <View style={{ flexDirection: "row" }}>
                 {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} width={80} height={36} borderRadius={999} style={i < 4 ? { marginRight: 8 } : undefined} />
+                  <Skeleton key={i} width={80} height={36} borderRadius={999} style={i < 4 ? { marginEnd: 8 } : undefined} />
                 ))}
               </View>
             </View>

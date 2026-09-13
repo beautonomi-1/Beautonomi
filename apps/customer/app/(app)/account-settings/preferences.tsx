@@ -34,12 +34,18 @@ import {
   setRuntimeMarketHost,
 } from "@/config/public-env";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import {
+  clearConfigBundleCache,
+  fetchConfigBundle,
+  getTenantDefaultCurrency,
+} from "@/lib/config-bundle";
 import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import {
   mergeLanguagePickerOptions,
+  normalizeLanguageCode,
+  resolveLanguage,
   supportedLanguages,
   useTranslation,
 } from "@beautonomi/i18n";
@@ -82,7 +88,7 @@ interface PreferenceOptionRow {
 function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[] {
   const merged = mergeLanguagePickerOptions(
     apiRows.map((o) => ({
-      code: (o.value.split(/[-_]/)[0] || o.value).toLowerCase(),
+      code: normalizeLanguageCode(o.value),
       name: o.label,
     })),
   );
@@ -130,6 +136,14 @@ function mapPreferenceRowsToPicker(rows: PreferenceOptionRow[] | null | undefine
 
 function preferApiOrFallback(api: PickerOption[], fallback: PickerOption[]): PickerOption[] {
   return api.length > 0 ? api : fallback;
+}
+
+/** Keep every bundled locale (Wave A + international Wave B) for tourists. */
+function allLanguagePickerOptions(): PickerOption[] {
+  return supportedLanguages.map(({ code, nativeName, name }) => ({
+    value: code,
+    label: `${nativeName} (${name})`,
+  }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -224,7 +238,7 @@ function AppearanceSection() {
               accessibilityState={{ selected }}
             >
               <Ionicons name={m.icon} size={20} color={selected ? Colors.primary : themed.textMuted} />
-              <Text style={{ marginLeft: 12, flex: 1, fontWeight: "500", color: themed.textPrimary }}>{m.label}</Text>
+              <Text style={{ marginStart: 12, flex: 1, fontWeight: "500", color: themed.textPrimary }}>{m.label}</Text>
               {selected && (
                 <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
               )}
@@ -248,10 +262,7 @@ export default function PreferencesScreen() {
   const { t } = useTranslation();
 
   const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(() =>
-    supportedLanguages.map(({ code, nativeName, name }) => ({
-      value: code,
-      label: `${nativeName} (${name})`,
-    })),
+    allLanguagePickerOptions(),
   );
   const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(() =>
     buildMinimalCurrencyFallback(getTenantDefaultCurrency()),
@@ -361,7 +372,7 @@ export default function PreferencesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [bundle?.meta?.tenant_region?.default_currency, t]);
+  }, [bundle?.meta?.tenant_region?.default_currency, bundle?.meta?.tenant_region?.supported_languages, t]);
 
   useEffect(() => {
     void load();
@@ -376,9 +387,9 @@ export default function PreferencesScreen() {
   useEffect(() => {
     const raw = profile.preferred_language?.trim();
     if (!raw) return;
-    const code = raw.split(/[-_]/)[0];
+    const code = normalizeLanguageCode(raw);
     void import("@beautonomi/i18n").then(({ i18n }) => {
-      const cur = (i18n.language || "en").split(/[-_]/)[0];
+      const cur = normalizeLanguageCode(i18n.language || "en");
       if (cur !== code) void changeLanguage(code);
     });
   }, [profile.preferred_language]);
@@ -402,8 +413,15 @@ export default function PreferencesScreen() {
             getApiErrorMessage(res.error, t("customer.preferencesScreen.savePrefError")),
           );
         } else if (field === "preferred_language") {
-          const code = value.split(/[-_]/)[0];
-          await changeLanguage(code);
+          const { directionChanged } = await changeLanguage(normalizeLanguageCode(value));
+          if (directionChanged) {
+            const { promptReloadIfDirectionChanged } = await import("@/lib/i18n");
+            promptReloadIfDirectionChanged(directionChanged, Alert.alert, {
+              title: t("customer.mobile.screens.languageScreen.restartRequiredTitle"),
+              body: t("customer.mobile.screens.languageScreen.restartRequiredBody"),
+              reload: t("customer.mobile.screens.languageScreen.restartNow"),
+            });
+          }
         }
       } catch {
         setProfile(previous);
@@ -418,18 +436,69 @@ export default function PreferencesScreen() {
   const selectMarketHost = useCallback(async (host: string) => {
     const normalized = normalizeHost(host);
     if (!normalized || normalized === currentMarketHost) return;
+    const previousLanguage = profile.preferred_language
+      ? normalizeLanguageCode(profile.preferred_language)
+      : null;
     await setRuntimeMarketHost(normalized);
     setCurrentMarketHost(normalized);
+    let marketSupported = bundle?.meta?.tenant_region?.supported_languages ?? [];
     try {
+      clearConfigBundleCache();
+      const refreshedBundle = await fetchConfigBundle({
+        platform: "customer",
+        environment: __DEV__ ? "development" : "production",
+      });
+      marketSupported = refreshedBundle?.meta?.tenant_region?.supported_languages ?? [];
       await refreshConfigBundle();
     } catch {
       // Non-fatal: tenant metadata may refresh on next app launch.
     }
-    Alert.alert(
-      t("customer.preferencesScreen.marketUpdatedTitle"),
+    const resolvedLanguage = resolveLanguage(previousLanguage, marketSupported);
+    const languageChanged =
+      Boolean(previousLanguage) &&
+      marketSupported.length > 0 &&
+      resolvedLanguage.toLowerCase() !== previousLanguage!.toLowerCase();
+
+    if (languageChanged) {
+      setProfile((prev) => ({ ...prev, preferred_language: resolvedLanguage }));
+      try {
+        await api.patch<UserProfile>("/api/me/profile", {
+          preferred_language: resolvedLanguage,
+        });
+      } catch {
+        // Non-fatal: UI language still updates locally.
+      }
+      await changeLanguage(resolvedLanguage);
+    }
+
+    const previousLanguageLabel =
+      displayLabel(languageOptions, previousLanguage, previousLanguage ?? "") ||
+      previousLanguage ||
+      "";
+    const resolvedLanguageLabel =
+      displayLabel(languageOptions, resolvedLanguage, resolvedLanguage) || resolvedLanguage;
+
+    const bodyLines = [
       t("customer.preferencesScreen.marketUpdatedBody", { host: normalized }),
-    );
-  }, [currentMarketHost, refreshConfigBundle, t]);
+      ...(languageChanged
+        ? [
+            t("customer.preferencesScreen.marketLanguageFallbackBody", {
+              language: resolvedLanguageLabel,
+              previousLanguage: previousLanguageLabel,
+            }),
+          ]
+        : []),
+    ];
+
+    Alert.alert(t("customer.preferencesScreen.marketUpdatedTitle"), bodyLines.join("\n\n"));
+  }, [
+    bundle,
+    currentMarketHost,
+    languageOptions,
+    profile.preferred_language,
+    refreshConfigBundle,
+    t,
+  ]);
 
   const themed = useThemedColors();
 
@@ -474,7 +543,7 @@ export default function PreferencesScreen() {
           {saving && (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, marginTop: 24 }}>
               <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={{ fontSize: 14, color: themed.textSecondary, marginLeft: 8 }}>
+              <Text style={{ fontSize: 14, color: themed.textSecondary, marginStart: 8 }}>
                 {t("customer.preferencesScreen.saving")}
               </Text>
             </View>
@@ -499,10 +568,10 @@ export default function PreferencesScreen() {
                   onPress={() => selectMarketHost(option.host)}
                   style={{
                     backgroundColor: themed.surface,
-                    borderRadius: 12,
+                    borderRadius: 16,
                     padding: 16,
-                    borderWidth: 1,
-                    borderColor: selected ? Colors.primary : themed.border,
+                    borderWidth: 2,
+                    borderColor: selected ? "#222222" : "transparent",
                     marginTop: index === 0 ? 0 : 8,
                     flexDirection: "row",
                     alignItems: "center",
@@ -531,13 +600,17 @@ export default function PreferencesScreen() {
         onRequestClose={() => setPickerField(null)}
       >
         <Pressable style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setPickerField(null)}>
-          <Pressable style={{ backgroundColor: themed.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "60%" }} onPress={(e) => e.stopPropagation()}>
-            <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: themed.border }}>
-              <Text style={{ textAlign: "center", fontWeight: "600", color: themed.textPrimary }}>
-                {pickerConfig?.modalTitle ?? "Select"}
+          <Pressable style={{ backgroundColor: themed.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ alignItems: "center", paddingTop: 8 }}>
+              <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: themed.border }} />
+            </View>
+            <View style={{ paddingVertical: 14, paddingHorizontal: 20 }}>
+              <Text style={{ fontWeight: "700", fontSize: 18, color: themed.textPrimary }}>
+                {pickerConfig?.modalTitle ?? t("customer.preferencesScreen.selectFallback")}
               </Text>
             </View>
-            <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {pickerConfig?.options.map((option) => {
                 const stored = pickerField ? profile[pickerField] : null;
                 const resolved =
@@ -546,17 +619,31 @@ export default function PreferencesScreen() {
                 return (
                   <TouchableOpacity
                     key={option.value}
-                    style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: themed.border }}
+                    style={{ width: "50%", padding: 6 }}
                     onPress={() => {
                       if (pickerField) selectOption(pickerField, option.value);
                     }}
                   >
-                    <Text style={{ fontSize: 16, fontWeight: isSelected ? "600" : "400", color: isSelected ? Colors.primary : themed.textPrimary }}>
-                      {option.label}
-                    </Text>
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 2,
+                        borderColor: isSelected ? "#222222" : "transparent",
+                        backgroundColor: isSelected ? themed.surface : themed.background,
+                        paddingVertical: 14,
+                        paddingHorizontal: 12,
+                        minHeight: 68,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: themed.textPrimary }}>
+                        {option.label}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
+              </View>
             </ScrollView>
           </Pressable>
         </Pressable>

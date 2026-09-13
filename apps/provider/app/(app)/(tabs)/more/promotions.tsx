@@ -21,6 +21,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Promotion {
   id: string;
@@ -39,6 +40,12 @@ interface Promotion {
 
 /** Content-only for use in Marketing hub (Promo codes tab). */
 export function PromotionsContent() {
+  const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.promotions." + key, opts) as string,
+    [t],
+  );
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -67,20 +74,20 @@ export function PromotionsContent() {
   const handleCreate = useCallback(async () => {
     const trimmedCode = code.trim().toUpperCase();
     if (!trimmedCode) {
-      Alert.alert("Required", "Enter a promo code.");
+      Alert.alert(pr("requiredTitle"), pr("enterCode"));
       return;
     }
     const numValue = parseFloat(value.replace(/,/g, "."));
     if (Number.isNaN(numValue)) {
-      Alert.alert("Invalid", "Enter a valid value.");
+      Alert.alert(pr("invalidTitle"), pr("invalidValue"));
       return;
     }
     if (promoType === "percentage" && (numValue < 0 || numValue > 100)) {
-      Alert.alert("Invalid", "Percentage must be between 0 and 100.");
+      Alert.alert(pr("invalidTitle"), pr("percentageRange"));
       return;
     }
     if (promoType === "fixed_amount" && numValue <= 0) {
-      Alert.alert("Invalid", "Enter a fixed amount greater than 0.");
+      Alert.alert(pr("invalidTitle"), pr("fixedAmount"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -92,7 +99,7 @@ export function PromotionsContent() {
       public_on_profile: publicOnProfile,
     });
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(pr("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -112,7 +119,7 @@ export function PromotionsContent() {
       setTogglingId(p.id);
       try {
         const { error: err } = await patchPromo(`/api/provider/promotions/${p.id}`, { is_active: !p.is_active });
-        if (err) Alert.alert("Error", err);
+        if (err) Alert.alert(pr("errorTitle"), err);
         else refresh();
       } finally {
         setTogglingId(null);
@@ -123,14 +130,14 @@ export function PromotionsContent() {
 
   const handleDelete = useCallback(
     (p: Promotion) => {
-      Alert.alert("Delete promotion", `Remove code "${p.code}"?`, [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(pr("deleteTitle"), pr("deleteBody", { code: p.code }), [
+        { text: pr("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: pr("delete"),
           style: "destructive",
           onPress: () => {
             deletePromo(`/api/provider/promotions/${p.id}`, {}).then(({ error: err }) => {
-              if (err) Alert.alert("Error", err);
+              if (err) Alert.alert(pr("errorTitle"), err);
               else refresh();
             });
           },
@@ -148,7 +155,7 @@ export function PromotionsContent() {
         const { error: err } = await patchPromo(`/api/provider/promotions/${p.id}`, {
           public_on_profile: !(p.public_on_profile ?? true),
         });
-        if (err) Alert.alert("Error", err);
+        if (err) Alert.alert(pr("errorTitle"), err);
         else refresh();
       } finally {
         setTogglingId(null);
@@ -192,10 +199,9 @@ export function PromotionsContent() {
             borderColor: "#bfdbfe",
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: "700", color: "#1e3a8a", marginBottom: 6 }}>Your codes only</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#1e3a8a", marginBottom: 6 }}>{pr("yourCodesOnly")}</Text>
           <Text style={{ fontSize: 12, color: "#1e40af", lineHeight: 17 }}>
-            Codes created here are tied to your business and apply when customers book you—they are not the same as platform-wide admin coupons.
-            Discounts reduce what you collect on covered bookings; track usage in Finance and reports.
+            {pr("yourCodesOnlyBody")}
           </Text>
         </View>
         {promotions.length === 0 ? (
@@ -203,16 +209,16 @@ export function PromotionsContent() {
             <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#ffedd5" }}>
               <Ionicons name="pricetag-outline" size={32} color="#f97316" />
             </View>
-            <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>No promo codes yet</Text>
+            <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>{pr("emptyTitle")}</Text>
             <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Create promo codes for percentage or fixed-amount discounts.
+              {pr("emptyDesc")}
             </Text>
             <TouchableOpacity
               onPress={() => setCreateOpen(true)}
               style={{ marginTop: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#f97316", paddingHorizontal: 24, paddingVertical: 12 }}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.white }}>New promo code</Text>
+              <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.white }}>{pr("newPromo")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -222,7 +228,7 @@ export function PromotionsContent() {
               style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#fed7aa", backgroundColor: "#fff7ed", paddingVertical: 12 }}
             >
               <Ionicons name="add" size={18} color="#f97316" />
-              <Text style={{ marginLeft: 8, fontWeight: "500", color: "#c2410c" }}>New promo code</Text>
+              <Text style={{ marginStart: 8, fontWeight: "500", color: "#c2410c" }}>{pr("newPromo")}</Text>
             </TouchableOpacity>
             {promotions.map((p) => (
             <View
@@ -232,24 +238,23 @@ export function PromotionsContent() {
               <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ffedd5" }}>
                 <Ionicons name="pricetag-outline" size={20} color="#f97316" />
               </View>
-              <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+              <View style={{ marginStart: 12, flex: 1, minWidth: 0 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{p.code}</Text>
                 <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                  {p.type === "percentage" ? `${p.value}% off` : `${formatCurrency(Number(p.value))} off`}
+                  {p.type === "percentage" ? pr("percentOff", { value: p.value }) : pr("amountOff", { amount: formatCurrency(Number(p.value)) })}
                   {p.description ? ` · ${p.description}` : ""}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                  Used {p.uses_count}
-                  {p.max_uses != null ? ` / ${p.max_uses}` : ""}
+                  {p.max_uses != null ? pr("usedCountMax", { count: p.uses_count, max: p.max_uses }) : pr("usedCount", { count: p.uses_count })}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: p.public_on_profile === false ? "#9a3412" : "#166534" }}>
-                  {p.public_on_profile === false ? "Hidden on public profile" : "Visible on public profile"}
+                  {p.public_on_profile === false ? pr("hiddenOnProfile") : pr("visibleOnProfile")}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => togglePublicOnProfile(p)}
                 style={{
-                  marginRight: 8,
+                  marginEnd: 8,
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
@@ -263,15 +268,15 @@ export function PromotionsContent() {
                     color: p.public_on_profile === false ? "#9a3412" : "#166534",
                   }}
                 >
-                  {p.public_on_profile === false ? "Hidden" : "Public"}
+                  {p.public_on_profile === false ? pr("hidden") : pr("public")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => toggleActive(p)}
-                style={{ marginRight: 8, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.is_active ? "#dcfce7" : Colors.gray[100] }}
+                style={{ marginEnd: 8, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.is_active ? "#dcfce7" : Colors.gray[100] }}
               >
                 <Text style={{ fontSize: 12, fontWeight: "500", color: p.is_active ? "#166534" : Colors.gray[600] }}>
-                  {p.is_active ? "On" : "Off"}
+                  {p.is_active ? pr("on") : pr("off")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -289,26 +294,26 @@ export function PromotionsContent() {
       <BottomSheet
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="New promo code"
-        subtitle="Percentage or fixed amount"
+        title={pr("sheetTitle")}
+        subtitle={pr("sheetSubtitle")}
       >
-        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Code *</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pr("codeLabel")}</Text>
         <TextInput
           style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-          placeholder="e.g. SAVE20"
+          placeholder={pr("codePlaceholder")}
           placeholderTextColor="#9ca3af"
           value={code}
           onChangeText={(t) => setCode(t.toUpperCase())}
           autoCapitalize="characters"
         />
-        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pr("type")}</Text>
         <View style={{ marginBottom: 16, flexDirection: "row" }}>
           <TouchableOpacity
             onPress={() => setPromoType("percentage")}
-            style={{ flex: 1, marginRight: 8, borderRadius: 12, paddingVertical: 10, backgroundColor: promoType === "percentage" ? "#f97316" : Colors.gray[100] }}
+            style={{ flex: 1, marginEnd: 8, borderRadius: 12, paddingVertical: 10, backgroundColor: promoType === "percentage" ? "#f97316" : Colors.gray[100] }}
           >
             <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: promoType === "percentage" ? Colors.white : Colors.gray[700] }}>
-              Percentage
+              {pr("typePercentage")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -316,12 +321,12 @@ export function PromotionsContent() {
             style={{ flex: 1, borderRadius: 12, paddingVertical: 10, backgroundColor: promoType === "fixed_amount" ? "#f97316" : Colors.gray[100] }}
           >
             <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: promoType === "fixed_amount" ? Colors.white : Colors.gray[700] }}>
-              Fixed amount
+              {pr("typeFixed")}
             </Text>
           </TouchableOpacity>
         </View>
         <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-          Value {promoType === "percentage" ? "(0–100)" : `(${getTenantDefaultCurrency()})`} *
+          {promoType === "percentage" ? pr("valuePercent") : pr("valueCurrency", { currency: getTenantDefaultCurrency() })}
         </Text>
         <TextInput
           style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
@@ -331,10 +336,10 @@ export function PromotionsContent() {
           onChangeText={setValue}
           keyboardType="decimal-pad"
         />
-        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description (optional)</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pr("descriptionOptional")}</Text>
         <TextInput
           style={{ marginBottom: 24, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-          placeholder="e.g. Summer sale"
+          placeholder={pr("descriptionPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={description}
           onChangeText={setDescription}
@@ -355,12 +360,12 @@ export function PromotionsContent() {
           }}
           accessibilityRole="switch"
           accessibilityState={{ checked: publicOnProfile }}
-          accessibilityLabel="Show this promo on public profile"
+          accessibilityLabel={pr("showOnProfileA11y")}
         >
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Show on public profile</Text>
+          <View style={{ flex: 1, paddingEnd: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{pr("showOnProfile")}</Text>
             <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-              Customers can still use this code at checkout even when hidden.
+              {pr("showOnProfileHint")}
             </Text>
           </View>
           <View
@@ -379,7 +384,7 @@ export function PromotionsContent() {
           </View>
         </TouchableOpacity>
         <ActionButton
-          label={creating ? "Creating…" : "Create promo code"}
+          label={creating ? pr("creating") : pr("createCta")}
           onPress={handleCreate}
           loading={creating}
           fullWidth
@@ -390,12 +395,13 @@ export function PromotionsContent() {
 }
 
 export default function PromotionsScreen() {
+  const { t } = useTranslation();
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Promotions"
+        title={t("provider.mobile.screens.promotions.title") as string}
         showBack
-        subtitle="Promo codes & discounts"
+        subtitle={t("provider.mobile.screens.promotions.subtitle") as string}
       />
       <PromotionsContent />
     </ScreenContainer>

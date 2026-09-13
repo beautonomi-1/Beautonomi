@@ -62,7 +62,7 @@ export default function HowItWorks({ content }: HowItWorksProps) {
             {steps.map((step, index) => {
               const Icon = ICONS[index % ICONS.length];
               return (
-                <li key={index} className="relative text-center md:text-left">
+                <li key={index} className="relative text-center md:text-start">
                   <div className="mb-5 flex items-center justify-center gap-3 md:justify-start">
                     <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary-hover text-white shadow-lg shadow-primary/30">
                       <Icon className="h-5 w-5" />

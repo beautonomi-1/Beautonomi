@@ -38,7 +38,7 @@ export default function BackButton({
         mb-3 md:mb-4 
         px-2 md:px-4
         py-2 md:py-2
-        -ml-2 md:ml-0
+        -ms-2 md:ms-0
         transition-colors
         active:bg-gray-100
         ${className}

@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import type { ReactNode } from "react";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
 
-export const metadata: Metadata = {
-  title: "Search",
-  description: "Search articles in the Beautonomi Learning Center.",
-  alternates: {
-    canonical: "/learn/search",
-    languages: getHreflangAlternateUrls("/learn/search"),
-  },
-  robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/learn/search",
+    titleKey: "web.seo.learnSearchTitle",
+    descriptionKey: "web.seo.learnSearchDescription",
+    robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
+  });
+}
 
 export default function LearnSearchLayout({ children }: { children: ReactNode }) {
   return children;

@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { BookingActionButton } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PaystackTerminalCollectDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ export function PaystackTerminalCollectDialog({
   appointment,
   onSuccess,
 }: PaystackTerminalCollectDialogProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [preparing, setPreparing] = useState(false);
   const [terminalCode, setTerminalCode] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export function PaystackTerminalCollectDialog({
   const prepareTerminal = useCallback(async () => {
     const amount = Number(outstanding.toFixed(2));
     if (amount <= 0) {
-      toast.error("There is no remaining balance to collect.");
+      toast.error(t("web.provider.bookings.detail.paystackCollect.noBalance"));
       return;
     }
     setPreparing(true);
@@ -74,7 +76,7 @@ export function PaystackTerminalCollectDialog({
       });
       const code = response.data?.terminal?.terminal_code;
       if (!code) {
-        toast.error("No Paystack Terminal is ready for this booking.");
+        toast.error(t("web.provider.bookings.detail.paystackCollect.noTerminal"));
         return;
       }
       setTerminalCode(code);
@@ -86,12 +88,12 @@ export function PaystackTerminalCollectDialog({
       setExpectedAmount(amount);
     } catch (err) {
       toast.error(
-        err instanceof FetchError ? err.message : "Failed to prepare Paystack Terminal payment.",
+        err instanceof FetchError ? err.message : t("web.provider.bookings.detail.paystackCollect.prepareFailed"),
       );
     } finally {
       setPreparing(false);
     }
-  }, [appointment.id, outstanding, raw.booking_number]);
+  }, [appointment.id, outstanding, raw.booking_number, t]);
 
   useEffect(() => {
     if (open && !terminalCode && !preparing) {
@@ -121,21 +123,26 @@ export function PaystackTerminalCollectDialog({
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Paystack Terminal</DialogTitle>
+          <DialogTitle>{t("web.provider.bookings.detail.paystackCollect.title")}</DialogTitle>
           <DialogDescription>
-            Ask the customer to pay the outstanding amount. Once Paystack confirms payment, the
-            booking balance updates automatically.
+            {t("web.provider.bookings.detail.paystackCollect.description")}
           </DialogDescription>
         </DialogHeader>
 
         {preparing && !terminalCode ? (
-          <p className="text-sm text-gray-500 py-4 text-center">Preparing terminal…</p>
+          <p className="text-sm text-gray-500 py-4 text-center">
+            {t("web.provider.bookings.detail.paystackCollect.preparing")}
+          </p>
         ) : terminalCode ? (
           <div className="space-y-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-              <p className="text-xs uppercase tracking-wide text-emerald-700">Terminal code</p>
+              <p className="text-xs uppercase tracking-wide text-emerald-700">
+                {t("web.provider.bookings.detail.paystackCollect.terminalCode")}
+              </p>
               <p className="mt-2 font-mono text-2xl font-semibold text-emerald-950">{terminalCode}</p>
-              <p className="mt-2 text-sm text-emerald-800">Expected: {formatMoney(expectedAmount)}</p>
+              <p className="mt-2 text-sm text-emerald-800">
+                {t("web.provider.bookings.detail.paystackCollect.expected", { amount: formatMoney(expectedAmount) })}
+              </p>
               {(qrUrl || paymentLink) && (
                 <div className="mt-3 flex flex-col items-center gap-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -144,10 +151,12 @@ export function PaystackTerminalCollectDialog({
                       qrUrl ??
                       `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(paymentLink ?? "")}`
                     }
-                    alt="Paystack Terminal QR code"
+                    alt={t("web.provider.bookings.detail.paystackCollect.qrAlt")}
                     className="h-40 w-40 rounded-md border border-emerald-200 bg-white object-contain p-1"
                   />
-                  <p className="text-xs text-emerald-700">Customer scans to pay</p>
+                  <p className="text-xs text-emerald-700">
+                    {t("web.provider.bookings.detail.paystackCollect.customerScans")}
+                  </p>
                 </div>
               )}
             </div>
@@ -155,7 +164,7 @@ export function PaystackTerminalCollectDialog({
             {reference ? (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  Customer reference
+                  {t("web.provider.bookings.detail.paystackCollect.customerReference")}
                 </p>
                 <p className="mt-1 font-mono text-base font-semibold text-amber-950">{reference}</p>
                 <button
@@ -163,10 +172,10 @@ export function PaystackTerminalCollectDialog({
                   className="mt-2 text-xs font-medium text-amber-800 underline touch-manipulation min-h-[44px]"
                   onClick={async () => {
                     await navigator.clipboard.writeText(reference);
-                    toast.success("Reference copied");
+                    toast.success(t("web.provider.bookings.detail.dialogs.referenceCopied"));
                   }}
                 >
-                  Copy reference
+                  {t("web.provider.bookings.detail.dialogs.copyReference")}
                 </button>
               </div>
             ) : null}
@@ -175,24 +184,24 @@ export function PaystackTerminalCollectDialog({
               <BookingActionButton
                 onClick={async () => {
                   await navigator.clipboard.writeText(terminalCode);
-                  toast.success("Terminal code copied");
+                  toast.success(t("web.provider.bookings.detail.dialogs.codeCopied"));
                 }}
               >
-                Copy code
+                {t("web.provider.bookings.detail.dialogs.copyCode")}
               </BookingActionButton>
               {paymentLink ? (
                 <BookingActionButton
                   variant="outline"
                   onClick={async () => {
                     await navigator.clipboard.writeText(paymentLink);
-                    toast.success("Payment link copied");
+                    toast.success(t("web.provider.bookings.detail.dialogs.linkCopied"));
                   }}
                 >
-                  Copy payment link
+                  {t("web.provider.bookings.detail.paystackCollect.copyPaymentLink")}
                 </BookingActionButton>
               ) : null}
               <BookingActionButton variant="outline" onClick={() => onSuccess?.()}>
-                Done
+                {t("common.done")}
               </BookingActionButton>
             </div>
           </div>
@@ -202,8 +211,8 @@ export function PaystackTerminalCollectDialog({
             onClick={() => void prepareTerminal()}
             disabled={preparing}
           >
-            <Link2 className="mr-2 h-4 w-4" />
-            Retry
+            <Link2 className="me-2 h-4 w-4" />
+            {t("common.retry")}
           </BookingActionButton>
         )}
       </DialogContent>

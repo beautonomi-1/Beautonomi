@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -41,6 +42,7 @@ export function ClientSearchPicker({
   loadAddressOnSelect = false,
   onAddressLoaded,
 }: ClientSearchPickerProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ClientSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -70,7 +72,7 @@ export function ClientSearchPicker({
             const customer = client.customer || {};
             all.push({
               id: customer.id || client.customer_id,
-              full_name: customer.full_name || "Unknown",
+              full_name: customer.full_name || t("web.messagingList.unknown"),
               email: customer.email || "",
               phone: customer.phone || "",
             });
@@ -86,7 +88,7 @@ export function ClientSearchPicker({
             const customer = item.customer || {};
             all.push({
               id,
-              full_name: customer.full_name || "Unknown",
+              full_name: customer.full_name || t("web.messagingList.unknown"),
               email: customer.email || "",
               phone: customer.phone || "",
             });
@@ -174,7 +176,7 @@ export function ClientSearchPicker({
   return (
     <BookingSectionCard>
       <BookingSectionLabel htmlFor="client-search" className="mb-2">
-        Client
+        {t("web.clientSearch.label")}
       </BookingSectionLabel>
       <div className="relative">
         <Input
@@ -190,7 +192,7 @@ export function ClientSearchPicker({
           onFocus={() => {
             if (query.length >= 2 || results.length > 0) setShowResults(true);
           }}
-          placeholder="Search or enter client name"
+          placeholder={t("web.clientSearch.placeholder")}
           className="rounded-xl min-h-[44px]"
           autoComplete="off"
         />
@@ -203,7 +205,7 @@ export function ClientSearchPicker({
               <li key={client.id}>
                 <button
                   type="button"
-                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 touch-manipulation min-h-[44px]"
+                  className="w-full text-start px-3 py-2.5 text-sm hover:bg-gray-50 touch-manipulation min-h-[44px]"
                   onClick={() => void handleSelect(client)}
                 >
                   <span className="font-medium text-gray-900">{client.full_name}</span>
@@ -217,7 +219,7 @@ export function ClientSearchPicker({
         ) : null}
       </div>
       {clientId ? (
-        <p className="text-xs text-emerald-700 mt-1.5">Saved client linked</p>
+        <p className="text-xs text-emerald-700 mt-1.5">{t("web.clientSearch.savedLinked")}</p>
       ) : null}
     </BookingSectionCard>
   );

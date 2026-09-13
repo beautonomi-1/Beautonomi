@@ -24,6 +24,8 @@ import {
   type BookingCompleteConfirmReason,
 } from "./BookingCompleteConfirmDialog";
 import { EtaPicker } from "../EtaPicker";
+import { shouldSuppressNoShowAfterRunningLate } from "@/lib/bookings/lifecycle-running-late";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BookingStatusActionsProps {
   appointment: Appointment;
@@ -45,6 +47,7 @@ export function BookingStatusActions({
   completionChecklist,
   outstanding = 0,
 }: BookingStatusActionsProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { hasPermission, isOwner } = usePermissions();
@@ -59,6 +62,7 @@ export function BookingStatusActions({
   const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
   const [isUpdatingEta, setIsUpdatingEta] = useState(false);
+  const [ackBusy, setAckBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -97,14 +101,14 @@ export function BookingStatusActions({
     setError(null);
     try {
       await fetcher.post(`/api/provider/bookings/${appointment.id}/complete-service`, {});
-      toast.success("Service completed");
+      toast.success(t("web.provider.bookings.statusActions.serviceCompleted"));
       setCompleteConfirmOpen(false);
       onCompleted?.();
       onUpdated?.();
     } catch (err) {
       const fetchErr = err instanceof FetchError ? err : null;
       const msg = mapProviderBookingActionError(
-        err instanceof Error ? err.message : "Failed to complete service",
+        err instanceof Error ? err.message : t("web.provider.bookings.statusActions.completeFailed"),
         fetchErr?.code,
       );
       setError(msg);
@@ -112,14 +116,14 @@ export function BookingStatusActions({
     } finally {
       setBusy(null);
     }
-  }, [appointment.id, onCompleted, onUpdated]);
+  }, [appointment.id, onCompleted, onUpdated, t]);
 
   const beginCompleteService = useCallback(() => {
     const paymentStatus = (appointment.payment_status ?? "").toLowerCase();
     if (paymentStatus === "refunded") {
       setCompleteConfirmReason("refunded");
       setCompleteConfirmMessage(
-        "This booking was fully refunded. Cancel it instead of marking completed.",
+        t("web.provider.bookings.statusActions.refundedCompleteHint"),
       );
       setCompleteConfirmOpen(true);
       return;
@@ -128,7 +132,9 @@ export function BookingStatusActions({
     if (completionChecklist && !completionChecklist.allDone) {
       setCompleteConfirmReason("checklist");
       setCompleteConfirmMessage(
-        `${completionChecklist.blockingLabels.join(" · ")}\n\nFinish these steps or choose Complete anyway.`,
+        t("web.provider.bookings.statusActions.checklistCompleteHint", {
+          labels: completionChecklist.blockingLabels.join(" · "),
+        }),
       );
       setCompleteConfirmOpen(true);
       return;
@@ -137,7 +143,7 @@ export function BookingStatusActions({
     if (outstanding > 0) {
       setCompleteConfirmReason("outstanding");
       setCompleteConfirmMessage(
-        "Capture payment before completing, or choose Complete anyway to settle later.",
+        t("web.provider.bookings.statusActions.outstandingCompleteHint"),
       );
       setCompleteConfirmOpen(true);
       return;
@@ -149,7 +155,7 @@ export function BookingStatusActions({
   const runAction = useCallback(
     async (action: ProviderBookingAction) => {
       if (!actionAllowed(action)) {
-        toast.error("You do not have permission for this action");
+        toast.error(t("web.provider.bookings.statusActions.noPermission"));
         return;
       }
 
@@ -181,19 +187,19 @@ export function BookingStatusActions({
           const payload =
             journeyEtaMinutes != null ? { eta_minutes: journeyEtaMinutes } : {};
           await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
-          toast.success("Journey started");
+          toast.success(t("web.provider.bookings.statusActions.journeyStarted"));
           onUpdated?.();
           return;
         }
         if (action.id === "mark_arrived") {
           await fetcher.post(`/api/provider/bookings/${bookingId}/arrive`, {});
-          toast.success("Arrival marked");
+          toast.success(t("web.provider.bookings.statusActions.arrivalMarked"));
           onUpdated?.();
           return;
         }
         if (action.id === "start_service") {
           await fetcher.post(`/api/provider/bookings/${bookingId}/start-service`, {});
-          toast.success("Service started");
+          toast.success(t("web.provider.bookings.statusActions.serviceStarted"));
           onUpdated?.();
           return;
         }
@@ -215,12 +221,12 @@ export function BookingStatusActions({
           return;
         }
 
-        toast.success("Booking status updated");
+        toast.success(t("web.provider.bookings.statusActions.statusUpdated"));
         onUpdated?.();
       } catch (err) {
         const fetchErr = err instanceof FetchError ? err : null;
         const msg = mapProviderBookingActionError(
-          err instanceof Error ? err.message : "Failed to update status",
+          err instanceof Error ? err.message : t("web.provider.bookings.statusActions.statusUpdateFailed"),
           fetchErr?.code,
         );
         setError(msg);
@@ -232,7 +238,22 @@ export function BookingStatusActions({
     [appointment.id, beginCompleteService, journeyEtaMinutes, onUpdated, version, canCancel, canEdit],
   );
 
-  const visibleActions = model.actions.filter(actionAllowed);
+  const visibleActions = model.actions.filter((action) => {
+    if (!actionAllowed(action)) return false;
+    if (action.id === "mark_no_show") {
+      const delayMinutes = Number(raw.customer_running_late_minutes ?? 0);
+      if (
+        shouldSuppressNoShowAfterRunningLate({
+          scheduledAt: String(raw.scheduled_at ?? appointment.scheduled_date ?? ""),
+          delayMinutes,
+          customerRunningLateAt: (raw.customer_running_late_at as string | null) ?? null,
+        })
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
   const primary = model.primaryAction && actionAllowed(model.primaryAction) ? model.primaryAction : null;
   const secondary = visibleActions.filter((a) => a.id !== primary?.id);
   const currentStage = typeof raw.current_stage === "string" ? raw.current_stage : undefined;
@@ -251,12 +272,12 @@ export function BookingStatusActions({
       await fetcher.patch(`/api/provider/bookings/${appointment.id}/eta`, {
         eta_minutes: updateEtaMinutes,
       });
-      toast.success("ETA updated");
+      toast.success(t("web.provider.bookings.statusActions.etaUpdated"));
       onUpdated?.();
     } catch (err) {
       const fetchErr = err instanceof FetchError ? err : null;
       const msg = mapProviderBookingActionError(
-        err instanceof Error ? err.message : "Failed to update ETA",
+        err instanceof Error ? err.message : t("web.provider.bookings.statusActions.etaUpdateFailed"),
         fetchErr?.code,
       );
       setError(msg);
@@ -270,7 +291,7 @@ export function BookingStatusActions({
     return (
       <PermissionGateInline
         allowed={false}
-        message="You do not have permission to update booking status."
+        message={t("web.provider.bookings.statusActions.noStatusPermission")}
       >
         {null}
       </PermissionGateInline>
@@ -289,6 +310,57 @@ export function BookingStatusActions({
 
         {error ? <BookingErrorBanner message={error} onDismiss={() => setError(null)} className="mb-3" /> : null}
 
+        {appointment.customer_running_late_at || raw.customer_running_late_at ? (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
+            <p className="font-semibold">
+              {appointment.customer_running_late_minutes || raw.customer_running_late_minutes
+                ? t("web.provider.bookings.statusActions.customerRunningLateMinutes", {
+                    minutes: appointment.customer_running_late_minutes ?? raw.customer_running_late_minutes,
+                  })
+                : t("web.provider.bookings.statusActions.customerRunningLate")}
+            </p>
+            {appointment.provider_late_ack_at || raw.provider_late_ack_at ? (
+              <p>{t("web.provider.bookings.statusActions.willWaitAcknowledged")}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <BookingActionButton
+                  size="sm"
+                  fullWidth={false}
+                  disabled={ackBusy || busy != null}
+                  onClick={async () => {
+                    setAckBusy(true);
+                    try {
+                      await fetcher.post(
+                        `/api/provider/bookings/${appointment.id}/acknowledge-late`,
+                        {},
+                      );
+                      toast.success(t("web.provider.bookings.statusActions.notifyWillWait"));
+                      onUpdated?.();
+                    } catch (err) {
+                      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.statusActions.acknowledgeFailed"));
+                    } finally {
+                      setAckBusy(false);
+                    }
+                  }}
+                >
+                  {ackBusy
+                    ? t("web.provider.bookings.statusActions.sending")
+                    : t("web.provider.bookings.statusActions.okWeWillWait")}
+                </BookingActionButton>
+                <BookingActionButton
+                  size="sm"
+                  fullWidth={false}
+                  variant="outline"
+                  disabled={busy != null}
+                  onClick={() => router.push(`/provider/bookings/${appointment.id}`)}
+                >
+                  {t("web.provider.bookings.statusActions.reschedule")}
+                </BookingActionButton>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {appointment.location_type === "at_home" &&
         model.primaryAction?.id === "start_journey" ? (
           <EtaPicker
@@ -303,8 +375,7 @@ export function BookingStatusActions({
           <div className="mb-3 space-y-2">
             {isLate ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                You&apos;re past the estimated arrival. Update your ETA so the client knows you&apos;re
-                running a little late.
+                {t("web.provider.bookings.statusActions.pastEtaWarning")}
               </p>
             ) : null}
             <EtaPicker
@@ -319,7 +390,9 @@ export function BookingStatusActions({
               disabled={isUpdatingEta || busy != null || updateEtaMinutes == null}
               onClick={() => void handleUpdateEta()}
             >
-              {isUpdatingEta ? "Updating ETA…" : "Update ETA"}
+              {isUpdatingEta
+                ? t("web.provider.bookings.statusActions.updatingEta")
+                : t("web.provider.bookings.statusActions.updateEta")}
             </BookingActionButton>
           </div>
         ) : null}
@@ -333,8 +406,8 @@ export function BookingStatusActions({
             >
               {busy === primary.id ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating…
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                  {t("web.provider.bookings.statusActions.updating")}
                 </>
               ) : (
                 primary.label
@@ -368,7 +441,7 @@ export function BookingStatusActions({
             className="text-xs text-gray-500 underline underline-offset-2 self-start mt-1"
             onClick={() => router.push(`/provider/bookings/${appointment.id}`)}
           >
-            Open full booking page
+            {t("web.provider.bookings.statusActions.openFullPage")}
           </button>
         </div>
       </BookingSectionCard>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { useGPSTracking } from "@/hooks/useGPSTracking";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -23,6 +24,7 @@ export default function ProviderLocationTracker({
   onLocationUpdate,
   autoStart = false,
 }: ProviderLocationTrackerProps) {
+  const { t } = useTranslation();
   const {
     location,
     isTracking,
@@ -79,16 +81,18 @@ export default function ProviderLocationTracker({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MapPin className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Location Tracking</h3>
+          <h3 className="font-semibold">{t("web.provider.locationTracker.title")}</h3>
         </div>
         <div className="flex items-center gap-2">
           {isTracking ? (
             <>
               <Badge variant={isEstimated ? "secondary" : "default"}>
-                {isEstimated ? "Estimated" : "Live"}
+                {isEstimated
+                  ? t("web.provider.locationTracker.estimated")
+                  : t("web.provider.locationTracker.live")}
               </Badge>
               <Button variant="outline" size="sm" onClick={stopTracking}>
-                Stop
+                {t("web.provider.locationTracker.stop")}
               </Button>
             </>
           ) : (
@@ -97,8 +101,8 @@ export default function ProviderLocationTracker({
               onClick={startTracking}
               className="bg-primary hover:bg-primary-hover"
             >
-              <Navigation className="w-4 h-4 mr-2" />
-              Start Tracking
+              <Navigation className="w-4 h-4 me-2" />
+              {t("web.provider.locationTracker.startTracking")}
             </Button>
           )}
         </div>
@@ -113,10 +117,10 @@ export default function ProviderLocationTracker({
               <Button
                 variant="link"
                 size="sm"
-                className="ml-2"
+                className="ms-2"
                 onClick={() => estimateLocation("gps_unavailable")}
               >
-                Use Estimated Location
+                {t("web.provider.locationTracker.useEstimatedLocation")}
               </Button>
             )}
           </AlertDescription>
@@ -127,7 +131,7 @@ export default function ProviderLocationTracker({
         <Alert>
           <AlertCircle className="w-4 h-4" />
           <AlertDescription>
-            GPS unavailable. Using estimated location based on last known position.
+            {t("web.provider.locationTracker.gpsUnavailable")}
           </AlertDescription>
         </Alert>
       )}
@@ -136,33 +140,47 @@ export default function ProviderLocationTracker({
         <div className="bg-gray-50 rounded-lg p-4 space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-gray-600">Latitude</p>
+              <p className="text-xs text-gray-600">{t("web.provider.locationTracker.latitude")}</p>
               <p className="font-mono text-sm">{location.latitude.toFixed(6)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-600">Longitude</p>
+              <p className="text-xs text-gray-600">{t("web.provider.locationTracker.longitude")}</p>
               <p className="font-mono text-sm">{location.longitude.toFixed(6)}</p>
             </div>
             {location.accuracy && (
               <div>
-                <p className="text-xs text-gray-600">Accuracy</p>
-                <p className="text-sm">{Math.round(location.accuracy)}m</p>
+                <p className="text-xs text-gray-600">{t("web.provider.locationTracker.accuracy")}</p>
+                <p className="text-sm">
+                  {t("web.provider.locationTracker.accuracyMeters", {
+                    meters: Math.round(location.accuracy),
+                  })}
+                </p>
               </div>
             )}
             {distance !== null && (
               <div>
-                <p className="text-xs text-gray-600">Distance to Destination</p>
+                <p className="text-xs text-gray-600">
+                  {t("web.provider.locationTracker.distanceToDestination")}
+                </p>
                 <p className="text-sm font-semibold">
                   {distance < 1
-                    ? `${Math.round(distance * 1000)}m`
-                    : `${distance.toFixed(2)}km`}
+                    ? t("web.provider.locationTracker.distanceMeters", {
+                        meters: Math.round(distance * 1000),
+                      })
+                    : t("web.provider.locationTracker.distanceKm", {
+                        km: distance.toFixed(2),
+                      })}
                 </p>
               </div>
             )}
             {eta !== null && (
               <div>
-                <p className="text-xs text-gray-600">Estimated Arrival</p>
-                <p className="text-sm font-semibold">{eta} minutes</p>
+                <p className="text-xs text-gray-600">
+                  {t("web.provider.locationTracker.estimatedArrival")}
+                </p>
+                <p className="text-sm font-semibold">
+                  {t("web.provider.locationTracker.etaMinutes", { minutes: eta })}
+                </p>
               </div>
             )}
           </div>
@@ -172,13 +190,15 @@ export default function ProviderLocationTracker({
       {isTracking && !location && (
         <div className="flex items-center justify-center py-4">
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <span className="ml-2 text-sm text-gray-600">Getting location...</span>
+          <span className="ms-2 text-sm text-gray-600">
+            {t("web.provider.locationTracker.gettingLocation")}
+          </span>
         </div>
       )}
 
       {!isTracking && !location && (
         <p className="text-sm text-gray-500 text-center py-4">
-          Click "Start Tracking" to begin sharing your location
+          {t("web.provider.locationTracker.startHint")}
         </p>
       )}
     </div>

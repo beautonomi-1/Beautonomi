@@ -11,11 +11,13 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -25,6 +27,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   getTerminalPaystackReturnUrl,
   matchesTerminalPaystackReturnUrl,
@@ -101,11 +104,11 @@ type TerminalAsset = {
 
 type AssetsResponse = { assets: TerminalAsset[] };
 
-const FULFILLMENT_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  shipping: { label: "Shipped to you", icon: "cube-outline" },
-  courier: { label: "Courier delivery", icon: "cube-outline" },
-  collection: { label: "Collect in person", icon: "location-outline" },
-  digital_activation: { label: "Instant digital activation", icon: "flash-outline" },
+const FULFILLMENT_META: Record<string, { labelKey: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  shipping: { labelKey: "shipping", icon: "cube-outline" },
+  courier: { labelKey: "courier", icon: "cube-outline" },
+  collection: { labelKey: "collection", icon: "location-outline" },
+  digital_activation: { labelKey: "digitalActivation", icon: "flash-outline" },
 };
 
 function formatMoney(currency: string, amount: number | null | undefined) {
@@ -114,12 +117,15 @@ function formatMoney(currency: string, amount: number | null | undefined) {
 }
 
 function FulfillmentChip({ type }: { type: string | null | undefined }) {
+  const { t } = useTranslation();
   const meta = FULFILLMENT_META[type ?? ""];
   if (!meta) return null;
   return (
     <View style={twStyle("mt-2 flex-row items-center self-start rounded-full bg-gray-50 border border-gray-200 px-2.5 py-1")}>
       <Ionicons name={meta.icon} size={12} color="#6b7280" />
-      <Text style={twStyle("ml-1 text-[11px] text-gray-600")}>{meta.label}</Text>
+      <Text style={twStyle("ms-1 text-[11px] text-gray-600")}>
+        {t(`provider.mobile.screens.terminalShop.fulfillment.${meta.labelKey}`) as string}
+      </Text>
     </View>
   );
 }
@@ -150,7 +156,7 @@ function OrderTimeline({ order }: { order: TerminalOrder }) {
           )}
           <Text
             style={twStyle(
-              `ml-1 text-[10px] font-medium ${
+              `ms-1 text-[10px] font-medium ${
                 step.state === "done"
                   ? "text-green-700"
                   : step.state === "current"
@@ -168,6 +174,13 @@ function OrderTimeline({ order }: { order: TerminalOrder }) {
 }
 
 export default function TerminalShopScreen() {
+  const { t } = useTranslation();
+  const ts = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.terminalShop.${key}`, opts) as string,
+    [t],
+  );
+
   const router = useRouter();
   const handleBack = useProviderStackBack();
   const { role } = useProvider();
@@ -181,7 +194,7 @@ export default function TerminalShopScreen() {
     null;
   const catalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
   const ecommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
 
   const { data: teamAccess } = useApi<{ is_business_owner?: boolean }>("/api/provider/team-access", {
     staleTimeMs: 60_000,
@@ -308,7 +321,7 @@ export default function TerminalShopScreen() {
       return;
     }
     if (order.integration_setup_url) {
-      pushInAppBrowser(router, order.integration_setup_url, "Integration setup");
+      pushInAppBrowser(router, order.integration_setup_url, ts("inAppBrowserIntegrationSetup"));
     } else if (paycloudEnabled) {
       router.push(`/(app)/(tabs)/more/card-machines?order=${encodeURIComponent(order.id)}` as never);
     }
@@ -326,15 +339,15 @@ export default function TerminalShopScreen() {
   function validateCheckout(): string | null {
     if (fulfillmentType === "collection") {
       if (collectionLocations.length === 0) {
-        return "No pickup locations are configured yet. Use the web terminal shop or contact support.";
+        return ts("alertNoPickupLocations");
       }
       if (!collectionLocationId) {
-        return "Select a pickup location.";
+        return ts("alertSelectPickup");
       }
     }
     if (fulfillmentType === "shipping" || fulfillmentType === "courier") {
       if (!addressLine1.trim() || !city.trim() || !postalCode.trim()) {
-        return "Enter a delivery address (line 1, city, and postal code).";
+        return ts("alertEnterDeliveryAddress");
       }
     }
     return null;
@@ -343,14 +356,14 @@ export default function TerminalShopScreen() {
   const openTerminalPaystack = useCallback(
     async (orderId: string, url: string, reference?: string | null) => {
       const result = await paystackCheckout.waitForCheckout(url, {
-        title: "Pay for terminal",
+        title: ts("paystackTitle"),
         returnUrl: terminalReturnUrl,
         matchSuccess: (rawUrl) => matchesTerminalPaystackReturnUrl(rawUrl, { success: true }),
         matchCancel: (rawUrl) => matchesTerminalPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
 
       if (result?.outcome === "cancel") {
-        const failed = terminalOrderFailedCopy("Payment wasn't completed.");
+        const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", ...failed });
         await refreshAll();
         return;
@@ -367,7 +380,7 @@ export default function TerminalShopScreen() {
         let payReference = reference?.trim() || null;
         if (result.outcome === "success" && result.url) {
           if (matchesTerminalPaystackReturnUrl(result.url, { cancelled: true })) {
-            const failed = terminalOrderFailedCopy("Payment wasn't completed.");
+            const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
             setPaymentOutcome({ phase: "failed", ...failed });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             await refreshAll();
@@ -398,7 +411,7 @@ export default function TerminalShopScreen() {
         setVerifyingPayment(false);
       }
     },
-    [paystackCheckout, refreshAll, terminalReturnUrl],
+    [paystackCheckout, refreshAll, terminalReturnUrl, ts],
   );
 
   async function startTerminalPayment(orderId: string) {
@@ -409,7 +422,7 @@ export default function TerminalShopScreen() {
     if (payRes.error) throw new Error(payRes.error);
     const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
     if (!url) {
-      Alert.alert("Payment", "Could not start payment. Try again from Your orders.");
+      Alert.alert(ts("alertPaymentTitle"), ts("alertPaymentBody"));
       return;
     }
     await openTerminalPaystack(orderId, url, payRes.data?.reference ?? null);
@@ -418,14 +431,14 @@ export default function TerminalShopScreen() {
   async function submitOrder() {
     if (!checkoutProduct) return;
     if (!checkoutConfirmState.ok) {
-      Alert.alert("Checkout", checkoutConfirmState.message ?? "Complete the form to continue.");
+      Alert.alert(ts("alertCheckoutTitle"), checkoutConfirmState.message ?? ts("alertCheckoutFormIncomplete"));
       return;
     }
     if (!selectedOption) return;
 
     const validationError = validateCheckout();
     if (validationError) {
-      Alert.alert("Checkout", validationError);
+      Alert.alert(ts("alertCheckoutTitle"), validationError);
       return;
     }
 
@@ -471,14 +484,14 @@ export default function TerminalShopScreen() {
       if (order?.id && requiresPayment) {
         await startTerminalPayment(order.id);
       } else {
-        Alert.alert("Success", "Terminal order confirmed.");
+        Alert.alert(ts("alertSuccessTitle"), ts("alertSuccessBody"));
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not place order";
+      const message = e instanceof Error ? e.message : ts("alertOrderFailedFallback");
       if (message.toLowerCase().includes("forbidden") || message.includes("403")) {
-        Alert.alert("Order not allowed", "Only the business owner can place terminal orders.");
+        Alert.alert(ts("alertOrderNotAllowedTitle"), ts("alertOrderNotAllowedBody"));
       } else {
-        Alert.alert("Order failed", message);
+        Alert.alert(ts("alertOrderFailedTitle"), message);
       }
     }
   }
@@ -487,15 +500,15 @@ export default function TerminalShopScreen() {
     try {
       await startTerminalPayment(orderId);
     } catch (e) {
-      Alert.alert("Payment failed", e instanceof Error ? e.message : "Try again");
+      Alert.alert(ts("alertPaymentFailedTitle"), e instanceof Error ? e.message : ts("alertPaymentFailedFallback"));
     }
   }
 
   if (!catalogEnabled && !ecommerceEnabled) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Terminal Shop" showBack onBack={handleBack} />
-        <Text style={twStyle("px-4 text-sm text-gray-600")}>Terminal shop is not enabled for your account.</Text>
+        <ScreenHeader title={ts("title")} showBack onBack={handleBack} />
+        <Text style={twStyle("px-4 text-sm text-gray-600")}>{ts("notEnabled")}</Text>
       </ScreenContainer>
     );
   }
@@ -505,8 +518,8 @@ export default function TerminalShopScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Terminal Shop"
-        subtitle="Card machines by Beautonomi"
+        title={ts("title")}
+        subtitle={ts("subtitle")}
         showBack
         onBack={handleBack}
       />
@@ -514,8 +527,8 @@ export default function TerminalShopScreen() {
         {verifyingPayment ? (
           <View style={twStyle("mb-4 flex-row items-center rounded-2xl border border-indigo-200 bg-indigo-50 p-4")}>
             <ActivityIndicator color="#4338ca" />
-            <Text style={twStyle("ml-3 flex-1 text-sm text-indigo-900")}>
-              Confirming your payment with Paystack…
+            <Text style={twStyle("ms-3 flex-1 text-sm text-indigo-900")}>
+              {ts("verifyingPayment")}
             </Text>
           </View>
         ) : null}
@@ -563,7 +576,7 @@ export default function TerminalShopScreen() {
               onPress={() => setPaymentOutcome({ phase: "idle" })}
               style={twStyle("mt-3 self-start")}
             >
-              <Text style={twStyle("text-xs font-semibold text-gray-700")}>Dismiss</Text>
+              <Text style={twStyle("text-xs font-semibold text-gray-700")}>{ts("dismiss")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -575,40 +588,42 @@ export default function TerminalShopScreen() {
             <View style={twStyle("mb-5 rounded-2xl border border-pink-100 bg-pink-50 p-4")}>
               <View style={twStyle("flex-row items-center self-start rounded-full bg-white px-2.5 py-1")}>
                 <Ionicons name="sparkles-outline" size={12} color="#db2777" />
-                <Text style={twStyle("ml-1 text-[11px] font-semibold text-pink-700")}>
-                  Beautonomi card machines
+                <Text style={twStyle("ms-1 text-[11px] font-semibold text-pink-700")}>
+                  {ts("heroBadge")}
                 </Text>
               </View>
               <Text style={twStyle("mt-2.5 text-lg font-bold text-gray-900")}>
-                Get paid in person — tap, insert, swipe, and QR
+                {ts("heroTitle")}
               </Text>
               <Text style={twStyle("mt-1 text-xs text-gray-600")}>
-                Order a machine, activate it with its serial number, and charges flow straight from
-                your bookings and sales checkout.
+                {ts("heroBody")}
               </Text>
               <View style={twStyle("mt-3 flex-row flex-wrap")}>
                 {[
-                  { icon: "flash-outline" as const, label: "Charges from checkout" },
-                  { icon: "checkmark-done-outline" as const, label: "Auto-reconciled" },
-                  { icon: "shield-checkmark-outline" as const, label: "Beautonomi support" },
+                  { icon: "flash-outline" as const, label: ts("chipChargesFromCheckout") },
+                  { icon: "checkmark-done-outline" as const, label: ts("chipAutoReconciled") },
+                  { icon: "shield-checkmark-outline" as const, label: ts("chipBeautonomiSupport") },
                 ].map((chip) => (
                   <View
                     key={chip.label}
                     style={[
                       twStyle("flex-row items-center rounded-full bg-white px-2.5 py-1"),
-                      { marginRight: 6, marginBottom: 6 },
+                      { marginEnd: 6, marginBottom: 6 },
                     ]}
                   >
                     <Ionicons name={chip.icon} size={11} color="#db2777" />
-                    <Text style={twStyle("ml-1 text-[10px] font-medium text-gray-700")}>{chip.label}</Text>
+                    <Text style={twStyle("ms-1 text-[10px] font-medium text-gray-700")}>{chip.label}</Text>
                   </View>
                 ))}
               </View>
               {activeDeviceCount > 0 ? (
                 <View style={twStyle("mt-1 flex-row items-center")}>
                   <Ionicons name="checkmark-circle" size={13} color="#16a34a" />
-                  <Text style={twStyle("ml-1 text-[11px] font-medium text-green-700")}>
-                    {activeDeviceCount} device{activeDeviceCount === 1 ? "" : "s"} active on your account
+                  <Text style={twStyle("ms-1 text-[11px] font-medium text-green-700")}>
+                    {ts("activeDevices", {
+                      count: activeDeviceCount,
+                      suffix: activeDeviceCount === 1 ? ts("activeDevicesSuffixOne") : ts("activeDevicesSuffixOther"),
+                    })}
                   </Text>
                 </View>
               ) : null}
@@ -622,40 +637,42 @@ export default function TerminalShopScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={
                   pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                    ? "Complete card machine application"
-                    : "Activate your card machine"
+                    ? ts("pendingA11yApplication")
+                    : ts("pendingA11yActivate")
                 }
               >
                 <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-pink-50")}>
                   <Ionicons name="cube-outline" size={20} color="#db2777" />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                      ? "Complete your card machine application"
-                      : `${pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is ready to activate`}
+                      ? ts("pendingTitleApplication")
+                      : ts("pendingTitleActivate", {
+                          name: pendingActivationOrder.terminal_products?.name ?? ts("pendingTitleActivateFallback"),
+                        })}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                      ? "We need a few details before we can ship your device."
-                      : "Enter the serial number from the device label to finish setup."}
+                      ? ts("pendingBodyApplication")
+                      : ts("pendingBodyActivate")}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#db2777" />
+                <DirectionalIcon name="chevron-forward" size={18} color="#db2777" />
               </TouchableOpacity>
             ) : null}
 
             {catalogEnabled && (
               <View style={twStyle("mb-6")}>
-                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>Choose your machine</Text>
+                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>{ts("sectionChooseMachine")}</Text>
                 <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-                  Every machine works with Beautonomi checkout out of the box.
+                  {ts("sectionChooseMachineSub")}
                 </Text>
                 {products.length === 0 ? (
                   <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 p-8")}>
                     <Ionicons name="phone-portrait-outline" size={28} color="#d1d5db" />
                     <Text style={twStyle("mt-2 text-sm text-gray-500")}>
-                      No products available yet — check back soon.
+                      {ts("noProducts")}
                     </Text>
                   </View>
                 ) : (
@@ -671,7 +688,7 @@ export default function TerminalShopScreen() {
                     return (
                       <View key={p.id} style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
                         <View style={twStyle("flex-row items-start justify-between")}>
-                          <View style={twStyle("flex-1 pr-2")}>
+                          <View style={twStyle("flex-1 pe-2")}>
                             <Text style={twStyle("text-base font-semibold text-gray-900")}>{p.name}</Text>
                             <Text style={twStyle("text-xs capitalize text-gray-500")}>
                               {p.vendor}
@@ -680,7 +697,7 @@ export default function TerminalShopScreen() {
                           </View>
                           {includedOption ? (
                             <View style={twStyle("rounded-full bg-pink-600 px-2.5 py-1")}>
-                              <Text style={twStyle("text-[10px] font-semibold text-white")}>In your plan</Text>
+                              <Text style={twStyle("text-[10px] font-semibold text-white")}>{ts("inYourPlan")}</Text>
                             </View>
                           ) : p.stock_status !== "in_stock" ? (
                             <View
@@ -742,7 +759,7 @@ export default function TerminalShopScreen() {
                                 >
                                   {opt.requires_payment
                                     ? formatMoney(opt.currency, opt.price)
-                                    : "R 0 — in plan"}
+                                    : ts("priceInPlan")}
                                 </Text>
                               </View>
                             ))}
@@ -753,16 +770,16 @@ export default function TerminalShopScreen() {
                             onPress={() => openCheckout(p)}
                             style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-pink-600 px-4 py-3")}
                             accessibilityRole="button"
-                            accessibilityLabel={`Order ${p.name}`}
+                            accessibilityLabel={ts("orderThisMachineA11y", { name: p.name })}
                           >
-                            <Text style={twStyle("text-sm font-semibold text-white")}>Order this machine</Text>
-                            <Ionicons name="arrow-forward" size={15} color="#ffffff" style={{ marginLeft: 6 }} />
+                            <Text style={twStyle("text-sm font-semibold text-white")}>{ts("orderThisMachine")}</Text>
+                            <DirectionalIcon name="arrow-forward" size={15} color="#ffffff" style={{ marginStart: 6 }} />
                           </TouchableOpacity>
                         ) : (
                           <View style={twStyle("mt-3")}>
                             <View style={twStyle("items-center rounded-xl bg-gray-200 px-4 py-3")}>
                               <Text style={twStyle("text-sm font-semibold text-gray-500")}>
-                                {cta.kind === "out_of_stock" ? "Out of stock" : "Order this machine"}
+                                {cta.kind === "out_of_stock" ? ts("outOfStock") : ts("orderThisMachine")}
                               </Text>
                             </View>
                             {cta.kind !== "out_of_stock" ? (
@@ -771,7 +788,7 @@ export default function TerminalShopScreen() {
                           </View>
                         )}
                         <Text style={twStyle("mt-2 text-center text-[10px] text-gray-400")}>
-                          Sold and supported by Beautonomi
+                          {ts("soldByBeautonomi")}
                         </Text>
                       </View>
                     );
@@ -782,15 +799,15 @@ export default function TerminalShopScreen() {
 
             {ecommerceEnabled && (
               <View style={twStyle("mb-6")}>
-                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>Your orders</Text>
+                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>{ts("sectionYourOrders")}</Text>
                 <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-                  Track payment, integration, and delivery.
+                  {ts("sectionYourOrdersSub")}
                 </Text>
                 {orders.length === 0 ? (
                   <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 p-8")}>
                     <Ionicons name="cube-outline" size={28} color="#d1d5db" />
                     <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
-                      No orders yet — pick a machine above to get started.
+                      {ts("noOrders")}
                     </Text>
                   </View>
                 ) : (
@@ -807,7 +824,7 @@ export default function TerminalShopScreen() {
                         )}
                       >
                         <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                          {o.terminal_products?.name ?? "Terminal order"}
+                          {o.terminal_products?.name ?? ts("orderFallback")}
                         </Text>
                         <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                           {new Date(o.created_at).toLocaleDateString()} ·{" "}
@@ -817,13 +834,17 @@ export default function TerminalShopScreen() {
                         <OrderTimeline order={o} />
                         {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name ? (
                           <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
-                            Pickup: {o.terminal_collection_locations.name}
+                            {ts("pickupLabel", { name: o.terminal_collection_locations.name })}
                           </Text>
                         ) : null}
                         {o.tracking_reference ? (
                           <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
-                            {o.courier_name ? `${o.courier_name}: ` : "Tracking: "}
-                            {o.tracking_reference}
+                            {o.courier_name
+                              ? ts("trackingWithCourier", {
+                                  courier: o.courier_name,
+                                  reference: o.tracking_reference,
+                                })
+                              : ts("trackingLabel", { reference: o.tracking_reference })}
                           </Text>
                         ) : null}
                         {["cancelled", "refunded", "failed"].includes(o.order_status) ? (
@@ -838,14 +859,14 @@ export default function TerminalShopScreen() {
                               disabled={paying}
                               style={[
                                 twStyle("flex-row items-center rounded-xl bg-pink-600 px-4 py-2"),
-                                { marginRight: 8, marginBottom: 4 },
+                                { marginEnd: 8, marginBottom: 4 },
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel="Pay for this order"
+                              accessibilityLabel={ts("payA11y")}
                             >
                               <Ionicons name="card-outline" size={14} color="#ffffff" />
-                              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
-                                {paying ? "Starting…" : "Pay now"}
+                              <Text style={twStyle("ms-1.5 text-sm font-semibold text-white")}>
+                                {paying ? ts("payStarting") : ts("payNow")}
                               </Text>
                             </TouchableOpacity>
                           ) : null}
@@ -854,14 +875,14 @@ export default function TerminalShopScreen() {
                               onPress={() => openIntegrationSetup(o)}
                               style={[
                                 twStyle("flex-row items-center rounded-xl bg-pink-600 px-4 py-2"),
-                                { marginRight: 8, marginBottom: 4 },
+                                { marginEnd: 8, marginBottom: 4 },
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel="Complete integration setup"
+                              accessibilityLabel={ts("completeSetupA11y")}
                             >
                               <Ionicons name="construct-outline" size={14} color="#ffffff" />
-                              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
-                                Complete setup
+                              <Text style={twStyle("ms-1.5 text-sm font-semibold text-white")}>
+                                {ts("completeSetup")}
                               </Text>
                             </TouchableOpacity>
                           ) : null}
@@ -869,7 +890,7 @@ export default function TerminalShopScreen() {
                             <TouchableOpacity
                               onPress={() =>
                                 void downloadTerminalOrderReceipt(o.id, router, {
-                                  productName: o.terminal_products?.name ?? "Terminal order",
+                                  productName: o.terminal_products?.name ?? ts("orderFallback"),
                                 })
                               }
                               style={[
@@ -877,10 +898,10 @@ export default function TerminalShopScreen() {
                                 { marginBottom: 4 },
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel="Download receipt"
+                              accessibilityLabel={ts("receiptA11y")}
                             >
                               <Ionicons name="download-outline" size={14} color="#374151" />
-                              <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>Receipt</Text>
+                              <Text style={twStyle("ms-1.5 text-sm font-medium text-gray-900")}>{ts("receipt")}</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -893,25 +914,25 @@ export default function TerminalShopScreen() {
 
             {shopUsable && assets.length > 0 && (
               <View style={twStyle("mb-6")}>
-                <Text style={twStyle("mb-3 text-base font-semibold text-gray-900")}>Your devices</Text>
+                <Text style={twStyle("mb-3 text-base font-semibold text-gray-900")}>{ts("sectionYourDevices")}</Text>
                 {assets.map((a) => (
                   <View
                     key={a.id}
                     style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}
                   >
-                    <View style={twStyle("flex-row items-center flex-1 pr-2")}>
+                    <View style={twStyle("flex-row items-center flex-1 pe-2")}>
                       <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
                         <Ionicons name="phone-portrait-outline" size={16} color="#9ca3af" />
                       </View>
-                      <View style={twStyle("ml-3 flex-1")}>
+                      <View style={twStyle("ms-3 flex-1")}>
                         <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                          {a.terminal_products?.name ?? "Terminal device"}
+                          {a.terminal_products?.name ?? ts("deviceFallback")}
                         </Text>
                         <Text style={twStyle("text-xs text-gray-500")}>
                           {formatTerminalAssetOwnership(a.ownership_model)}
                           {a.serial_number
-                            ? ` · ${a.serial_number}`
-                            : " · Serial not assigned yet — card payments stay unavailable until Beautonomi registers this machine"}
+                            ? ts("deviceSerialAssigned", { serial: a.serial_number })
+                            : ts("deviceSerialUnassigned")}
                         </Text>
                       </View>
                     </View>
@@ -937,17 +958,17 @@ export default function TerminalShopScreen() {
 
             {/* What happens after purchase */}
             <View style={twStyle("mb-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-900")}>What happens after purchase</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>{ts("sectionAfterPurchase")}</Text>
               {[
-                "Pay for your order — we prepare it for delivery, pickup, or instant activation.",
-                "Activate the machine with its serial number in Card machines.",
-                "Turn on in-person acceptance and start charging at bookings and sales.",
+                ts("afterPurchaseStep1"),
+                ts("afterPurchaseStep2"),
+                ts("afterPurchaseStep3"),
               ].map((step, idx) => (
                 <View key={step} style={twStyle("mt-2.5 flex-row items-start")}>
                   <View style={twStyle("h-5 w-5 items-center justify-center rounded-full bg-pink-100")}>
                     <Text style={twStyle("text-[10px] font-bold text-pink-700")}>{idx + 1}</Text>
                   </View>
-                  <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>{step}</Text>
+                  <Text style={twStyle("ms-2 flex-1 text-xs text-gray-600")}>{step}</Text>
                 </View>
               ))}
             </View>
@@ -959,15 +980,15 @@ export default function TerminalShopScreen() {
                   : pushInAppBrowser(
                       router,
                       `${getRuntimeMarketHost()}/provider/settings/sales/terminal-integrations`,
-                      "Terminal integrations",
+                      ts("inAppBrowserTerminalIntegrations"),
                     )
               }
               style={twStyle("mb-2 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3")}
               accessibilityRole="button"
             >
               <Ionicons name="settings-outline" size={15} color="#374151" />
-              <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>
-                {paycloudEnabled ? "Manage card machines" : "Manage terminal integrations on web"}
+              <Text style={twStyle("ms-2 text-sm font-medium text-gray-900")}>
+                {paycloudEnabled ? ts("manageCardMachines") : ts("manageTerminalIntegrationsWeb")}
               </Text>
             </TouchableOpacity>
           </>
@@ -977,10 +998,13 @@ export default function TerminalShopScreen() {
       <BottomSheet
         visible={!!checkoutProduct}
         onClose={() => setCheckoutProduct(null)}
-        title={checkoutProduct ? `Order ${checkoutProduct.name}` : undefined}
+        title={checkoutProduct ? ts("checkoutSheetTitle", { name: checkoutProduct.name }) : undefined}
         subtitle={
           checkoutProduct
-            ? `${checkoutProduct.vendor}${checkoutProduct.model ? ` · ${checkoutProduct.model}` : ""}`
+            ? ts("checkoutSheetSubtitle", {
+                vendor: checkoutProduct.vendor,
+                model: checkoutProduct.model ? ts("checkoutSheetSubtitleModel", { model: checkoutProduct.model }) : "",
+              })
             : undefined
         }
         snapHeight="full"
@@ -994,10 +1018,10 @@ export default function TerminalShopScreen() {
             <View style={twStyle("flex-row justify-end")}>
               <TouchableOpacity
                 onPress={() => setCheckoutProduct(null)}
-                style={[twStyle("rounded-xl border border-gray-200 px-4 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("rounded-xl border border-gray-200 px-4 py-2.5"), { marginEnd: 8 }]}
                 accessibilityRole="button"
               >
-                <Text style={twStyle("text-sm text-gray-700")}>Cancel</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{ts("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void submitOrder()}
@@ -1009,10 +1033,10 @@ export default function TerminalShopScreen() {
               >
                 <Text style={twStyle("text-sm font-semibold text-white")}>
                   {posting || allocating || paying
-                    ? "Working…"
+                    ? ts("working")
                     : selectedOption?.requires_payment
-                      ? "Place & pay"
-                      : "Confirm"}
+                      ? ts("placeAndPay")
+                      : ts("confirm")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1021,12 +1045,12 @@ export default function TerminalShopScreen() {
       >
         {(checkoutProduct?.checkout_options ?? []).length === 0 ? (
           <Text style={twStyle("rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800")}>
-            This product isn&apos;t configured for checkout. Contact Beautonomi support.
+            {ts("productNotConfigured")}
           </Text>
         ) : (
           <>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>
-              How would you like to get it?
+              {ts("howToGetIt")}
             </Text>
             {(checkoutProduct?.checkout_options ?? []).map((opt) => {
               const selected = commercialModel === opt.commercial_model;
@@ -1051,7 +1075,7 @@ export default function TerminalShopScreen() {
                   >
                     {selected ? <View style={twStyle("h-2 w-2 rounded-full bg-pink-600")} /> : null}
                   </View>
-                  <View style={twStyle("ml-2.5 flex-1")}>
+                  <View style={twStyle("ms-2.5 flex-1")}>
                     <View style={twStyle("flex-row items-center justify-between")}>
                       <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
                       <Text
@@ -1059,7 +1083,7 @@ export default function TerminalShopScreen() {
                           `text-sm font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`,
                         )}
                       >
-                        {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "R 0 — in plan"}
+                        {opt.requires_payment ? formatMoney(opt.currency, opt.price) : ts("priceInPlan")}
                       </Text>
                     </View>
                     {opt.description ? (
@@ -1074,23 +1098,23 @@ export default function TerminalShopScreen() {
 
         {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
           <View style={twStyle("mt-4")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Delivery address</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>{ts("deliveryAddress")}</Text>
             <TextInput
-              placeholder="Address line 1"
+              placeholder={ts("addressLine1Placeholder")}
               placeholderTextColor="#9ca3af"
               value={addressLine1}
               onChangeText={setAddressLine1}
               style={twStyle("mt-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
             />
             <TextInput
-              placeholder="City"
+              placeholder={ts("cityPlaceholder")}
               placeholderTextColor="#9ca3af"
               value={city}
               onChangeText={setCity}
               style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
             />
             <TextInput
-              placeholder="Postal code"
+              placeholder={ts("postalCodePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={postalCode}
               onChangeText={setPostalCode}
@@ -1101,9 +1125,9 @@ export default function TerminalShopScreen() {
 
         {fulfillmentType === "collection" && (
           <View style={twStyle("mt-4")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Pickup location</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>{ts("pickupLocation")}</Text>
             {collectionLocations.length === 0 ? (
-              <Text style={twStyle("text-sm text-gray-500")}>No pickup locations configured.</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{ts("noPickupLocations")}</Text>
             ) : (
               collectionLocations.map((loc) => {
                 const selected = collectionLocationId === loc.id;
@@ -1124,7 +1148,7 @@ export default function TerminalShopScreen() {
                       size={15}
                       color={selected ? "#db2777" : "#9ca3af"}
                     />
-                    <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>{loc.name}</Text>
+                    <Text style={twStyle("ms-2 text-sm font-medium text-gray-900")}>{loc.name}</Text>
                   </TouchableOpacity>
                 );
               })
@@ -1135,20 +1159,19 @@ export default function TerminalShopScreen() {
         {fulfillmentType === "digital_activation" && (
           <View style={twStyle("mt-4 flex-row items-start rounded-xl bg-gray-50 p-3")}>
             <Ionicons name="flash-outline" size={15} color="#db2777" />
-            <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>
-              This product activates digitally — nothing gets shipped. Complete brand integration
-              after confirmation.
+            <Text style={twStyle("ms-2 flex-1 text-xs text-gray-600")}>
+              {ts("digitalActivationHint")}
             </Text>
           </View>
         )}
 
         {selectedOption ? (
           <View style={twStyle("mt-4 flex-row items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5")}>
-            <Text style={twStyle("text-sm text-gray-500")}>Total today</Text>
+            <Text style={twStyle("text-sm text-gray-500")}>{ts("totalToday")}</Text>
             <Text style={twStyle("text-sm font-bold text-gray-900")}>
               {selectedOption.requires_payment
                 ? formatMoney(selectedOption.currency, selectedOption.price)
-                : "R 0 — in your plan"}
+                : ts("totalInPlan")}
             </Text>
           </View>
         ) : null}

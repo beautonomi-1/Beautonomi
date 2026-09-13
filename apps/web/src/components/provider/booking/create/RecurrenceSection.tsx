@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTranslation } from "@beautonomi/i18n";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
 
 export type RecurrencePattern = "daily" | "weekly" | "biweekly" | "monthly";
@@ -38,12 +39,14 @@ export function RecurrenceSection({
   hasSavedClient,
   isWalkIn,
 }: RecurrenceSectionProps) {
+  const { t } = useTranslation();
+  const prefix = "web.provider.portal.recurrenceSection";
   const disabled = isWalkIn || !hasSavedClient;
 
   return (
     <BookingSectionCard>
       <div className="flex items-center justify-between gap-3 mb-2">
-        <BookingSectionLabel className="mb-0">Repeating visit</BookingSectionLabel>
+        <BookingSectionLabel className="mb-0">{t(`${prefix}.title`)}</BookingSectionLabel>
         <Switch
           checked={enabled && !disabled}
           disabled={disabled}
@@ -53,8 +56,8 @@ export function RecurrenceSection({
       {disabled ? (
         <p className="text-xs text-gray-500">
           {isWalkIn
-            ? "Walk-in bookings cannot be set as repeating."
-            : "Select a saved client to create a repeating series."}
+            ? t(`${prefix}.walkInDisabled`)
+            : t(`${prefix}.selectClient`)}
         </p>
       ) : enabled ? (
         <div className="space-y-3 mt-2">
@@ -63,15 +66,15 @@ export function RecurrenceSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="biweekly">Every 2 weeks</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="daily">{t(`${prefix}.daily`)}</SelectItem>
+              <SelectItem value="weekly">{t(`${prefix}.weekly`)}</SelectItem>
+              <SelectItem value="biweekly">{t(`${prefix}.biweekly`)}</SelectItem>
+              <SelectItem value="monthly">{t(`${prefix}.monthly`)}</SelectItem>
             </SelectContent>
           </Select>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Number of visits (optional)
+              {t(`${prefix}.visitsOptional`)}
             </label>
             <Input
               type="number"
@@ -79,12 +82,12 @@ export function RecurrenceSection({
               inputMode="numeric"
               value={occurrenceCount}
               onChange={(e) => onOccurrenceCountChange(e.target.value)}
-              placeholder="e.g. 6"
+              placeholder={t(`${prefix}.visitsPlaceholder`)}
               className="rounded-xl min-h-[44px]"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">End date (optional)</label>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">{t(`${prefix}.endDateOptional`)}</label>
             <Input
               type="date"
               value={endDate}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -21,6 +23,7 @@ export default function CustomerWaitlistPage({
   const [isLoading, setIsLoading] = useState(() => initialEntries === null);
   const [error, setError] = useState<string | null>(null);
   const skipHydrateLoadOnce = useRef(initialEntries !== null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (skipHydrateLoadOnce.current) {
@@ -43,7 +46,7 @@ export default function CustomerWaitlistPage({
       );
       setEntries(response.data.entries || []);
     } catch (err) {
-      setError(err instanceof FetchError ? err.message : "Failed to load waitlist");
+      setError(err instanceof FetchError ? err.message : t("web.accountSettings.waitlist.loadFailed"));
       console.error("Error loading waitlist:", err);
     } finally {
       setIsLoading(false);
@@ -52,18 +55,18 @@ export default function CustomerWaitlistPage({
 
    
   const handleRemove = async (_entryId: string) => {
-    if (!confirm("Are you sure you want to remove yourself from the waitlist?")) {
+    if (!confirm(t("web.accountSettings.waitlist.removeConfirm"))) {
       return;
     }
 
     try {
       // Would need DELETE endpoint
-      toast.info("Removing from waitlist...");
+      toast.info(t("web.accountSettings.waitlist.removing"));
       // await fetcher.delete(`/api/waitlist/${entryId}`);
       // toast.success("Removed from waitlist");
       // loadWaitlist();
     } catch {
-      toast.error("Failed to remove from waitlist");
+      toast.error(t("web.accountSettings.waitlist.removeFailed"));
     }
   };
 
@@ -76,7 +79,7 @@ export default function CustomerWaitlistPage({
     };
     return (
       <Badge variant={variants[status] || "default"}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === "waiting" ? t("web.accountSettings.waitlist.statusWaiting") : status === "contacted" ? t("web.accountSettings.waitlist.statusContacted") : status === "booked" ? t("web.accountSettings.waitlist.statusBooked") : status === "cancelled" ? t("web.accountSettings.waitlist.statusCancelled") : status.charAt(0).toUpperCase() + status.slice(1)}
       </Badge>
     );
   };
@@ -84,7 +87,7 @@ export default function CustomerWaitlistPage({
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading waitlist..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.waitlist.loading")} />
         </div>
     );
   }
@@ -92,7 +95,7 @@ export default function CustomerWaitlistPage({
   return (
     <div className="container mx-auto px-4 py-8">
         <BackButton href="/account-settings" />
-        <h1 className="text-3xl font-bold mb-6">My Waitlist</h1>
+        <h1 className="text-3xl font-bold mb-6">{t("web.accountSettings.waitlist.title")}</h1>
 
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -104,9 +107,9 @@ export default function CustomerWaitlistPage({
           {entries.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center">
-                <p className="text-gray-600 mb-4">You&apos;re not on any waitlists</p>
+                <p className="text-gray-600 mb-4">{t("web.accountSettings.waitlist.emptyTitle")}</p>
                 <p className="text-sm text-gray-500">
-                  Join a waitlist when a service is fully booked to be notified when slots become available
+{t("web.accountSettings.waitlist.emptyHint")}
                 </p>
               </CardContent>
             </Card>
@@ -138,7 +141,7 @@ export default function CustomerWaitlistPage({
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-gray-400" />
                         <p className="text-sm text-gray-600">
-                          {entry.preferred_time_start || "Any"} - {entry.preferred_time_end || "Any"}
+                          {entry.preferred_time_start || t("web.accountSettings.waitlist.anyTime")} - {entry.preferred_time_end || t("web.accountSettings.waitlist.anyTime")}
                         </p>
                       </div>
                     )}
@@ -152,8 +155,8 @@ export default function CustomerWaitlistPage({
                         onClick={() => handleRemove(entry.id)}
                         className="text-red-600 hover:text-red-700"
                       >
-                        <X className="w-4 h-4 mr-1" />
-                        Remove
+                        <X className="w-4 h-4 me-1" />
+{t("web.accountSettings.waitlist.remove")}
                       </Button>
                     </div>
                   )}
@@ -161,13 +164,13 @@ export default function CustomerWaitlistPage({
                   {entry.status === "booked" && (
                     <div className="pt-4 border-t">
                       <Button variant="default" size="sm" asChild>
-                        <a href={`/account-settings/bookings`}>View Booking</a>
+                        <a href={`/account-settings/bookings`}>{t("web.accountSettings.waitlist.viewBooking")}</a>
                       </Button>
                     </div>
                   )}
 
                   <p className="text-xs text-gray-500 mt-2">
-                    Joined {new Date(entry.created_at).toLocaleDateString()}
+{t("web.accountSettings.waitlist.joined", { date: new Date(entry.created_at).toLocaleDateString() })}
                   </p>
                 </CardContent>
               </Card>

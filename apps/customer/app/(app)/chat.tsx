@@ -26,6 +26,7 @@ import { useTranslation, i18n } from "@beautonomi/i18n";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 interface MessageReplyTo {
   id: string;
@@ -652,7 +653,7 @@ export default function ChatScreen() {
                   id: parent.id,
                   sender_id: parent.sender_id,
                   sender_name: parent.sender_name,
-                  content_preview: (parent.content || "").trim().slice(0, 120) || "Attachment",
+                  content_preview: (parent.content || "").trim().slice(0, 120) || i18n.t("customer.chatScreen.attachmentFallback"),
                 };
               }
             }
@@ -1061,17 +1062,17 @@ export default function ChatScreen() {
   const requestChangesCustomOffer = useCallback(
     (offerId: string) => {
       Alert.prompt?.(
-        t("customer.chatScreen.requestChangesTitle", { defaultValue: "Request changes" }),
-        t("customer.chatScreen.requestChangesBody", { defaultValue: "Tell the provider what you'd like adjusted." }),
+        t("customer.chatScreen.requestChangesTitle"),
+        t("customer.chatScreen.requestChangesBody"),
         [
           { text: t("common.cancel"), style: "cancel" },
           {
-            text: t("common.send", { defaultValue: "Send" }),
+            text: t("common.send"),
             onPress: async (note?: string) => {
               if (!note?.trim()) {
                 Alert.alert(
                   t("customer.chatScreen.offerActionFailedTitle"),
-                  t("customer.chatScreen.requestChangesEmpty", { defaultValue: "Please describe the changes you want." }),
+                  t("customer.chatScreen.requestChangesEmpty"),
                 );
                 return;
               }
@@ -1080,7 +1081,7 @@ export default function ChatScreen() {
                 if (res.error) {
                   Alert.alert(
                     t("customer.chatScreen.offerActionFailedTitle"),
-                    getApiErrorMessage(res.error, t("customer.chatScreen.requestChangesFailed", { defaultValue: "Failed to request changes" })),
+                    getApiErrorMessage(res.error, t("customer.chatScreen.requestChangesFailed")),
                   );
                   return;
                 }
@@ -1088,7 +1089,7 @@ export default function ChatScreen() {
               } catch {
                 Alert.alert(
                   t("customer.chatScreen.offerActionFailedTitle"),
-                  t("customer.chatScreen.requestChangesFailed", { defaultValue: "Failed to request changes" }),
+                  t("customer.chatScreen.requestChangesFailed"),
                 );
               }
             },
@@ -1128,7 +1129,7 @@ export default function ChatScreen() {
     (() => {
       const parsed = new Date(iso);
       if (!Number.isFinite(parsed.getTime())) return t("customer.chatScreen.emDash");
-      return parsed.toLocaleTimeString("en-US", {
+      return parsed.toLocaleTimeString(getTenantLocaleTag(), {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
@@ -1146,7 +1147,7 @@ export default function ChatScreen() {
       dDay.setHours(0, 0, 0, 0);
       if (dDay.getTime() === today.getTime()) return t("customer.chatScreen.today");
       if (dDay.getTime() === yesterday.getTime()) return t("customer.chatScreen.yesterday");
-      return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return d.toLocaleDateString(getTenantLocaleTag(), { weekday: "short", month: "short", day: "numeric" });
     },
     [t],
   );
@@ -1253,7 +1254,7 @@ export default function ChatScreen() {
     () => (
       <TouchableOpacity
         onPress={openChatHeaderMenu}
-        style={{ marginRight: 8, padding: 8 }}
+        style={{ marginEnd: 8, padding: 8 }}
         accessibilityRole="button"
         accessibilityLabel={t("customer.chatScreen.conversationActionsA11y")}
       >
@@ -1288,7 +1289,7 @@ export default function ChatScreen() {
         {providerThumbnail ? (
           <Image
             source={{ uri: providerThumbnail }}
-            style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8, backgroundColor: Colors.gray[100] }}
+            style={{ width: 32, height: 32, borderRadius: 16, marginEnd: 8, backgroundColor: Colors.gray[100] }}
             contentFit="cover"
             cachePolicy="memory-disk"
           />
@@ -1298,7 +1299,7 @@ export default function ChatScreen() {
               width: 32,
               height: 32,
               borderRadius: 16,
-              marginRight: 8,
+              marginEnd: 8,
               backgroundColor: Colors.gray[200],
               alignItems: "center",
               justifyContent: "center",
@@ -1318,7 +1319,7 @@ export default function ChatScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 12 }}>Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 12 }}>{t("customer.chatScreen.loading")}</Text>
       </View>
     );
   }
@@ -1337,7 +1338,7 @@ export default function ChatScreen() {
           options={{
             title: chatTitle,
             headerTitle: renderHeaderTitle,
-            headerBackTitle: "Back",
+            headerBackTitle: t("common.back"),
             headerRight: chatHeaderRight,
           }}
         />
@@ -1361,7 +1362,7 @@ export default function ChatScreen() {
         options={{
           title: chatTitle,
           headerTitle: renderHeaderTitle,
-          headerBackTitle: "Back",
+          headerBackTitle: t("common.back"),
           headerRight: chatHeaderRight,
         }}
       />
@@ -1400,7 +1401,7 @@ export default function ChatScreen() {
                 }}
               >
                 <Text style={{ color: Colors.gray[700], fontSize: 13, marginBottom: 8 }}>
-                  Manage requests and profile details for this provider.
+                  {t("customer.chatScreen.manageProviderHint")}
                 </Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   {resolvedProviderSlug ? (
@@ -1413,7 +1414,7 @@ export default function ChatScreen() {
                       }
                       style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200] }}
                     >
-                      <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>View Profile</Text>
+                      <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>{t("customer.chatScreen.viewProfile")}</Text>
                     </TouchableOpacity>
                   ) : null}
                   {resolvedProviderId ? (
@@ -1426,14 +1427,14 @@ export default function ChatScreen() {
                       }
                       style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.primary }}
                     >
-                      <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "600" }}>New Request</Text>
+                      <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "600" }}>{t("customer.chatScreen.newRequest")}</Text>
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity
                     onPress={() => router.push("/(app)/account-settings/custom-requests")}
                     style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200] }}
                   >
-                    <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>My Requests</Text>
+                    <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>{t("customer.chatScreen.myRequests")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1464,14 +1465,14 @@ export default function ChatScreen() {
                   </View>
                 ) : hasMore ? (
                   <TouchableOpacity onPress={loadOlder} style={{ paddingVertical: 12, alignItems: "center" }}>
-                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Load older messages</Text>
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>{t("customer.chatScreen.loadOlder")}</Text>
                   </TouchableOpacity>
                 ) : null
               }
               ListEmptyComponent={
                 <View style={{ paddingVertical: 32, alignItems: "center" }}>
                   <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.primary} />
-                  <Text style={{ color: Colors.gray[500], marginTop: 12 }}>No messages yet. Say hello!</Text>
+                  <Text style={{ color: Colors.gray[500], marginTop: 12 }}>{t("customer.chatScreen.noMessagesYet")}</Text>
                 </View>
               }
               renderItem={({ item }) => {
@@ -1488,7 +1489,7 @@ export default function ChatScreen() {
                   return (
                     <View style={{ alignItems: "center", marginVertical: 10 }}>
                       <View style={{ backgroundColor: "#FEF3C7", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: "#FCD34D" }}>
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#92400E" }}>Unread messages</Text>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#92400E" }}>{t("customer.chatScreen.unreadDivider")}</Text>
                       </View>
                     </View>
                   );
@@ -1548,7 +1549,7 @@ export default function ChatScreen() {
                           }}
                           style={{
                             marginBottom: 8,
-                            paddingLeft: 8,
+                            paddingStart: 8,
                             borderLeftWidth: 3,
                             borderLeftColor: isMe ? "rgba(255,255,255,0.85)" : Colors.primary,
                           }}
@@ -1643,7 +1644,7 @@ export default function ChatScreen() {
                                     name="videocam-outline"
                                     size={22}
                                     color={isMe ? "#fff" : Colors.gray[600]}
-                                    style={{ marginRight: 10 }}
+                                    style={{ marginEnd: 10 }}
                                   />
                                   <Text
                                     style={{
@@ -1681,7 +1682,7 @@ export default function ChatScreen() {
                                   name="document-text-outline"
                                   size={22}
                                   color={isMe ? "#fff" : Colors.gray[600]}
-                                  style={{ marginRight: 10 }}
+                                  style={{ marginEnd: 10 }}
                                 />
                                 <Text
                                   style={{
@@ -1833,7 +1834,7 @@ export default function ChatScreen() {
                   zIndex: 10,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Scroll to bottom"
+                accessibilityLabel={t("customer.chatScreen.a11yScrollToBottom")}
               >
                 <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
               </TouchableOpacity>
@@ -1857,7 +1858,7 @@ export default function ChatScreen() {
                     alignSelf: "stretch",
                     backgroundColor: Colors.primary,
                     borderRadius: 2,
-                    marginRight: 10,
+                    marginEnd: 10,
                   }}
                 />
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -1896,7 +1897,7 @@ export default function ChatScreen() {
               <TouchableOpacity
                 onPress={chooseAttachmentSource}
                 disabled={sending || uploading}
-                style={{ marginRight: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
+                style={{ marginEnd: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
                 accessibilityRole="button"
                 accessibilityLabel={t("customer.chatScreen.attachmentSheetTitle")}
               >
@@ -2047,7 +2048,7 @@ export default function ChatScreen() {
               </View>
             ) : !offerDetailData ? (
               <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
-                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>Could not load offer details.</Text>
+                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>{t("customer.chatScreen.offerDetailLoadFailed")}</Text>
               </View>
             ) : (() => {
               const d = offerDetailData;

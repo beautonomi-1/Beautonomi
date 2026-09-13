@@ -112,7 +112,7 @@ export default function MessagesScreen() {
       }
     >
       <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
-        <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
+        <Text style={{ color: Colors.gray[400], marginEnd: 6 }}>🔎</Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -179,7 +179,7 @@ export default function MessagesScreen() {
                   }
                 }}
                 activeOpacity={0.8}
-                style={{ marginRight: 12 }}
+                style={{ marginEnd: 12 }}
               >
                 {c.avatar || c.provider?.thumbnail_url ? (
                   <Image
@@ -227,7 +227,7 @@ export default function MessagesScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={ch("conversationActionsA11y")}
-                style={{ marginLeft: 8, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100] }}
+                style={{ marginStart: 8, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100] }}
               >
                 <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />
               </TouchableOpacity>

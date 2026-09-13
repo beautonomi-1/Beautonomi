@@ -131,7 +131,9 @@ export async function createBookingFromHold(
   }
 
   const totalAmount = sumMoney(subtotal, taxAmount, serviceFeeAmount);
-  const appointmentStatus = await determineAppointmentStatusFromDB(adminSupabase, hold.provider_id);
+  const appointmentStatus = await determineAppointmentStatusFromDB(adminSupabase, hold.provider_id, undefined, {
+    bookingSource: "online",
+  });
 
   const startAt = new Date(hold.start_at);
   const endAt = new Date(hold.end_at);

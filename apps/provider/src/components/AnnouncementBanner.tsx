@@ -9,6 +9,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type NotifRow = {
   id: string;
@@ -38,6 +40,8 @@ function thumbUrl(data?: Record<string, unknown>): string | null {
 }
 
 export function AnnouncementBanner() {
+  const { t } = useTranslation();
+  const ab = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.announcementBanner.${key}`, opts) as string;
   const router = useRouter();
   const [row, setRow] = useState<NotifRow | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -81,11 +85,11 @@ export function AnnouncementBanner() {
   }, [load]);
 
   const accent = useMemo(() => {
-    const t = annType(row?.data);
-    if (t === "promotion") return { bg: "#fff7ed", border: "#fdba74", badge: "#c2410c", label: "PROMO" };
-    if (t === "event") return { bg: "#eef2ff", border: "#a5b4fc", badge: "#4338ca", label: "EVENT" };
-    return { bg: "#f9fafb", border: "#e5e7eb", badge: "#4b5563", label: "NEWS" };
-  }, [row]);
+    const kind = annType(row?.data);
+    if (kind === "promotion") return { bg: "#fff7ed", border: "#fdba74", badge: "#c2410c", label: ab("badgePromo") };
+    if (kind === "event") return { bg: "#eef2ff", border: "#a5b4fc", badge: "#4338ca", label: ab("badgeEvent") };
+    return { bg: "#f9fafb", border: "#e5e7eb", badge: "#4b5563", label: ab("badgeNews") };
+  }, [row, t]);
 
   if (!row || dismissed) return null;
 
@@ -113,7 +117,7 @@ export function AnnouncementBanner() {
         onPress={() => router.push(`/(app)/announcements/${row.id}` as never)}
         style={{ flexDirection: "row", alignItems: "center", padding: 12 }}
         accessibilityRole="button"
-        accessibilityLabel={`Open announcement ${row.title}`}
+        accessibilityLabel={ab("openA11y", { title: row.title })}
       >
         <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: "#e5e7eb", overflow: "hidden" }}>
           {thumb ? (
@@ -124,13 +128,13 @@ export function AnnouncementBanner() {
             </View>
           )}
         </View>
-        <View style={{ flex: 1, marginLeft: 10 }}>
+        <View style={{ flex: 1, marginStart: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
             <View style={{ backgroundColor: accent.badge, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
               <Text style={{ fontSize: 9, fontWeight: "800", color: "#fff" }}>{accent.label}</Text>
             </View>
             {endsIn != null ? (
-              <Text style={{ marginLeft: 8, fontSize: 11, color: Colors.gray[600] }}>Ends in ~{endsIn}h</Text>
+              <Text style={{ marginStart: 8, fontSize: 11, color: Colors.gray[600] }}>{ab("endsInHours", { hours: endsIn })}</Text>
             ) : null}
           </View>
           <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
@@ -140,7 +144,7 @@ export function AnnouncementBanner() {
             {row.message}
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
       </TouchableOpacity>
       <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 8, paddingBottom: 8 }}>
         <TouchableOpacity
@@ -157,9 +161,9 @@ export function AnnouncementBanner() {
           }}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss announcement banner"
+          accessibilityLabel={ab("dismissA11y")}
         >
-          <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "600" }}>Dismiss</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "600" }}>{ab("dismiss")}</Text>
         </TouchableOpacity>
       </View>
     </View>

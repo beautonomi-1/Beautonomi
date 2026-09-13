@@ -34,8 +34,8 @@ export function MobilePanelSheet({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
-          side="right"
-          className="w-full sm:max-w-md p-0 flex flex-col rounded-l-[2.5rem] border-l-0 border-[#0F172A]/[0.06] shadow-[-10px_0_40px_rgba(0,0,0,0.1)] bg-[#FDFDFD]"
+          side="end"
+          className="w-full sm:max-w-md p-0 flex flex-col rounded-s-[2.5rem] border-s-0 border-[#0F172A]/[0.06] shadow-[-10px_0_40px_rgba(0,0,0,0.1)] bg-[#FDFDFD]"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>

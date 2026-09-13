@@ -1,22 +1,13 @@
+import { buildFormatLocale } from "@beautonomi/i18n/language-registry";
 import type { ConfigBundleMeta } from "@/lib/config/types";
 import type { TenantRegionConfig } from "@/lib/regions/config";
-
-function baseLanguageTag(lang: string | undefined): string {
-  const raw = (lang ?? "en").trim();
-  if (!raw) return "en";
-  const base = raw.split(/[-_]/)[0]?.toLowerCase() ?? "en";
-  return /^[a-z]{2}$/.test(base) ? base : "en";
-}
 
 /** Shared by client bundle meta and server `getTenantRegionConfig` rows. */
 export function buildTenantLocaleTag(
   defaultLanguage: string | undefined,
   regionCode: string | undefined,
 ): string {
-  const lang = baseLanguageTag(defaultLanguage);
-  const region = (regionCode ?? "ZA").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(region)) return "en-ZA";
-  return `${lang}-${region}`;
+  return buildFormatLocale(defaultLanguage ?? "en", regionCode ?? "ZA");
 }
 
 /**

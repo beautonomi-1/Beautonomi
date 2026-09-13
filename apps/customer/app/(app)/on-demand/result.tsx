@@ -1,7 +1,9 @@
+import { useCallback } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
@@ -15,6 +17,14 @@ interface OnDemandRequest {
 }
 
 export default function OnDemandResultScreen() {
+  const { t } = useTranslation();
+  const od = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.onDemandResult.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ status?: string; requestId?: string }>();
   const status = params.status ?? "expired";
@@ -72,7 +82,7 @@ export default function OnDemandResultScreen() {
           <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], textAlign: "center" }}>{title}</Text>
           <Text style={{ color: Colors.gray[600], textAlign: "center", marginTop: 8 }}>{subtitle}</Text>
           {isAccepted && providerName && (
-            <Text style={{ color: Colors.gray[600], textAlign: "center", marginTop: 4 }}>with {providerName}</Text>
+            <Text style={{ color: Colors.gray[600], textAlign: "center", marginTop: 4 }}>{od("withProvider", { name: providerName })}</Text>
           )}
         </View>
 
@@ -82,7 +92,7 @@ export default function OnDemandResultScreen() {
           )}
           {isAccepted && requestError && !bookingId && (
             <Text style={{ color: Colors.gray[500], textAlign: "center", marginBottom: 16, fontSize: 13 }}>
-              Could not load booking details. Check your bookings list.
+              {od("loadBookingDetailsFailed")}
             </Text>
           )}
           {isAccepted && bookingId && (
@@ -90,7 +100,7 @@ export default function OnDemandResultScreen() {
               onPress={() => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } } as never)}
               style={{ backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center", marginBottom: 12 }}
             >
-              <Text style={{ color: Colors.white, fontWeight: "600" }}>View booking</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>{od("viewBooking")}</Text>
             </TouchableOpacity>
           )}
           {showPickAnotherTime && providerId && (
@@ -103,7 +113,7 @@ export default function OnDemandResultScreen() {
               }
               style={{ backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center", marginBottom: 12 }}
             >
-              <Text style={{ color: Colors.white, fontWeight: "600" }}>Pick another time</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>{od("pickAnotherTime")}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -124,14 +134,14 @@ export default function OnDemandResultScreen() {
                 fontWeight: "600",
               }}
             >
-              View my bookings
+              {od("viewMyBookings")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)" as never)}
             style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 16, paddingVertical: 16, alignItems: "center", marginTop: 12 }}
           >
-            <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>Back to home</Text>
+            <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{od("backToHome")}</Text>
           </TouchableOpacity>
         </View>
       </View>

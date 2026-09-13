@@ -5,6 +5,7 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import type { UserRole } from "@beautonomi/types";
+import { useTranslation } from "@beautonomi/i18n";
 import { authFlowBreadcrumb, captureError, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
 const ALLOWED_ROLES: UserRole[] = [
@@ -21,6 +22,8 @@ interface RoleGateProps {
 type ErrorType = "network" | "api" | null;
 
 export function RoleGate({ children }: RoleGateProps) {
+  const { t } = useTranslation();
+  const rg = (key: string) => t(`customer.mobile.components.roleGate.${key}`) as string;
   const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
@@ -121,7 +124,7 @@ export function RoleGate({ children }: RoleGateProps) {
   // "no user yet" and "checking role" phases so the whole auth chain shares
   // one animation instead of a mix of bare spinners.
   if (!user) return <>{children}</>;
-  if (loading) return <GateLoadingScreen message="Checking access…" />;
+  if (loading) return <GateLoadingScreen message={rg("checkingAccess")} />;
   if (errorType) {
     const isNetwork = errorType === "network";
     return (
@@ -137,12 +140,10 @@ export function RoleGate({ children }: RoleGateProps) {
         <Text
           style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}
         >
-          {isNetwork ? "Can't reach server" : "Something went wrong"}
+          {isNetwork ? rg("cantReachServer") : rg("somethingWentWrong")}
         </Text>
         <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500], maxWidth: 320 }}>
-          {isNetwork
-            ? "Check your internet connection and tap Retry."
-            : "We could not verify your account. Please try again or sign out."}
+          {isNetwork ? rg("networkBody") : rg("apiBody")}
         </Text>
         <View style={{ marginTop: 32, flexDirection: "row", gap: 12 }}>
           <TouchableOpacity
@@ -154,7 +155,7 @@ export function RoleGate({ children }: RoleGateProps) {
             }}
             onPress={() => void runFetch()}
           >
-            <Text style={{ fontWeight: "600", color: Colors.white }}>Retry</Text>
+            <Text style={{ fontWeight: "600", color: Colors.white }}>{rg("retry")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={{
@@ -165,7 +166,7 @@ export function RoleGate({ children }: RoleGateProps) {
             }}
             onPress={() => void signOut()}
           >
-            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Sign out</Text>
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{rg("signOut")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -185,10 +186,10 @@ export function RoleGate({ children }: RoleGateProps) {
         <Text
           style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}
         >
-          This app is not available for this account
+          {rg("blockedTitle")}
         </Text>
         <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500] }}>
-          Please use the right Beautonomi portal for your account or contact support.
+          {rg("blockedBody")}
         </Text>
         <TouchableOpacity
           style={{
@@ -200,7 +201,7 @@ export function RoleGate({ children }: RoleGateProps) {
           }}
           onPress={() => void signOut()}
         >
-          <Text style={{ fontWeight: "500", color: Colors.white }}>Sign out</Text>
+          <Text style={{ fontWeight: "500", color: Colors.white }}>{rg("signOut")}</Text>
         </TouchableOpacity>
       </View>
     );

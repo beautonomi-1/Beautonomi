@@ -26,7 +26,7 @@ const ShopCard: React.FC<BarbershopProps> = ({
       <div className="px-4 py-8">
         <h2 className="text-2xl font-bold mb-2">{name}</h2>
         <div className="flex items-center mb-2">
-          <div className="flex mr-2">
+          <div className="flex me-2">
             {[...Array(5)].map((_, i) => (
               <svg
                 key={i}
@@ -43,7 +43,7 @@ const ShopCard: React.FC<BarbershopProps> = ({
           <span className="text-blue-600 font-normal">({reviewCount})</span>
         </div>
         {isFeatured && (
-          <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mr-2 mb-2">
+          <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full me-2 mb-2">
             Featured
           </span>
         )}
@@ -58,13 +58,13 @@ const ShopCard: React.FC<BarbershopProps> = ({
       </div>
       <div className="border-t border-gray-200 px-4 py-6">
         <div className="flex items-center mb-2">
-          <Clock className="w-5 h-5 mr-2 text-gray-500 font-light" />
+          <Clock className="w-5 h-5 me-2 text-gray-500 font-light" />
           <p className="text-gray-600">
             Closed <span className="font-light">opens at {openingTime}</span>
           </p>
         </div>
         <div className="flex items-start">
-          <MapPin className="w-5 h-5 mr-2 text-gray-500 mt-1 flex-shrink-0" />
+          <MapPin className="w-5 h-5 me-2 text-gray-500 mt-1 flex-shrink-0" />
           <p className="text-gray-600 font-light">{address}</p>
         </div>
       </div>

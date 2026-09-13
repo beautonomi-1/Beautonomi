@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { useTranslation } from "@beautonomi/i18n";
 interface DataTableShellProps {
   searchPlaceholder?: string;
   searchValue?: string;
@@ -32,7 +33,7 @@ interface DataTableShellProps {
 }
 
 export function DataTableShell({
-  searchPlaceholder = "Search...",
+  searchPlaceholder,
   searchValue,
   onSearchChange,
   filterButton,
@@ -43,6 +44,7 @@ export function DataTableShell({
   onSortChange,
   children,
 }: DataTableShellProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -50,17 +52,17 @@ export function DataTableShell({
         <div className="relative flex-1 w-full md:max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder ?? t("web.provider.dataTableShell.searchPlaceholder")}
             value={searchValue}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            className="pl-10 provider-input min-h-[44px]"
+            className="ps-10 provider-input min-h-[44px]"
           />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           {filterButton && (
             <Button variant="outline" onClick={filterButton.onClick}>
-              <Filter className="w-4 h-4 mr-2" />
+              <Filter className="w-4 h-4 me-2" />
               {filterButton.label}
             </Button>
           )}
@@ -68,7 +70,7 @@ export function DataTableShell({
           {sortOptions && (
             <Select value={sortValue} onValueChange={onSortChange}>
               <SelectTrigger className="w-full md:w-48 provider-input min-h-[44px]">
-                <SelectValue placeholder="Sort by" />
+                <SelectValue placeholder={t("web.provider.dataTableShell.sortBy")} />
               </SelectTrigger>
               <SelectContent>
                 {sortOptions.map((option) => (
@@ -84,13 +86,13 @@ export function DataTableShell({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
-                  <MoreVertical className="w-4 h-4 mr-2" />
-                  Options
+                  <MoreVertical className="w-4 h-4 me-2" />
+                  {t("web.provider.dataTableShell.options")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem>Export</DropdownMenuItem>
-                <DropdownMenuItem>Print</DropdownMenuItem>
+                <DropdownMenuItem>{t("web.provider.dataTableShell.export")}</DropdownMenuItem>
+                <DropdownMenuItem>{t("web.provider.dataTableShell.print")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -100,7 +102,7 @@ export function DataTableShell({
               onClick={addButton.onClick} 
               className="provider-btn-brand w-full sm:w-auto px-5"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 me-2" />
               {addButton.label}
             </Button>
           )}

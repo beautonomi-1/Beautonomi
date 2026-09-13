@@ -10,6 +10,12 @@ export type TemplateOutboundChannel = "email" | "sms" | "whatsapp";
 export interface TemplateChannelRecipient {
   userId: string;
   channels: TemplateOutboundChannel[];
+  /** Per-recipient localized copy (falls back to context defaults). */
+  title?: string;
+  body?: string;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
 }
 
 export interface TemplateChannelContext {
@@ -45,8 +51,16 @@ export function buildTemplateChannelQueueRows(
       (c): c is TemplateOutboundChannel =>
         c === "email" || c === "sms" || c === "whatsapp",
     );
+    const recipientCtx: TemplateChannelContext = {
+      ...ctx,
+      title: recipient.title ?? ctx.title,
+      body: recipient.body ?? ctx.body,
+      emailSubject: recipient.emailSubject ?? ctx.emailSubject,
+      emailBody: recipient.emailBody ?? ctx.emailBody,
+      smsBody: recipient.smsBody ?? ctx.smsBody,
+    };
     for (const channel of channels) {
-      const payload = buildTemplateChannelPayload(channel, ctx);
+      const payload = buildTemplateChannelPayload(channel, recipientCtx);
       if (!payload) continue;
       rows.push({
         channel,

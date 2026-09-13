@@ -143,7 +143,7 @@ export const ProviderCard = React.memo(function ProviderCard({
               {b.iconUri ? (
                 <Image
                   source={{ uri: b.iconUri }}
-                  style={{ width: 10, height: 10, marginRight: 4 }}
+                  style={{ width: 10, height: 10, marginEnd: 4 }}
                   contentFit="contain"
                 />
               ) : null}
@@ -187,15 +187,15 @@ export const ProviderCard = React.memo(function ProviderCard({
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Text style={{ fontWeight: "600", fontSize: 14, color: Colors.gray[900], flex: 1 }} numberOfLines={1}>{provider.business_name}</Text>
           {provider.is_verified && (
-            <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center", marginLeft: 4 }}>
+            <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center", marginStart: 4 }}>
               <Ionicons name="checkmark" size={10} color="white" />
             </View>
           )}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
           <Ionicons name="star" size={12} color="#EAB308" />
-          <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], marginLeft: 4 }}>{provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}</Text>
-          <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({formatCount(provider.review_count || 0)})</Text>
+          <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], marginStart: 4 }}>{provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}</Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[500], marginStart: 4 }}>({formatCount(provider.review_count || 0)})</Text>
         </View>
         {cardDescription ? (
           <Text style={{ fontSize: 10, color: Colors.gray[600], marginTop: 6, lineHeight: 14, flexShrink: 1 }} numberOfLines={2}>{cardDescription}</Text>

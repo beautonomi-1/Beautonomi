@@ -7,6 +7,7 @@ import {
   Alert,
 } from "react-native";
 import { Image } from "expo-image";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
@@ -88,45 +89,54 @@ interface GamificationResponse {
   provider_stats?: { total_bookings: number; review_count: number; rating_average?: number };
 }
 
-const EARN_TIPS: { icon: IoniconName; title: string; body: string }[] = [
+const EARN_TIPS: { icon: IoniconName; titleKey: string; bodyKey: string }[] = [
   {
     icon: "calendar-outline",
-    title: "Complete bookings",
-    body: "Every finished appointment adds points toward your next level.",
+    titleKey: "earnTipBookingsTitle",
+    bodyKey: "earnTipBookingsBody",
   },
   {
     icon: "star-outline",
-    title: "Earn great reviews",
-    body: "Happy clients boost your rating and unlock higher tiers faster.",
+    titleKey: "earnTipReviewsTitle",
+    bodyKey: "earnTipReviewsBody",
   },
   {
     icon: "trending-up-outline",
-    title: "Stay consistent",
-    body: "Regular activity keeps your badge active and your profile visible.",
+    titleKey: "earnTipConsistentTitle",
+    bodyKey: "earnTipConsistentBody",
   },
 ];
 
-const MILESTONE_META: Record<string, { label: string; icon: IoniconName }> = {
-  first_booking: { label: "First booking", icon: "calendar" },
-  "10_bookings": { label: "10 bookings", icon: "calendar" },
-  ten_bookings: { label: "10 bookings", icon: "calendar" },
-  "50_bookings": { label: "50 bookings", icon: "calendar" },
-  fifty_bookings: { label: "50 bookings", icon: "calendar" },
-  "100_bookings": { label: "100 bookings", icon: "calendar" },
-  hundred_bookings: { label: "100 bookings", icon: "calendar" },
-  "500_bookings": { label: "500 bookings", icon: "calendar" },
-  five_hundred_bookings: { label: "500 bookings", icon: "calendar" },
-  "1000_bookings": { label: "1000 bookings", icon: "calendar" },
-  thousand_bookings: { label: "1000 bookings", icon: "calendar" },
-  "100_reviews": { label: "100 reviews", icon: "chatbubbles" },
-  "10_reviews": { label: "10 reviews", icon: "chatbubbles" },
-  ten_reviews: { label: "10 reviews", icon: "chatbubbles" },
-  "50_reviews": { label: "50 reviews", icon: "chatbubbles" },
-  fifty_reviews: { label: "50 reviews", icon: "chatbubbles" },
-  first_review: { label: "First review", icon: "chatbubble" },
-  perfect_rating: { label: "Perfect rating", icon: "star" },
-  perfect_rating_month: { label: "Perfect rating month", icon: "star" },
+const MILESTONE_META: Record<string, { labelKey: string; icon: IoniconName }> = {
+  first_booking: { labelKey: "milestoneFirstBooking", icon: "calendar" },
+  "10_bookings": { labelKey: "milestone10Bookings", icon: "calendar" },
+  ten_bookings: { labelKey: "milestone10Bookings", icon: "calendar" },
+  "50_bookings": { labelKey: "milestone50Bookings", icon: "calendar" },
+  fifty_bookings: { labelKey: "milestone50Bookings", icon: "calendar" },
+  "100_bookings": { labelKey: "milestone100Bookings", icon: "calendar" },
+  hundred_bookings: { labelKey: "milestone100Bookings", icon: "calendar" },
+  "500_bookings": { labelKey: "milestone500Bookings", icon: "calendar" },
+  five_hundred_bookings: { labelKey: "milestone500Bookings", icon: "calendar" },
+  "1000_bookings": { labelKey: "milestone1000Bookings", icon: "calendar" },
+  thousand_bookings: { labelKey: "milestone1000Bookings", icon: "calendar" },
+  "100_reviews": { labelKey: "milestone100Reviews", icon: "chatbubbles" },
+  "10_reviews": { labelKey: "milestone10Reviews", icon: "chatbubbles" },
+  ten_reviews: { labelKey: "milestone10Reviews", icon: "chatbubbles" },
+  "50_reviews": { labelKey: "milestone50Reviews", icon: "chatbubbles" },
+  fifty_reviews: { labelKey: "milestone50Reviews", icon: "chatbubbles" },
+  first_review: { labelKey: "milestoneFirstReview", icon: "chatbubble" },
+  perfect_rating: { labelKey: "milestonePerfectRating", icon: "star" },
+  perfect_rating_month: { labelKey: "milestonePerfectRatingMonth", icon: "star" },
 };
+
+function useGm() {
+  const { t } = useTranslation();
+  return useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.gamification.${key}`, opts) as string,
+    [t],
+  );
+}
 
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
@@ -140,37 +150,44 @@ function badgeTint(color: string | null | undefined, alpha = "22"): string {
   return Colors.primaryLight;
 }
 
-function milestoneLabel(type: string): { label: string; icon: IoniconName } {
+function milestoneLabel(
+  type: string,
+  gm: (key: string, opts?: Record<string, unknown>) => string,
+): { label: string; icon: IoniconName } {
   const known = MILESTONE_META[type];
-  if (known) return known;
+  if (known) return { label: gm(known.labelKey), icon: known.icon };
   const label = type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return { label, icon: "flag" };
 }
 
-function formatRequirementHint(req?: BadgeRequirements): string | null {
+function formatRequirementHint(
+  req: BadgeRequirements | undefined,
+  gm: (key: string, opts?: Record<string, unknown>) => string,
+): string | null {
   if (!req) return null;
   const parts: string[] = [];
-  if (req.points) parts.push(`${req.points.toLocaleString()} pts`);
-  if (req.min_reviews) parts.push(`${req.min_reviews}+ reviews`);
-  if (req.min_bookings) parts.push(`${req.min_bookings}+ bookings`);
-  if (req.min_rating) parts.push(`${req.min_rating}+ rating`);
+  if (req.points) parts.push(gm("reqPoints", { amount: req.points.toLocaleString() }));
+  if (req.min_reviews) parts.push(gm("reqReviews", { count: req.min_reviews }));
+  if (req.min_bookings) parts.push(gm("reqBookings", { count: req.min_bookings }));
+  if (req.min_rating) parts.push(gm("reqRating", { rating: req.min_rating }));
   return parts.length ? parts.join(" · ") : null;
 }
 
 function BenefitChips({ benefits }: { benefits?: BadgeBenefits }) {
+  const gm = useGm();
   if (!benefits?.featured && !benefits?.free_subscription) return null;
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
       {benefits.featured ? (
         <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 999, backgroundColor: "#dbeafe", paddingHorizontal: 10, paddingVertical: 4 }}>
           <Ionicons name="sparkles" size={12} color="#1d4ed8" />
-          <Text style={{ marginLeft: 4, fontSize: 11, fontWeight: "600", color: "#1e40af" }}>Featured listing</Text>
+          <Text style={{ marginStart: 4, fontSize: 11, fontWeight: "600", color: "#1e40af" }}>{gm("featuredListing")}</Text>
         </View>
       ) : null}
       {benefits.free_subscription ? (
         <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 999, backgroundColor: "#dcfce7", paddingHorizontal: 10, paddingVertical: 4 }}>
           <Ionicons name="gift-outline" size={12} color="#15803d" />
-          <Text style={{ marginLeft: 4, fontSize: 11, fontWeight: "600", color: "#166534" }}>Subscription perk</Text>
+          <Text style={{ marginStart: 4, fontSize: 11, fontWeight: "600", color: "#166534" }}>{gm("subscriptionPerk")}</Text>
         </View>
       ) : null}
     </View>
@@ -184,6 +201,7 @@ function CurrentBadgeHero({
   badge: NonNullable<GamificationResponse["current_badge"]>;
   pointsTotal: number;
 }) {
+  const gm = useGm();
   const accent = badge.color && /^#/.test(badge.color) ? badge.color : Colors.primary;
   return (
     <View
@@ -199,7 +217,7 @@ function CurrentBadgeHero({
     >
       <View style={{ padding: 20, backgroundColor: badgeTint(accent, "18") }}>
         <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.6, textTransform: "uppercase", color: Colors.gray[600] }}>
-          Your level
+          {gm("yourLevel")}
         </Text>
         <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center" }}>
           <View
@@ -219,7 +237,7 @@ function CurrentBadgeHero({
               <Ionicons name="trophy" size={36} color={Colors.white} />
             )}
           </View>
-          <View style={{ marginLeft: 16, flex: 1 }}>
+          <View style={{ marginStart: 16, flex: 1 }}>
             <Text style={{ fontSize: 22, fontWeight: "800", color: Colors.gray[900] }} numberOfLines={2}>
               {badge.name}
             </Text>
@@ -233,18 +251,18 @@ function CurrentBadgeHero({
         </View>
         <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           <View style={{ borderRadius: 12, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 8, minWidth: 100 }}>
-            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Points</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("points")}</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{pointsTotal.toLocaleString()}</Text>
           </View>
           {badge.earned_at ? (
             <View style={{ borderRadius: 12, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 8, flex: 1, minWidth: 120 }}>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Earned</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("earned")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>{formatDateSafe(badge.earned_at)}</Text>
             </View>
           ) : null}
           {badge.expires_at ? (
             <View style={{ borderRadius: 12, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 8, flex: 1, minWidth: 120 }}>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Active until</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("activeUntil")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>{formatDateSafe(badge.expires_at)}</Text>
             </View>
           ) : null}
@@ -255,6 +273,7 @@ function CurrentBadgeHero({
 }
 
 function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
+  const gm = useGm();
   const accent = progress.badge.color && /^#/.test(progress.badge.color) ? progress.badge.color : Colors.primary;
   const pct = Math.min(100, progress.progress_percentage);
   const almostThere = pct >= 75 && progress.points_needed > 0;
@@ -272,7 +291,7 @@ function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>Level up next</Text>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>{gm("levelUpNext")}</Text>
         <View style={{ borderRadius: 999, backgroundColor: badgeTint(accent), paddingHorizontal: 10, paddingVertical: 4 }}>
           <Text style={{ fontSize: 13, fontWeight: "700", color: accent }}>{pct}%</Text>
         </View>
@@ -283,8 +302,8 @@ function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
       ) : null}
       <View style={{ marginTop: 14, flexDirection: "row", alignItems: "baseline" }}>
         <Text style={{ fontSize: 26, fontWeight: "800", color: Colors.gray[900] }}>{progress.current_points.toLocaleString()}</Text>
-        <Text style={{ marginLeft: 6, fontSize: 15, color: Colors.gray[500] }}>
-          / {progress.required_points.toLocaleString()} pts
+        <Text style={{ marginStart: 6, fontSize: 15, color: Colors.gray[500] }}>
+          {gm("ptsRatio", { amount: progress.required_points.toLocaleString() })}
         </Text>
       </View>
       <View style={{ marginTop: 10, height: 10, overflow: "hidden", borderRadius: 999, backgroundColor: Colors.gray[100] }}>
@@ -299,12 +318,13 @@ function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
       </View>
       {progress.points_needed > 0 ? (
         <Text style={{ marginTop: 10, fontSize: 14, color: Colors.gray[700] }}>
-          <Text style={{ fontWeight: "700", color: accent }}>{progress.points_needed.toLocaleString()}</Text>
-          {" "}points to unlock — {almostThere ? "you're almost there!" : "keep the momentum going."}
+          {almostThere
+            ? gm("pointsToUnlockAlmost", { amount: progress.points_needed.toLocaleString() })
+            : gm("pointsToUnlockKeepGoing", { amount: progress.points_needed.toLocaleString() })}
         </Text>
       ) : (
         <Text style={{ marginTop: 10, fontSize: 14, fontWeight: "600", color: Colors.success }}>
-          You&apos;ve hit the point threshold — badge updates after the next sync.
+          {gm("hitThreshold")}
         </Text>
       )}
     </View>
@@ -312,27 +332,28 @@ function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
 }
 
 function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
+  const gm = useGm();
   if (ladder.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 24 }}>
-      <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Badge journey</Text>
+      <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{gm("badgeJourney")}</Text>
       <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[500] }}>
-        See every level and what you&apos;re working toward.
+        {gm("badgeJourneyDesc")}
       </Text>
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, overflow: "hidden" }}>
         {ladder.map((item, idx) => {
           const accent = item.color && /^#/.test(item.color) ? item.color : Colors.primary;
           const isLast = idx === ladder.length - 1;
-          const hint = formatRequirementHint(item.requirements);
+          const hint = formatRequirementHint(item.requirements, gm);
           const statusLabel =
             item.status === "current"
-              ? "Current"
+              ? gm("statusCurrent")
               : item.status === "earned"
-                ? "Unlocked"
+                ? gm("statusEarned")
                 : item.status === "next"
-                  ? "Up next"
-                  : "Locked";
+                  ? gm("statusNext")
+                  : gm("statusLocked");
           const statusColor =
             item.status === "current"
               ? accent
@@ -386,7 +407,7 @@ function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
                   />
                 )}
               </View>
-              <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+              <View style={{ marginStart: 12, flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                   <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                     {item.name}
@@ -420,12 +441,13 @@ function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
 }
 
 function HowToEarnSection() {
+  const gm = useGm();
   return (
     <View style={{ marginBottom: 24 }}>
-      <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>How to level up</Text>
+      <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{gm("howToLevelUp")}</Text>
       {EARN_TIPS.map((tip) => (
         <View
-          key={tip.title}
+          key={tip.titleKey}
           style={{
             flexDirection: "row",
             alignItems: "flex-start",
@@ -440,9 +462,9 @@ function HowToEarnSection() {
           <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: Colors.primaryLight }}>
             <Ionicons name={tip.icon} size={20} color={Colors.primary} />
           </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{tip.title}</Text>
-            <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 18, color: Colors.gray[600] }}>{tip.body}</Text>
+          <View style={{ marginStart: 12, flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{gm(tip.titleKey)}</Text>
+            <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 18, color: Colors.gray[600] }}>{gm(tip.bodyKey)}</Text>
           </View>
         </View>
       ))}
@@ -451,7 +473,8 @@ function HowToEarnSection() {
 }
 
 function EmptyBadgeHero({ progress }: { progress: ProgressToNext | null }) {
-  const nextName = progress?.badge.name ?? "your first badge";
+  const gm = useGm();
+  const nextName = progress?.badge.name ?? gm("firstBadgeFallback");
   return (
     <View
       style={{
@@ -479,11 +502,10 @@ function EmptyBadgeHero({ progress }: { progress: ProgressToNext | null }) {
         <Ionicons name="trophy-outline" size={40} color={Colors.primary} />
       </View>
       <Text style={{ fontSize: 20, fontWeight: "800", color: Colors.gray[900], textAlign: "center" }}>
-        Start your badge journey
+        {gm("emptyHeroTitle")}
       </Text>
       <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 21, color: Colors.gray[600], textAlign: "center" }}>
-        Complete bookings and collect reviews to earn points. Your next milestone is{" "}
-        <Text style={{ fontWeight: "700", color: Colors.primary }}>{nextName}</Text>.
+        {gm("emptyHeroBody", { name: nextName })}
       </Text>
     </View>
   );
@@ -491,6 +513,7 @@ function EmptyBadgeHero({ progress }: { progress: ProgressToNext | null }) {
 
 /** Content-only for use in Rewards hub (Badges tab). */
 export function GamificationBadgesContent() {
+  const gm = useGm();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
@@ -510,11 +533,11 @@ export function GamificationBadgesContent() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error: err } = await recalculate("/api/provider/gamification", {});
     if (err) {
-      Alert.alert("Could not recalculate", err);
+      Alert.alert(gm("couldNotRecalculate"), err);
       return;
     }
     await refresh();
-  }, [recalculate, refresh]);
+  }, [recalculate, refresh, gm]);
 
   const points = data?.points ?? { total: 0, lifetime: 0, current_tier: 0 };
   const badge = data?.current_badge ?? null;
@@ -549,10 +572,9 @@ export function GamificationBadgesContent() {
 
       {!badge && points.total > 0 ? (
         <View style={{ marginBottom: 16, flexDirection: "row", borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
-          <Ionicons name="flash" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+          <Ionicons name="flash" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
           <Text style={{ flex: 1, fontSize: 13, color: Colors.gray[700] }}>
-            You have <Text style={{ fontWeight: "700" }}>{points.total.toLocaleString()}</Text> points — keep going to unlock{" "}
-            {progress?.badge.name ?? "your first badge"}.
+            {gm("alreadyHavePoints", { amount: points.total.toLocaleString(), name: progress?.badge.name ?? gm("firstBadgeFallback") })}
           </Text>
         </View>
       ) : null}
@@ -572,11 +594,11 @@ export function GamificationBadgesContent() {
             alignItems: "flex-start",
           }}
         >
-          <Ionicons name="star" size={22} color="#b45309" style={{ marginRight: 12, marginTop: 2 }} />
+          <Ionicons name="star" size={22} color="#b45309" style={{ marginEnd: 12, marginTop: 2 }} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>Top tier unlocked</Text>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>{gm("topTierTitle")}</Text>
             <Text style={{ marginTop: 4, fontSize: 13, lineHeight: 19, color: Colors.gray[600] }}>
-              You&apos;re at the highest badge level. Keep delivering great service to stay featured and retain your perks.
+              {gm("topTierBody")}
             </Text>
           </View>
         </View>
@@ -598,19 +620,19 @@ export function GamificationBadgesContent() {
           {stats.total_bookings > 0 ? (
             <View style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 20, fontWeight: "800", color: Colors.gray[900] }}>{stats.total_bookings}</Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Bookings</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("bookings")}</Text>
             </View>
           ) : null}
           {stats.review_count > 0 ? (
             <View style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 20, fontWeight: "800", color: Colors.gray[900] }}>{stats.review_count}</Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Reviews</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("reviews")}</Text>
             </View>
           ) : null}
           {(stats.rating_average ?? 0) > 0 ? (
             <View style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 20, fontWeight: "800", color: Colors.gray[900] }}>{stats.rating_average!.toFixed(1)}</Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Rating</Text>
+              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{gm("rating")}</Text>
             </View>
           ) : null}
         </View>
@@ -621,13 +643,13 @@ export function GamificationBadgesContent() {
 
       {milestones.length > 0 ? (
         <View style={{ marginBottom: 24 }}>
-          <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Milestones</Text>
+          <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{gm("milestones")}</Text>
           <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[500] }}>
-            {milestones.length} achievement{milestones.length === 1 ? "" : "s"} unlocked
+            {gm("achievementsUnlocked", { count: milestones.length })}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
             {milestones.slice(0, 12).map((m) => {
-              const meta = milestoneLabel(m.milestone_type);
+              const meta = milestoneLabel(m.milestone_type, gm);
               return (
                 <View
                   key={m.id}
@@ -673,7 +695,7 @@ export function GamificationBadgesContent() {
       ) : null}
 
       <ActionButton
-        label={recalculating ? "Syncing progress…" : "Sync badge progress"}
+        label={recalculating ? gm("syncing") : gm("syncBadgeProgress")}
         onPress={handleRecalculate}
         loading={recalculating}
         variant="outline"
@@ -681,7 +703,7 @@ export function GamificationBadgesContent() {
         icon="refresh-outline"
       />
       <Text style={{ marginTop: 8, textAlign: "center", fontSize: 12, color: Colors.gray[400] }}>
-        Refresh if points or badges look out of date after recent bookings.
+        {gm("syncHint")}
       </Text>
     </ScrollView>
   );

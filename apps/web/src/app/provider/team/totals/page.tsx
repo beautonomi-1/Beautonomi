@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
@@ -29,6 +31,7 @@ interface StaffTotals {
 
 export default function StaffTotalsPage() {
   const { format: fmt } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [totals, setTotals] = useState<StaffTotals[]>([]);
@@ -185,8 +188,8 @@ export default function StaffTotalsPage() {
   return (
     <div>
       <PageHeader
-        title="Staff Totals"
-        subtitle="View daily and weekly performance metrics for your team"
+        title={t("web.provider.pages.team/totals.title")}
+        subtitle={t("web.provider.pages.team/totals.subtitle")}
       />
 
       {/* Date Navigation */}
@@ -197,12 +200,12 @@ export default function StaffTotalsPage() {
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <Button variant="outline" onClick={goToToday} className="min-h-[44px] touch-manipulation">
-              Today
+              {t("web.provider.common.dateRange.today")}
             </Button>
             <Button variant="outline" size="icon" onClick={() => navigateDate("next")} className="min-h-[44px] min-w-[44px] touch-manipulation">
               <ChevronRight className="w-4 h-4" />
             </Button>
-            <span className="ml-2 sm:ml-4 font-medium text-sm sm:text-base">
+            <span className="ms-2 sm:ms-4 font-medium text-sm sm:text-base">
               {activeTab === "daily"
                 ? format(selectedDate, "EEEE, MMM d, yyyy")
                 : `${format(weekStart, "MMM d")} - ${format(endOfWeek(weekStart), "MMM d, yyyy")}`}
@@ -210,10 +213,10 @@ export default function StaffTotalsPage() {
           </div>
           <Select value={selectedMember || "all"} onValueChange={setSelectedMember}>
             <SelectTrigger className="w-full sm:w-[200px] min-h-[44px] touch-manipulation">
-              <SelectValue placeholder="All staff" />
+              <SelectValue placeholder={t("web.provider.pages.team/totals.allStaffPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Staff</SelectItem>
+              <SelectItem value="all">{t("web.provider.pages.team/totals.allStaff")}</SelectItem>
               {teamMembers.map((member) => (
                 <SelectItem key={member.id} value={member.id}>
                   {member.name}
@@ -232,7 +235,7 @@ export default function StaffTotalsPage() {
               <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Appointments</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/totals.appointments")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {stats.appointments}
               </div>
@@ -245,7 +248,7 @@ export default function StaffTotalsPage() {
               <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Revenue</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/totals.revenue")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {fmt(stats.revenue)}
               </div>
@@ -258,7 +261,7 @@ export default function StaffTotalsPage() {
               <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Tips</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/totals.tips")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {fmt(stats.tips)}
               </div>
@@ -271,9 +274,9 @@ export default function StaffTotalsPage() {
               <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Hours</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/totals.hours")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                {stats.hours.toFixed(1)}h
+                {t("web.provider.pages.team/totals.hoursValue", { hours: stats.hours.toFixed(1) })}
               </div>
             </div>
           </div>
@@ -284,7 +287,7 @@ export default function StaffTotalsPage() {
               <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs sm:text-sm text-gray-600">Commission</div>
+              <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.pages.team/totals.commission")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
                 {fmt(stats.commission)}
               </div>
@@ -295,8 +298,8 @@ export default function StaffTotalsPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-4 sm:mb-6">
-          <TabsTrigger value="daily" className="text-xs sm:text-sm">Daily Totals</TabsTrigger>
-          <TabsTrigger value="weekly" className="text-xs sm:text-sm">Weekly Totals</TabsTrigger>
+          <TabsTrigger value="daily" className="text-xs sm:text-sm">{t("web.provider.pages.team/totals.dailyTotals")}</TabsTrigger>
+          <TabsTrigger value="weekly" className="text-xs sm:text-sm">{t("web.provider.pages.team/totals.weeklyTotals")}</TabsTrigger>
         </TabsList>
 
         {/* Daily Totals */}
@@ -309,21 +312,21 @@ export default function StaffTotalsPage() {
             ) : filteredTotals.length === 0 ? (
               <div className="p-8 sm:p-12 text-center">
                 <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">No data for this date</p>
-                <p className="text-sm text-gray-500">Select a different date or check back later</p>
+                <p className="text-gray-600 mb-2">{t("web.provider.pages.team/totals.noDataForDate")}</p>
+                <p className="text-sm text-gray-500">{t("web.provider.pages.team/totals.selectDifferentDate")}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Staff Member</TableHead>
-                      <TableHead className="text-right">Appointments</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">Tips</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                      <TableHead className="text-right">Commission</TableHead>
-                      <TableHead className="text-right">Rating</TableHead>
+                      <TableHead>{t("web.provider.pages.team/totals.staffMember")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.appointments")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.revenue")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.tips")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.hours")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.commission")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.rating")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -339,12 +342,12 @@ export default function StaffTotalsPage() {
                             <span className="font-medium text-sm sm:text-base">{total.team_member_name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium">{total.appointments_count}</TableCell>
-                        <TableCell className="text-right">{fmt(total.revenue)}</TableCell>
-                        <TableCell className="text-right">{fmt(total.tips)}</TableCell>
-                        <TableCell className="text-right">{total.hours_worked.toFixed(1)}h</TableCell>
-                        <TableCell className="text-right font-medium">{fmt(total.commission)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end font-medium">{total.appointments_count}</TableCell>
+                        <TableCell className="text-end">{fmt(total.revenue)}</TableCell>
+                        <TableCell className="text-end">{fmt(total.tips)}</TableCell>
+                        <TableCell className="text-end">{t("web.provider.pages.team/totals.hoursValue", { hours: total.hours_worked.toFixed(1) })}</TableCell>
+                        <TableCell className="text-end font-medium">{fmt(total.commission)}</TableCell>
+                        <TableCell className="text-end">
                           {total.rating ? (
                             <span className="flex items-center justify-end gap-1">
                               <span className="font-medium">{total.rating.toFixed(1)}</span>
@@ -373,21 +376,21 @@ export default function StaffTotalsPage() {
             ) : filteredTotals.length === 0 ? (
               <div className="p-8 sm:p-12 text-center">
                 <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">No data for this week</p>
-                <p className="text-sm text-gray-500">Select a different week or check back later</p>
+                <p className="text-gray-600 mb-2">{t("web.provider.pages.team/totals.noDataForWeek")}</p>
+                <p className="text-sm text-gray-500">{t("web.provider.pages.team/totals.selectDifferentWeek")}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Staff Member</TableHead>
-                      <TableHead className="text-right">Appointments</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">Tips</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                      <TableHead className="text-right">Commission</TableHead>
-                      <TableHead className="text-right">Rating</TableHead>
+                      <TableHead>{t("web.provider.pages.team/totals.staffMember")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.appointments")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.revenue")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.tips")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.hours")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.commission")}</TableHead>
+                      <TableHead className="text-end">{t("web.provider.pages.team/totals.rating")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -403,12 +406,12 @@ export default function StaffTotalsPage() {
                             <span className="font-medium text-sm sm:text-base">{total.team_member_name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium">{total.appointments_count}</TableCell>
-                        <TableCell className="text-right">{fmt(total.revenue)}</TableCell>
-                        <TableCell className="text-right">{fmt(total.tips)}</TableCell>
-                        <TableCell className="text-right">{total.hours_worked.toFixed(1)}h</TableCell>
-                        <TableCell className="text-right font-medium">{fmt(total.commission)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end font-medium">{total.appointments_count}</TableCell>
+                        <TableCell className="text-end">{fmt(total.revenue)}</TableCell>
+                        <TableCell className="text-end">{fmt(total.tips)}</TableCell>
+                        <TableCell className="text-end">{t("web.provider.pages.team/totals.hoursValue", { hours: total.hours_worked.toFixed(1) })}</TableCell>
+                        <TableCell className="text-end font-medium">{fmt(total.commission)}</TableCell>
+                        <TableCell className="text-end">
                           {total.rating ? (
                             <span className="flex items-center justify-end gap-1">
                               <span className="font-medium">{total.rating.toFixed(1)}</span>

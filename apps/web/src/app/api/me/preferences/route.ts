@@ -4,22 +4,25 @@ import { requireAuthInApi, successResponse, handleApiError } from "@/lib/supabas
 import { z } from "zod";
 import {
   DEFAULT_LANGUAGE,
-  DEFAULT_SUPPORTED_LANGUAGE_CODES,
-  SUPPORTED_LANGUAGES,
+  isSupportedLanguageCode,
+  normalizeLanguageCode,
   type SupportedLanguage,
 } from "@/lib/i18n/config";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-const preferenceLanguageZodEnum = z.enum(
-  DEFAULT_SUPPORTED_LANGUAGE_CODES as unknown as [SupportedLanguage, ...SupportedLanguage[]],
-);
+// Any bundled locale (Wave A or B) is persistable — tourists keep German on .co.za.
+const preferenceLanguageSchema = z
+  .string()
+  .trim()
+  .refine((v) => isSupportedLanguageCode(v), { message: "Unsupported language code" })
+  .transform((v) => normalizeLanguageCode(v) as SupportedLanguage);
 
 const preferencesSchema = z.object({
-  language: preferenceLanguageZodEnum.optional(),
-  currency: z.string().optional(),
-  timezone: z.string().optional(),
+  language: preferenceLanguageSchema.optional(),
+  currency: z.string().trim().regex(/^[A-Za-z]{3}$/, "Invalid currency code").transform((v) => v.toUpperCase()).optional(),
+  timezone: z.string().trim().min(1).max(64).optional(),
 });
 
 /**
@@ -45,12 +48,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       preferences: {
-        language: (() => {
-          const raw = String(userData?.preferred_language || "en").trim() || "en";
-          const baseRaw = (raw.split(/[-_]/)[0] || "en").toLowerCase();
-          const supported = SUPPORTED_LANGUAGES.some((l) => l.code === baseRaw);
-          return (supported ? baseRaw : DEFAULT_LANGUAGE) as SupportedLanguage;
-        })(),
+        language: normalizeLanguageCode(userData?.preferred_language || DEFAULT_LANGUAGE) as SupportedLanguage,
         currency: userData?.preferred_currency || lastResortCurrency,
         timezone: userData?.timezone || "Africa/Johannesburg",
       },
@@ -74,7 +72,9 @@ export async function POST(request: NextRequest) {
     const validated = preferencesSchema.parse(body);
 
     const updateData: Record<string, string> = {};
-    if (validated.language !== undefined) updateData.preferred_language = validated.language;
+    if (validated.language !== undefined) {
+      updateData.preferred_language = validated.language;
+    }
     if (validated.currency !== undefined) updateData.preferred_currency = validated.currency;
     if (validated.timezone !== undefined) updateData.timezone = validated.timezone;
 

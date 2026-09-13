@@ -10,6 +10,8 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
 import { useEffect } from "react";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface SetupStatus {
   isComplete: boolean;
@@ -17,17 +19,34 @@ interface SetupStatus {
   steps: { id: string; title: string; completed: boolean; link: string }[];
 }
 
-const SLUG_TO_SUBTITLE: Record<string, string> = {
-  "resources-forms-hub": "Resources, intake & consent forms",
-  "custom-requests": "Client quotes & offers",
-  "routes": "Optimize at-home trips",
-  "products-ecommerce-hub": "Inventory, orders & sales",
-  "catalogue-offerings-hub": "Services, products & packages",
-  "finance-billing-hub": "Earnings, payroll, invoices & gift cards",
-  "transactions-hub": "Payments, fees & sales",
-  "reports": "Analytics, activity & insights",
-  "engagement-hub": "Reviews, messaging & marketing",
-  "finance-hub": "Earnings and payouts",
+const SLUG_TITLE_KEYS: Record<string, string> = {
+  "bookings-calendar-hub": "moreTab.qaBookings",
+  "resources-forms-hub": "moreTab.resourcesFormsLabel",
+  "custom-requests": "moreTab.qaCustomRequests",
+  "routes": "moreSlug.titleRoutes",
+  "products-ecommerce-hub": "moreTab.productsEcommerceLabel",
+  "catalogue-offerings-hub": "moreTab.catalogueLabel",
+  "team-hub": "moreTab.teamSchedulingLabel",
+  "finance-billing-hub": "moreSlug.titleFinanceBilling",
+  "transactions-hub": "moreSlug.titleTransactions",
+  "reports": "moreTab.reportsLabel",
+  "gallery": "moreTab.galleryLabel",
+  "engagement-hub": "moreTab.engagementLabel",
+  "waitlist": "moreSlug.titleWaitlist",
+  "finance-hub": "moreSlug.titleFinance",
+};
+
+const SLUG_SUBTITLE_KEYS: Record<string, string> = {
+  "resources-forms-hub": "moreTab.resourcesFormsSubtitle",
+  "custom-requests": "moreTab.customRequestsSubtitle",
+  "routes": "moreSlug.subtitleRoutes",
+  "products-ecommerce-hub": "moreTab.productsEcommerceSubtitle",
+  "catalogue-offerings-hub": "moreTab.catalogueSubtitle",
+  "finance-billing-hub": "moreSlug.subtitleFinanceBilling",
+  "transactions-hub": "moreSlug.subtitleTransactions",
+  "reports": "moreTab.reportsSubtitle",
+  "engagement-hub": "moreTab.engagementSubtitle",
+  "finance-hub": "moreSlug.subtitleFinanceHub",
 };
 
 const SLUG_TO_NATIVE_ROUTE: Record<string, string> = {
@@ -45,33 +64,19 @@ const SLUG_TO_NATIVE_ROUTE: Record<string, string> = {
   "team-hub": "/(app)/(tabs)/more/team",
 };
 
-function slugToTitle(slug: string): string {
-  const map: Record<string, string> = {
-    "bookings-calendar-hub": "Bookings",
-    "resources-forms-hub": "Resources & forms",
-    "custom-requests": "Custom requests",
-    "routes": "Routes",
-    "products-ecommerce-hub": "Products & e-commerce",
-    "catalogue-offerings-hub": "Catalogue & offerings",
-    "team-hub": "Team & scheduling",
-    "finance-billing-hub": "Finance & billing",
-    "transactions-hub": "Transactions & history",
-    "reports": "Reports",
-    "gallery": "Gallery",
-    "engagement-hub": "Engagement",
-    "waitlist": "Waitlist",
-    "finance-hub": "Finance",
-  };
-  if (map[slug]) return map[slug];
-  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export default function MoreSlugScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
-  const title = slug ? slugToTitle(slug) : "Feature";
-  const subtitle = slug ? SLUG_TO_SUBTITLE[slug] : null;
+  const title = slug
+    ? SLUG_TITLE_KEYS[slug]
+      ? (t(`provider.mobile.screens.${SLUG_TITLE_KEYS[slug]}`) as string)
+      : slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : (t("provider.mobile.screens.moreSlug.featureFallback") as string);
+  const subtitle = slug && SLUG_SUBTITLE_KEYS[slug]
+    ? (t(`provider.mobile.screens.${SLUG_SUBTITLE_KEYS[slug]}`) as string)
+    : null;
   const showSetupBanner = setupStatus && !setupStatus.isComplete && setupStatus.completionPercentage < 100;
   const nativeRoute = slug ? SLUG_TO_NATIVE_ROUTE[slug] : null;
 
@@ -92,12 +97,12 @@ export default function MoreSlugScreen() {
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca" }}>Setup status</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca" }}>{t("provider.mobile.screens.moreSlug.setupStatus")}</Text>
                 <Text style={{ marginTop: 2, fontSize: 13, color: "#6366f1" }}>
-                  {setupStatus.completionPercentage}% complete
+                  {t("provider.mobile.screens.moreSlug.percentComplete", { percent: setupStatus.completionPercentage })}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#4338ca" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#4338ca" />
             </View>
           </TouchableOpacity>
         )}
@@ -110,7 +115,7 @@ export default function MoreSlugScreen() {
             <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>{subtitle}</Text>
           )}
           <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
-            This feature is being finalized in native. Use the related native sections while rollout completes.
+            {t("provider.mobile.screens.moreSlug.nativeRolloutBody")}
           </Text>
           {nativeRoute && (
             <TouchableOpacity
@@ -118,7 +123,7 @@ export default function MoreSlugScreen() {
               style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
             >
               <Ionicons name="arrow-forward-circle-outline" size={18} color="#4338ca" />
-              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: "#4338ca" }}>Open native screen</Text>
+              <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: "#4338ca" }}>{t("provider.mobile.screens.moreSlug.openNative")}</Text>
             </TouchableOpacity>
           )}
         </View>

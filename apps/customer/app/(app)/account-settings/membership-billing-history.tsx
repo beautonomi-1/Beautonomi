@@ -8,6 +8,8 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 type BillingItem = {
   id: string;
@@ -34,7 +36,7 @@ function formatDateSafe(value: string | null | undefined): string {
 }
 
 function formatMoney(amount: number, currency?: string): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getDefaultMoneyLocale(), {
     style: "currency",
     currency: currency ?? "ZAR",
     minimumFractionDigits: 2,
@@ -50,6 +52,12 @@ function statusStyle(status: string): { bg: string; text: string; label: string 
 }
 
 export default function MembershipBillingHistoryScreen() {
+  const { t } = useTranslation();
+  const mb = useCallback(
+    (key: string, options?: Record<string, string>) =>
+      (options != null ? t(`customer.mobile.screens.accountMembershipBilling.${key}`, options as never) : t(`customer.mobile.screens.accountMembershipBilling.${key}`)) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{
     membership_id?: string;
@@ -80,14 +88,14 @@ export default function MembershipBillingHistoryScreen() {
       const qs = q.toString();
       const path = `/api/me/membership/billing-history${qs ? `?${qs}` : ""}`;
       const res = await api.get<{ items?: BillingItem[] }>(path);
-      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load billing history"));
+      if (res.error) setError(getApiErrorMessage(res.error, mb("loadFailed")));
       else setItems(res.data?.items ?? []);
     } catch (e) {
-      setError(getApiErrorMessage(e as Error, "Failed to load billing history"));
+      setError(getApiErrorMessage(e as Error, mb("loadFailed")));
     } finally {
       setLoading(false);
     }
-  }, [providerId, planId]);
+  }, [mb, providerId, planId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -98,15 +106,15 @@ export default function MembershipBillingHistoryScreen() {
         router,
         pdfPath: item.receipt_url,
         filename: `membership-receipt-${item.id}.pdf`,
-        title: "Membership receipt",
+        title: mb("receiptTitle"),
         label: "receipt",
       });
     } catch (e) {
-      Alert.alert("Download failed", getApiErrorMessage(e as Error, "Could not download receipt."));
+      Alert.alert(mb("downloadFailedTitle"), getApiErrorMessage(e as Error, mb("downloadFailedFallback")));
     }
   };
 
-  const title = providerName ? `Billing history · ${providerName}` : "Billing history";
+  const title = providerName ? mb("titleWithProvider", { providerName }) : mb("titleDefault");
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
@@ -115,7 +123,7 @@ export default function MembershipBillingHistoryScreen() {
 
         {items.length === 0 ? (
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 16, padding: 16 }}>
-            <Text style={{ color: Colors.gray[600] }}>No billing history yet.</Text>
+            <Text style={{ color: Colors.gray[600] }}>{mb("noBillingHistory")}</Text>
           </View>
         ) : (
           items.map((item) => {
@@ -158,7 +166,7 @@ export default function MembershipBillingHistoryScreen() {
                     style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
                   >
                     <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
-                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Download receipt</Text>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mb("downloadReceipt")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>

@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 type ExecutionRow = {
   id: string;
@@ -35,6 +36,8 @@ export function AutomationExecutionHistory({
   automationId,
   automationName,
 }: AutomationExecutionHistoryProps) {
+  const { t } = useTranslation();
+  const ah = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.automationExecutionHistory.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<ExecutionRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,8 +91,8 @@ export function AutomationExecutionHistory({
           ]}
         >
           <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-4 py-3")}>
-            <Text style={twStyle("flex-1 pr-2 text-base font-semibold text-gray-900")} numberOfLines={2}>
-              History: {automationName}
+            <Text style={twStyle("flex-1 pe-2 text-base font-semibold text-gray-900")} numberOfLines={2}>
+              {ah("historyTitle", { name: automationName })}
             </Text>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Ionicons name="close" size={26} color="#374151" />
@@ -99,13 +102,13 @@ export function AutomationExecutionHistory({
           {loading ? (
             <View style={twStyle("items-center py-12")}>
               <ActivityIndicator />
-              <Text style={twStyle("mt-2 text-sm text-gray-500")}>Loading…</Text>
+              <Text style={twStyle("mt-2 text-sm text-gray-500")}>{ah("loading")}</Text>
             </View>
           ) : rows.length === 0 ? (
             <View style={twStyle("items-center px-6 py-12")}>
               <Ionicons name="time-outline" size={40} color="#d1d5db" />
               <Text style={twStyle("mt-3 text-center text-sm text-gray-500")}>
-                No executions yet. This automation has not been triggered.
+                {ah("empty")}
               </Text>
             </View>
           ) : (
@@ -119,7 +122,7 @@ export function AutomationExecutionHistory({
                 >
                   <Text style={twStyle("text-xs text-gray-500")}>{formatWhen(item.executed_at)}</Text>
                   <Text style={twStyle("mt-0.5 text-sm font-medium text-gray-900")}>
-                    {item.customer?.full_name || item.customer?.email || "Unknown"}
+                    {item.customer?.full_name || item.customer?.email || ah("unknown")}
                   </Text>
                   <View style={twStyle("mt-1 flex-row items-center justify-between")}>
                     <View
@@ -136,7 +139,7 @@ export function AutomationExecutionHistory({
                             : twStyle("text-xs font-medium text-amber-900")
                         }
                       >
-                        {item.message_id ? "Sent" : "Pending"}
+                        {item.message_id ? ah("sent") : ah("pending")}
                       </Text>
                     </View>
                     <Text style={twStyle("max-w-[48%] font-mono text-[10px] text-gray-500")} numberOfLines={1}>

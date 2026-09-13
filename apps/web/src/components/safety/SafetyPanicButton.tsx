@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -37,6 +39,7 @@ export function SafetyPanicButton({
   className,
   children,
 }: SafetyPanicButtonProps) {
+  const { t } = useTranslation();
   const safetyConfig = useModuleConfig("safety") as { enabled?: boolean } | undefined;
   const panicEnabled = useFeatureFlag("safety.panic.enabled");
   const [loading, setLoading] = useState(false);
@@ -52,10 +55,10 @@ export function SafetyPanicButton({
         booking_id: bookingId ?? undefined,
         metadata: { source: "web_booking" },
       });
-      toast.success("Help has been requested. Our team will reach out shortly.");
+      toast.success(t("customer.mobile.screens.safetyPanic.doneBody"));
       setOpen(false);
     } catch {
-      toast.error("Unable to send request. Please call emergency services if in danger.");
+      toast.error(t("customer.mobile.screens.safetyPanic.errorSendFailed"));
     } finally {
       setLoading(false);
     }
@@ -66,22 +69,22 @@ export function SafetyPanicButton({
       <AlertDialogTrigger asChild>
         {children ?? (
           <Button variant={variant} size={size} className={className} type="button">
-            <ShieldAlert className="h-4 w-4 mr-2" />
-            Safety / Get help
+            <ShieldAlert className="h-4 w-4 me-2" />
+            {t("customer.mobile.screens.safetyPanic.buttonLabel")}
           </Button>
         )}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Request help</AlertDialogTitle>
+          <AlertDialogTitle>{t("customer.mobile.screens.safetyPanic.requestHelpTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            This will notify our safety team. If you are in immediate danger, please call emergency services (e.g. 112 or 911) first.
+            {t("customer.mobile.screens.safetyPanic.requestHelpBody")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={handlePanic} disabled={loading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-            {loading ? "Sending…" : "Request help"}
+            {loading ? t("web.auth.inlineSignup.sendingEllipsis") : t("customer.mobile.screens.safetyPanic.requestHelpCta")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -21,6 +21,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PUBLIC_BOOKING_MAX_ADVANCE_DAYS } from "@/lib/provider-booking/public-booking-slot-policy";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Provider {
   id: string;
@@ -96,6 +97,7 @@ export default function OnlineBookingFlow({
   embed = false,
 }: OnlineBookingFlowProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { track } = useAmplitude();
   const { bundle } = useConfigBundle();
@@ -249,7 +251,7 @@ export default function OnlineBookingFlow({
           (s as OnlineBookingSettings).staff_selection_mode === "anyone_default" ||
           (s as OnlineBookingSettings).staff_selection_mode === "hidden_auto_assign"
         ) {
-          setSelectedStaff({ id: "any", name: "Anyone available", role: "" });
+          setSelectedStaff({ id: "any", name: t("web.book.engine.anyoneAvailable"), role: "" });
         } else if (queryParams.staff) {
           const staffMatch = (Array.isArray(staffList) ? staffList : []).find(
             (st: Staff) => st.id === queryParams.staff || (st as any).slug === queryParams.staff
@@ -258,7 +260,7 @@ export default function OnlineBookingFlow({
         }
       })
       .catch((e) => {
-        toast.error(e instanceof FetchError ? e.message : "Failed to load");
+        toast.error(e instanceof FetchError ? e.message : t("web.book.legacyFlow.failedLoad"));
       })
       .finally(() => setIsLoading(false));
   }, [provider.slug, queryParams.service, queryParams.staff, queryParams.anyone, queryParams.location, user?.id]);
@@ -280,7 +282,7 @@ export default function OnlineBookingFlow({
             return current;
           }
           if (staffArray.some((s) => s.id === current.id)) return current;
-          return { id: "any", name: "Anyone available", role: "" };
+          return { id: "any", name: t("web.book.engine.anyoneAvailable"), role: "" };
         });
       })
       .catch(() => {
@@ -314,7 +316,7 @@ export default function OnlineBookingFlow({
           if (parsed.selectedStaff) {
             setSelectedStaff(
               parsed.selectedStaff.id === "any"
-                ? { id: "any", name: "Anyone available", role: "" }
+                ? { id: "any", name: t("web.book.engine.anyoneAvailable"), role: "" }
                 : staff.find((s) => s.id === parsed.selectedStaff.id) ?? parsed.selectedStaff
             );
           }
@@ -363,13 +365,13 @@ export default function OnlineBookingFlow({
   ) => {
     if (!selectedService || !selectedStaff) return;
     if (locationType === "at_home" && (!atHomeAddress.line1?.trim() || !atHomeAddress.city?.trim())) {
-      toast.error("Please enter your address for at-home booking");
+      toast.error(t("web.book.legacyFlow.enterAddress"));
       return;
     }
     const staffIdForHold =
       slotStaffId ?? (selectedStaff.id !== "any" ? selectedStaff.id : null);
     if (!staffIdForHold) {
-      toast.error("Unable to secure this slot. Please select a specific staff member.");
+      toast.error(t("web.book.legacyFlow.secureSlotStaff"));
       return;
     }
     setCreatingHold(true);
@@ -463,10 +465,10 @@ export default function OnlineBookingFlow({
           setGateOpen(true);
         }
       } else {
-        toast.error("Failed to secure slot");
+        toast.error(t("web.book.legacyFlow.failedSecureSlot"));
       }
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Failed to secure slot");
+      toast.error(e instanceof FetchError ? e.message : t("web.book.legacyFlow.failedSecureSlot"));
     } finally {
       setCreatingHold(false);
     }
@@ -491,19 +493,19 @@ export default function OnlineBookingFlow({
     <div className={`min-h-screen bg-background ${embed ? "p-2" : ""}`}>
       <div className={`mx-auto space-y-6 ${embed ? "max-w-md p-3" : "max-w-lg p-6"}`}>
         <div className="flex items-center gap-3">
-          <Link href="/" className="shrink-0" aria-label="Beautonomi home">
-            <Image src="/images/logo.svg" alt="Beautonomi" width={120} height={32} className="h-8 w-auto" />
+          <Link href="/" className="shrink-0" aria-label={t("web.a11y.beautonomiHome")}>
+            <Image src="/images/logo.svg" alt={t("web.seo.siteName")} width={120} height={32} className="h-8 w-auto" />
           </Link>
         </div>
         <h1 className={embed ? "text-lg font-semibold" : "text-2xl font-semibold"}>
-          Book with {provider.business_name}
+          {t("web.book.legacyFlow.bookWith", { providerName: provider.business_name })}
         </h1>
 
         {step === "services" && (
           <div className="space-y-4">
-            <h2 className="font-medium">Select a service</h2>
+            <h2 className="font-medium">{t("web.book.legacyFlow.selectService")}</h2>
             {services.length === 0 ? (
-              <p className="text-muted-foreground">No services available</p>
+              <p className="text-muted-foreground">{t("web.book.legacyFlow.noServices")}</p>
             ) : (
               <div className="space-y-2">
                 {services.map((s) => (
@@ -513,11 +515,11 @@ export default function OnlineBookingFlow({
                       setSelectedService(s);
                       setStep("venue");
                     }}
-                    className="w-full text-left p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                    className="w-full text-start p-4 rounded-lg border hover:bg-muted/50 transition-colors"
                   >
                     <div className="font-medium">{s.title}</div>
                     <div className="text-sm text-muted-foreground">
-                      {s.duration_minutes} min · {formatCurrency(s.price, s.currency)}
+                      {t("web.book.engine.durationPrice", { minutes: s.duration_minutes, amount: formatCurrency(s.price, s.currency) })}
                     </div>
                   </button>
                 ))}
@@ -529,21 +531,21 @@ export default function OnlineBookingFlow({
         {step === "venue" && (
           <div className="space-y-4">
             <Button variant="ghost" size="sm" onClick={() => setStep("services")}>
-              <ChevronLeft className="h-4 w-4" /> Back
+              <ChevronLeft className="h-4 w-4" /> {t("web.book.legacyFlow.back")}
             </Button>
-            <h2 className="font-medium">Where?</h2>
+            <h2 className="font-medium">{t("web.book.legacyFlow.where")}</h2>
             <div className="flex gap-3">
               <Button
                 variant={locationType === "at_salon" ? "default" : "outline"}
                 onClick={() => setLocationType("at_salon")}
               >
-                At salon
+                {t("web.book.legacyFlow.atSalon")}
               </Button>
               <Button
                 variant={locationType === "at_home" ? "default" : "outline"}
                 onClick={() => setLocationType("at_home")}
               >
-                At my location
+                {t("web.book.legacyFlow.atMyLocation")}
               </Button>
             </div>
             {locationType === "at_salon" && locations.length > 1 && (
@@ -552,7 +554,7 @@ export default function OnlineBookingFlow({
                   <button
                     key={loc.id}
                     onClick={() => setSelectedLocation(loc)}
-                    className={`w-full text-left p-3 rounded border ${
+                    className={`w-full text-start p-3 rounded border ${
                       selectedLocation?.id === loc.id ? "border-primary" : ""
                     }`}
                   >
@@ -563,14 +565,14 @@ export default function OnlineBookingFlow({
             )}
             {locationType === "at_salon" && locations.length === 0 && (
               <p className="text-sm text-amber-600">
-                This provider has no locations. Please choose &quot;At my location&quot; or select another provider.
+                {t("web.book.legacyFlow.noLocations")}
               </p>
             )}
             {locationType === "at_home" && (
               <div className="space-y-3">
-                <Label>Address (required for at-home bookings)</Label>
+                <Label>{t("web.book.legacyFlow.addressRequired")}</Label>
                 <Input
-                  placeholder="Street address"
+                  placeholder={t("web.book.legacyFlow.streetAddress")}
                   value={atHomeAddress.line1}
                   onChange={(e) =>
                     setAtHomeAddress((a) => ({ ...a, line1: e.target.value }))
@@ -578,14 +580,14 @@ export default function OnlineBookingFlow({
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <Input
-                    placeholder="City"
+                    placeholder={t("web.book.legacyFlow.city")}
                     value={atHomeAddress.city}
                     onChange={(e) =>
                       setAtHomeAddress((a) => ({ ...a, city: e.target.value }))
                     }
                   />
                   <Input
-                    placeholder="Country"
+                    placeholder={t("web.book.legacyFlow.country")}
                     value={atHomeAddress.country}
                     onChange={(e) =>
                       setAtHomeAddress((a) => ({ ...a, country: e.target.value }))
@@ -598,7 +600,7 @@ export default function OnlineBookingFlow({
               onClick={() => {
                 if (!showStaffStep) {
                   setSelectedStaff((prev) =>
-                    prev?.id === "any" ? prev : { id: "any", name: "Anyone available", role: "" }
+                    prev?.id === "any" ? prev : { id: "any", name: t("web.book.engine.anyoneAvailable"), role: "" }
                   );
                   goToCalendarOrAuth();
                 } else {
@@ -610,7 +612,7 @@ export default function OnlineBookingFlow({
                 (locationType === "at_home" && (!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()))
               }
             >
-              Next
+              {t("web.book.legacyFlow.next")}
             </Button>
           </div>
         )}
@@ -618,20 +620,20 @@ export default function OnlineBookingFlow({
         {step === "staff" && showStaffStep && (
           <div className="space-y-4">
             <Button variant="ghost" size="sm" onClick={() => setStep("venue")}>
-              <ChevronLeft className="h-4 w-4" /> Back
+              <ChevronLeft className="h-4 w-4" /> {t("web.book.legacyFlow.back")}
             </Button>
-            <h2 className="font-medium">Who?</h2>
+            <h2 className="font-medium">{t("web.book.legacyFlow.who")}</h2>
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  setSelectedStaff({ id: "any", name: "Anyone available", role: "" });
+                  setSelectedStaff({ id: "any", name: t("web.book.engine.anyoneAvailable"), role: "" });
                   goToCalendarOrAuth();
                 }}
-                className={`w-full text-left p-4 rounded-lg border hover:bg-muted/50 transition-colors ${
+                className={`w-full text-start p-4 rounded-lg border hover:bg-muted/50 transition-colors ${
                   selectedStaff?.id === "any" ? "border-primary" : ""
                 }`}
               >
-                Anyone available
+                {t("web.book.engine.anyoneAvailable")}
               </button>
               {staff.map((s) => (
                 <button
@@ -640,7 +642,7 @@ export default function OnlineBookingFlow({
                     setSelectedStaff(s);
                     goToCalendarOrAuth();
                   }}
-                  className={`w-full text-left p-4 rounded-lg border hover:bg-muted/50 transition-colors ${
+                  className={`w-full text-start p-4 rounded-lg border hover:bg-muted/50 transition-colors ${
                     selectedStaff?.id === s.id ? "border-primary" : ""
                   }`}
                 >
@@ -654,9 +656,9 @@ export default function OnlineBookingFlow({
         {step === "calendar" && (
           <div className="space-y-4">
             <Button variant="ghost" size="sm" onClick={() => setStep(showStaffStep ? "staff" : "venue")}>
-              <ChevronLeft className="h-4 w-4" /> Back
+              <ChevronLeft className="h-4 w-4" /> {t("web.book.legacyFlow.back")}
             </Button>
-            <h2 className="font-medium">Pick a date</h2>
+            <h2 className="font-medium">{t("web.book.legacyFlow.pickDate")}</h2>
             <div className="grid grid-cols-7 gap-1">
               {Array.from({ length: Math.min(PUBLIC_BOOKING_MAX_ADVANCE_DAYS, 90) }, (_, i) => {
                 const d = new Date();
@@ -680,7 +682,7 @@ export default function OnlineBookingFlow({
               onClick={() => setStep("slots")}
               disabled={!selectedDay}
             >
-              Next
+              {t("web.book.legacyFlow.next")}
             </Button>
           </div>
         )}
@@ -688,13 +690,13 @@ export default function OnlineBookingFlow({
         {step === "slots" && (
           <div className="space-y-4">
             <Button variant="ghost" size="sm" onClick={() => setStep("calendar")}>
-              <ChevronLeft className="h-4 w-4" /> Back
+              <ChevronLeft className="h-4 w-4" /> {t("web.book.legacyFlow.back")}
             </Button>
-            <h2 className="font-medium">Pick a time</h2>
+            <h2 className="font-medium">{t("web.book.legacyFlow.pickTime")}</h2>
             {loadingSlots ? (
               <Loader2 className="h-6 w-6 animate-spin" />
             ) : slots.length === 0 ? (
-              <p className="text-muted-foreground">No slots available for this date</p>
+              <p className="text-muted-foreground">{t("web.book.legacyFlow.noSlots")}</p>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {slots

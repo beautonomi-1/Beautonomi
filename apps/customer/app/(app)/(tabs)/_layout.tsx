@@ -30,6 +30,7 @@ import { api } from "@/lib/api-client";
 import { onCartUpdated } from "@/lib/cart-events";
 import { haptic } from "@/lib/haptics";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { TabLabel } from "@/components/ui/TabLabel";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
@@ -224,13 +225,19 @@ export default function TabsLayout() {
         alignItems: "center" as const,
         paddingVertical: 2,
       },
-      tabBarLabelStyle: {
-        fontSize: labelFontSize,
-        lineHeight: labelLineHeight,
-        fontWeight: "600" as const,
-        marginTop: 2,
-        textAlign: "center" as const,
-      },
+      tabBarLabel: ({ color, children }: { color: string; children: string }) => (
+        <TabLabel
+          style={{
+            color: typeof color === "string" ? color : Colors.gray[400],
+            fontSize: labelFontSize,
+            lineHeight: labelLineHeight,
+            fontWeight: "600",
+            marginTop: 2,
+          }}
+        >
+          {typeof children === "string" ? children : String(children ?? "")}
+        </TabLabel>
+      ),
       tabBarStyle: {
         backgroundColor: Colors.white,
         borderTopWidth: 1,
@@ -240,8 +247,8 @@ export default function TabsLayout() {
         flexShrink: 0,
         paddingTop: 8,
         paddingBottom: safeBottom,
-        paddingLeft: sideInset,
-        paddingRight: sideInset,
+        paddingStart: sideInset,
+        paddingEnd: sideInset,
         elevation: 8,
         ...Shadows.tabBar,
         ...(isTablet ? { paddingHorizontal: 40 + sideInset } : {}),
@@ -346,7 +353,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="shop" options={{ href: null }} />
         <Tabs.Screen name="explore" options={{ href: null }} />
         <Tabs.Screen name="saved" options={{ href: null }} />
-        <Tabs.Screen name="support-tickets" options={{ href: null, title: "Support" }} />
+        <Tabs.Screen name="support-tickets" options={{ href: null, title: t("customer.mobile.stackTitles.support") }} />
       </Tabs>
     </View>
   );

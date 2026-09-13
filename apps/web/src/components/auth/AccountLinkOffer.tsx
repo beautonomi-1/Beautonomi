@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@beautonomi/i18n";
 
 export function AccountLinkOffer({
   offer,
@@ -13,10 +14,11 @@ export function AccountLinkOffer({
   onEmailCode: () => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   if (!offer) return null;
   return (
     <div className="mt-3 space-y-2" data-testid="account-link-offer">
-      <p className="text-xs text-gray-600">This email is already registered.</p>
+      <p className="text-xs text-gray-600">{t("auth.alreadyRegistered")}</p>
       {offer === "google" ? (
         <Button
           type="button"
@@ -25,7 +27,7 @@ export function AccountLinkOffer({
           disabled={disabled}
           onClick={onGoogle}
         >
-          Sign in with Google
+          {t("auth.signInWithGoogle")}
         </Button>
       ) : null}
       {offer === "email" || offer === "google" ? (
@@ -36,7 +38,7 @@ export function AccountLinkOffer({
           disabled={disabled}
           onClick={onEmailCode}
         >
-          Send code to this email
+          {t("auth.sendCodeToEmail")}
         </Button>
       ) : null}
     </div>

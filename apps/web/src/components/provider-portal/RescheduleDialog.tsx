@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface RescheduleDialogProps {
   open: boolean;
@@ -34,6 +35,8 @@ export function RescheduleDialog({
   appointment,
   onSuccess,
 }: RescheduleDialogProps) {
+  const { t } = useTranslation();
+  const prefix = "web.provider.portal.rescheduleDialog";
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(
     new Date(appointment.scheduled_date)
@@ -48,12 +51,12 @@ export function RescheduleDialog({
     try {
       const newDate = format(selectedDate, "yyyy-MM-dd");
       await providerApi.rescheduleAppointment(appointment.id, newDate, selectedTime);
-      toast.success("Appointment rescheduled successfully");
+      toast.success(t(`${prefix}.success`));
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to reschedule appointment:", error);
-      toast.error("Failed to reschedule appointment");
+      toast.error(t(`${prefix}.failed`));
     } finally {
       setIsLoading(false);
     }
@@ -63,33 +66,33 @@ export function RescheduleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="text-base sm:text-lg font-semibold">Reschedule Appointment</DialogTitle>
+          <DialogTitle className="text-base sm:text-lg font-semibold">{t(`${prefix}.title`)}</DialogTitle>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Change the date and time for this appointment
+            {t(`${prefix}.description`)}
           </p>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>Current Date & Time</Label>
+            <Label>{t(`${prefix}.currentDateTime`)}</Label>
             <p className="text-sm text-gray-600 mt-1">
-              {format(new Date(appointment.scheduled_date), "PPP")} at {appointment.scheduled_time}
+              {format(new Date(appointment.scheduled_date), "PPP")} {t(`${prefix}.at`)} {appointment.scheduled_time}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="new_date" className="text-sm sm:text-base">New Date *</Label>
+            <Label htmlFor="new_date" className="text-sm sm:text-base">{t(`${prefix}.newDate`)}</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    "w-full justify-start text-left font-normal min-h-[44px] touch-manipulation",
+                    "w-full justify-start text-start font-normal min-h-[44px] touch-manipulation",
                     !selectedDate && "text-muted-foreground"
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {selectedDate ? format(selectedDate, "MMM d, yyyy") : "Pick a date"}
+                  <CalendarIcon className="me-2 h-4 w-4" />
+                  {selectedDate ? format(selectedDate, "MMM d, yyyy") : t(`${prefix}.pickDate`)}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -104,7 +107,7 @@ export function RescheduleDialog({
           </div>
 
           <div>
-            <Label htmlFor="new_time" className="text-sm sm:text-base">New Time *</Label>
+            <Label htmlFor="new_time" className="text-sm sm:text-base">{t(`${prefix}.newTime`)}</Label>
             <Input
               id="new_time"
               type="time"
@@ -116,13 +119,13 @@ export function RescheduleDialog({
           </div>
 
           <div>
-            <Label htmlFor="reason">Reason (Optional)</Label>
+            <Label htmlFor="reason">{t(`${prefix}.reasonOptional`)}</Label>
             <Textarea
               id="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
-              placeholder="Reason for rescheduling..."
+              placeholder={t(`${prefix}.reasonPlaceholder`)}
             />
           </div>
 
@@ -134,14 +137,14 @@ export function RescheduleDialog({
               disabled={isLoading}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {isLoading ? "Rescheduling..." : "Reschedule Appointment"}
+              {isLoading ? t(`${prefix}.rescheduling`) : t(`${prefix}.submit`)}
             </Button>
           </DialogFooter>
         </form>

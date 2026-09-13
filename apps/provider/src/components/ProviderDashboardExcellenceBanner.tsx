@@ -78,7 +78,7 @@ export function ProviderDashboardExcellenceBanner() {
       <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
         <View
           style={{
-            marginRight: 12,
+            marginEnd: 12,
             borderRadius: 10,
             backgroundColor: "rgba(251, 191, 36, 0.25)",
             padding: 8,

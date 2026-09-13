@@ -6,6 +6,7 @@ import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import VerificationStatusCard from "@/components/profile/VerificationStatusCard";
 import { toast } from "sonner";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { useRouter } from "next/navigation";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
@@ -59,12 +60,14 @@ interface Country {
   phone_country_code: string | null;
 }
 
+const NOT_PROVIDED_SENTINEL = "Not provided";
+
 const emptyPersonalInfo = (): PersonalInfoData => ({
   legalName: { first: "", last: "" },
-  preferredName: "Not provided",
+  preferredName: NOT_PROVIDED_SENTINEL,
   email: "",
   phone: "",
-  governmentId: "Not provided",
+  governmentId: NOT_PROVIDED_SENTINEL,
   address: {
     country: "",
     street: "",
@@ -98,6 +101,7 @@ function mergeFromServer(initial: PersonalInfoInitialPayload): PersonalInfoData 
 }
 
 export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPayload }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [modalContent, setModalContent] = useState<ModalContent | null>(null);
   const [personalInfo, setPersonalInfo] = useState<PersonalInfoData>(() => mergeFromServer(initial));
@@ -179,7 +183,7 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
   const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
 
   const openModal = (type: keyof PersonalInfoData) => {
-    const content = getModalContent(type, countries, languages);
+    const content = getModalContent(type, countries, languages, t);
     setModalContent(content);
   };
 
@@ -243,17 +247,17 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         const country = newValue.country || personalInfo.address.country || defaultCountry;
 
         if (!file) {
-          toast.error("Please select a file to upload");
+          toast.error(t("web.accountSettings.personalInfo.selectFile"));
           return;
         }
 
         if (!documentType) {
-          toast.error("Please select a document type");
+          toast.error(t("web.accountSettings.personalInfo.selectDocType"));
           return;
         }
 
         if (!country) {
-          toast.error("Please select a country");
+          toast.error(t("web.accountSettings.personalInfo.selectCountry"));
           return;
         }
 
@@ -278,18 +282,18 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
 
         if (verificationResponse.ok) {
           await verificationResponse.json();
-          toast.success("Government ID uploaded successfully! It will be reviewed by our team.");
+          toast.success(t("web.accountSettings.personalInfo.idUploaded"));
           
           // Update personal info to show "Pending verification"
           setPersonalInfo(prev => ({
             ...prev,
-            governmentId: 'Pending verification',
+            governmentId: t('web.accountSettings.personalInfo.pendingVerification'),
           }));
           await refreshVerification();
           closeModal();
         } else {
           const error = await verificationResponse.json();
-          toast.error(error.error?.message || "Failed to upload Government ID");
+          toast.error(error.error?.message || t("web.accountSettings.personalInfo.idUploadFailed"));
         }
         return;
       }
@@ -306,7 +310,7 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         if (profile?.email_change_pending) {
           closeModal();
           toast.success(
-            "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).",
+            t("web.accountSettings.personalInfo.emailChangePending"),
           );
           router.refresh();
           return;
@@ -324,10 +328,10 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
           }
           setPersonalInfo({
             legalName: { first: profile.first_name || '', last: profile.last_name || '' },
-            preferredName: profile.preferred_name || 'Not provided',
+            preferredName: profile.preferred_name || t('web.accountSettings.personalInfo.notProvided'),
             email: maskedEmail,
-            phone: maskedPhone || 'Not provided',
-            governmentId: profile.government_id ? 'Provided' : (personalInfo.governmentId || 'Not provided'),
+            phone: maskedPhone || t('web.accountSettings.personalInfo.notProvided'),
+            governmentId: profile.government_id ? t('web.accountSettings.personalInfo.provided') : (personalInfo.governmentId || t('web.accountSettings.personalInfo.notProvided')),
             address: profile.address ? {
               country: profile.address.country || '',
               street: profile.address.line1 || '',
@@ -347,15 +351,15 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
           });
         }
         closeModal();
-        toast.success("Changes saved successfully!");
+        toast.success(t("web.accountSettings.personalInfo.changesSaved"));
         router.refresh();
       } else {
         const error = await response.json();
-        toast.error(error.error?.message || "Failed to save changes");
+        toast.error(error.error?.message || t("web.accountSettings.personalInfo.saveFailed"));
       }
     } catch (error) {
       console.error("Error saving changes:", error);
-      toast.error("An error occurred. Please try again.");
+      toast.error(t("web.accountSettings.personalInfo.errorGeneric"));
     } finally {
       setIsSaving(false);
     }
@@ -364,7 +368,7 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
   const handleSendEmailOtp = async (email: string) => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || !isMailableEmail(trimmed)) {
-      toast.error("Enter a valid email address");
+      toast.error(t("web.accountSettings.personalInfo.enterValidEmail"));
       return;
     }
     setIsSendingEmailOtp(true);
@@ -375,9 +379,9 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
       setPendingEmailForOtp(trimmed);
       setEmailStep('enter_otp');
       setEmailOtpCode('');
-      toast.success("Verification code sent to your email.");
+      toast.success(t("web.accountSettings.personalInfo.emailCodeSent"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to send code");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.personalInfo.emailSendFailed"));
     } finally {
       setIsSendingEmailOtp(false);
     }
@@ -406,10 +410,10 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         : pendingEmailForOtp;
       setPersonalInfo((prev) => ({ ...prev, email: maskedEmail }));
       closeModal();
-      toast.success("Email address updated successfully.");
+      toast.success(t("web.accountSettings.personalInfo.emailUpdated"));
       router.refresh();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.personalInfo.verifyFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -426,9 +430,9 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
       setPendingPhoneE164(normalized);
       setPhoneStep('enter_otp');
       setPhoneOtpCode('');
-      toast.success("Verification code sent to your phone.");
+      toast.success(t("web.accountSettings.personalInfo.phoneCodeSent"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send code";
+      const msg = err instanceof Error ? err.message : t("web.accountSettings.personalInfo.emailSendFailed");
       toast.error(msg);
     } finally {
       setIsSendingPhoneOtp(false);
@@ -455,7 +459,7 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
       });
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error?.message || "Failed to save phone");
+        throw new Error(err.error?.message || t("web.accountSettings.personalInfo.phoneSaveFailed"));
       }
       const json = await response.json();
       const profile = json?.data;
@@ -465,10 +469,10 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         setPersonalInfo((prev) => ({ ...prev, phone: maskedPhone }));
       }
       closeModal();
-      toast.success("Phone number updated successfully!");
+      toast.success(t("web.accountSettings.personalInfo.phoneUpdated"));
       router.refresh();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Verification failed";
+      const msg = err instanceof Error ? err.message : t("web.accountSettings.personalInfo.verifyFailed");
       toast.error(msg);
     } finally {
       setIsSaving(false);
@@ -480,49 +484,49 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
       <BackButton href="/account-settings" />
       <Breadcrumb 
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Personal info" }
+          { label: t("web.accountSettings.account"), href: "/account-settings" },
+          { label: t("web.accountSettings.personalInfo.title") }
         ]} 
       />
       
-      <h1 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-gray-900">Personal info</h1>
+      <h1 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-gray-900">{t("web.accountSettings.personalInfo.title")}</h1>
       
       {isLoading ? (
-        <p className="text-gray-600">Loading...</p>
+        <p className="text-gray-600">{t("web.accountSettings.personalInfo.loading")}</p>
       ) : (
       <div className="flex flex-col lg:flex-row gap-6">
-        <div className="w-full lg:w-2/3 lg:pr-8">
+        <div className="w-full lg:w-2/3 lg:pe-8">
           <InfoItem
-            label="Legal name"
+            label={t("web.accountSettings.personalInfo.legalName")}
             value={`${personalInfo.legalName.first} ${personalInfo.legalName.last}`}
             onEdit={() => openModal('legalName')}
           />
           <InfoItem
-            label="Preferred name"
+            label={t("web.accountSettings.personalInfo.preferredName")}
             value={personalInfo.preferredName}
-            onEdit={personalInfo.preferredName !== 'Not provided' ? () => openModal('preferredName') : undefined}
-            onAdd={personalInfo.preferredName === 'Not provided' ? () => openModal('preferredName') : undefined}
+            onEdit={personalInfo.preferredName !== NOT_PROVIDED_SENTINEL ? () => openModal('preferredName') : undefined}
+            onAdd={personalInfo.preferredName === NOT_PROVIDED_SENTINEL ? () => openModal('preferredName') : undefined}
           />
           <InfoItem
-            label="Email address"
+            label={t("web.accountSettings.personalInfo.emailAddress")}
             value={personalInfo.email}
             onEdit={() => openModal('email')}
-            editLabel="Change email"
+            editLabel={t("web.accountSettings.personalInfo.changeEmail")}
           />
           <InfoItem
-            label="Phone number"
+            label={t("web.accountSettings.personalInfo.phoneNumber")}
             value={personalInfo.phone}
             onEdit={() => openModal('phone')}
-            editLabel="Change phone"
+            editLabel={t("web.accountSettings.personalInfo.changePhone")}
           />
           <div className="mb-4 md:mb-6 pb-4 md:pb-6 border-b border-gray-200">
             <div className="flex justify-between items-center mb-2">
-              <span className="font-medium text-sm md:text-base text-gray-900">Government ID</span>
+              <span className="font-medium text-sm md:text-base text-gray-900">{t("web.accountSettings.personalInfo.governmentId")}</span>
               <Link
                 href="/account-settings/identity-verification"
                 className="text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium"
               >
-                Manage verification
+                {t("web.accountSettings.personalInfo.manageVerification")}
               </Link>
             </div>
             <VerificationStatusCard
@@ -538,32 +542,32 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
             />
           </div>
           <InfoItem
-            label="Address"
-            value={personalInfo.address.street && personalInfo.address.city ? `${personalInfo.address.street}, ${personalInfo.address.city}` : 'Not provided'}
+            label={t("web.accountSettings.personalInfo.address")}
+            value={personalInfo.address.street && personalInfo.address.city ? `${personalInfo.address.street}, ${personalInfo.address.city}` : t('web.accountSettings.personalInfo.notProvided')}
             onEdit={personalInfo.address.street ? () => openModal('address') : undefined}
             onAdd={!personalInfo.address.street ? () => openModal('address') : undefined}
           />
           <InfoItem
-            label="Emergency contact"
-            value={personalInfo.emergencyContact.name ? personalInfo.emergencyContact.name : 'Not provided'}
+            label={t("web.accountSettings.personalInfo.emergencyContact")}
+            value={personalInfo.emergencyContact.name ? personalInfo.emergencyContact.name : t('web.accountSettings.personalInfo.notProvided')}
             onAdd={!personalInfo.emergencyContact.name ? () => openModal('emergencyContact') : undefined}
             onEdit={personalInfo.emergencyContact.name ? () => openModal('emergencyContact') : undefined}
           />
         </div>
         <div className="w-full lg:w-1/3 border border-gray-200 px-4 md:px-6 py-4 md:py-6 rounded-xl h-full bg-gray-50">
       <InfoCard
-        title="Why isn't my info shown here?"
-        content="We're hiding some account details to protect your identity."
+        title={t("web.accountSettings.whyInfoHidden")}
+        content={t("web.accountSettings.infoHiddenContent")}
         img="/icons/infoed.svg"
       />
       <InfoCard
-        title="Which details can be edited?"
-        content="Contact info and personal details can be edited. If this info was used to verify your identity, you'll need to get verified again the next time you book—or to continue beauty partner."
+        title={t("web.accountSettings.whichDetailsEditable")}
+        content={t("web.accountSettings.detailsEditableContent")}
         img="/icons/locked.svg"
       />
       <InfoCard
-        title="What info is shared with others?"
-        content="Beautonomi only releases contact information for Providers and clients after a reservation is confirmed."
+        title={t("web.accountSettings.whatInfoShared")}
+        content={t("web.accountSettings.infoSharedContent")}
         img="/icons/eyed.svg"
       />
     </div>
@@ -603,7 +607,9 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
   );
 }
 
-const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void; editLabel?: string }> = ({ label, value, onEdit, onAdd, editLabel = "Edit" }) => (
+const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void; editLabel?: string }> = ({ label, value, onEdit, onAdd, editLabel }) => {
+  const { t } = useTranslation();
+  return (
   <div className="mb-4 md:mb-6 pb-4 md:pb-6 border-b border-gray-200">
     <div className="flex justify-between items-center mb-1 md:mb-2">
       <span className="font-medium text-sm md:text-base text-gray-900">{label}</span>
@@ -612,7 +618,7 @@ const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; on
           className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors active:opacity-70" 
           onClick={onEdit}
         >
-          {editLabel}
+          {editLabel ?? t("web.accountSettings.personalInfo.edit")}
         </button>
       )}
       {onAdd && (
@@ -620,13 +626,14 @@ const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; on
           className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors active:opacity-70" 
           onClick={onAdd}
         >
-          Add
+          {t("web.accountSettings.personalInfo.add")}
         </button>
       )}
     </div>
     <span className="text-sm md:text-base text-gray-600">{value}</span>
   </div>
-);
+  );
+};
 
 const InfoCard: React.FC<{ title: string; content: string; img: string | { src: string } }> = ({ title, content, img }) => (
   <div className="mb-4 md:mb-5 pb-4 md:pb-5 border-b border-gray-200 last:border-0">
@@ -694,6 +701,7 @@ const Modal: React.FC<ModalProps> = ({
   isSendingEmailOtp = false,
   sumsubAvailable = false,
 }) => {
+  const { t } = useTranslation();
   const [sumsubLaunching, setSumsubLaunching] = React.useState(false);
 
   // Didit automated KYC lives on the dedicated identity-verification page
@@ -719,7 +727,7 @@ const Modal: React.FC<ModalProps> = ({
         };
       case 'preferredName':
         return {
-          preferredName: initialData.preferredName !== 'Not provided' ? initialData.preferredName : '',
+          preferredName: initialData.preferredName !== t('web.accountSettings.personalInfo.notProvided') ? initialData.preferredName : '',
         };
       case 'email':
         // For email, we can't extract the full email from masked value
@@ -827,7 +835,7 @@ const Modal: React.FC<ModalProps> = ({
           <button 
             onClick={onClose} 
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label="Close"
+            aria-label={t("web.a11y.close")}
           >
             ×
           </button>
@@ -836,10 +844,9 @@ const Modal: React.FC<ModalProps> = ({
         <form onSubmit={handleSubmit}>
           {content.type === "email" && emailStep === "enter_otp" ? (
             <div className="mb-6">
-              <p className="text-sm text-gray-700 mb-1 font-medium">Enter verification code</p>
+              <p className="text-sm text-gray-700 mb-1 font-medium">{t("web.accountSettings.personalInfo.enterVerificationCode")}</p>
               <p className="mb-4 text-sm leading-relaxed text-gray-600">
-                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
-                <span className="font-semibold text-gray-900">{pendingEmailForOtp}</span>.
+                {t("web.accountSettings.personalInfo.emailOtpSentBody", { digits: SUPABASE_AUTH_OTP_LENGTH, email: pendingEmailForOtp })}
               </p>
               <OtpDigitInput
                 length={SUPABASE_AUTH_OTP_LENGTH}
@@ -850,7 +857,7 @@ const Modal: React.FC<ModalProps> = ({
                 }}
                 disabled={isSaving}
                 autoFocus
-                label="Email verification code"
+                label={t("web.accountSettings.personalInfo.emailVerificationCode")}
                 className="mb-3"
               />
               <button
@@ -862,13 +869,13 @@ const Modal: React.FC<ModalProps> = ({
                 className="mt-3 text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isSaving}
               >
-                Wrong email? Go back
+                {t("web.accountSettings.personalInfo.wrongEmailGoBack")}
               </button>
             </div>
           ) : content.type === "email" ? (
             <div className="mb-6">
               <label className="block mb-2 text-sm font-medium text-gray-700" htmlFor="email">
-                Email address
+                {t("web.accountSettings.personalInfo.emailAddress")}
               </label>
               <input
                 type="email"
@@ -880,17 +887,22 @@ const Modal: React.FC<ModalProps> = ({
                 required
               />
               <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                We&apos;ll email a {SUPABASE_AUTH_OTP_LENGTH}-digit code. Your address only updates after you verify.
+                {t("web.accountSettings.personalInfo.emailOtpHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
               </p>
             </div>
           ) : content.type === "phone" && phoneStep === "enter_otp" ? (
             <div className="mb-6">
-              <p className="text-sm text-gray-700 mb-1 font-medium">Enter verification code</p>
+              <p className="text-sm text-gray-700 mb-1 font-medium">{t("web.accountSettings.personalInfo.enterVerificationCode")}</p>
               <p className="mb-4 text-sm leading-relaxed text-gray-600">
-                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
-                <span className="font-semibold text-gray-900">{pendingPhoneE164}</span> (valid about{" "}
-                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
+                {t("web.accountSettings.personalInfo.phoneOtpSentBody", {
+                  digits: SUPABASE_AUTH_OTP_LENGTH,
+                  phone: pendingPhoneE164,
+                  minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)),
+                  minuteLabel:
+                    Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1
+                      ? t("web.accountSettings.personalInfo.minute")
+                      : t("web.accountSettings.personalInfo.minutes"),
+                })}
               </p>
               <OtpDigitInput
                 length={SUPABASE_AUTH_OTP_LENGTH}
@@ -901,7 +913,7 @@ const Modal: React.FC<ModalProps> = ({
                 }}
                 disabled={isSaving}
                 autoFocus
-                label="Phone verification code"
+                label={t("web.accountSettings.personalInfo.phoneVerificationCode")}
                 className="mb-3"
               />
               <button
@@ -913,22 +925,26 @@ const Modal: React.FC<ModalProps> = ({
                 className="mt-3 text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isSaving}
               >
-                Wrong number? Go back
+                {t("web.accountSettings.personalInfo.wrongNumberGoBack")}
               </button>
             </div>
           ) : content.type === "phone" ? (
             <div className="mb-6">
               <PhoneInput
-                label="Phone number"
+                label={t("web.accountSettings.personalInfo.phoneNumber")}
                 value={String(formData.phoneFull ?? "")}
                 onChange={(v) => setFormData((prev) => ({ ...prev, phoneFull: v }))}
-                placeholder="e.g. 82 123 4567"
+                placeholder={t("web.accountSettings.personalInfo.phoneExample")}
               />
               <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
-                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Your number only
-                updates after you verify.
+                {t("web.accountSettings.personalInfo.phoneOtpHint", {
+                  digits: SUPABASE_AUTH_OTP_LENGTH,
+                  minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)),
+                  minuteLabel:
+                    Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1
+                      ? t("web.accountSettings.personalInfo.minute")
+                      : t("web.accountSettings.personalInfo.minutes"),
+                })}
               </p>
             </div>
           ) : (
@@ -942,9 +958,9 @@ const Modal: React.FC<ModalProps> = ({
                   {/* SumSub automated option — shown when available */}
                   {content.type === 'governmentId' && sumsubAvailable && (
                     <div className="mb-4 p-4 bg-pink-50 border border-pink-200 rounded-lg">
-                      <p className="text-sm font-medium text-gray-800 mb-2">Verify instantly</p>
+                      <p className="text-sm font-medium text-gray-800 mb-2">{t("web.accountSettings.personalInfo.verifyInstantly")}</p>
                       <p className="text-xs text-gray-600 mb-3">
-                        Use our automated ID check — takes about 2 minutes.
+                        {t("web.accountSettings.personalInfo.verifyInstantlyHint")}
                       </p>
                       <button
                         type="button"
@@ -952,11 +968,11 @@ const Modal: React.FC<ModalProps> = ({
                         disabled={sumsubLaunching}
                         className="w-full py-2 px-4 bg-[#FF0077] text-white text-sm font-medium rounded-md hover:bg-[#e6006b] disabled:opacity-60"
                       >
-                        {sumsubLaunching ? "Opening…" : "Verify instantly →"}
+                        {sumsubLaunching ? t("web.accountSettings.personalInfo.opening") : t("web.accountSettings.personalInfo.verifyInstantlyCta")}
                       </button>
                       <div className="flex items-center gap-2 mt-4 mb-1">
                         <hr className="flex-1 border-gray-300" />
-                        <span className="text-xs text-gray-400">or upload manually below</span>
+                        <span className="text-xs text-gray-400">{t("web.accountSettings.personalInfo.orUploadManually")}</span>
                         <hr className="flex-1 border-gray-300" />
                       </div>
                     </div>
@@ -972,16 +988,16 @@ const Modal: React.FC<ModalProps> = ({
                   />
                   {filePreview && (
                     <div className="mt-2 relative w-full h-48">
-                      <Image src={filePreview} alt="Preview" fill className="object-contain border border-gray-300 rounded-md" unoptimized />
+                      <Image src={filePreview} alt={t("web.accountSettings.personalInfo.preview")} fill className="object-contain border border-gray-300 rounded-md" unoptimized />
                     </div>
                   )}
                   {selectedFile && !filePreview && (
                     <div className="mt-2 text-sm text-gray-600">
-                      Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                      {t("web.accountSettings.personalInfo.selectedFile", { name: selectedFile.name, size: (selectedFile.size / 1024 / 1024).toFixed(2) })}
                     </div>
                   )}
                   <p className="mt-1 text-xs text-gray-500">
-                    Accepted formats: JPEG, PNG, WebP, PDF (Max 10MB)
+                    {t("web.accountSettings.personalInfo.acceptedFormats")}
                   </p>
                 </div>
               ) : field.type === 'select' ? (
@@ -993,9 +1009,19 @@ const Modal: React.FC<ModalProps> = ({
                   onChange={handleChange}
                   required={field.name !== 'apt' && field.name !== 'line2'}
                 >
-                  <option value="">Select {field.label}</option>
+                  <option value="">{t("web.accountSettings.personalInfo.selectLabel", { label: field.label })}</option>
                   {field.options?.map((option) => (
-                    <option key={option} value={option}>{option}</option>
+                    <option key={option} value={option}>{
+                      content.type === "governmentId" && field.name === "documentType"
+                        ? option === "Driver's License"
+                          ? t("web.accountSettings.personalInfo.driversLicense")
+                          : option === "Passport"
+                            ? t("web.accountSettings.personalInfo.passport")
+                            : option === "National ID"
+                              ? t("web.accountSettings.personalInfo.nationalId")
+                              : option
+                        : option
+                    }</option>
                   ))}
                 </select>
               ) : (
@@ -1019,7 +1045,7 @@ const Modal: React.FC<ModalProps> = ({
               disabled={isSaving || isSendingPhoneOtp}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t("web.accountSettings.personalInfo.cancel")}
             </button>
             {content.type === "email" && emailStep === "enter_email" ? (
               <button
@@ -1028,7 +1054,7 @@ const Modal: React.FC<ModalProps> = ({
                 onClick={() => onSendEmailOtp?.(String(formData.email ?? ""))}
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSendingEmailOtp ? "Sending…" : "Send verification code"}
+                {isSendingEmailOtp ? t("web.accountSettings.personalInfo.sending") : t("web.accountSettings.personalInfo.sendVerificationCode")}
               </button>
             ) : content.type === "email" && emailStep === "enter_otp" ? (
               <button
@@ -1037,7 +1063,7 @@ const Modal: React.FC<ModalProps> = ({
                 onClick={() => onVerifyEmailOtp?.(normalizeSupabaseSmsOtpToken(emailOtpCode))}
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSaving ? "Verifying…" : "Verify and save"}
+                {isSaving ? t("web.accountSettings.personalInfo.verifying") : t("web.accountSettings.personalInfo.verifyAndSave")}
               </button>
             ) : content.type === "phone" && phoneStep === "enter_phone" ? (
               <button
@@ -1049,7 +1075,7 @@ const Modal: React.FC<ModalProps> = ({
                 }}
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSendingPhoneOtp ? "Sending…" : "Send verification code"}
+                {isSendingPhoneOtp ? t("web.accountSettings.personalInfo.sending") : t("web.accountSettings.personalInfo.sendVerificationCode")}
               </button>
             ) : content.type === "phone" && phoneStep === "enter_otp" ? (
               <button
@@ -1058,7 +1084,7 @@ const Modal: React.FC<ModalProps> = ({
                 onClick={() => onVerifyPhoneOtp?.(normalizeSupabaseSmsOtpToken(phoneOtpCode))}
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSaving ? "Verifying…" : "Verify and save"}
+                {isSaving ? t("web.accountSettings.personalInfo.verifying") : t("web.accountSettings.personalInfo.verifyAndSave")}
               </button>
             ) : (
               <button
@@ -1071,10 +1097,10 @@ const Modal: React.FC<ModalProps> = ({
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving
-                  ? "Uploading..."
+                  ? t("web.accountSettings.personalInfo.uploading")
                   : content.type === "governmentId"
-                  ? "Upload for Verification"
-                  : "Save"}
+                  ? t("web.accountSettings.personalInfo.uploadForVerification")
+                  : t("web.accountSettings.personalInfo.save")}
               </button>
             )}
           </div>
@@ -1084,7 +1110,7 @@ const Modal: React.FC<ModalProps> = ({
   );
 };
 
-const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = [], languages: string[] = ['English']): ModalContent => {
+const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = [], languages: string[] = ['English'], t: TFunction): ModalContent => {
   // Generate country options for phone
   const phoneCountryOptions = countries
     .filter(c => c.phone_country_code)
@@ -1100,78 +1126,78 @@ const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = []
     case 'legalName':
       return {
         type: 'legalName',
-        title: 'Legal name',
-        description: 'Make sure this matches the name on your government ID.',
+        title: t("web.accountSettings.personalInfo.modalLegalName"),
+        description: t("web.accountSettings.personalInfo.modalLegalNameDesc"),
         fields: [
-          { name: 'first', label: 'First name on ID', type: 'text' },
-          { name: 'last', label: 'Last name on ID', type: 'text' },
+          { name: 'first', label: t("web.accountSettings.personalInfo.firstNameOnId"), type: 'text' },
+          { name: 'last', label: t("web.accountSettings.personalInfo.lastNameOnId"), type: 'text' },
         ],
       };
     case 'preferredName':
       return {
         type: 'preferredName',
-        title: 'Preferred name',
-        description: 'This is how your first name will appear to Providers and clients. Learn more',
+        title: t("web.accountSettings.personalInfo.modalPreferredName"),
+        description: t("web.accountSettings.personalInfo.modalPreferredNameDesc"),
         fields: [
-          { name: 'preferredName', label: 'Preferred name (optional)', type: 'text' },
+          { name: 'preferredName', label: t("web.accountSettings.personalInfo.preferredNameOptional"), type: 'text' },
         ],
       };
     case 'email':
       return {
         type: 'email',
-        title: 'Email address',
-        description: `Use an address you'll always have access to. We'll email a ${SUPABASE_AUTH_OTP_LENGTH}-digit verification code.`,
+        title: t("web.accountSettings.personalInfo.modalEmail"),
+        description: t("web.accountSettings.personalInfo.modalEmailDesc", { digits: SUPABASE_AUTH_OTP_LENGTH }),
         fields: [
-          { name: 'email', label: 'Email address', type: 'email' },
+          { name: 'email', label: t("web.accountSettings.personalInfo.emailAddress"), type: 'email' },
         ],
       };
     case 'phone':
       return {
         type: 'phone',
-        title: 'Phone number',
-        description: 'For notifications, reminders, and help logging in',
+        title: t("web.accountSettings.personalInfo.modalPhone"),
+        description: t("web.accountSettings.personalInfo.modalPhoneDesc"),
         fields: [
-          { name: 'countryCode', label: 'Country code', type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : ['South Africa (+27)'] },
-          { name: 'phone', label: 'Phone number', type: 'tel' },
+          { name: 'countryCode', label: t("web.accountSettings.personalInfo.countryCode"), type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : [t("web.accountSettings.personalInfo.southAfricaPhone")] },
+          { name: 'phone', label: t("web.accountSettings.personalInfo.phoneNumber"), type: 'tel' },
         ],
       };
     case 'address':
       return {
         type: 'address',
-        title: 'Address',
-        description: 'Use a permanent address where you can receive mail.',
+        title: t("web.accountSettings.personalInfo.modalAddress"),
+        description: t("web.accountSettings.personalInfo.modalAddressDesc"),
         fields: [
-          { name: 'country', label: 'Country/region', type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : ['South Africa'] },
-          { name: 'street', label: 'Street address', type: 'text' },
-          { name: 'apt', label: 'Apt, suite. (optional)', type: 'text' },
-          { name: 'city', label: 'City', type: 'text' },
-          { name: 'state', label: 'State / Province / County / Region', type: 'text' },
-          { name: 'zip', label: 'ZIP code', type: 'text' },
+          { name: 'country', label: t("web.accountSettings.personalInfo.countryRegion"), type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : [t("web.accountSettings.personalInfo.southAfrica")] },
+          { name: 'street', label: t("web.accountSettings.personalInfo.streetAddress"), type: 'text' },
+          { name: 'apt', label: t("web.accountSettings.personalInfo.aptOptional"), type: 'text' },
+          { name: 'city', label: t("web.accountSettings.personalInfo.city"), type: 'text' },
+          { name: 'state', label: t("web.accountSettings.personalInfo.stateRegion"), type: 'text' },
+          { name: 'zip', label: t("web.accountSettings.personalInfo.zipCode"), type: 'text' },
         ],
       };
     case 'emergencyContact':
       return {
         type: 'emergencyContact',
-        title: 'Emergency contact',
-        description: 'A trusted contact we can alert in an urgent situation.',
+        title: t("web.accountSettings.personalInfo.modalEmergency"),
+        description: t("web.accountSettings.personalInfo.modalEmergencyDesc"),
         fields: [
-          { name: 'name', label: 'Name', type: 'text' },
-          { name: 'relationship', label: 'Relationship', type: 'text' },
-          { name: 'language', label: 'Preferred language', type: 'select', options: languageOptions },
-          { name: 'email', label: 'Email', type: 'email' },
-          { name: 'countryCode', label: 'Country code', type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : ['South Africa (+27)'] },
-          { name: 'phone', label: 'Phone number', type: 'tel' },
+          { name: 'name', label: t("web.accountSettings.personalInfo.name"), type: 'text' },
+          { name: 'relationship', label: t("web.accountSettings.personalInfo.relationship"), type: 'text' },
+          { name: 'language', label: t("web.accountSettings.personalInfo.preferredLanguage"), type: 'select', options: languageOptions },
+          { name: 'email', label: t("web.accountSettings.personalInfo.emailAddress"), type: 'email' },
+          { name: 'countryCode', label: t("web.accountSettings.personalInfo.countryCode"), type: 'select', options: phoneCountryOptions.length > 0 ? phoneCountryOptions : [t("web.accountSettings.personalInfo.southAfricaPhone")] },
+          { name: 'phone', label: t("web.accountSettings.personalInfo.phoneNumber"), type: 'tel' },
         ],
       };
     case 'governmentId':
       return {
         type: 'governmentId',
-        title: 'Government ID',
-        description: 'Upload a government-issued ID for identity verification. This helps keep our community safe. Your document will be reviewed by our team.',
+        title: t("web.accountSettings.personalInfo.modalGovId"),
+        description: t("web.accountSettings.personalInfo.modalGovIdDesc"),
         fields: [
-          { name: 'documentType', label: 'Document type', type: 'select', options: ['Driver\'s License', 'Passport', 'National ID'] },
-          { name: 'country', label: 'Country', type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : ['South Africa'] },
-          { name: 'file', label: 'Upload document', type: 'file', accept: 'image/*,.pdf' },
+          { name: 'documentType', label: t("web.accountSettings.personalInfo.documentType"), type: 'select', options: ['Driver\'s License', 'Passport', 'National ID'] },
+          { name: 'country', label: t("web.accountSettings.personalInfo.country"), type: 'select', options: addressCountryOptions.length > 0 ? addressCountryOptions : [t("web.accountSettings.personalInfo.southAfrica")] },
+          { name: 'file', label: t("web.accountSettings.personalInfo.uploadDocument"), type: 'file', accept: 'image/*,.pdf' },
         ],
       };
     default:

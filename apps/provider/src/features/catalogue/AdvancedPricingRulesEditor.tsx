@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, TouchableOpacity, Switch, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -9,36 +10,43 @@ import { twStyle } from "@/lib/twStyle";
 import type { AdvancedPricingRule } from "./types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
-const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const DAY_LABEL_KEYS = ["dayMonday","dayTuesday","dayWednesday","dayThursday","dayFriday","daySaturday","daySunday"];
+const DAY_SHORT_KEYS = ["dayMon","dayTue","dayWed","dayThu","dayFri","daySat","daySun"];
 
 const TABS = [
   {
     key: "time_based" as const,
-    label: "Time",
+    labelKey: "tabTime",
     icon: "time-outline" as const,
-    title: "Time-based rules",
-    hint: "Adjust price during specific hours and days — e.g. peak hours or weekends.",
+    titleKey: "tabTimeTitle",
+    hintKey: "tabTimeHint",
+    emptyKey: "emptyTimeRules",
+    addKey: "addTimeRule",
   },
   {
     key: "client_type" as const,
-    label: "Client",
+    labelKey: "tabClient",
     icon: "people-outline" as const,
-    title: "Client-type rules",
-    hint: "Offer different pricing for new, returning, or VIP clients.",
+    titleKey: "tabClientTitle",
+    hintKey: "tabClientHint",
+    emptyKey: "emptyClientRules",
+    addKey: "addClientRule",
   },
   {
     key: "seasonal" as const,
-    label: "Seasonal",
+    labelKey: "tabSeasonal",
     icon: "calendar-outline" as const,
-    title: "Seasonal rules",
-    hint: "Apply pricing for holidays or custom date ranges.",
+    titleKey: "tabSeasonalTitle",
+    hintKey: "tabSeasonalHint",
+    emptyKey: "emptySeasonalRules",
+    addKey: "addSeasonalRule",
   },
 ];
 
 const CLIENT_TYPES = [
-  { value: "new", label: "New", description: "First-time bookers" },
-  { value: "returning", label: "Returning", description: "Repeat clients" },
-  { value: "vip", label: "VIP", description: "Tagged VIP clients" },
+  { value: "new", labelKey: "clientNew", descriptionKey: "clientNewDesc" },
+  { value: "returning", labelKey: "clientReturning", descriptionKey: "clientReturningDesc" },
+  { value: "vip", labelKey: "clientVip", descriptionKey: "clientVipDesc" },
 ] as const;
 
 function getDefaultConditions(type: AdvancedPricingRule["type"]): Record<string, unknown> {
@@ -101,6 +109,12 @@ export function AdvancedPricingRulesEditor({
   onClose,
   onSave,
 }: AdvancedPricingRulesEditorProps) {
+  const { t } = useTranslation();
+  const ap = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.advancedPricing." + key, opts) as string,
+    [t],
+  );
   const [rules, setRules] = useState<AdvancedPricingRule[]>(initialRules);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["key"]>("time_based");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -162,9 +176,9 @@ export function AdvancedPricingRulesEditor({
   const handleSave = () => {
     const invalid = rules.filter((r) => !r.name.trim() || (r.enabled && r.priceAdjustment.value === 0));
     if (invalid.length > 0) {
-      const message = "Give each enabled rule a name and a non-zero adjustment.";
+      const message = ap("incompleteBody");
       setValidationError(message);
-      Alert.alert("Incomplete rules", message);
+      Alert.alert(ap("incompleteTitle"), message);
       return;
     }
     onSave(rules);
@@ -175,13 +189,13 @@ export function AdvancedPricingRulesEditor({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Advanced pricing"
-      subtitle="Adjust your base price automatically when conditions match."
+      title={ap("title")}
+      subtitle={ap("subtitle")}
       snapHeight="full"
       footer={
         <View style={twStyle("gap-3")}>
-          <ActionButton label="Save rules" onPress={handleSave} fullWidth />
-          <ActionButton label="Cancel" onPress={onClose} variant="outline" fullWidth />
+          <ActionButton label={ap("saveRules")} onPress={handleSave} fullWidth />
+          <ActionButton label={t("common.cancel")} onPress={onClose} variant="outline" fullWidth />
         </View>
       }
     >
@@ -191,16 +205,16 @@ export function AdvancedPricingRulesEditor({
         )}
       >
         <View
-          style={[twStyle("mr-3 rounded-full p-2"), { backgroundColor: Colors.primaryLight }]}
+          style={[twStyle("me-3 rounded-full p-2"), { backgroundColor: Colors.primaryLight }]}
         >
           <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
         </View>
         <View style={twStyle("flex-1")}>
           <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-            {enabledCount === 0 ? "No active rules yet" : `${enabledCount} active rule${enabledCount === 1 ? "" : "s"}`}
+            {enabledCount === 0 ? ap("noActiveRules") : ap("activeRules", { count: enabledCount })}
           </Text>
           <Text style={twStyle("mt-1 text-xs leading-5 text-gray-500")}>
-            Rules apply on top of your base booking price. Disabled rules are saved but not used at checkout.
+            {ap("rulesApplyHint")}
           </Text>
         </View>
       </View>
@@ -211,7 +225,7 @@ export function AdvancedPricingRulesEditor({
             "mb-4 flex-row items-start rounded-2xl border border-red-200 bg-red-50 px-4 py-3",
           )}
         >
-          <Ionicons name="alert-circle" size={18} color={Colors.error} style={{ marginTop: 1, marginRight: 10 }} />
+          <Ionicons name="alert-circle" size={18} color={Colors.error} style={{ marginTop: 1, marginEnd: 10 }} />
           <Text style={twStyle("flex-1 text-sm leading-5 text-red-700")}>{validationError}</Text>
         </View>
       ) : null}
@@ -239,7 +253,7 @@ export function AdvancedPricingRulesEditor({
               onPress={() => setActiveTab(tab.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${tab.label} rules${count ? `, ${count} configured` : ""}`}
+              accessibilityLabel={count ? ap("tabRulesConfiguredA11y", { label: ap(tab.labelKey), count }) : ap("tabRulesA11y", { label: ap(tab.labelKey) })}
             >
               <Ionicons
                 name={tab.icon}
@@ -251,7 +265,7 @@ export function AdvancedPricingRulesEditor({
                   `mt-1 text-xs font-semibold ${selected ? "text-gray-900" : "text-gray-500"}`,
                 )}
               >
-                {tab.label}
+                {ap(tab.labelKey)}
               </Text>
               {count > 0 ? (
                 <View
@@ -275,8 +289,8 @@ export function AdvancedPricingRulesEditor({
       </View>
 
       <View style={twStyle("mb-5")}>
-        <Text style={twStyle("text-base font-semibold text-gray-900")}>{activeTabMeta.title}</Text>
-        <Text style={twStyle("mt-1 text-sm leading-5 text-gray-500")}>{activeTabMeta.hint}</Text>
+        <Text style={twStyle("text-base font-semibold text-gray-900")}>{ap(activeTabMeta.titleKey)}</Text>
+        <Text style={twStyle("mt-1 text-sm leading-5 text-gray-500")}>{ap(activeTabMeta.hintKey)}</Text>
       </View>
 
       {tabRules.length === 0 ? (
@@ -288,9 +302,9 @@ export function AdvancedPricingRulesEditor({
           <View style={[twStyle("mb-3 rounded-full bg-white p-4"), { borderWidth: 1, borderColor: Colors.gray[200] }]}>
             <Ionicons name={activeTabMeta.icon} size={28} color={Colors.gray[400]} />
           </View>
-          <Text style={twStyle("text-base font-semibold text-gray-800")}>No {activeTabMeta.label.toLowerCase()} rules</Text>
+          <Text style={twStyle("text-base font-semibold text-gray-800")}>{ap(activeTabMeta.emptyKey)}</Text>
           <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
-            Add a rule to change pricing when these conditions are met.
+            {ap("emptyRulesHint")}
           </Text>
         </View>
       ) : (
@@ -306,17 +320,17 @@ export function AdvancedPricingRulesEditor({
                 "flex-row items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3",
               )}
             >
-              <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("flex-1 pe-3")}>
                 <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                  Rule {index + 1}
+                  {ap("ruleNumber", { number: index + 1 })}
                 </Text>
                 <Text style={twStyle("mt-0.5 text-base font-semibold text-gray-900")} numberOfLines={1}>
-                  {rule.name.trim() || "Untitled rule"}
+                  {rule.name.trim() || ap("untitledRule")}
                 </Text>
               </View>
               <View style={twStyle("flex-row items-center gap-3")}>
                 <View style={twStyle("flex-row items-center gap-2")}>
-                  <Text style={twStyle("text-xs font-medium text-gray-500")}>Active</Text>
+                  <Text style={twStyle("text-xs font-medium text-gray-500")}>{ap("active")}</Text>
                   <Switch
                     value={rule.enabled}
                     onValueChange={(v) => updateRule(rule.id, { enabled: v })}
@@ -327,7 +341,7 @@ export function AdvancedPricingRulesEditor({
                 <TouchableOpacity
                   onPress={() => removeRule(rule.id)}
                   hitSlop={8}
-                  accessibilityLabel="Remove rule"
+                  accessibilityLabel={ap("removeRuleA11y")}
                   accessibilityRole="button"
                   style={twStyle("rounded-full bg-red-50 p-2")}
                 >
@@ -338,21 +352,21 @@ export function AdvancedPricingRulesEditor({
 
             <View style={twStyle("gap-4 p-4")}>
               <View>
-                <FieldLabel label="Rule name" hint="Shown only to you — helps identify this rule later." />
+                <FieldLabel label={ap("ruleName")} hint={ap("ruleNameHint")} />
                 <TextField
                   value={rule.name}
                   onChangeText={(t) => updateRule(rule.id, { name: t })}
-                  placeholder="e.g. Peak hours, Weekend premium"
+                  placeholder={ap("ruleNamePlaceholder")}
                 />
               </View>
 
               {rule.type === "time_based" ? (
                 <>
                   <View>
-                    <FieldLabel label="Time window" hint="Use 24-hour format, e.g. 09:00 and 17:00." />
+                    <FieldLabel label={ap("timeWindow")} hint={ap("timeWindowHint")} />
                     <View style={twStyle("flex-row gap-3")}>
                       <View style={twStyle("flex-1")}>
-                        <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>From</Text>
+                        <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>{ap("from")}</Text>
                         <TextField
                           value={String(rule.conditions.startTime ?? "09:00")}
                           onChangeText={(t) => updateCondition(rule.id, "startTime", t)}
@@ -361,7 +375,7 @@ export function AdvancedPricingRulesEditor({
                         />
                       </View>
                       <View style={twStyle("flex-1")}>
-                        <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>To</Text>
+                        <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>{ap("to")}</Text>
                         <TextField
                           value={String(rule.conditions.endTime ?? "17:00")}
                           onChangeText={(t) => updateCondition(rule.id, "endTime", t)}
@@ -373,7 +387,7 @@ export function AdvancedPricingRulesEditor({
                   </View>
 
                   <View>
-                    <FieldLabel label="Days of week" hint="Tap to select which days this rule applies." />
+                    <FieldLabel label={ap("daysOfWeek")} hint={ap("daysOfWeekHint")} />
                     <View style={twStyle("flex-row justify-between gap-1")}>
                       {DAYS.map((day, dayIndex) => {
                         const selected = ((rule.conditions.days as string[]) ?? []).includes(day);
@@ -393,14 +407,14 @@ export function AdvancedPricingRulesEditor({
                             }}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
-                            accessibilityLabel={day}
+                            accessibilityLabel={ap(DAY_LABEL_KEYS[dayIndex])}
                           >
                             <Text
                               style={twStyle(
                                 `text-[11px] font-bold ${selected ? "text-white" : "text-gray-600"}`,
                               )}
                             >
-                              {DAY_SHORT[dayIndex]}
+                              {ap(DAY_SHORT_KEYS[dayIndex])}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -412,7 +426,7 @@ export function AdvancedPricingRulesEditor({
 
               {rule.type === "client_type" ? (
                 <View>
-                  <FieldLabel label="Client type" hint="Which client segment should receive this adjustment." />
+                  <FieldLabel label={ap("clientType")} hint={ap("clientTypeHint")} />
                   <View style={twStyle("gap-2")}>
                     {CLIENT_TYPES.map((ct) => {
                       const selected = rule.conditions.clientType === ct.value;
@@ -431,7 +445,7 @@ export function AdvancedPricingRulesEditor({
                         >
                           <View
                             style={[
-                              twStyle("mr-3 h-5 w-5 items-center justify-center rounded-full border-2"),
+                              twStyle("me-3 h-5 w-5 items-center justify-center rounded-full border-2"),
                               selected
                                 ? { borderColor: Colors.primary, backgroundColor: Colors.primary }
                                 : { borderColor: Colors.gray[300], backgroundColor: Colors.white },
@@ -440,8 +454,8 @@ export function AdvancedPricingRulesEditor({
                             {selected ? <View style={twStyle("h-2 w-2 rounded-full bg-white")} /> : null}
                           </View>
                           <View style={twStyle("flex-1")}>
-                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>{ct.label}</Text>
-                            <Text style={twStyle("text-xs text-gray-500")}>{ct.description}</Text>
+                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>{ap(ct.labelKey)}</Text>
+                            <Text style={twStyle("text-xs text-gray-500")}>{ap(ct.descriptionKey)}</Text>
                           </View>
                         </TouchableOpacity>
                       );
@@ -452,10 +466,10 @@ export function AdvancedPricingRulesEditor({
 
               {rule.type === "seasonal" ? (
                 <View>
-                  <FieldLabel label="Date range" hint="Use YYYY-MM-DD format for start and end dates." />
+                  <FieldLabel label={ap("dateRange")} hint={ap("dateRangeHint")} />
                   <View style={twStyle("flex-row gap-3")}>
                     <View style={twStyle("flex-1")}>
-                      <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>Start date</Text>
+                      <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>{ap("startDate")}</Text>
                       <TextField
                         value={String(rule.conditions.startDate ?? "")}
                         onChangeText={(t) => updateCondition(rule.id, "startDate", t)}
@@ -464,7 +478,7 @@ export function AdvancedPricingRulesEditor({
                       />
                     </View>
                     <View style={twStyle("flex-1")}>
-                      <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>End date</Text>
+                      <Text style={twStyle("mb-1.5 text-xs font-medium text-gray-500")}>{ap("endDate")}</Text>
                       <TextField
                         value={String(rule.conditions.endDate ?? "")}
                         onChangeText={(t) => updateCondition(rule.id, "endDate", t)}
@@ -478,11 +492,11 @@ export function AdvancedPricingRulesEditor({
 
               <View>
                 <FieldLabel
-                  label="Price adjustment"
+                  label={ap("priceAdjustment")}
                   hint={
                     rule.priceAdjustment.type === "percentage"
-                      ? "Positive adds to the base price; negative gives a discount."
-                      : "Fixed amount added to or subtracted from the base price."
+                      ? ap("priceAdjustmentPctHint")
+                      : ap("priceAdjustmentFixedHint")
                   }
                 />
                 <View style={twStyle("mb-3 flex-row rounded-xl border border-gray-200 bg-gray-50 p-1")}>
@@ -514,14 +528,14 @@ export function AdvancedPricingRulesEditor({
                             `text-sm font-semibold ${selected ? "text-gray-900" : "text-gray-500"}`,
                           )}
                         >
-                          {type === "percentage" ? "Percentage (%)" : "Fixed amount"}
+                          {type === "percentage" ? ap("percentage") : ap("fixedAmount")}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
                 <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white px-4 py-3")}>
-                  <Text style={twStyle("mr-2 text-sm font-semibold text-gray-500")}>
+                  <Text style={twStyle("me-2 text-sm font-semibold text-gray-500")}>
                     {rule.priceAdjustment.type === "percentage" ? "%" : currencyCode}
                   </Text>
                   <TextInput
@@ -553,11 +567,11 @@ export function AdvancedPricingRulesEditor({
         ]}
         onPress={() => addRule(activeTab)}
         accessibilityRole="button"
-        accessibilityLabel={`Add ${activeTabMeta.label.toLowerCase()} rule`}
+        accessibilityLabel={ap(activeTabMeta.addKey)}
       >
         <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-        <Text style={[twStyle("ml-2 text-sm font-semibold"), { color: Colors.primary }]}>
-          Add {activeTabMeta.label.toLowerCase()} rule
+        <Text style={[twStyle("ms-2 text-sm font-semibold"), { color: Colors.primary }]}>
+          {ap(activeTabMeta.addKey)}
         </Text>
       </TouchableOpacity>
     </BottomSheet>

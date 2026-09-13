@@ -28,6 +28,8 @@ import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface StaffMember {
   id: string;
@@ -115,9 +117,9 @@ interface WeeklyStat {
 }
 
 const ROLES = [
-  { label: "Staff", value: "provider_staff" },
-  { label: "Manager", value: "provider_manager" },
-  { label: "Owner", value: "provider_owner" },
+  { labelKey: "roleStaff", value: "provider_staff" },
+  { labelKey: "roleManager", value: "provider_manager" },
+  { labelKey: "roleOwner", value: "provider_owner" },
 ];
 
 interface TeamAccessPayload {
@@ -127,49 +129,59 @@ interface TeamAccessPayload {
 }
 
 const LINK_ITEMS: {
-  label: string;
+  id: "permissions" | "notifications" | "schedule" | "daysOff" | "commission" | "locations";
+  labelKey: string;
   icon: keyof typeof Ionicons.glyphMap;
   route: string;
   useId?: boolean;
   passStaffId?: string;
 }[] = [
   {
-    label: "Permissions",
+    id: "permissions",
+    labelKey: "linkPermissions",
     icon: "lock-open-outline",
     route: "/(app)/(tabs)/more/settings/staff-permissions",
     useId: true,
   },
   {
-    label: "Notifications",
+    id: "notifications",
+    labelKey: "linkNotifications",
     icon: "notifications-outline",
     route: "/(app)/(tabs)/more/settings/staff-notifications",
     useId: true,
   },
   {
-    label: "Schedule",
+    id: "schedule",
+    labelKey: "linkSchedule",
     icon: "calendar-outline",
     route: "/(app)/(tabs)/more/staff-schedule",
     passStaffId: "staffId",
   },
   {
-    label: "Days off",
+    id: "daysOff",
+    labelKey: "linkDaysOff",
     icon: "sunny-outline",
     route: "/(app)/(tabs)/more/days-off",
     passStaffId: "staffId",
   },
   {
-    label: "Commission",
+    id: "commission",
+    labelKey: "linkCommission",
     icon: "cash-outline",
     route: "/(app)/(tabs)/more/settings/team-commissions",
   },
   {
-    label: "Locations",
+    id: "locations",
+    labelKey: "linkLocations",
     icon: "location-outline",
     route: "/(app)/(tabs)/more/locations",
   },
 ];
 
 export default function TeamMemberDetailScreen() {
+  const { t } = useTranslation();
+  const tm = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.teamMember.${key}`, opts) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -218,13 +230,13 @@ export default function TeamMemberDetailScreen() {
   const { execute: postAction, loading: actionBusy } = useApiMutation("post");
 
   const visibleLinks = LINK_ITEMS.filter((item) => {
-    if (item.label === "Permissions" || item.label === "Notifications") {
+    if (item.id === "permissions" || item.id === "notifications") {
       return isSelf || canManageTeam;
     }
-    if (item.label === "Schedule" || item.label === "Days off") {
+    if (item.id === "schedule" || item.id === "daysOff") {
       return canManageTeam || isSelf;
     }
-    if (item.label === "Commission" || item.label === "Locations") {
+    if (item.id === "commission" || item.id === "locations") {
       return canManageTeam;
     }
     return true;
@@ -318,17 +330,17 @@ export default function TeamMemberDetailScreen() {
 
   const handleSaveEdit = useCallback(async () => {
     if (!editForm.name.trim()) {
-      Alert.alert("Validation", "Name is required.");
+      Alert.alert(tm("validationTitle"), tm("nameRequired"));
       return;
     }
     const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
     if (phoneErr) {
-      Alert.alert("Invalid phone", phoneErr);
+      Alert.alert(tm("invalidPhoneTitle"), phoneErr);
       return;
     }
     const avatarUrl = editForm.avatar_url.trim();
     if (avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl)) {
-      Alert.alert("Invalid avatar URL", "Use a full image URL that starts with https:// or http://.");
+      Alert.alert(tm("invalidAvatarTitle"), tm("invalidAvatarBody"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -342,7 +354,7 @@ export default function TeamMemberDetailScreen() {
       if (editForm.commission_rate.trim()) {
         const rate = parseFloat(editForm.commission_rate);
         if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-          Alert.alert("Validation", "Commission must be between 0 and 100.");
+          Alert.alert(tm("validationTitle"), tm("commissionRange"));
           return;
         }
         payload.commission_rate = rate;
@@ -353,7 +365,7 @@ export default function TeamMemberDetailScreen() {
     const { error: err } = await updateStaff(`/api/provider/staff/${id}`, payload);
     if (err) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Error", err);
+      Alert.alert(tm("errorTitle"), err);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditOpen(false);
@@ -361,7 +373,7 @@ export default function TeamMemberDetailScreen() {
       // §Provider-audit 2026-04: surface an explicit confirmation after a
       // team-member save so the user sees Save landed (haptic alone wasn't
       // enough for owners managing multiple members).
-      Alert.alert("Team member updated", "Changes saved successfully.");
+      Alert.alert(tm("updatedTitle"), tm("updatedBody"));
     }
   }, [editForm, id, updateStaff, refresh, canManageTeam]);
 
@@ -375,27 +387,27 @@ export default function TeamMemberDetailScreen() {
       });
       if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && newActive === false && !reassignTo) {
         Alert.alert(
-          "Upcoming bookings",
-          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and deactivate?`,
+          tm("upcomingBookingsTitle"),
+          tm("reassignDeactivateBody", { name: member.name }),
           [
-            { text: "Cancel", style: "cancel" },
-            { text: "Reassign and deactivate", style: "destructive", onPress: () => void apply("any") },
+            { text: tm("cancel"), style: "cancel" },
+            { text: tm("reassignAndDeactivate"), style: "destructive", onPress: () => void apply("any") },
           ],
         );
         return;
       }
-      if (err) Alert.alert("Error", err);
+      if (err) Alert.alert(tm("errorTitle"), err);
       else refresh();
     };
     Alert.alert(
-      newActive ? "Activate member" : "Deactivate member",
+      newActive ? tm("activateMember") : tm("deactivateMember"),
       newActive
-        ? `Activate ${member.name}? They will appear in the team and can be assigned to bookings.`
-        : `Deactivate ${member.name}? They will be hidden from the team and unavailable for new bookings.`,
+        ? tm("activateBody", { name: member.name })
+        : tm("deactivateBody", { name: member.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: tm("cancel"), style: "cancel" },
         {
-          text: newActive ? "Activate" : "Deactivate",
+          text: newActive ? tm("activate") : tm("deactivate"),
           style: newActive ? "default" : "destructive",
           onPress: () => void apply(),
         },
@@ -412,25 +424,25 @@ export default function TeamMemberDetailScreen() {
       const { error: err, errorCode } = await deleteStaff(path, {});
       if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !reassignTo) {
         Alert.alert(
-          "Upcoming bookings",
-          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and remove?`,
+          tm("upcomingBookingsTitle"),
+          tm("reassignRemoveBody", { name: member.name }),
           [
-            { text: "Cancel", style: "cancel" },
-            { text: "Reassign and remove", style: "destructive", onPress: () => void apply("any") },
+            { text: tm("cancel"), style: "cancel" },
+            { text: tm("reassignAndRemove"), style: "destructive", onPress: () => void apply("any") },
           ],
         );
         return;
       }
-      if (err) Alert.alert("Error", err);
+      if (err) Alert.alert(tm("errorTitle"), err);
       else router.back();
     };
     Alert.alert(
-      "Remove team member",
-      `Remove ${member.name} from your team? This cannot be undone.`,
+      tm("removeTitle"),
+      tm("removeBody", { name: member.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: tm("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: tm("remove"),
           style: "destructive",
           onPress: () => void apply(),
         },
@@ -455,9 +467,9 @@ export default function TeamMemberDetailScreen() {
           ? (res.error.details as { join_url: string }).join_url
           : null;
       if (joinUrl) {
-        Alert.alert("Invite link ready", `Email may not have sent. Share this link:\n\n${joinUrl}`);
+        Alert.alert(tm("inviteLinkReady"), tm("inviteLinkBody", { url: joinUrl }));
       } else {
-        Alert.alert("Error", res.error.message ?? "Failed to send invitation");
+        Alert.alert(tm("errorTitle"), res.error.message ?? tm("inviteFailed"));
       }
       return;
     }
@@ -465,29 +477,29 @@ export default function TeamMemberDetailScreen() {
     const joinUrl = res.data?.join_url;
     if (joinUrl && !res.data?.channels?.email) {
       Alert.alert(
-        "Invite link ready",
-        `Email may not have sent. Share this link:\n\n${joinUrl}`,
+        tm("inviteLinkReady"),
+        tm("inviteLinkBody", { url: joinUrl }),
       );
       return;
     }
-    Alert.alert("Invite sent", `Invitation sent to ${member.email}.`);
+    Alert.alert(tm("inviteSentTitle"), tm("inviteSentBody", { email: member.email }));
   }, [id, member?.email, canManageTeam]);
 
   const handleRevokeInvite = useCallback(() => {
     if (!id || !canManageTeam) return;
-    Alert.alert("Revoke invite", `Revoke the pending invite for ${member?.name ?? "this team member"}?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(tm("revokeInviteTitle"), tm("revokeInviteBody", { name: member?.name ?? tm("thisTeamMember") }), [
+      { text: tm("cancel"), style: "cancel" },
       {
-        text: "Revoke",
+        text: tm("revoke"),
         style: "destructive",
         onPress: async () => {
           const res = await api.post(`/api/provider/staff/${id}/invite/revoke`, {});
           if (res.error) {
-            Alert.alert("Error", res.error.message ?? "Failed to revoke invite");
+            Alert.alert(tm("errorTitle"), res.error.message ?? tm("revokeFailed"));
             return;
           }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Alert.alert("Invite revoked", "The pending invite is no longer valid.");
+          Alert.alert(tm("inviteRevokedTitle"), tm("inviteRevokedBody"));
         },
       },
     ]);
@@ -497,18 +509,18 @@ export default function TeamMemberDetailScreen() {
     if (!id || !canManageTeam) return;
     const { error: err } = await postAction(`/api/provider/staff/${id}/reset-password`, {});
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(tm("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Reset sent", "Password reset email has been sent.");
+    Alert.alert(tm("resetSentTitle"), tm("resetSentBody"));
   }, [id, postAction, canManageTeam]);
 
   if (loading && !member) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team member" showBack />
-        <LoadingState message="Loading..." />
+<ScreenHeader title={tm("title")} showBack />
+<LoadingState message={tm("loading")} />
       </ScreenContainer>
     );
   }
@@ -516,7 +528,7 @@ export default function TeamMemberDetailScreen() {
   if (error && !member) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team member" showBack />
+<ScreenHeader title={tm("title")} showBack />
         <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -525,9 +537,9 @@ export default function TeamMemberDetailScreen() {
   if (!member) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team member" showBack />
+<ScreenHeader title={tm("title")} showBack />
         <View style={twStyle("flex-1 items-center justify-center p-6")}>
-          <Text style={twStyle("text-gray-500")}>Member not found</Text>
+          <Text style={twStyle("text-gray-500")}>{tm("memberNotFound")}</Text>
         </View>
       </ScreenContainer>
     );
@@ -544,10 +556,10 @@ export default function TeamMemberDetailScreen() {
             <TouchableOpacity
               onPress={openEdit}
               style={twStyle("rounded-xl bg-gray-100 px-3 py-1.5")}
-              accessibilityLabel="Edit team member"
+              accessibilityLabel={tm("editA11y")}
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-sm font-semibold text-gray-700")}>Edit</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-700")}>{tm("edit")}</Text>
             </TouchableOpacity>
           ) : undefined
         }
@@ -567,73 +579,73 @@ export default function TeamMemberDetailScreen() {
             <View
               style={twStyle(`h-2.5 w-2.5 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-400"}`)}
             />
-            <Text style={twStyle("ml-2 text-sm text-gray-600")}>
-              {member.is_active ? "Active" : "Inactive"}
+            <Text style={twStyle("ms-2 text-sm text-gray-600")}>
+{member.is_active ? tm("active") : tm("inactive")}
             </Text>
           </View>
         </View>
 
         {/* Contact & commission info */}
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-          <Row label="Email" value={member.email} />
-          {member.phone ? <Row label="Phone" value={member.phone} /> : null}
+<Row label={tm("email")} value={member.email} />
+          {member.phone ? <Row label={tm("phone")} value={member.phone} /> : null}
           {member.commission_rate != null ? (
-            <Row label="Commission" value={`${member.commission_rate}%`} />
+            <Row label={tm("commission")} value={tm("commissionValue", { rate: member.commission_rate })} />
           ) : null}
-          <Row label="Mobile" value={member.mobileReady ? "Ready" : "Not marked ready"} />
+          <Row label={tm("mobile")} value={member.mobileReady ? tm("mobileReady") : tm("mobileNotReady")} />
         </View>
 
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Profile readiness</Text>
+          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{tm("profileReadiness")}</Text>
           <ChecklistRow
             complete={Boolean(member.avatar_url)}
-            label={member.avatar_url ? "Avatar added" : "Add an avatar so clients and staff can identify them quickly"}
+            label={member.avatar_url ? tm("avatarAdded") : tm("avatarMissing")}
           />
           <ChecklistRow
             complete={Boolean(member.phone)}
-            label={member.phone ? "Phone number added" : "Add a phone number for shift and booking communication"}
+            label={member.phone ? tm("phoneAdded") : tm("phoneMissing")}
           />
           <ChecklistRow
             complete={(member.locations ?? []).length > 0}
-            label={(member.locations ?? []).length > 0 ? "Locations assigned" : "Assign locations before routing bookings to this staff member"}
+            label={(member.locations ?? []).length > 0 ? tm("locationsAssigned") : tm("locationsMissing")}
           />
           <ChecklistRow
             complete={(member.service_ids ?? []).length > 0}
-            label={(member.service_ids ?? []).length > 0 ? "Services assigned" : "Assign services they are allowed to perform"}
+            label={(member.service_ids ?? []).length > 0 ? tm("servicesAssigned") : tm("servicesMissing")}
           />
         </View>
 
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Work setup</Text>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>Locations</Text>
+          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{tm("workSetup")}</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>{tm("locations")}</Text>
           {(member.locations ?? []).length > 0 ? (
             <View style={twStyle("mt-2 flex-row flex-wrap")}>
               {(member.locations ?? []).map((loc) => (
-                <View key={loc.location_id} style={twStyle("mb-2 mr-2 rounded-full bg-gray-100 px-3 py-1.5")}>
+                <View key={loc.location_id} style={twStyle("mb-2 me-2 rounded-full bg-gray-100 px-3 py-1.5")}>
                   <Text style={twStyle("text-xs font-medium text-gray-700")}>
-                    {loc.location_name || "Location"}
-                    {loc.is_primary ? " · primary" : ""}
+                    {loc.location_name || tm("locationFallback")}
+                    {loc.is_primary ? tm("primarySuffix") : ""}
                   </Text>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={twStyle("mt-1 text-sm text-gray-500")}>All provider locations or not assigned yet.</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>{tm("allLocationsOrUnassigned")}</Text>
           )}
-          <Text style={twStyle("mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400")}>Services</Text>
+          <Text style={twStyle("mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400")}>{tm("services")}</Text>
           {serviceNames.length > 0 ? (
             <View style={twStyle("mt-2 flex-row flex-wrap")}>
               {serviceNames.slice(0, 8).map((name) => (
-                <View key={name} style={twStyle("mb-2 mr-2 rounded-full bg-indigo-50 px-3 py-1.5")}>
+                <View key={name} style={twStyle("mb-2 me-2 rounded-full bg-indigo-50 px-3 py-1.5")}>
                   <Text style={twStyle("text-xs font-medium text-indigo-700")}>{name}</Text>
                 </View>
               ))}
               {serviceNames.length > 8 ? (
-                <Text style={twStyle("mt-1 text-xs text-gray-500")}>+{serviceNames.length - 8} more</Text>
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>{tm("moreServices", { count: serviceNames.length - 8 })}</Text>
               ) : null}
             </View>
           ) : (
-            <Text style={twStyle("mt-1 text-sm text-gray-500")}>No specific services assigned.</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>{tm("noSpecificServices")}</Text>
           )}
         </View>
 
@@ -643,12 +655,12 @@ export default function TeamMemberDetailScreen() {
               style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
               onPress={handleSendInvite}
               disabled={actionBusy || !member.email}
-              accessibilityLabel="Send team invite"
+              accessibilityLabel={tm("sendInviteA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="mail-outline" size={18} color="#374151" />
-              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")}>
-                Send invite
+              <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-gray-800")}>
+                {tm("sendInvite")}
               </Text>
             </TouchableOpacity>
             <View style={twStyle("mx-2 h-px bg-gray-100")} />
@@ -656,12 +668,12 @@ export default function TeamMemberDetailScreen() {
               style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
               onPress={handleRevokeInvite}
               disabled={actionBusy}
-              accessibilityLabel="Revoke team invite"
+              accessibilityLabel={tm("revokeInviteA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="close-circle-outline" size={18} color="#b91c1c" />
-              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-red-700")}>
-                Revoke invite
+              <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-red-700")}>
+                {tm("revokeInvite")}
               </Text>
             </TouchableOpacity>
             <View style={twStyle("mx-2 h-px bg-gray-100")} />
@@ -669,12 +681,12 @@ export default function TeamMemberDetailScreen() {
               style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
               onPress={handleResetPassword}
               disabled={actionBusy || !member.email}
-              accessibilityLabel="Send password reset"
+              accessibilityLabel={tm("sendPasswordResetA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="key-outline" size={18} color="#374151" />
-              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")}>
-                Send password reset
+              <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-gray-800")}>
+                {tm("sendPasswordReset")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -683,12 +695,12 @@ export default function TeamMemberDetailScreen() {
         {/* Quick actions */}
         <View style={twStyle("mx-4 mb-4")}>
           <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 px-1")}>
-            Manage
+            {tm("manage")}
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
             {visibleLinks.map((item, i) => (
               <TouchableOpacity
-                key={item.label}
+                key={item.id}
                 style={twStyle(
                   `flex-row items-center px-4 py-3.5 ${i < visibleLinks.length - 1 ? "border-b border-gray-50" : ""}`
                 )}
@@ -701,14 +713,14 @@ export default function TeamMemberDetailScreen() {
                     router.push(item.route as never);
                   }
                 }}
-                accessibilityLabel={item.label}
+                accessibilityLabel={tm(item.labelKey)}
                 accessibilityRole="button"
               >
-                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-xl bg-gray-50")}>
+                <View style={twStyle("me-3 h-9 w-9 items-center justify-center rounded-xl bg-gray-50")}>
                   <Ionicons name={item.icon} size={20} color="#374151" />
                 </View>
-                <Text style={twStyle("flex-1 text-base text-gray-900")}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+                <Text style={twStyle("flex-1 text-base text-gray-900")}>{tm(item.labelKey)}</Text>
+                <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
               </TouchableOpacity>
             ))}
           </View>
@@ -716,32 +728,32 @@ export default function TeamMemberDetailScreen() {
 
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Schedule snapshot</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>{weeklyBookings} bookings this week</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>{tm("scheduleSnapshot")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{tm("bookingsThisWeek", { count: weeklyBookings })}</Text>
           </View>
           {scheduleSnapshot.length === 0 ? (
-            <Text style={twStyle("mt-2 text-sm text-gray-500")}>No weekly shifts set yet.</Text>
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>{tm("noWeeklyShifts")}</Text>
           ) : (
             scheduleSnapshot.map((row) => (
               <View
                 key={`${row.day}-${row.kind}`}
                 style={twStyle("mt-3 flex-row items-center")}
               >
-                <Text style={twStyle("w-24 text-sm font-medium text-gray-700")}>{row.day}</Text>
+                <Text style={twStyle("w-24 text-sm font-medium text-gray-700")}>{t(`provider.mobile.screens.staffSchedule.days.${row.day}`)}</Text>
                 <Text style={twStyle("text-sm text-gray-600")}>
                   {row.start_time} - {row.end_time}
                 </Text>
                 {row.kind !== "custom" ? (
                   <View
-                    style={twStyle("ml-2 rounded-full bg-emerald-50 px-2 py-0.5")}
+                    style={twStyle("ms-2 rounded-full bg-emerald-50 px-2 py-0.5")}
                     accessibilityLabel={
                       row.kind === "inherited-location"
-                        ? "Inherited from location operating hours"
-                        : "Inherited from weekly schedule"
+                        ? tm("inheritedLocationA11y")
+                        : tm("inheritedScheduleA11y")
                     }
                   >
                     <Text style={twStyle("text-[10px] font-semibold text-emerald-700")}>
-                      {row.kind === "inherited-location" ? "Inherited" : "Schedule"}
+                      {row.kind === "inherited-location" ? tm("inheritedBadge") : tm("scheduleBadge")}
                     </Text>
                   </View>
                 ) : null}
@@ -750,7 +762,7 @@ export default function TeamMemberDetailScreen() {
           )}
           {scheduleSnapshot.some((row) => row.kind !== "custom") ? (
             <Text style={twStyle("mt-3 text-[11px] leading-4 text-emerald-700")}>
-              Inherited days follow your location operating hours. Add a weekly shift to set custom hours.
+              {tm("inheritedHint")}
             </Text>
           ) : null}
           <TouchableOpacity
@@ -758,21 +770,21 @@ export default function TeamMemberDetailScreen() {
             style={twStyle("mt-4 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3")}
           >
             <Ionicons name="calendar-outline" size={16} color="#4f46e5" />
-            <Text style={twStyle("ml-2 text-sm font-semibold text-indigo-700")}>Edit shifts</Text>
+            <Text style={twStyle("ms-2 text-sm font-semibold text-indigo-700")}>{tm("editShifts")}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Time off & history</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>{tm("timeOffHistory")}</Text>
             <TouchableOpacity onPress={() => router.push(`/(app)/(tabs)/more/days-off?staffId=${id}` as never)}>
-              <Text style={twStyle("text-xs font-semibold text-indigo-600")}>Manage</Text>
+              <Text style={twStyle("text-xs font-semibold text-indigo-600")}>{tm("manage")}</Text>
             </TouchableOpacity>
           </View>
           {upcomingDaysOff.slice(0, 4).map((day) => (
             <View key={day.id} style={twStyle("mt-3 flex-row items-start")}>
               <Ionicons name="sunny-outline" size={16} color="#d97706" style={{ marginTop: 1 }} />
-              <View style={twStyle("ml-2 flex-1")}>
+              <View style={twStyle("ms-2 flex-1")}>
                 <Text style={twStyle("text-sm font-medium text-gray-800")}>
                   {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
                     weekday: "short",
@@ -787,12 +799,12 @@ export default function TeamMemberDetailScreen() {
             </View>
           ))}
           {upcomingDaysOff.length === 0 ? (
-            <Text style={twStyle("mt-2 text-sm text-gray-500")}>No upcoming days off.</Text>
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>{tm("noUpcomingDaysOff")}</Text>
           ) : null}
         </View>
 
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Recent bookings</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{tm("recentBookings")}</Text>
           {(bookings ?? []).slice(0, 5).map((booking) => (
             <TouchableOpacity
               key={booking.id}
@@ -801,17 +813,17 @@ export default function TeamMemberDetailScreen() {
             >
               <View style={twStyle("flex-row items-center justify-between")}>
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                  {booking.customer_name || "Customer"}
+{booking.customer_name || tm("customerFallback")}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-500")}>{booking.status}</Text>
               </View>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                {new Date(booking.scheduled_at).toLocaleString()} · {(booking.service_names ?? []).join(", ") || "Service"}
+                {new Date(booking.scheduled_at).toLocaleString()} · {(booking.service_names ?? []).join(", ") || tm("serviceFallback")}
               </Text>
             </TouchableOpacity>
           ))}
           {(bookings ?? []).length === 0 ? (
-            <Text style={twStyle("text-sm text-gray-500")}>No booking history for this staff member yet.</Text>
+            <Text style={twStyle("text-sm text-gray-500")}>{tm("noBookingHistory")}</Text>
           ) : null}
         </View>
 
@@ -826,7 +838,7 @@ export default function TeamMemberDetailScreen() {
             )}
             onPress={handleToggleActive}
             disabled={saving}
-            accessibilityLabel={member.is_active ? "Deactivate member" : "Activate member"}
+            accessibilityLabel={member.is_active ? tm("deactivateMember") : tm("activateMember")}
             accessibilityRole="button"
           >
             <Ionicons
@@ -835,9 +847,9 @@ export default function TeamMemberDetailScreen() {
               color={member.is_active ? "#d97706" : "#16a34a"}
             />
             <Text
-              style={twStyle(`ml-2 font-semibold ${member.is_active ? "text-amber-700" : "text-green-700"}`)}
+              style={twStyle(`ms-2 font-semibold ${member.is_active ? "text-amber-700" : "text-green-700"}`)}
             >
-              {member.is_active ? "Deactivate member" : "Activate member"}
+              {member.is_active ? tm("deactivateMember") : tm("activateMember")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -850,12 +862,12 @@ export default function TeamMemberDetailScreen() {
             style={twStyle("flex-row items-center justify-center rounded-2xl border border-red-200 bg-red-50 py-3.5")}
             onPress={handleDelete}
             disabled={deleting}
-            accessibilityLabel="Remove team member"
+            accessibilityLabel={tm("removeA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="trash-outline" size={18} color="#dc2626" />
-            <Text style={twStyle("ml-2 font-semibold text-red-700")}>
-              Remove from team
+            <Text style={twStyle("ms-2 font-semibold text-red-700")}>
+              {tm("removeFromTeam")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -866,27 +878,27 @@ export default function TeamMemberDetailScreen() {
       <BottomSheet
         visible={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit team member"
+        title={tm("editSheetTitle")}
         snapHeight="auto"
       >
         <FormField
-          label="Full Name *"
+          label={tm("fullNameRequired")}
           value={editForm.name}
-          onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
-          placeholder="Full name"
+          onChangeText={(text) => setEditForm((p) => ({ ...p, name: text }))}
+          placeholder={tm("fullNamePlaceholder")}
         />
 
         <E164PhoneField
-          label="Phone"
+          label={tm("phone")}
           valueE164={editForm.phone}
           onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
           compact
           muted
-          accessibilityLabel="Team member phone"
+          accessibilityLabel={tm("phoneA11y")}
         />
 
         <FormField
-          label="Avatar image URL"
+          label={tm("avatarUrlLabel")}
           value={editForm.avatar_url}
           onChangeText={(t) => setEditForm((p) => ({ ...p, avatar_url: t }))}
           placeholder="https://..."
@@ -895,7 +907,7 @@ export default function TeamMemberDetailScreen() {
 
         {canManageTeam ? (
           <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tm("role")}</Text>
             <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {ROLES.map((r) => (
                 <TouchableOpacity
@@ -908,10 +920,10 @@ export default function TeamMemberDetailScreen() {
                           : "border border-gray-200 bg-white"
                       }`
                     ),
-                    { marginRight: 8, marginBottom: 8 },
+                    { marginEnd: 8, marginBottom: 8 },
                   ]}
                   onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
-                  accessibilityLabel={`Select role ${r.label}`}
+                  accessibilityLabel={tm("selectRoleA11y", { label: tm(r.labelKey) })}
                 >
                   <Text
                     style={twStyle(
@@ -920,28 +932,28 @@ export default function TeamMemberDetailScreen() {
                       }`
                     )}
                   >
-                    {r.label}
+{tm(r.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <FormField
-              label="Commission Rate (%)"
+              label={tm("commissionRate")}
               value={editForm.commission_rate}
               onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
-              placeholder="e.g. 30"
+              placeholder={tm("commissionPlaceholder")}
               keyboardType="numeric"
             />
           </>
         ) : (
           <Text style={twStyle("mt-3 text-xs text-gray-500")}>
-            Role and commission can only be changed by someone with Manage team access.
+            {tm("roleCommissionLocked")}
           </Text>
         )}
 
         <ActionButton
-          label="Save changes"
+          label={tm("saveChanges")}
           onPress={handleSaveEdit}
           loading={saving}
           fullWidth
@@ -978,7 +990,7 @@ function ChecklistRow({ complete, label }: { complete: boolean; label: string })
           color={complete ? "#16a34a" : "#d97706"}
         />
       </View>
-      <Text style={twStyle(`ml-2 flex-1 text-sm ${complete ? "text-gray-700" : "text-amber-700"}`)}>
+      <Text style={twStyle(`ms-2 flex-1 text-sm ${complete ? "text-gray-700" : "text-amber-700"}`)}>
         {label}
       </Text>
     </View>

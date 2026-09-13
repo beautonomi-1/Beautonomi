@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -42,13 +43,10 @@ interface StatusResponse extends VerificationHubStatus {
   } | null;
 }
 
-const DOC_TYPES = [
-  { value: "license", label: "Driver's license" },
-  { value: "passport", label: "Passport" },
-  { value: "identity", label: "Identity card" },
-];
+const DOC_TYPE_VALUES = ["license", "passport", "identity"] as const;
 
 export default function VerificationPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -111,7 +109,7 @@ export default function VerificationPage() {
   const goToDashboard = () => {
     if (!canSkip) {
       toast.error(
-        "Identity verification is required before you can go live. Complete verification to earn your Verified trust badge.",
+        t("web.provider.settings.pages.verification.requiredToGoLive"),
       );
       return;
     }
@@ -125,7 +123,7 @@ export default function VerificationPage() {
 
   const submitManual = async () => {
     if (!file || !country) {
-      toast.error("Please select a document photo and choose the country of issue.");
+      toast.error(t("web.provider.settings.pages.verification.pleaseSelectADocumentPhotoAnd"));
       return;
     }
     setUploading(true);
@@ -137,15 +135,15 @@ export default function VerificationPage() {
 
       const res = await fetcher.post<{ data: { status: string } }>("/api/me/verification", form);
       if ((res as { error?: { message?: string } }).error) {
-        toast.error((res as { error?: { message?: string } }).error?.message ?? "Upload failed. Please try again.");
+toast.error((res as { error?: { message?: string } }).error?.message ?? t("web.provider.settings.pages.verification.uploadFailedPleaseTryAgain"));
         return;
       }
-      toast.success("Document submitted. Our team will review it within a few business days.");
+      toast.success(t("web.provider.settings.pages.verification.documentSubmittedOurTeamWillReview"));
       setFile(null);
       setCountry("");
       loadStatus();
     } catch {
-      toast.error("Upload failed. Please try again.");
+      toast.error(t("web.provider.settings.pages.verification.uploadFailedPleaseTryAgain"));
     } finally {
       setUploading(false);
     }
@@ -153,23 +151,23 @@ export default function VerificationPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for compliance.">
-        <LoadingTimeout loadingMessage="Loading..." />
+      <SettingsDetailLayout title={t("web.provider.settings.categories.appointmentActivity.items.verification.title")} subtitle={t("web.provider.settings.categories.appointmentActivity.items.verification.description")}>
+        <LoadingTimeout loadingMessage={t("common.loading")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
-    <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for compliance and payouts.">
+    <SettingsDetailLayout title={t("web.provider.settings.pages.verification.identityVerification")} subtitle={t("web.provider.settings.pages.verification.verifyYourIdentityForComplianceAnd")}>
       {isOnboarding && (
-        <SectionCard title={verificationRequired ? "One more step to go live" : "You're almost done"} className="mb-4">
+<SectionCard title={verificationRequired ? t("web.provider.settings.pages.verification.oneMoreStep") : t("web.provider.settings.pages.verification.almostDone")} className="mb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               {providerVerificationOnboardingBanner(verificationRequired)}
             </p>
             {canSkip ? (
               <Button variant="outline" className="shrink-0" onClick={goToDashboard}>
-                {isApproved || isUnderReview ? "Continue to dashboard" : "Skip for now"}
+{isApproved || isUnderReview ? t("web.provider.settings.pages.verification.continueToDashboard") : t("web.provider.settings.pages.verification.skipForNow")}
               </Button>
             ) : null}
           </div>
@@ -177,7 +175,7 @@ export default function VerificationPage() {
       )}
 
       {(diditAvailable || manualAvailable) && statusData && (
-        <SectionCard title="Verification">
+        <SectionCard title={t("web.provider.settings.pages.verification.verification")}>
           <ProviderVerificationHub
             statusData={statusData}
             onRefresh={loadStatus}
@@ -186,43 +184,43 @@ export default function VerificationPage() {
                 <div className="space-y-4 pt-2">
                   {!diditAvailable && (
                     <p className="text-sm text-muted-foreground">
-                      Upload a clear photo of your government-issued ID. Our team will review it manually.
+{t("web.provider.settings.pages.verification.manualUploadHint")}
                     </p>
                   )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Document type</label>
+<label className="mb-1 block text-sm font-medium">{t("web.provider.settings.pages.verification.documentType")}</label>
                       <select
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={docType}
                         onChange={(e) => setDocType(e.target.value)}
                       >
-                        {DOC_TYPES.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
+{DOC_TYPE_VALUES.map((value) => (
+  <option key={value} value={value}>
+                            {value === "license" ? t("web.provider.settings.pages.verification.driverSLicense") : value === "passport" ? t("web.provider.settings.pages.verification.passport") : t("web.provider.settings.pages.verification.identityCard")}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Country of issue</label>
+<label className="mb-1 block text-sm font-medium">{t("web.provider.settings.pages.verification.countryOfIssue")}</label>
                       <CountryOfIssueSelect value={country} onChange={setCountry} />
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium">Document photo</label>
+<label className="mb-1 block text-sm font-medium">{t("web.provider.settings.pages.verification.documentPhoto")}</label>
                     <input type="file" accept="image/*" onChange={handleFileChange} />
                   </div>
                   <Button onClick={submitManual} disabled={uploading || !file || !country}>
                     {uploading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading…
+                        <Loader2 className="me-2 h-4 w-4 animate-spin" />
+{t("web.provider.settings.pages.verification.uploading")}
                       </>
                     ) : (
                       <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Submit for review
+                        <Upload className="me-2 h-4 w-4" />
+{t("web.provider.settings.pages.verification.submitForReview")}
                       </>
                     )}
                   </Button>
@@ -235,19 +233,19 @@ export default function VerificationPage() {
 
       {/* Verification off — no paths available */}
       {verificationOff && !isApproved && (
-        <SectionCard title="Verification status">
+        <SectionCard title={t("web.provider.settings.pages.verification.verificationStatus")}>
           <Alert>
             <AlertDescription>
-              Identity verification is currently unavailable. Contact support if you need assistance.
+{t("web.provider.settings.pages.verification.unavailable")}
             </AlertDescription>
           </Alert>
         </SectionCard>
       )}
 
       {/* Why we verify */}
-      <SectionCard title="Why we verify" className="mt-4">
+      <SectionCard title={t("web.provider.settings.pages.verification.whyWeVerify")} className="mt-4">
         <p className="text-sm text-muted-foreground">
-          Identity verification helps prevent fraud and ensures the safety of our community. Your information is stored securely and used only for compliance purposes.
+{t("web.provider.settings.pages.verification.whyBody")}
         </p>
       </SectionCard>
     </SettingsDetailLayout>

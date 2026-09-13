@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 import { catalogHasAnyAtHomePriceAdjustment } from "@beautonomi/utils";
 import {
   HouseCallAtHomePricesBanner,
@@ -108,6 +110,7 @@ export default function StepServiceSelection({
   const serviceCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastScrolledFocusBaseIdRef = useRef<string | null>(null);
   const { t } = useTranslation();
+  const { language } = useLocale();
   const hasLoadedRef = useRef(false);
   const lastProviderSlugRef = useRef<string | null>(null);
   const lastModeRef = useRef<string | null>(null);
@@ -345,7 +348,7 @@ export default function StepServiceSelection({
       
       if (servicesData.length === 0) {
         console.warn(`[Service Selection] No services found for provider: ${providerSlug}`);
-        toast.error("No services available for this provider");
+        toast.error(t("booking.serviceSelection.noServicesAvailable"));
       }
       
       setServices(servicesData);
@@ -386,7 +389,7 @@ export default function StepServiceSelection({
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to load services"
+          : t("booking.serviceSelection.failedToLoad")
       );
       setServices([]);
     } finally {
@@ -404,7 +407,7 @@ export default function StepServiceSelection({
       );
       setStaff(response.data || []);
     } catch (error) {
-      console.error("Error loading staff:", error);
+      console.warn("Error loading staff:", error instanceof Error ? error.message : error);
     }
   };
 
@@ -583,7 +586,10 @@ export default function StepServiceSelection({
         [serviceId]: Array.isArray(list) ? list : [],
       }));
     } catch (error) {
-      console.error(`[Service Selection] Error loading variants for ${serviceId}:`, error);
+      console.warn(
+        `[Service Selection] Error loading variants for ${serviceId}:`,
+        error instanceof Error ? error.message : error,
+      );
     } finally {
       setLoadingVariants((prev) => ({ ...prev, [serviceId]: false }));
     }
@@ -683,9 +689,9 @@ export default function StepServiceSelection({
               className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
             />
             <div className="flex-1">
-              <p className="font-medium text-gray-900">Book for multiple people</p>
+              <p className="font-medium text-gray-900">{t("booking.serviceSelection.bookForMultiple")}</p>
               <p className="text-sm text-gray-600">
-                Add up to {groupBookingSettings.maxGroupSize} participants to this booking
+                {t("booking.serviceSelection.addUpToParticipants", { count: groupBookingSettings.maxGroupSize })}
               </p>
             </div>
           </label>
@@ -703,7 +709,7 @@ export default function StepServiceSelection({
                 value={categorySearchQuery}
                 onChange={(e) => setCategorySearchQuery(e.target.value)}
                 placeholder={t("booking.filterCategoriesPlaceholder")}
-                className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+                className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
                 autoComplete="off"
                 aria-label={t("booking.filterCategoriesPlaceholder")}
               />
@@ -736,7 +742,7 @@ export default function StepServiceSelection({
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                {category}
+                {translatePublicCategory(t, category, category, { language })}
               </button>
             ))}
           </div>
@@ -751,7 +757,7 @@ export default function StepServiceSelection({
             value={serviceSearchQuery}
             onChange={(e) => setServiceSearchQuery(e.target.value)}
             placeholder={t("booking.searchServicesPlaceholder")}
-            className="pl-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
+            className="ps-9 h-10 placeholder:text-gray-400 border border-gray-200 bg-white"
             autoComplete="off"
             aria-label={t("booking.searchServicesPlaceholder")}
           />
@@ -799,8 +805,8 @@ export default function StepServiceSelection({
               {/* Service Card */}
               <button
                 onClick={() => handleServiceToggle(service)}
-                className="w-full p-4 text-left touch-target"
-                aria-label={`${isSelected ? "Deselect" : "Select"} ${service.title}`}
+                className="w-full p-4 text-start touch-target"
+                aria-label={isSelected ? t("booking.serviceSelection.deselectAria", { title: service.title }) : t("booking.serviceSelection.selectAria", { title: service.title })}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -815,7 +821,7 @@ export default function StepServiceSelection({
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                       <span className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />
-                        {service.duration} min
+                        {t("booking.minutes", { count: service.duration })}
                       </span>
                       <HouseCallServicePriceLabel
                         basePrice={service.price}
@@ -861,7 +867,7 @@ export default function StepServiceSelection({
                     {service.hasVariants && loadingVariants[service.id] && (
                       <div className="flex items-center gap-2 text-sm text-gray-500">
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Loading options...</span>
+                        <span>{t("booking.serviceSelection.loadingOptions")}</span>
                       </div>
                     )}
 
@@ -869,7 +875,7 @@ export default function StepServiceSelection({
                     {service.hasVariants && !loadingVariants[service.id] && serviceVariants[service.id] && serviceVariants[service.id].length > 0 && (
                       <div>
                         <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                          Choose Option
+                          {t("booking.serviceSelection.chooseOption")}
                         </Label>
                         <div className="space-y-2">
                           {/* Base service option */}
@@ -882,7 +888,7 @@ export default function StepServiceSelection({
                               price: service.price,
                               currency: service.currency,
                             }, service)}
-                            className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
+                            className={`w-full p-3 rounded-lg border-2 text-start transition-all touch-target ${
                               !selectedService?.baseServiceId || selectedService?.id === service.id
                                 ? "border-primary bg-pink-50"
                                 : "border-gray-200 bg-white hover:border-gray-300"
@@ -894,7 +900,7 @@ export default function StepServiceSelection({
                                 <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                                   <span className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
-                                    {service.duration} min
+                                    {t("booking.minutes", { count: service.duration })}
                                   </span>
                                   <HouseCallServicePriceLabel
                                     basePrice={service.price}
@@ -919,7 +925,7 @@ export default function StepServiceSelection({
                               key={variant.id}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleVariantSelect(service.id, variant, service)}
-                              className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
+                              className={`w-full p-3 rounded-lg border-2 text-start transition-all touch-target ${
                                 selectedService?.id === variant.id
                                   ? "border-primary bg-pink-50"
                                   : "border-gray-200 bg-white hover:border-gray-300"
@@ -933,7 +939,7 @@ export default function StepServiceSelection({
                                   <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
-                                      {variant.duration} min
+                                      {t("booking.minutes", { count: variant.duration })}
                                     </span>
                                     <HouseCallServicePriceLabel
                                       basePrice={variant.price}
@@ -960,14 +966,14 @@ export default function StepServiceSelection({
                     {filteredStaff.length > 0 ? (
                       <div>
                         <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                          Select Professional <span className="text-primary">*</span>
+                          {t("booking.serviceSelection.selectProfessional")} <span className="text-primary">*</span>
                         </Label>
                         <p className="text-xs text-gray-500 mb-3">
-                          Choose a professional to ensure your booking appears on their calendar
+                          {t("booking.serviceSelection.chooseProfessionalHint")}
                         </p>
                         {!selectedService?.staffId && (
                           <p className="text-xs text-primary mb-2 font-medium">
-                            Please select a professional to continue
+                            {t("booking.serviceSelection.pleaseSelectProfessional")}
                           </p>
                         )}
                         <div className="relative">
@@ -1011,14 +1017,14 @@ export default function StepServiceSelection({
                               <button
                                 onClick={() => scrollStaff("left")}
                                 className="absolute left-0 top-1/2 -translate-y-1/2 bg-white rounded-full p-2 shadow-md touch-target"
-                                aria-label="Scroll left"
+                                aria-label={t("booking.serviceSelection.scrollLeft")}
                               >
                                 <ChevronLeft className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => scrollStaff("right")}
                                 className="absolute right-0 top-1/2 -translate-y-1/2 bg-white rounded-full p-2 shadow-md touch-target"
-                                aria-label="Scroll right"
+                                aria-label={t("booking.serviceSelection.scrollRight")}
                               >
                                 <ChevronRight className="w-4 h-4" />
                               </button>
@@ -1029,7 +1035,7 @@ export default function StepServiceSelection({
                     ) : (
                       <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                         <p className="text-xs text-gray-600">
-                          Any available professional will be assigned for this appointment.
+                          {t("booking.serviceSelection.anyProfessionalAssigned")}
                         </p>
                       </div>
                     )}

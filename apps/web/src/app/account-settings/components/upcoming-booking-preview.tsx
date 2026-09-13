@@ -1,10 +1,13 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { Calendar, MapPin, ArrowRight } from "lucide-react";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface BookingPreview {
   id: string;
@@ -17,6 +20,7 @@ interface BookingPreview {
 }
 
 export function UpcomingBookingPreview() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [booking, setBooking] = useState<BookingPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,12 +67,12 @@ export function UpcomingBookingPreview() {
   if (!booking) return null;
 
   const date = new Date(booking.scheduled_at);
-  const dateStr = date.toLocaleDateString("en-US", {
+  const dateStr = date.toLocaleDateString(getDefaultMoneyLocale(), {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
-  const timeStr = date.toLocaleTimeString("en-US", {
+  const timeStr = date.toLocaleTimeString(getDefaultMoneyLocale(), {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -82,22 +86,22 @@ export function UpcomingBookingPreview() {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-pink-600 uppercase tracking-wide mb-1">
-            Next appointment
+            {t("web.accountSettings.upcomingPreview.nextAppointment")}
           </p>
           <p className="font-semibold text-gray-900 truncate">
-            {booking.provider_name || "Beauty Service"}
+{booking.provider_name || t("web.accountSettings.bookings.list.beautyService")}
           </p>
           <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
             <Calendar className="h-4 w-4 text-pink-500 shrink-0" />
             <span>
-              {dateStr} at {timeStr}
+              {t("web.accountSettings.upcomingPreview.atTime", { date: dateStr, time: timeStr })}
             </span>
           </div>
           {booking.location_type && (
             <div className="flex items-center gap-2 mt-0.5 text-sm text-gray-500">
               <MapPin className="h-4 w-4 text-pink-500 shrink-0" />
               <span>
-                {booking.location_type === "at_salon" ? "At Salon" : "At your location"}
+                {booking.location_type === "at_salon" ? t("web.accountSettings.bookings.atSalon") : t("web.book.continue.atYourLocation")}
               </span>
             </div>
           )}

@@ -20,11 +20,13 @@ import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
 import { StartOwnBusinessCard } from "@/components/StartOwnBusinessCard";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -113,6 +115,7 @@ function getStepNativeRoute(step: SetupStatusStep): string {
 interface MenuItem {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
+  labelKey?: string;
   subtitle?: string;
   subtitleKey?: string;
   route: string;
@@ -120,14 +123,16 @@ interface MenuItem {
   bg: string;
 }
 
-const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
+const MENU_SECTIONS: { titleKey: string; items: MenuItem[] }[] = [
   {
-    title: "Grow your business",
+    titleKey: "provider.mobile.screens.moreTab.sectionGrowBusiness",
     items: [
       {
         icon: "megaphone-outline",
         label: "Buy ads",
+        labelKey: "provider.mobile.screens.moreTab.adsLabel",
         subtitle: "Sponsored listings, campaigns & reach",
+        subtitleKey: "provider.mobile.screens.moreTab.adsSubtitle",
         route: "/(app)/(tabs)/more/settings/ads",
         color: "#d97706",
         bg: "#fffbeb",
@@ -135,7 +140,9 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       {
         icon: "card-outline",
         label: "Sell memberships",
+        labelKey: "provider.mobile.screens.moreTab.membershipsLabel",
         subtitle: "Plans, benefits, pricing & subscribers",
+        subtitleKey: "provider.mobile.screens.moreTab.membershipsSubtitle",
         route: "/(app)/(tabs)/more/membership-plans",
         color: "#7c3aed",
         bg: "#ede9fe",
@@ -143,7 +150,9 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       {
         icon: "pricetag-outline",
         label: "Promo codes",
+        labelKey: "provider.mobile.screens.moreTab.promoCodesLabel",
         subtitle: "Your discounts—scoped to your bookings only",
+        subtitleKey: "provider.mobile.screens.moreTab.promoCodesSubtitle",
         route: "/(app)/(tabs)/more/promotions",
         color: "#ea580c",
         bg: "#fff7ed",
@@ -151,74 +160,74 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     ],
   },
   {
-    title: "Operations",
+    titleKey: "provider.mobile.screens.moreTab.sectionOperations",
     items: [
-      { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings", color: "#6366f1", bg: "#eef2ff" },
-      { icon: "ban-outline", label: "Time blocks", subtitle: "Breaks, meetings & unavailable periods", route: "/(app)/(tabs)/more/time-blocks", color: "#d97706", bg: "#fffbeb" },
-      { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
-      { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
-      { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
+      { icon: "book-outline", label: "Bookings & calendar", labelKey: "provider.mobile.screens.moreTab.bookingsCalendarLabel", subtitle: "Appointments, waitlist & schedule", subtitleKey: "provider.mobile.screens.moreTab.bookingsCalendarSubtitle", route: "/(app)/(tabs)/more/bookings", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "ban-outline", label: "Time blocks", labelKey: "provider.mobile.screens.moreTab.timeBlocksLabel", subtitle: "Breaks, meetings & unavailable periods", subtitleKey: "provider.mobile.screens.moreTab.timeBlocksSubtitle", route: "/(app)/(tabs)/more/time-blocks", color: "#d97706", bg: "#fffbeb" },
+      { icon: "people-outline", label: "Group Bookings", labelKey: "provider.mobile.screens.moreTab.groupBookingsLabel", subtitle: "Manage group appointments", subtitleKey: "provider.mobile.screens.moreTab.groupBookingsSubtitle", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "construct-outline", label: "Resources & forms", labelKey: "provider.mobile.screens.moreTab.resourcesFormsLabel", subtitle: "Resources, intake & consent forms", subtitleKey: "provider.mobile.screens.moreTab.resourcesFormsSubtitle", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "chatbox-ellipses-outline", label: "Custom Requests", labelKey: "provider.mobile.screens.moreTab.customRequestsLabel", subtitle: "Client quotes & offers", subtitleKey: "provider.mobile.screens.moreTab.customRequestsSubtitle", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
     ],
   },
   {
-    title: "E-Commerce & Products",
+    titleKey: "provider.mobile.screens.moreTab.sectionEcommerce",
     items: [
-      { icon: "cube-outline", label: "Products & e-commerce", subtitle: "Inventory, orders & sales", route: "/(app)/(tabs)/more/products-ecommerce-hub", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "cube-outline", label: "Products & e-commerce", labelKey: "provider.mobile.screens.moreTab.productsEcommerceLabel", subtitle: "Inventory, orders & sales", subtitleKey: "provider.mobile.screens.moreTab.productsEcommerceSubtitle", route: "/(app)/(tabs)/more/products-ecommerce-hub", color: "#8b5cf6", bg: "#ede9fe" },
     ],
   },
   {
-    title: "Business",
+    titleKey: "provider.mobile.screens.moreTab.sectionBusiness",
     items: [
-      { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
-      { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
-      { icon: "cash-outline", label: "Money", subtitle: "Earnings, ledger, sales & payouts", route: "/(app)/(tabs)/more/money", color: "#22c55e", bg: "#f0fdf4" },
-      { icon: "receipt-outline", label: "Billing", subtitle: "Plan, invoices, bills & VAT", route: "/(app)/(tabs)/more/billing", color: "#8b5cf6", bg: "#ede9fe" },
-      { icon: "people-outline", label: "Team & pay", subtitle: "Payroll, team totals & your earnings", route: "/(app)/(tabs)/more/team-pay", color: "#0d9488", bg: "#ccfbf1" },
-      { icon: "settings-outline", label: "Payment setup", subtitle: "Payout accounts, terminals & gift cards", route: "/(app)/(tabs)/more/payment-setup", color: "#2563eb", bg: "#dbeafe" },
-      { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
-      { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
+      { icon: "layers-outline", label: "Catalogue & offerings", labelKey: "provider.mobile.screens.moreTab.catalogueLabel", subtitle: "Services, products & packages", subtitleKey: "provider.mobile.screens.moreTab.catalogueSubtitle", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
+      { icon: "people-circle-outline", label: "Team & scheduling", labelKey: "provider.mobile.screens.moreTab.teamSchedulingLabel", subtitle: "Staff, shifts & time clock", subtitleKey: "provider.mobile.screens.moreTab.teamSchedulingSubtitle", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
+      { icon: "cash-outline", label: "Money", labelKey: "provider.mobile.screens.moreTab.moneyLabel", subtitle: "Earnings, ledger, sales & payouts", subtitleKey: "provider.mobile.screens.moreTab.moneySubtitle", route: "/(app)/(tabs)/more/money", color: "#22c55e", bg: "#f0fdf4" },
+      { icon: "receipt-outline", label: "Billing", labelKey: "provider.mobile.screens.moreTab.billingLabel", subtitle: "Plan, invoices, bills & VAT", subtitleKey: "provider.mobile.screens.moreTab.billingSubtitle", route: "/(app)/(tabs)/more/billing", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "people-outline", label: "Team & pay", labelKey: "provider.mobile.screens.moreTab.teamPayLabel", subtitle: "Payroll, team totals & your earnings", subtitleKey: "provider.mobile.screens.moreTab.teamPaySubtitle", route: "/(app)/(tabs)/more/team-pay", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "settings-outline", label: "Payment setup", labelKey: "provider.mobile.screens.moreTab.paymentSetupLabel", subtitle: "Payout accounts, terminals & gift cards", subtitleKey: "provider.mobile.screens.moreTab.paymentSetupSubtitle", route: "/(app)/(tabs)/more/payment-setup", color: "#2563eb", bg: "#dbeafe" },
+      { icon: "bar-chart-outline", label: "Reports", labelKey: "provider.mobile.screens.moreTab.reportsLabel", subtitle: "Analytics, activity & insights", subtitleKey: "provider.mobile.screens.moreTab.reportsSubtitle", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
+      { icon: "images-outline", label: "Gallery", labelKey: "provider.mobile.screens.moreTab.galleryLabel", subtitle: "Portfolio & photos", subtitleKey: "provider.mobile.screens.moreTab.gallerySubtitle", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
     ],
   },
   {
-    title: "Engagement",
+    titleKey: "provider.mobile.screens.moreTab.sectionEngagement",
     items: [
-      { icon: "chatbubbles-outline", label: "Engagement", subtitle: "Reviews, messaging & marketing", route: "/(app)/(tabs)/more/engagement-hub", color: "#6366f1", bg: "#eef2ff" },
-      { icon: "compass-outline", label: "Explore posts", subtitle: "Your feed posts, views & comments", route: "/(app)/(tabs)/more/explore-posts", color: "#a855f7", bg: "#faf5ff" },
+      { icon: "chatbubbles-outline", label: "Engagement", labelKey: "provider.mobile.screens.moreTab.engagementLabel", subtitle: "Reviews, messaging & marketing", subtitleKey: "provider.mobile.screens.moreTab.engagementSubtitle", route: "/(app)/(tabs)/more/engagement-hub", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "compass-outline", label: "Explore posts", labelKey: "provider.mobile.screens.moreTab.explorePostsLabel", subtitle: "Your feed posts, views & comments", subtitleKey: "provider.mobile.screens.moreTab.explorePostsSubtitle", route: "/(app)/(tabs)/more/explore-posts", color: "#a855f7", bg: "#faf5ff" },
     ],
   },
   {
-    title: "Settings",
+    titleKey: "provider.mobile.screens.moreTab.sectionSettings",
     items: [
-      { icon: "shield-outline", label: "Trust & Safety", subtitleKey: "provider.mobile.screens.safetyHub.moreMenuSubtitle", route: "/(app)/(tabs)/more/safety", color: "#0ea5e9", bg: "#e0f2fe" },
-      { icon: "lock-closed-outline", label: "Login & security", subtitle: "Email, phone, password, biometrics & sessions", route: "/(app)/(tabs)/more/settings-login-and-security", color: "#6366f1", bg: "#eef2ff" },
-      { icon: "shield-checkmark-outline", label: "Identity verification", subtitle: "Verify your identity (KYC) & earn the Verified badge", route: "/(app)/(tabs)/more/settings/verification", color: "#0ea5e9", bg: "#e0f2fe" },
-      { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
-      { icon: "storefront-outline", label: "Locations & operating hours", subtitle: "Branches, addresses & opening times", route: "/(app)/(tabs)/more/locations-operating-hub", color: "#059669", bg: "#ecfdf5" },
-      { icon: "car-outline", label: "Travel fees", subtitle: "At-home travel fees", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#f59e0b", bg: "#fef3c7" },
-      { icon: "close-circle-outline", label: "Cancellation policies & fees", subtitle: "Late cancel & no-show fees", route: "/(app)/(tabs)/more/settings/cancellation-policies", color: "#ef4444", bg: "#fee2e2" },
-      { icon: "ribbon-outline", label: "Rewards & badges", subtitle: "Points, milestones & badge progress", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669", bg: "#d1fae5" },
-      { icon: "ticket-outline", label: "Support tickets", subtitle: "All tickets, replies & status", route: "/(app)/(tabs)/more/support-tickets", color: "#0ea5e9", bg: "#e0f2fe" },
-      { icon: "settings-outline", label: "Settings & account", subtitle: "Business, team & account", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
-      { icon: "help-buoy-outline", label: "Help & support", subtitle: "Contact support & new ticket", route: "/(app)/(tabs)/more/contact-support", color: "#0284c7", bg: "#e0f2fe" },
+      { icon: "shield-outline", label: "Trust & Safety", labelKey: "provider.mobile.screens.moreTab.trustSafetyLabel", subtitleKey: "provider.mobile.screens.safetyHub.moreMenuSubtitle", route: "/(app)/(tabs)/more/safety", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "lock-closed-outline", label: "Login & security", labelKey: "provider.mobile.screens.moreTab.loginSecurityLabel", subtitle: "Email, phone, password, biometrics & sessions", subtitleKey: "provider.mobile.screens.moreTab.loginSecuritySubtitle", route: "/(app)/(tabs)/more/settings-login-and-security", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "shield-checkmark-outline", label: "Identity verification", labelKey: "provider.mobile.screens.moreTab.identityVerificationLabel", subtitle: "Verify your identity (KYC) & earn the Verified badge", subtitleKey: "provider.mobile.screens.moreTab.identityVerificationSubtitle", route: "/(app)/(tabs)/more/settings/verification", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "language-outline", label: "Language", labelKey: "provider.mobile.screens.moreTab.languageRegionLabel", subtitle: "App language & display currency", subtitleKey: "provider.mobile.screens.moreTab.languageRegionSubtitle", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "storefront-outline", label: "Locations & operating hours", labelKey: "provider.mobile.screens.moreTab.locationsHoursLabel", subtitle: "Branches, addresses & opening times", subtitleKey: "provider.mobile.screens.moreTab.locationsHoursSubtitle", route: "/(app)/(tabs)/more/locations-operating-hub", color: "#059669", bg: "#ecfdf5" },
+      { icon: "car-outline", label: "Travel fees", labelKey: "provider.mobile.screens.moreTab.travelFeesLabel", subtitle: "At-home travel fees", subtitleKey: "provider.mobile.screens.moreTab.travelFeesSubtitle", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#f59e0b", bg: "#fef3c7" },
+      { icon: "close-circle-outline", label: "Cancellation policies & fees", labelKey: "provider.mobile.screens.moreTab.cancellationPoliciesLabel", subtitle: "Late cancel & no-show fees", subtitleKey: "provider.mobile.screens.moreTab.cancellationPoliciesSubtitle", route: "/(app)/(tabs)/more/settings/cancellation-policies", color: "#ef4444", bg: "#fee2e2" },
+      { icon: "ribbon-outline", label: "Rewards & badges", labelKey: "provider.mobile.screens.moreTab.rewardsBadgesLabel", subtitle: "Points, milestones & badge progress", subtitleKey: "provider.mobile.screens.moreTab.rewardsBadgesSubtitle", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669", bg: "#d1fae5" },
+      { icon: "ticket-outline", label: "Support tickets", labelKey: "provider.mobile.screens.moreTab.supportTicketsLabel", subtitle: "All tickets, replies & status", subtitleKey: "provider.mobile.screens.moreTab.supportTicketsSubtitle", route: "/(app)/(tabs)/more/support-tickets", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "settings-outline", label: "Settings & account", labelKey: "provider.mobile.screens.moreTab.settingsAccountLabel", subtitle: "Business, team & account", subtitleKey: "provider.mobile.screens.moreTab.settingsAccountSubtitle", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
+      { icon: "help-buoy-outline", label: "Help & support", labelKey: "provider.mobile.screens.moreTab.helpSupportLabel", subtitle: "Contact support & new ticket", subtitleKey: "provider.mobile.screens.moreTab.helpSupportSubtitle", route: "/(app)/(tabs)/more/contact-support", color: "#0284c7", bg: "#e0f2fe" },
     ],
   },
 ];
 
 /** Top shortcuts (customer app pattern: 2x2 quick actions above the fold) */
-const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
-  { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
-  { icon: "flash-outline", label: "Express booking", route: "/(app)/(tabs)/more/express-booking", color: "#f59e0b" },
-  { icon: "storefront-outline", label: "Front Desk", route: "/(app)/(tabs)/more/waiting-room", color: "#d97706" },
-  { icon: "chatbox-ellipses-outline", label: "Custom requests", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316" },
-  { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
-  { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
-  { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
-  { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
-  { icon: "hardware-chip-outline", label: "Card machines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
-  { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
-  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
-  { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/money?tab=payouts", color: "#047857" },
-  { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/payment-setup", color: "#059669" },
+const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; labelKey: string; route: string; color: string }[] = [
+  { icon: "book-outline", label: "Bookings", labelKey: "provider.mobile.screens.moreTab.qaBookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
+  { icon: "flash-outline", label: "Express booking", labelKey: "provider.mobile.screens.moreTab.qaExpressBooking", route: "/(app)/(tabs)/more/express-booking", color: "#f59e0b" },
+  { icon: "storefront-outline", label: "Front Desk", labelKey: "provider.mobile.screens.moreTab.qaFrontDesk", route: "/(app)/(tabs)/more/waiting-room", color: "#d97706" },
+  { icon: "chatbox-ellipses-outline", label: "Custom requests", labelKey: "provider.mobile.screens.moreTab.qaCustomRequests", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316" },
+  { icon: "layers-outline", label: "Catalogue", labelKey: "provider.mobile.screens.moreTab.qaCatalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
+  { icon: "megaphone-outline", label: "Buy ads", labelKey: "provider.mobile.screens.moreTab.qaBuyAds", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
+  { icon: "card-outline", label: "Memberships", labelKey: "provider.mobile.screens.moreTab.qaMemberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
+  { icon: "phone-portrait-outline", label: "Yoco", labelKey: "provider.mobile.screens.moreTab.qaYoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "hardware-chip-outline", label: "Card machines", labelKey: "provider.mobile.screens.moreTab.qaCardMachines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
+  { icon: "qr-code-outline", label: "Paystack Terminal", labelKey: "provider.mobile.screens.moreTab.qaPaystackTerminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
+  { icon: "ribbon-outline", label: "Subscription", labelKey: "provider.mobile.screens.moreTab.qaSubscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
+  { icon: "cash-outline", label: "Payouts", labelKey: "provider.mobile.screens.moreTab.qaPayouts", route: "/(app)/(tabs)/more/money?tab=payouts", color: "#047857" },
+  { icon: "wallet-outline", label: "Bank accounts", labelKey: "provider.mobile.screens.moreTab.qaBankAccounts", route: "/(app)/(tabs)/more/payment-setup", color: "#059669" },
 ];
 
 export default function MoreScreen() {
@@ -227,13 +236,14 @@ export default function MoreScreen() {
   const { user, signOut } = useAuth();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
+  const { refresh: refreshConfigBundle } = useConfigBundle();
   const { settings: paycloudSettings } = usePayCloudSettings();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    "Grow your business": true,
-    Operations: true,
-    "E-Commerce & Products": true,
-    Settings: true,
+    "provider.mobile.screens.moreTab.sectionGrowBusiness": true,
+    "provider.mobile.screens.moreTab.sectionOperations": true,
+    "provider.mobile.screens.moreTab.sectionEcommerce": true,
+    "provider.mobile.screens.moreTab.sectionSettings": true,
   });
   const [refreshing, setRefreshing] = useState(false);
 
@@ -354,11 +364,11 @@ export default function MoreScreen() {
   const hasPayoutAccount = accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
   const requestPayoutDisabledReason = !canRequestPayouts
-    ? "Requires Edit settings permission"
+    ? t("provider.mobile.screens.moreTab.payoutRequiresEditSettings")
     : !hasPayoutAccount
-      ? "Add a bank account first"
+      ? t("provider.mobile.screens.moreTab.payoutAddBankFirst")
       : minimumPayout != null && availablePayout < minimumPayout
-        ? `Minimum payout is ${formatCurrency(minimumPayout)}`
+        ? t("provider.mobile.screens.moreTab.payoutMinimumIs", { amount: formatCurrency(minimumPayout) })
         : null;
   const nextPayoutDate = payoutSchedule?.next_payout_date
     ? new Date(payoutSchedule.next_payout_date)
@@ -403,11 +413,12 @@ export default function MoreScreen() {
         refreshPayoutAccounts(),
         refreshPayoutSchedule(),
         refreshNavCounts(),
+        refreshConfigBundle(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts]);
+  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts, refreshConfigBundle]);
 
   const getRouteBadgeCount = useCallback(
     (route: string): number => {
@@ -476,9 +487,9 @@ export default function MoreScreen() {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: performSignOut },
+    Alert.alert(t("provider.mobile.screens.moreTab.signOutAlertTitle"), t("provider.mobile.screens.moreTab.signOutAlertBody"), [
+      { text: t("provider.mobile.screens.moreTab.signOutCancel"), style: "cancel" },
+      { text: t("provider.mobile.screens.moreTab.signOutConfirm"), style: "destructive", onPress: performSignOut },
     ]);
   }
 
@@ -496,7 +507,7 @@ export default function MoreScreen() {
             router.push("/(app)/(tabs)/more/profile" as never);
           }}
           activeOpacity={0.7}
-          accessibilityLabel="My profile"
+          accessibilityLabel={t("provider.mobile.screens.moreTab.myProfileA11y")}
           accessibilityRole="button"
         >
           {meProfile?.avatar_url ? (
@@ -520,7 +531,7 @@ export default function MoreScreen() {
               <Text style={{ fontSize: 18, fontWeight: "700", color: "#fff" }}>{headerInitials}</Text>
             </View>
           )}
-          <View style={{ marginLeft: 14, flex: 1 }}>
+          <View style={{ marginStart: 14, flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <Text
                 style={{
@@ -532,7 +543,7 @@ export default function MoreScreen() {
                   flexShrink: 1,
                 }}
               >
-                My profile
+                {t("provider.mobile.screens.moreTab.myProfile")}
               </Text>
               {provider?.is_verified ? (
                 <VerifiedBadge verified size="md" />
@@ -547,7 +558,7 @@ export default function MoreScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Business rating ${meProfile.provider_rating_average.toFixed(1)} from ${meProfile.provider_review_count ?? 0} reviews. Opens reviews.`}
                 >
-                  <Ionicons name="star" size={16} color="#f59e0b" style={{ marginRight: 3 }} />
+                  <Ionicons name="star" size={16} color="#f59e0b" style={{ marginEnd: 3 }} />
                   <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                     {meProfile.provider_rating_average.toFixed(1)}
                   </Text>
@@ -559,7 +570,7 @@ export default function MoreScreen() {
               {headerSubtitle}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
+          <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
 
         <ProviderOrgSwitcher />
@@ -586,20 +597,20 @@ export default function MoreScreen() {
                 backgroundColor: "#d1fae5",
                 alignItems: "center",
                 justifyContent: "center",
-                marginRight: 12,
+                marginEnd: 12,
               }}
             >
               <Ionicons name="wallet-outline" size={24} color="#047857" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                Provider payouts
+                {t("provider.mobile.screens.moreTab.providerPayouts")}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 28, fontWeight: "800", color: "#064e3b", letterSpacing: -0.8 }}>
                 {formatCurrency(availablePayout)}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 13, color: "#047857" }}>
-                All-time available to withdraw
+                {t("provider.mobile.screens.moreTab.availableToWithdraw")}
               </Text>
             </View>
           </View>
@@ -608,21 +619,21 @@ export default function MoreScreen() {
             {minimumPayout != null ? (
               <View style={{ borderRadius: 999, backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: "#065f46" }}>
-                  Min {formatCurrency(minimumPayout)}
+                  {t("provider.mobile.screens.moreTab.minAmount", { amount: formatCurrency(minimumPayout) })}
                 </Text>
               </View>
             ) : null}
             {pendingPayouts > 0 && (
               <View style={{ borderRadius: 999, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400e" }}>
-                  {formatCurrency(pendingPayouts)} pending
+                  {t("provider.mobile.screens.moreTab.pendingAmount", { amount: formatCurrency(pendingPayouts) })}
                 </Text>
               </View>
             )}
             {nextPayoutDate && Number.isFinite(nextPayoutDate.getTime()) && (
               <View style={{ borderRadius: 999, backgroundColor: "#e0f2fe", paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: "#075985" }}>
-                  Next run {nextPayoutDate.toLocaleDateString()}
+                  {t("provider.mobile.screens.moreTab.nextRun", { date: nextPayoutDate.toLocaleDateString() })}
                 </Text>
               </View>
             )}
@@ -647,13 +658,13 @@ export default function MoreScreen() {
               paddingVertical: 12,
             }}
             accessibilityRole="button"
-            accessibilityLabel={hasPayoutAccount ? "Request payout" : "Set up bank account for payouts"}
+            accessibilityLabel={hasPayoutAccount ? t("provider.mobile.screens.moreTab.requestPayoutA11y") : t("provider.mobile.screens.moreTab.setUpBankAccountPayoutsA11y")}
           >
             <Ionicons name={hasPayoutAccount ? "cash-outline" : "business-outline"} size={20} color="#fff" />
-            <Text style={{ marginLeft: 8, flex: 1, fontSize: 15, fontWeight: "700", color: "#fff" }}>
-              {hasPayoutAccount ? "Request payout" : "Set up bank account"}
+            <Text style={{ marginStart: 8, flex: 1, fontSize: 15, fontWeight: "700", color: "#fff" }}>
+              {hasPayoutAccount ? t("provider.mobile.screens.moreTab.requestPayout") : t("provider.mobile.screens.moreTab.setUpBankAccount")}
             </Text>
-            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
+            <DirectionalIcon name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
           </TouchableOpacity>
 
           {canEditSettings ? (
@@ -672,22 +683,22 @@ export default function MoreScreen() {
               paddingVertical: 12,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Bank account setup"
+            accessibilityLabel={t("provider.mobile.screens.moreTab.bankAccountSetupA11y")}
           >
             <Ionicons name={hasPayoutAccount ? "checkmark-circle" : "alert-circle"} size={20} color={hasPayoutAccount ? "#059669" : "#d97706"} />
-            <View style={{ marginLeft: 8, flex: 1 }}>
+            <View style={{ marginStart: 8, flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>
-                Bank account setup
+                {t("provider.mobile.screens.moreTab.bankAccountSetup")}
               </Text>
               <Text style={{ marginTop: 1, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
                 {payoutAccountsLoading
-                  ? "Checking payout account..."
+                  ? t("provider.mobile.screens.moreTab.checkingPayoutAccount")
                   : hasPayoutAccount
-                    ? `${primaryPayoutAccount?.bank_name || "Bank account"}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
-                    : "Add a bank account before requesting payouts"}
+                    ? `${primaryPayoutAccount?.bank_name || t("provider.mobile.screens.moreTab.bankAccountFallback")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                    : t("provider.mobile.screens.moreTab.addBankAccountPrompt")}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+            <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />
           </TouchableOpacity>
           ) : null}
 
@@ -713,7 +724,7 @@ export default function MoreScreen() {
               borderColor: "#fde68a",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Buy ads: sponsored listings and campaigns"
+            accessibilityLabel={t("provider.mobile.screens.moreTab.adsCardA11y")}
           >
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
               <View
@@ -728,12 +739,12 @@ export default function MoreScreen() {
               >
                 <Ionicons name="megaphone-outline" size={20} color="#d97706" />
               </View>
-              <Text style={{ marginLeft: 10, fontSize: 12, fontWeight: "700", color: "#92400e", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                Ads
+              <Text style={{ marginStart: 10, fontSize: 12, fontWeight: "700", color: "#92400e", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                {t("provider.mobile.screens.moreTab.adsCardTitle")}
               </Text>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#78350f" }}>Buy ads</Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: "#a16207", lineHeight: 16 }}>Boost discovery & fill your calendar</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#78350f" }}>{t("provider.mobile.screens.moreTab.adsCardCta")}</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#a16207", lineHeight: 16 }}>{t("provider.mobile.screens.moreTab.adsCardSubtitle")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => handleMenuPress("/(app)/(tabs)/more/membership-plans")}
@@ -747,7 +758,7 @@ export default function MoreScreen() {
               borderColor: "#ddd6fe",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Sell memberships: plans and subscribers"
+            accessibilityLabel={t("provider.mobile.screens.moreTab.sellMembershipsA11y")}
           >
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
               <View
@@ -762,12 +773,12 @@ export default function MoreScreen() {
               >
                 <Ionicons name="card-outline" size={20} color="#7c3aed" />
               </View>
-              <Text style={{ marginLeft: 10, fontSize: 12, fontWeight: "700", color: "#5b21b6", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                Recurring
+              <Text style={{ marginStart: 10, fontSize: 12, fontWeight: "700", color: "#5b21b6", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                {t("provider.mobile.screens.moreTab.recurringCardTitle")}
               </Text>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#4c1d95" }}>Sell memberships</Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: "#6d28d9", lineHeight: 16 }}>Plans, perks & subscriber revenue</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#4c1d95" }}>{t("provider.mobile.screens.moreTab.sellMembershipsCta")}</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#6d28d9", lineHeight: 16 }}>{t("provider.mobile.screens.moreTab.sellMembershipsSubtitle")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -785,9 +796,9 @@ export default function MoreScreen() {
                 key={action.route}
                 onPress={() => handleMenuPress(action.route)}
                 activeOpacity={0.7}
-                style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
+                style={{ flex: 1, minWidth: "45%", marginEnd: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
                 accessibilityRole="button"
-                accessibilityLabel={badge ? `${action.label}, ${badge} alerts` : action.label}
+                accessibilityLabel={badge ? `${t(action.labelKey)}, ${badge} alerts` : t(action.labelKey)}
               >
                 <View
                   style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
@@ -800,11 +811,11 @@ export default function MoreScreen() {
                   ) : null}
                 </View>
                 <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
-                  {action.label}
+                  {t(action.labelKey)}
                 </Text>
                 {action.route.includes("card-machines") && paycloudEnabled ? (
                   <Text style={{ marginTop: 2, fontSize: 10, color: Colors.gray[500], textAlign: "center" }}>
-                    {paycloudSettings?.ready ? "Ready" : paycloudSettings?.accept_paycloud ? "Set up" : "Off"}
+                    {paycloudSettings?.ready ? t("provider.mobile.screens.moreTab.paycloudReady") : paycloudSettings?.accept_paycloud ? t("provider.mobile.screens.moreTab.paycloudSetUp") : t("provider.mobile.screens.moreTab.paycloudOff")}
                   </Text>
                 ) : null}
               </TouchableOpacity>
@@ -853,7 +864,7 @@ export default function MoreScreen() {
             >
               <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                 <View
-                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#eef2ff", alignItems: "center", justifyContent: "center", marginRight: 12 }}
+                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#eef2ff", alignItems: "center", justifyContent: "center", marginEnd: 12 }}
                 >
                   <Ionicons name="sparkles" size={22} color="#6366f1" />
                 </View>
@@ -869,7 +880,7 @@ export default function MoreScreen() {
                         : t("provider.profileCompletionSubtitle")}
                   </Text>
                   <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
-                    <View style={{ flex: 1, height: 6, backgroundColor: Colors.gray[100], borderRadius: 9999, overflow: "hidden", marginRight: 10 }}>
+                    <View style={{ flex: 1, height: 6, backgroundColor: Colors.gray[100], borderRadius: 9999, overflow: "hidden", marginEnd: 10 }}>
                       <View
                         style={{ height: "100%", backgroundColor: "#4f46e5", borderRadius: 9999, width: `${completionPct}%` }}
                       />
@@ -909,7 +920,7 @@ export default function MoreScreen() {
                               name={iconName as keyof typeof Ionicons.glyphMap}
                               size={18}
                               color={iconColor}
-                              style={{ marginRight: 10 }}
+                              style={{ marginEnd: 10 }}
                             />
                             <Text
                               style={{
@@ -929,7 +940,7 @@ export default function MoreScreen() {
                             {step.completed ? (
                               <View
                                 style={{
-                                  marginLeft: 8,
+                                  marginStart: 8,
                                   paddingHorizontal: 6,
                                   paddingVertical: 2,
                                   borderRadius: 9999,
@@ -937,13 +948,13 @@ export default function MoreScreen() {
                                 }}
                               >
                                 <Text style={{ fontSize: 10, fontWeight: "700", color: "#166534" }}>
-                                  Done
+                                  {t("provider.mobile.screens.moreTab.taskDone")}
                                 </Text>
                               </View>
                             ) : !step.required ? (
                               <View
                                 style={{
-                                  marginLeft: 8,
+                                  marginStart: 8,
                                   paddingHorizontal: 6,
                                   paddingVertical: 2,
                                   borderRadius: 9999,
@@ -951,15 +962,15 @@ export default function MoreScreen() {
                                 }}
                               >
                                 <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[600] }}>
-                                  Optional
+                                  {t("provider.mobile.screens.moreTab.taskOptional")}
                                 </Text>
                               </View>
                             ) : null}
-                            <Ionicons
+                            <DirectionalIcon
                               name="chevron-forward"
                               size={14}
                               color="#cbd5f5"
-                              style={{ marginLeft: 6 }}
+                              style={{ marginStart: 6 }}
                             />
                           </TouchableOpacity>
                         );
@@ -981,12 +992,12 @@ export default function MoreScreen() {
                           flexDirection: "row",
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Open full setup checklist"
+                        accessibilityLabel={t("provider.mobile.screens.moreTab.openFullSetupChecklistA11y")}
                       >
                         <Text style={{ fontSize: 13, fontWeight: "600", color: "#4338ca" }}>
                           {completionOverflowCount > 0
-                            ? `View full checklist · +${completionOverflowCount} more`
-                            : "View full checklist"}
+                            ? t("provider.mobile.screens.moreTab.viewFullChecklistMore", { count: completionOverflowCount })
+                            : t("provider.mobile.screens.moreTab.viewFullChecklist")}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -998,17 +1009,18 @@ export default function MoreScreen() {
         )}
 
         {/* Collapsible menu sections - short by default (customer: fewer items on main screen) */}
-        <View style={{ marginBottom: 8, marginLeft: 4 }}>
+        <View style={{ marginBottom: 8, marginStart: 4 }}>
           <Text style={{ fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1, color: Colors.gray[400] }}>
-            All features
+            {t("provider.mobile.screens.moreTab.allFeatures")}
           </Text>
         </View>
         {MENU_SECTIONS.map((section) => {
-          const isExpanded = expandedSections[section.title] ?? false;
+          const sectionTitle = t(section.titleKey);
+          const isExpanded = expandedSections[section.titleKey] ?? false;
           return (
-            <View key={section.title} style={{ marginBottom: 8 }}>
+            <View key={section.titleKey} style={{ marginBottom: 8 }}>
               <TouchableOpacity
-                onPress={() => toggleSection(section.title)}
+                onPress={() => toggleSection(section.titleKey)}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -1026,9 +1038,9 @@ export default function MoreScreen() {
                 }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={`${section.title}, ${isExpanded ? "collapse" : "expand"}`}
+                accessibilityLabel={`${sectionTitle}, ${isExpanded ? t("provider.mobile.screens.moreTab.collapse") : t("provider.mobile.screens.moreTab.expand")}`}
               >
-                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{section.title}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{sectionTitle}</Text>
                 <Ionicons
                   name={isExpanded ? "chevron-up" : "chevron-down"}
                   size={18}
@@ -1083,6 +1095,7 @@ export default function MoreScreen() {
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
                     const itemSubtitle = item.subtitleKey ? t(item.subtitleKey) : (item.subtitle ?? "");
+                    const itemLabel = item.labelKey ? t(item.labelKey) : item.label;
                     return (
                       <TouchableOpacity
                         key={item.route}
@@ -1098,27 +1111,27 @@ export default function MoreScreen() {
                         onPress={() => handleMenuPress(item.route)}
                         activeOpacity={0.6}
                         accessibilityRole="button"
-                        accessibilityLabel={badge ? `${item.label}: ${itemSubtitle}. ${badge} alerts.` : `${item.label}: ${itemSubtitle}`}
+                        accessibilityLabel={badge ? `${itemLabel}: ${itemSubtitle}. ${badge} alerts.` : `${itemLabel}: ${itemSubtitle}`}
                       >
                         <View
                           style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
                         >
                           <Ionicons name={item.icon} size={16} color={item.color} />
                         </View>
-                        <View style={{ marginLeft: 12, flex: 1 }}>
+                        <View style={{ marginStart: 12, flex: 1 }}>
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                            {item.label}
+                            {itemLabel}
                           </Text>
                           <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                             {itemSubtitle}
                           </Text>
                         </View>
                         {badge ? (
-                          <View style={{ marginRight: 8, minWidth: 22, height: 22, borderRadius: 11, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
+                          <View style={{ marginEnd: 8, minWidth: 22, height: 22, borderRadius: 11, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
                             <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{badge}</Text>
                           </View>
                         ) : null}
-                        <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                        <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />
                       </TouchableOpacity>
                     );
                   })}
@@ -1128,7 +1141,7 @@ export default function MoreScreen() {
           );
         })}
 
-        <View style={{ marginBottom: 8, marginLeft: 4 }}>
+        <View style={{ marginBottom: 8, marginStart: 4 }}>
           <Text style={{ fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1, color: Colors.gray[400] }}>
             {t("provider.moreTab.rateStoreHeading")}
           </Text>
@@ -1162,7 +1175,7 @@ export default function MoreScreen() {
               backgroundColor: Colors.gray[50],
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 12,
+              marginEnd: 12,
             }}
           >
             <Ionicons name="star-outline" size={18} color={Colors.primary} />
@@ -1179,7 +1192,7 @@ export default function MoreScreen() {
           style={{ marginBottom: 8, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
           onPress={handleSignOut}
           activeOpacity={0.6}
-          accessibilityLabel="Sign out"
+          accessibilityLabel={t("provider.mobile.screens.moreTab.signOutA11y")}
           accessibilityRole="button"
         >
           <Text style={{ fontSize: 15, fontWeight: "500", color: "#dc2626" }}>

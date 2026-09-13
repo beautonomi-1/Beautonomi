@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -8,11 +8,13 @@ import AnimatedRe, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { formatCurrency } from "@/lib/format";
 import { Colors, Shadows } from "@/constants/colors";
 import { buildProviderBookingActionModel, type ProviderBookingAction } from "@/lib/provider-booking-action-policy";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export interface BookingScheduleCardCustomer {
   full_name: string | null;
@@ -84,17 +86,17 @@ const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   booked: { bg: Colors.primarySoft, text: Colors.primary },
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending",
-  pending_payment: "Awaiting payment",
-  confirmed: "Confirmed",
-  booked: "Booked",
-  waiting: "Waiting",
-  checked_in: "Checked in",
-  in_progress: "In progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  no_show: "No show",
+const STATUS_KEY: Record<string, string> = {
+  pending: "statusPending",
+  pending_payment: "statusAwaitingPayment",
+  confirmed: "statusConfirmed",
+  booked: "statusBooked",
+  waiting: "statusWaiting",
+  checked_in: "statusCheckedIn",
+  in_progress: "statusInProgress",
+  completed: "statusCompleted",
+  cancelled: "statusCancelled",
+  no_show: "statusNoShow",
 };
 
 function normalizeBookingStatus(s: string): string {
@@ -102,55 +104,6 @@ function normalizeBookingStatus(s: string): string {
   if (x === "booked") return "confirmed";
   if (x === "started") return "in_progress";
   return x;
-}
-
-function formatBookingStatusLabel(raw: string | null | undefined): string {
-  const s = (raw || "").trim().toLowerCase();
-  if (STATUS_LABEL[s]) return STATUS_LABEL[s];
-  if (!s) return "—";
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatScheduledDay(value: string | null | undefined): string {
-  if (!value) return "Unscheduled";
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "Unscheduled";
-  return parsed.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
-
-function formatBookingTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function serviceSummary(services: BookingScheduleCardService[] | undefined): string {
-  if (!services || services.length === 0) return "Booking";
-  const first = services[0]?.name ?? services[0]?.offering_name ?? "Service";
-  const extra = Math.max(0, services.length - 1);
-  return extra > 0 ? `${first} +${extra} more` : first;
-}
-
-function getPaymentLabel(
-  b: BookingScheduleCardBooking,
-): { label: string; tone: "paid" | "partial" | "due" } | null {
-  const status = (b.payment_status || "").toLowerCase();
-  const total = Number(b.total_amount ?? 0);
-  const paidAfterRefunds = Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0));
-  const walletGiftCoverage = Math.max(0, Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0));
-  const unpaidAdditionalCharges = Array.isArray(b.additional_charges)
-    ? b.additional_charges
-        .filter((charge) => charge?.status !== "paid" && charge?.status !== "rejected")
-        .reduce((sum, charge) => sum + Number(charge?.amount ?? 0), 0)
-    : 0;
-  const outstanding = b.outstanding_balance == null
-    ? Math.max(0, total - Math.max(paidAfterRefunds, walletGiftCoverage) + unpaidAdditionalCharges)
-    : Math.max(0, Number(b.outstanding_balance));
-  if (status === "paid" || (total > 0 && outstanding <= 0)) return { label: "Paid", tone: "paid" };
-  if (paidAfterRefunds > 0 || walletGiftCoverage > 0) return { label: "Part paid", tone: "partial" };
-  if (total > 0 || outstanding > 0) return { label: "Payment due", tone: "due" };
-  return null;
 }
 
 function pillColors(tone: "paid" | "partial" | "due") {
@@ -171,17 +124,80 @@ export function BookingScheduleCard({
   onReschedule,
   onCancel,
 }: BookingScheduleCardProps) {
+  const { t } = useTranslation();
+  const sc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookings.scheduleCard.${key}`, opts) as string,
+    [t],
+  );
+
+  const formatBookingStatusLabel = useCallback(
+    (raw: string | null | undefined): string => {
+      const s = (raw || "").trim().toLowerCase();
+      const key = STATUS_KEY[s];
+      if (key) return sc(key);
+      if (!s) return "—";
+      return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    },
+    [sc],
+  );
+
+  const formatScheduledDay = useCallback(
+    (value: string | null | undefined): string => {
+      if (!value) return sc("unscheduled");
+      const parsed = new Date(value);
+      if (!Number.isFinite(parsed.getTime())) return sc("unscheduled");
+      return parsed.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    },
+    [sc],
+  );
+
+  const formatBookingTime = (value: string | null | undefined): string => {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return "—";
+    return parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+  };
+
+  const serviceSummary = useCallback(
+    (services: BookingScheduleCardService[] | undefined): string => {
+      if (!services || services.length === 0) return sc("bookingFallback");
+      const first = services[0]?.name ?? services[0]?.offering_name ?? sc("serviceFallback");
+      const extra = Math.max(0, services.length - 1);
+      return extra > 0 ? sc("moreServices", { count: extra }) : first;
+    },
+    [sc],
+  );
+
+  const getPaymentLabel = useCallback(
+    (b: BookingScheduleCardBooking): { label: string; tone: "paid" | "partial" | "due" } | null => {
+      const status = (b.payment_status || "").toLowerCase();
+      const total = Number(b.total_amount ?? 0);
+      const paidAfterRefunds = Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0));
+      const walletGiftCoverage = Math.max(0, Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0));
+      const unpaidAdditionalCharges = Array.isArray(b.additional_charges)
+        ? b.additional_charges
+            .filter((charge) => charge?.status !== "paid" && charge?.status !== "rejected")
+            .reduce((sum, charge) => sum + Number(charge?.amount ?? 0), 0)
+        : 0;
+      const outstanding =
+        b.outstanding_balance == null
+          ? Math.max(0, total - Math.max(paidAfterRefunds, walletGiftCoverage) + unpaidAdditionalCharges)
+          : Math.max(0, Number(b.outstanding_balance));
+      if (status === "paid" || (total > 0 && outstanding <= 0)) return { label: sc("paid"), tone: "paid" };
+      if (paidAfterRefunds > 0 || walletGiftCoverage > 0) return { label: sc("partPaid"), tone: "partial" };
+      if (total > 0 || outstanding > 0) return { label: sc("paymentDue"), tone: "due" };
+      return null;
+    },
+    [sc],
+  );
+
   const scale = useSharedValue(1);
   const statusOpacity = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const statusAnimStyle = useAnimatedStyle(() => ({ opacity: statusOpacity.value }));
-  const customerName = booking.customers?.full_name || "Customer";
+  const customerName = booking.customers?.full_name || sc("customerFallback");
   const serviceName = serviceSummary(booking.services);
-  // §Booking-lifecycle-coherence (audit 2026-05): when a booking is stuck at
-  // `pending_payment` but payment has actually settled (paid/partially_paid
-  // OR outstanding=0), display it as `pending` (awaiting provider). The
-  // provider list API normalises this server-side, but this defensive guard
-  // keeps the card correct even if a non-normalised caller reaches it.
   const _scheduleRawDb = booking.db_status || booking.status;
   const _schedulePaymentStatus = (booking.payment_status || "").toLowerCase();
   const _scheduleOutstanding = booking.outstanding_balance;
@@ -204,52 +220,54 @@ export function BookingScheduleCard({
   const cta = actionModel.primaryListAction;
   const traits = [
     booking.is_group_booking
-      ? { label: booking.group_booking_ref ? `GRP ${booking.group_booking_ref}` : "GRP", icon: "people-outline" as const }
+      ? {
+          label: booking.group_booking_ref ? `GRP ${booking.group_booking_ref}` : sc("groupBooking"),
+          icon: "people-outline" as const,
+        }
       : null,
-    booking.location_type === "at_home" ? { label: "House call", icon: "home-outline" as const } : null,
-    booking.is_recurring || booking.recurring_series_id ? { label: "Repeats", icon: "repeat-outline" as const } : null,
-    !booking.is_group_booking && booking.booking_source === "walk_in" ? { label: "Walk-in", icon: "walk-outline" as const } : null,
-    booking.booking_source === "provider" ? { label: "Provider", icon: "person-outline" as const } : null,
-    booking.booking_source === "online" ? { label: "Online", icon: "globe-outline" as const } : null,
-    booking.custom_offer ? { label: "Custom", icon: "pricetag-outline" as const } : null,
+    booking.location_type === "at_home" ? { label: sc("houseCall"), icon: "home-outline" as const } : null,
+    booking.is_recurring || booking.recurring_series_id
+      ? { label: sc("repeats"), icon: "repeat-outline" as const }
+      : null,
+    !booking.is_group_booking && booking.booking_source === "walk_in"
+      ? { label: sc("walkIn"), icon: "walk-outline" as const }
+      : null,
+    booking.booking_source === "provider" ? { label: sc("providerSource"), icon: "person-outline" as const } : null,
+    booking.booking_source === "online" ? { label: sc("online"), icon: "globe-outline" as const } : null,
+    booking.custom_offer ? { label: sc("customOffer"), icon: "pricetag-outline" as const } : null,
   ].filter(Boolean) as { label: string; icon: keyof typeof Ionicons.glyphMap }[];
   const visibleTraits = traits.slice(0, 2);
   const overflowCount = Math.max(0, traits.length - visibleTraits.length);
   const isClosedBooking = ["completed", "cancelled", "canceled", "no_show"].includes(ns);
 
-  /**
-   * Always rendered. Hiding the menu when nothing is actionable makes a tap on a
-   * past or closed booking look like the app is broken; an explanation is cheaper
-   * than a support ticket.
-   */
   const openManageMenu = () => {
     const options: string[] = [];
     const handlers: Array<() => void> = [];
     if (canReschedule && onReschedule) {
-      options.push("Reschedule");
+      options.push(sc("reschedule"));
       handlers.push(() => onReschedule(booking));
     }
     if (canCancel && onCancel) {
-      options.push("Cancel booking");
+      options.push(sc("cancelBooking"));
       handlers.push(() => onCancel(booking));
     }
     const hasManageActions = options.length > 0;
-    options.push("View details");
+    options.push(sc("viewDetails"));
     handlers.push(() => onOpen(booking));
 
     const message = hasManageActions
       ? customerName
       : isClosedBooking
-        ? "This booking is already closed, so it can't be rescheduled or cancelled."
-        : "You do not have permission to reschedule or cancel this booking. Ask an owner for appointment permissions.";
+        ? sc("manageClosedBody")
+        : sc("manageNoPermissionBody");
 
-    Alert.alert("Manage booking", message, [
+    Alert.alert(sc("manageBookingTitle"), message, [
       ...options.map((label, index) => ({
         text: label,
         onPress: handlers[index],
-        style: label === "Cancel booking" ? ("destructive" as const) : ("default" as const),
+        style: label === sc("cancelBooking") ? ("destructive" as const) : ("default" as const),
       })),
-      { text: "Close", style: "cancel" },
+      { text: sc("close"), style: "cancel" },
     ]);
   };
 
@@ -286,7 +304,7 @@ export function BookingScheduleCard({
           },
           isNextUpcoming ? Shadows.card : null,
         ]}
-        accessibilityLabel={`Booking for ${customerName}`}
+        accessibilityLabel={sc("bookingForA11y", { name: customerName })}
         accessibilityRole="button"
       >
         <View
@@ -308,7 +326,9 @@ export function BookingScheduleCard({
               {scheduledDay}
             </Text>
             {totalDuration > 0 ? (
-              <Text style={twStyle("mt-2 text-[11px] font-semibold text-gray-500")}>{totalDuration} min</Text>
+              <Text style={twStyle("mt-2 text-[11px] font-semibold text-gray-500")}>
+                {sc("minDuration", { count: totalDuration })}
+              </Text>
             ) : null}
           </View>
 
@@ -328,7 +348,7 @@ export function BookingScheduleCard({
                 </View>
                 <Text style={twStyle("mt-1 text-sm font-medium text-gray-600")} numberOfLines={1}>
                   {serviceName}
-                  {staffName ? ` · with ${staffName}` : ""}
+                  {staffName ? sc("withStaff", { name: staffName }) : ""}
                 </Text>
               </View>
               <AnimatedRe.View
@@ -338,7 +358,7 @@ export function BookingScheduleCard({
                   statusAnimStyle,
                 ]}
               >
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.text, marginRight: 6 }} />
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.text, marginEnd: 6 }} />
                 <Text style={[twStyle("text-[11px] font-bold"), { color: st.text }]} numberOfLines={1}>
                   {formatBookingStatusLabel(displayStatus)}
                 </Text>
@@ -381,7 +401,7 @@ export function BookingScheduleCard({
                   }}
                   style={twStyle("h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white")}
                   accessibilityRole="button"
-                  accessibilityLabel="More booking actions"
+                  accessibilityLabel={sc("moreActionsA11y")}
                 >
                   <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
                 </TouchableOpacity>
@@ -389,7 +409,7 @@ export function BookingScheduleCard({
                   <TouchableOpacity
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      void onApplyStatus(booking.id, cta, `${cta.label} saved`);
+                      void onApplyStatus(booking.id, cta, sc("actionSaved", { action: cta.label }));
                     }}
                     disabled={pendingIds.has(booking.id)}
                     style={[
@@ -412,7 +432,7 @@ export function BookingScheduleCard({
                         >
                           {cta.label}
                         </Text>
-                        <Ionicons name="arrow-forward" size={13} color="#fff" style={{ marginLeft: 4 }} />
+                        <DirectionalIcon name="arrow-forward" size={13} color="#fff" style={{ marginStart: 4 }} />
                       </>
                     )}
                   </TouchableOpacity>

@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { providerPortalFetch } from "@/lib/http/fetcher";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface EditRatingDialogProps {
   open: boolean;
@@ -35,12 +36,12 @@ export function EditRatingDialog({
   rating,
   onRatingUpdated,
 }: EditRatingDialogProps) {
+  const { t } = useTranslation();
   const [currentRating, setCurrentRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initialize form when rating changes
   useEffect(() => {
     if (rating) {
       setCurrentRating(rating.rating);
@@ -50,7 +51,7 @@ export function EditRatingDialog({
 
   const handleSubmit = async () => {
     if (!rating || currentRating === 0) {
-      toast.error("Please select a rating");
+      toast.error(t("web.provider.portal.editRating.selectRating"));
       return;
     }
 
@@ -69,22 +70,22 @@ export function EditRatingDialog({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to update rating");
+        throw new Error(errorData.message || t("web.provider.portal.editRating.updateFailed"));
       }
 
-      toast.success("Rating updated successfully");
+      toast.success(t("web.provider.portal.editRating.updated"));
       onRatingUpdated?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating rating:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to update rating");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.editRating.updateFailed"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!rating || !confirm("Are you sure you want to delete this rating?")) {
+    if (!rating || !confirm(t("web.provider.portal.editRating.deleteConfirm"))) {
       return;
     }
 
@@ -96,15 +97,15 @@ export function EditRatingDialog({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to delete rating");
+        throw new Error(errorData.message || t("web.provider.portal.editRating.deleteFailed"));
       }
 
-      toast.success("Rating deleted successfully");
+      toast.success(t("web.provider.portal.editRating.deleted"));
       onRatingUpdated?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Error deleting rating:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to delete rating");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.editRating.deleteFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -112,20 +113,29 @@ export function EditRatingDialog({
 
   if (!rating) return null;
 
+  const ratingLabels: Record<number, string> = {
+    1: t("web.provider.portal.editRating.poor"),
+    2: t("web.provider.portal.editRating.fair"),
+    3: t("web.provider.portal.editRating.good"),
+    4: t("web.provider.portal.editRating.veryGood"),
+    5: t("web.provider.portal.editRating.excellent"),
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Edit Rating</DialogTitle>
+          <DialogTitle>{t("web.provider.portal.editRating.title")}</DialogTitle>
           <DialogDescription>
-            Update your rating for {rating.booking_number ? `Booking ${rating.booking_number}` : "this booking"}.
+            {rating.booking_number
+              ? t("web.provider.portal.editRating.descriptionBooking", { number: rating.booking_number })
+              : t("web.provider.portal.editRating.descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Star Rating */}
           <div>
-            <Label className="text-sm font-medium mb-2 block">Rating</Label>
+            <Label className="text-sm font-medium mb-2 block">{t("web.provider.portal.editRating.rating")}</Label>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -148,23 +158,18 @@ export function EditRatingDialog({
             </div>
             {currentRating > 0 && (
               <p className="text-sm text-gray-500 mt-1">
-                {currentRating === 1 && "Poor"}
-                {currentRating === 2 && "Fair"}
-                {currentRating === 3 && "Good"}
-                {currentRating === 4 && "Very Good"}
-                {currentRating === 5 && "Excellent"}
+                {ratingLabels[currentRating]}
               </p>
             )}
           </div>
 
-          {/* Comment */}
           <div>
             <Label htmlFor="comment" className="text-sm font-medium mb-2 block">
-              Comment (Optional)
+              {t("web.provider.portal.editRating.commentOptional")}
             </Label>
             <Textarea
               id="comment"
-              placeholder="Add any additional notes about this client..."
+              placeholder={t("web.provider.portal.editRating.commentPlaceholder")}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={4}
@@ -179,14 +184,16 @@ export function EditRatingDialog({
             onClick={handleDelete}
             disabled={isSubmitting}
           >
-            Delete
+            {t("common.delete")}
           </Button>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting || currentRating === 0}>
-              {isSubmitting ? "Updating..." : "Update Rating"}
+              {isSubmitting
+                ? t("web.provider.portal.editRating.updating")
+                : t("web.provider.portal.editRating.updateRating")}
             </Button>
           </div>
         </DialogFooter>

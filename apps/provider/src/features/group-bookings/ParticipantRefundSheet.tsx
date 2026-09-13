@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
@@ -37,6 +38,9 @@ export function ParticipantRefundSheet({
   onSuccess,
 }: ParticipantRefundSheetProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const gb = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.groupBookings.${key}`, opts) as string;
   const { execute: postRefund, loading: refunding } = useApiMutation("post");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
@@ -54,8 +58,8 @@ export function ParticipantRefundSheet({
     wallet_gift_coverage: walletGiftCoverage,
   });
   const sheetTitle = participant?.isGroupPaymentRefund
-    ? "Refund group payment"
-    : "Refund participant";
+    ? gb("refundGroupPayment")
+    : gb("refundParticipantTitle");
 
   useEffect(() => {
     if (!visible || !participant) return;
@@ -71,18 +75,16 @@ export function ParticipantRefundSheet({
     setError(null);
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Enter a valid refund amount.");
+      setError(gb("refundInvalidAmount"));
       return;
     }
     if (amount > maxRefundable + 0.01) {
-      setError(
-        `You can refund up to ${formatCurrency(maxRefundable, currency)} (net of refunds already issued).`
-      );
+      setError(gb("refundMaxAmount", { amount: formatCurrency(maxRefundable, currency) }));
       return;
     }
     const reason = refundReason.trim();
     if (!reason) {
-      setError("Please enter a reason for the refund.");
+      setError(gb("refundReasonRequired"));
       return;
     }
 
@@ -97,8 +99,8 @@ export function ParticipantRefundSheet({
     }
     setSuccessMessage(
       refundMethod === "cash"
-        ? `Recorded ${formatCurrency(amount, currency)} refunded in person.`
-        : `Refunded ${formatCurrency(amount, currency)} to wallet credit.`
+        ? gb("refundRecordedCash", { amount: formatCurrency(amount, currency) })
+        : gb("refundRecordedWallet", { amount: formatCurrency(amount, currency) })
     );
     onSuccess(participant.id, amount);
     setTimeout(() => {
@@ -123,7 +125,7 @@ export function ParticipantRefundSheet({
       subtitle={participant?.displayName}
       footer={
         <ActionButton
-          label={refunding ? "Processing…" : "Confirm refund"}
+          label={refunding ? gb("refundProcessing") : gb("refundConfirm")}
           onPress={() => {
             void handleRefund();
           }}
@@ -145,23 +147,30 @@ export function ParticipantRefundSheet({
         ) : null}
         {participant?.isGroupPaymentRefund ? (
           <Text style={twStyle("mb-3 text-xs text-amber-700")}>
-            This refunds the whole group charge collected on the primary booking.
+            {gb("refundGroupHint")}
           </Text>
         ) : null}
         <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-          Net refundable: {formatCurrency(maxRefundable, currency)}
-          {totalRefunded > 0
-            ? ` (paid ${formatCurrency(totalPaid, currency)}, refunded ${formatCurrency(totalRefunded, currency)})`
-            : walletGiftCoverage > totalPaid
-              ? ` (includes wallet/gift coverage ${formatCurrency(walletGiftCoverage, currency)})`
-              : ""}
-          .
+          {gb("refundNetRefundable", {
+            amount: formatCurrency(maxRefundable, currency),
+            detail:
+              totalRefunded > 0
+                ? gb("refundPaidRefunded", {
+                    paid: formatCurrency(totalPaid, currency),
+                    refunded: formatCurrency(totalRefunded, currency),
+                  })
+                : walletGiftCoverage > totalPaid
+                  ? gb("refundWalletCoverage", {
+                      amount: formatCurrency(walletGiftCoverage, currency),
+                    })
+                  : "",
+          })}
         </Text>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Refund method</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{gb("refundMethod")}</Text>
         <View style={twStyle("mb-3 flex-row rounded-xl border border-gray-200 bg-gray-50 p-1")}>
           {([
-            { key: "cash" as const, label: "In person (cash)" },
-            { key: "store_credit" as const, label: "Wallet credit" },
+            { key: "cash" as const, label: gb("refundMethodCash") },
+            { key: "store_credit" as const, label: gb("refundMethodWallet") },
           ]).map((opt) => {
             const active = refundMethod === opt.key;
             return (
@@ -185,11 +194,9 @@ export function ParticipantRefundSheet({
           })}
         </View>
         <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-          {refundMethod === "cash"
-            ? "Hand the money back to the customer at the salon. Recorded for your books; no wallet credit is issued."
-            : "Adds wallet store credit to the participant's account (requires a customer account)."}
+          {refundMethod === "cash" ? gb("refundMethodCashHint") : gb("refundMethodWalletHint")}
         </Text>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Refund amount</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{gb("refundAmount")}</Text>
         <TextInput
           style={twStyle(
             "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
@@ -197,22 +204,22 @@ export function ParticipantRefundSheet({
           value={refundAmount}
           onChangeText={setRefundAmount}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={gb("refundAmountPlaceholder")}
           placeholderTextColor="#9ca3af"
         />
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Reason</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{gb("refundReason")}</Text>
         <TextInput
           style={twStyle(
             "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
           )}
           value={refundReason}
           onChangeText={setRefundReason}
-          placeholder="Why is this refund being issued?"
+          placeholder={gb("refundReasonPlaceholder")}
           placeholderTextColor="#9ca3af"
           multiline
         />
         <TouchableOpacity onPress={openBookingDetail} accessibilityRole="button">
-          <Text style={twStyle("text-sm font-medium text-indigo-600")}>View full booking</Text>
+          <Text style={twStyle("text-sm font-medium text-indigo-600")}>{gb("viewFullBooking")}</Text>
         </TouchableOpacity>
       </View>
     </BottomSheet>

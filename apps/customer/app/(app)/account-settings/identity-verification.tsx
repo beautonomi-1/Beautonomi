@@ -347,8 +347,8 @@ export default function IdentityVerificationScreen() {
 
   const docTypeLabel = useCallback(
     (documentType: string) => {
-      if (documentType === "didit") return "Didit";
-      if (documentType === "sumsub") return "Sumsub (legacy)";
+      if (documentType === "didit") return iv("docTypeDidit");
+      if (documentType === "sumsub") return iv("docTypeSumsubLegacy");
       const opt = DOCUMENT_TYPE_OPTIONS.find((o) => o.value === documentType);
       return opt ? iv(opt.labelKey) : documentType;
     },
@@ -438,17 +438,17 @@ export default function IdentityVerificationScreen() {
             gap: 6,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Refresh verification status"
-          accessibilityHint="Reloads identity verification status from the server"
+          accessibilityLabel={iv("a11yRefreshStatus")}
+          accessibilityHint={iv("a11yRefreshStatusHint")}
         >
           <Ionicons name="refresh" size={14} color={Colors.primary} />
           <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: "600" }}>
-            {refreshing ? "Refreshing..." : "Refresh status"}
+            {refreshing ? iv("refreshing") : iv("refreshStatus")}
           </Text>
         </TouchableOpacity>
         {formatLastRefreshed(lastRefreshedAt) ? (
           <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 16 }}>
-            Last updated at {formatLastRefreshed(lastRefreshedAt)}
+            {iv("lastUpdatedAt", { time: formatLastRefreshed(lastRefreshedAt) ?? "" })}
           </Text>
         ) : null}
 
@@ -464,7 +464,7 @@ export default function IdentityVerificationScreen() {
             }}
           >
             <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E" }}>
-              {fromCheckout ? "Verification required to book" : "Verification required"}
+              {fromCheckout ? iv("requiredToBookTitle") : iv("requiredTitle")}
             </Text>
             <Text style={{ fontSize: 13, color: "#B45309", marginTop: 4, lineHeight: 18 }}>
               {fromCheckout
@@ -484,10 +484,10 @@ export default function IdentityVerificationScreen() {
                 }}
                 style={{ marginTop: 12, alignSelf: "flex-start" }}
                 accessibilityRole="button"
-                accessibilityLabel="Return to checkout"
+                accessibilityLabel={iv("a11yBackToCheckout")}
               >
                 <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
-                  Back to checkout
+                  {iv("backToCheckout")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -559,12 +559,12 @@ export default function IdentityVerificationScreen() {
               <Ionicons name="document-outline" size={20} color={Colors.gray[400]} style={{ marginTop: 1 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700], marginBottom: 4 }}>
-                  No submissions yet
+                  {iv("noSubmissionsYet")}
                 </Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
                   {verificationRequired
-                    ? "Upload a government-issued ID to complete verification before your first booking."
-                    : "Upload a government-issued ID below to get verified. Your document is reviewed securely."}
+                    ? iv("noSubmissionsBodyRequired")
+                    : iv("noSubmissionsBodyOptional")}
                 </Text>
               </View>
             </View>
@@ -630,7 +630,7 @@ export default function IdentityVerificationScreen() {
             onCancel={() => setShowConfirmDetails(false)}
             tenantRegionCode={bundle?.meta?.tenant_region?.code}
             tenantRegionName={bundle?.meta?.tenant_region?.name}
-            countryLabel="Country that issued your document"
+            countryLabel={iv("countryIssuedLabel")}
           />
         )}
 
@@ -654,12 +654,12 @@ export default function IdentityVerificationScreen() {
               ) : (
                 <>
                   <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Verify instantly</Text>
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{iv("verifyInstantly")}</Text>
                 </>
               )}
             </TouchableOpacity>
             <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 6 }}>
-              Powered by Didit · takes about 2 minutes
+              {iv("poweredByDidit")}
             </Text>
 
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 16 }}>
@@ -701,7 +701,7 @@ export default function IdentityVerificationScreen() {
           >
             <Ionicons name="ban-outline" size={20} color={Colors.gray[400]} />
             <Text style={{ flex: 1, fontSize: 13, color: Colors.gray[600], lineHeight: 19 }}>
-              Identity verification is currently unavailable. Contact support if you need assistance.
+              {iv("verificationUnavailable")}
             </Text>
           </View>
         )}

@@ -6,10 +6,12 @@
 import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Platform } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 
 export default function AuthCallbackScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string; token_hash?: string; type?: string }>();
   const [status, setStatus] = useState<"loading" | "error">("loading");
@@ -120,7 +122,7 @@ export default function AuthCallbackScreen() {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ marginBottom: 16, textAlign: "center", fontSize: 16, color: "#DC2626" }}>{errorMsg}</Text>
-        <Text style={{ color: Colors.primary, textDecorationLine: "underline" }} onPress={() => router.replace("/(auth)/login")}>Back to login</Text>
+        <Text style={{ color: Colors.primary, textDecorationLine: "underline" }} onPress={() => router.replace("/(auth)/login")}>{t("customer.mobile.screens.authCallback.backToLogin")}</Text>
       </View>
     );
   }
@@ -128,7 +130,7 @@ export default function AuthCallbackScreen() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
       <ActivityIndicator size="large" color={Colors.primary} />
-      <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Completing sign in...</Text>
+      <Text style={{ marginTop: 16, color: Colors.gray[600] }}>{t("customer.mobile.screens.authCallback.completingSignIn")}</Text>
     </View>
   );
 }

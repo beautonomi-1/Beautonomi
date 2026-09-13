@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -15,13 +16,16 @@ import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config
 import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { SearchQueryBarWithSuggestions } from "./search-query-bar";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 
-const PRICE_RANGE_OPTIONS = [
-  { label: "Any", value: "" },
-  { label: "Under R100", value: "under-100" },
-  { label: "R100-R500", value: "100-500" },
-  { label: "R500+", value: "500-plus" },
-] as const;
+function priceRangeOptions(t: (key: string) => string) {
+  return [
+    { label: t("web.search.filters.any"), value: "" },
+    { label: t("web.search.filters.under100"), value: "under-100" },
+    { label: t("web.search.filters.range100to500"), value: "100-500" },
+    { label: t("web.search.filters.plus500"), value: "500-plus" },
+  ] as const;
+}
 
 const PRICE_RANGE_TO_BOUNDS: Record<
   string,
@@ -41,27 +45,29 @@ function derivePriceRangeValue(priceMin?: string, priceMax?: string): string {
   return "";
 }
 
-const SEARCH_FILTER_GROUPS = [
-  {
-    label: "Category",
-    key: "category",
-    options: [] as { label: string; value: string }[],
-  },
-  {
-    label: "Price Range",
-    key: "price_range",
-    options: PRICE_RANGE_OPTIONS.map((option) => ({ ...option })),
-  },
-  {
-    label: "Rating",
-    key: "rating_min",
-    options: [
-      { label: "Any", value: "" },
-      { label: "4+ Stars", value: "4" },
-      { label: "3+ Stars", value: "3" },
-    ],
-  },
-];
+function searchFilterGroups(t: (key: string) => string) {
+  return [
+    {
+      label: t("web.search.filters.category"),
+      key: "category",
+      options: [] as { label: string; value: string }[],
+    },
+    {
+      label: t("web.search.filters.priceRange"),
+      key: "price_range",
+      options: priceRangeOptions(t).map((option) => ({ ...option })),
+    },
+    {
+      label: t("web.search.filters.rating"),
+      key: "rating_min",
+      options: [
+        { label: t("web.search.filters.any"), value: "" },
+        { label: t("web.search.filters.stars4"), value: "4" },
+        { label: t("web.search.filters.stars3"), value: "3" },
+      ],
+    },
+  ];
+}
 
 interface SearchResultsProps {
   initialResults?: SearchResult;
@@ -73,6 +79,7 @@ export default function SearchResults({
   initialResults,
   initialCategories,
 }: SearchResultsProps) {
+  const { t, i18n } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [results, setResults] = useState<SearchResult | null>(initialResults || null);
@@ -143,21 +150,27 @@ export default function SearchResults({
 
   // Build category filter options dynamically
   const categoryFilterOptions = useMemo(() => {
-    const options = [{ label: "All", value: "" }];
+    const options = [{ label: t("web.search.filters.all"), value: "" }];
     categories.forEach((cat) => {
-      options.push({ label: cat.name, value: cat.slug });
+      options.push({
+        label: translatePublicCategory(t, cat.slug, cat.name, {
+          language: i18n.language,
+          nameI18n: cat.name_i18n,
+        }),
+        value: cat.slug,
+      });
     });
     return options;
-  }, [categories]);
+  }, [categories, t, i18n.language]);
 
   const filterGroups = useMemo(
     () =>
-      SEARCH_FILTER_GROUPS.map((group) =>
+      searchFilterGroups(t).map((group) =>
         group.key === "category"
           ? { ...group, options: categoryFilterOptions }
           : group,
       ),
-    [categoryFilterOptions],
+    [categoryFilterOptions, t],
   );
 
   // Initialize filters from URL params
@@ -199,10 +212,10 @@ export default function SearchResults({
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.search.timedOut")
             : err instanceof FetchError
             ? err.message
-            : "Failed to search providers";
+            : t("web.search.failedProviders");
         setError(errorMessage);
         console.error("Error searching:", err);
       } finally {
@@ -356,7 +369,7 @@ export default function SearchResults({
           onQueryChange={setQueryInput}
           onApply={applySearchQuery}
         />
-        <LoadingTimeout loadingMessage="Searching providers..." />
+        <LoadingTimeout loadingMessage={t("web.search.searching")} />
       </div>
     );
   }
@@ -370,10 +383,10 @@ export default function SearchResults({
           onApply={applySearchQuery}
         />
         <EmptyState
-          title="Search failed"
+          title={t("web.search.failedTitle")}
           description={error}
           action={{
-            label: "Retry",
+            label: t("common.retry"),
             onClick: () => window.location.reload(),
           }}
         />
@@ -396,8 +409,8 @@ export default function SearchResults({
           onClearFilters={handleClearFilters}
         />
         <EmptyState
-          title="No providers found"
-          description="Try adjusting your search filters"
+          title={t("web.search.noProvidersTitle")}
+          description={t("web.search.noProvidersDescription")}
         />
       </div>
     );
@@ -428,11 +441,11 @@ export default function SearchResults({
             onChange={(e) => handleSortChange(e.target.value)}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm"
           >
-            <option value="relevance">Relevance</option>
-            <option value="price_low">Price: Low to High</option>
-            <option value="price_high">Price: High to Low</option>
-            <option value="rating">Rating</option>
-            <option value="soonest">Soonest Available</option>
+            <option value="relevance">{t("web.search.sort.relevance")}</option>
+            <option value="price_low">{t("web.search.sort.priceLow")}</option>
+            <option value="price_high">{t("web.search.sort.priceHigh")}</option>
+            <option value="rating">{t("web.search.sort.rating")}</option>
+            <option value="soonest">{t("web.search.sort.soonest")}</option>
           </select>
 
           <div className="flex border border-gray-300 rounded-md overflow-hidden">
@@ -458,7 +471,7 @@ export default function SearchResults({
 
       {/* Results Count */}
       <div className="mb-4 text-sm text-gray-600">
-        {results.total} {results.total === 1 ? "provider" : "providers"} found
+        {results.total === 1 ? t("web.search.providersFound_one", { count: results.total }) : t("web.search.providersFound_other", { count: results.total })}
       </div>
 
       {/* Results Grid */}

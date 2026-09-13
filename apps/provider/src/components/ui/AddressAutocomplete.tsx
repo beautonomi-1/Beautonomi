@@ -174,7 +174,7 @@ export function AddressAutocomplete({
         <Ionicons name="search-outline" size={18} color="#9ca3af" />
         <TextInput
           ref={inputRef}
-          style={twStyle("ml-2 min-h-[44px] flex-1 text-sm text-gray-900")}
+          style={twStyle("ms-2 min-h-[44px] flex-1 text-sm text-gray-900")}
           value={query}
           onChangeText={handleChangeText}
           onFocus={onFocus}
@@ -218,7 +218,7 @@ export function AddressAutocomplete({
                 accessibilityLabel={item.place_name}
               >
                 <Ionicons name="location-outline" size={16} color="#6b7280" />
-                <Text style={twStyle("ml-2 flex-1 text-sm text-gray-700")} numberOfLines={2}>
+                <Text style={twStyle("ms-2 flex-1 text-sm text-gray-700")} numberOfLines={2}>
                   {item.place_name}
                 </Text>
               </TouchableOpacity>

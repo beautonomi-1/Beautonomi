@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -38,14 +39,34 @@ interface AvailabilityBlock {
 }
 
 const BLOCK_TYPES = [
-  { label: "Holiday / Closure", value: "unavailable" },
-  { label: "Break", value: "break" },
-  { label: "Maintenance", value: "maintenance" },
+  { labelKey: "typeHoliday", value: "unavailable" },
+  { labelKey: "typeBreak", value: "break" },
+  { labelKey: "typeMaintenance", value: "maintenance" },
+];
+
+const RECURRENCE_PATTERNS = [
+  { value: "yearly", labelKey: "recurrenceYearly" },
+  { value: "monthly", labelKey: "recurrenceMonthly" },
+  { value: "weekly", labelKey: "recurrenceWeekly" },
 ];
 
 type TabMode = "upcoming" | "past" | "all";
+type CpT = (key: string, opts?: Record<string, unknown>) => string;
+
+function blockLabel(type: string, cp: CpT): string {
+  if (type === "unavailable") return cp("labelClosed");
+  if (type === "break") return cp("labelBreak");
+  if (type === "maintenance") return cp("labelMaintenance");
+  return type;
+}
 
 export default function ClosedPeriodsScreen() {
+  const { t } = useTranslation();
+  const cp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.closedPeriods.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AvailabilityBlock | null>(null);
@@ -168,17 +189,17 @@ export default function ClosedPeriodsScreen() {
 
   async function handleSave() {
     if (!form.start_date || !form.end_date) {
-      Alert.alert("Required", "Please enter start and end dates");
+      Alert.alert(cp("requiredTitle"), cp("datesRequired"));
       return;
     }
     const startLocal = new Date(`${form.start_date}T${form.start_time}:00`);
     const endLocal = new Date(`${form.end_date}T${form.end_time}:00`);
     if (!Number.isFinite(startLocal.getTime()) || !Number.isFinite(endLocal.getTime())) {
-      Alert.alert("Invalid", "Could not parse start or end date/time.");
+      Alert.alert(cp("invalidTitle"), cp("parseFailed"));
       return;
     }
     if (endLocal.getTime() <= startLocal.getTime()) {
-      Alert.alert("Invalid times", "End must be after start.");
+      Alert.alert(cp("invalidTimesTitle"), cp("endAfterStart"));
       return;
     }
 
@@ -198,7 +219,7 @@ export default function ClosedPeriodsScreen() {
       );
       if (error) {
         Alert.alert(
-          "Could not save closed period",
+          cp("saveFailedTitle"),
           __DEV__ ? `${error}` : error,
         );
         return;
@@ -207,7 +228,7 @@ export default function ClosedPeriodsScreen() {
       const { error } = await createBlock(payload);
       if (error) {
         Alert.alert(
-          "Could not save closed period",
+          cp("saveFailedTitle"),
           __DEV__ ? `${error}` : error,
         );
         return;
@@ -219,27 +240,20 @@ export default function ClosedPeriodsScreen() {
   }
 
   function handleDelete(block: AvailabilityBlock) {
-    Alert.alert("Delete", "Remove this closed period?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(cp("deleteTitle"), cp("deleteBody"), [
+      { text: cp("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: cp("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteBlock(
             `/api/provider/availability-blocks/${block.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(cp("errorTitle"), error);
           else refresh();
         },
       },
     ]);
-  }
-
-  function blockLabel(type: string): string {
-    if (type === "unavailable") return "Closed";
-    if (type === "break") return "Break";
-    if (type === "maintenance") return "Maintenance";
-    return type;
   }
 
   function blockColor(type: string): { bg: string; text: string } {
@@ -258,9 +272,9 @@ export default function ClosedPeriodsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Closed Periods"
+        title={cp("title")}
         showBack
-        subtitle="Holidays & closures"
+        subtitle={cp("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -274,9 +288,9 @@ export default function ClosedPeriodsScreen() {
       {blocks && blocks.length > 0 && (
         <View style={twStyle("mb-3")}>
           <View style={twStyle("flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
               <StatCard
-                title="Upcoming"
+                title={cp("statUpcoming")}
                 value={String(upcomingCount)}
                 icon="calendar-outline"
                 iconColor="#6366f1"
@@ -286,7 +300,7 @@ export default function ClosedPeriodsScreen() {
             </View>
             <View style={twStyle("flex-1")}>
               <StatCard
-                title="Active Now"
+                title={cp("statActiveNow")}
                 value={String(activeNow)}
                 icon="alert-circle-outline"
                 iconColor={activeNow > 0 ? "#ef4444" : "#22c55e"}
@@ -298,8 +312,10 @@ export default function ClosedPeriodsScreen() {
           {nextClosure && (
             <View style={twStyle("mt-2 rounded-xl bg-indigo-50 p-3")}>
               <Text style={twStyle("text-xs text-indigo-700")}>
-                Next: <Text style={twStyle("font-semibold")}>{nextClosure.reason ?? blockLabel(nextClosure.block_type)}</Text>{" "}
-                on {formatDate(nextClosure.start_at)}
+                {cp("nextClosure", {
+                  reason: nextClosure.reason ?? blockLabel(nextClosure.block_type, cp),
+                  date: formatDate(nextClosure.start_at),
+                })}
               </Text>
             </View>
           )}
@@ -310,9 +326,9 @@ export default function ClosedPeriodsScreen() {
         <View style={twStyle("mb-3")}>
           <FilterChipGroup
             options={[
-              { label: "Upcoming", value: "upcoming" },
-              { label: "Past", value: "past" },
-              { label: "All", value: "all" },
+              { label: cp("filterUpcoming"), value: "upcoming" },
+              { label: cp("filterPast"), value: "past" },
+              { label: cp("filterAll"), value: "all" },
             ]}
             selected={tab}
             onSelect={(v) => setTab(v as TabMode)}
@@ -325,11 +341,11 @@ export default function ClosedPeriodsScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="calendar-outline"
-          title={tab !== "upcoming" ? "No periods found" : "No closed periods"}
+          title={tab !== "upcoming" ? cp("emptyFilteredTitle") : cp("emptyTitle")}
           description={
             tab !== "upcoming"
-              ? "Try a different filter"
-              : "Add holiday closures or maintenance windows"
+              ? cp("emptyFilteredBody")
+              : cp("emptyBody")
           }
         />
       ) : (
@@ -357,15 +373,15 @@ export default function ClosedPeriodsScreen() {
                 <View style={twStyle("flex-row items-start justify-between")}>
                   <View style={twStyle("flex-1")}>
                     <View style={twStyle("flex-row items-center")}>
-                      <View style={[twStyle(`rounded-full px-2.5 py-0.5 ${colors.bg}`), { marginRight: 8 }]}>
+                      <View style={[twStyle(`rounded-full px-2.5 py-0.5 ${colors.bg}`), { marginEnd: 8 }]}>
                         <Text style={twStyle(`text-xs font-medium ${colors.text}`)}>
-                          {blockLabel(block.block_type)}
+                          {blockLabel(block.block_type, cp)}
                         </Text>
                       </View>
                       {active && (
-                        <View style={[twStyle("rounded-full bg-red-500 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <View style={[twStyle("rounded-full bg-red-500 px-2 py-0.5"), { marginEnd: 8 }]}>
                           <Text style={twStyle("text-[10px] font-bold text-white")}>
-                            ACTIVE
+                            {cp("activeBadge")}
                           </Text>
                         </View>
                       )}
@@ -381,15 +397,13 @@ export default function ClosedPeriodsScreen() {
                       {formatDate(block.start_at)} — {formatDate(block.end_at)}
                     </Text>
                     <View style={twStyle("mt-1 flex-row items-center")}>
-                      <Text style={[twStyle("text-xs text-gray-400"), { marginRight: 12 }]}>
-                        {days} day{days !== 1 ? "s" : ""}
+                      <Text style={[twStyle("text-xs text-gray-400"), { marginEnd: 12 }]}>
+                        {cp("durationDays", { count: days })}
                       </Text>
                       {block.affected_bookings_count !== undefined &&
                         block.affected_bookings_count > 0 && (
                           <Text style={twStyle("text-xs text-amber-600")}>
-                            {block.affected_bookings_count} booking
-                            {block.affected_bookings_count !== 1 ? "s" : ""}{" "}
-                            affected
+                            {cp("bookingsAffected", { count: block.affected_bookings_count })}
                           </Text>
                         )}
                     </View>
@@ -412,10 +426,10 @@ export default function ClosedPeriodsScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Closed Period" : "Add Closed Period"}
+        title={editing ? cp("editTitle") : cp("addTitle")}
       >
         <View>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Type</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cp("typeLabel")}</Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {BLOCK_TYPES.map((opt) => (
               <TouchableOpacity
@@ -424,7 +438,7 @@ export default function ClosedPeriodsScreen() {
                   form.block_type === opt.value
                     ? "bg-indigo-600"
                     : "bg-gray-100"
-                }`), { marginRight: 8, marginBottom: 8 }]}
+                }`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() =>
                   setForm((p) => ({ ...p, block_type: opt.value }))
                 }
@@ -436,86 +450,86 @@ export default function ClosedPeriodsScreen() {
                       : "text-gray-700"
                   }`)}
                 >
-                  {opt.label}
+                  {cp(opt.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
           <View style={twStyle("mb-3 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Start Date
+                {cp("startDate")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.start_date}
-                onChangeText={(t) =>
-                  setForm((p) => ({ ...p, start_date: t }))
+                onChangeText={(text) =>
+                  setForm((p) => ({ ...p, start_date: text }))
                 }
-                placeholder="YYYY-MM-DD"
+                placeholder={cp("datePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Start Time
+                {cp("startTime")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.start_time}
-                onChangeText={(t) =>
-                  setForm((p) => ({ ...p, start_time: t }))
+                onChangeText={(text) =>
+                  setForm((p) => ({ ...p, start_time: text }))
                 }
-                placeholder="HH:MM"
+                placeholder={cp("timePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
           </View>
           <View style={twStyle("mb-3 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                End Date
+                {cp("endDate")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.end_date}
-                onChangeText={(t) => setForm((p) => ({ ...p, end_date: t }))}
-                placeholder="YYYY-MM-DD"
+                onChangeText={(text) => setForm((p) => ({ ...p, end_date: text }))}
+                placeholder={cp("datePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                End Time
+                {cp("endTime")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.end_time}
-                onChangeText={(t) =>
-                  setForm((p) => ({ ...p, end_time: t }))
+                onChangeText={(text) =>
+                  setForm((p) => ({ ...p, end_time: text }))
                 }
-                placeholder="HH:MM"
+                placeholder={cp("timePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Reason
+            {cp("reason")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.reason}
-            onChangeText={(t) => setForm((p) => ({ ...p, reason: t }))}
-            placeholder="e.g. Christmas Holiday"
+            onChangeText={(text) => setForm((p) => ({ ...p, reason: text }))}
+            placeholder={cp("reasonPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <View style={twStyle("mb-3 flex-row items-center justify-between")}>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                Recurring
+                {cp("recurring")}
               </Text>
               <Text style={twStyle("text-xs text-gray-400")}>
-                Repeat this closure every year
+                {cp("recurringHint")}
               </Text>
             </View>
             <Switch
@@ -529,33 +543,33 @@ export default function ClosedPeriodsScreen() {
           </View>
           {form.is_recurring && (
             <View style={twStyle("mb-3 flex-row")}>
-              {["yearly", "monthly", "weekly"].map((pattern) => (
+              {RECURRENCE_PATTERNS.map((pattern) => (
                 <TouchableOpacity
-                  key={pattern}
+                  key={pattern.value}
                   style={[twStyle(`rounded-full px-3 py-1.5 ${
-                    form.recurrence_pattern === pattern
+                    form.recurrence_pattern === pattern.value
                       ? "bg-indigo-600"
                       : "bg-gray-100"
-                  }`), { marginRight: 8 }]}
+                  }`), { marginEnd: 8 }]}
                   onPress={() =>
-                    setForm((p) => ({ ...p, recurrence_pattern: pattern }))
+                    setForm((p) => ({ ...p, recurrence_pattern: pattern.value }))
                   }
                 >
                   <Text
                     style={twStyle(`text-xs capitalize ${
-                      form.recurrence_pattern === pattern
+                      form.recurrence_pattern === pattern.value
                         ? "font-medium text-white"
                         : "text-gray-700"
                     }`)}
                   >
-                    {pattern}
+                    {cp(pattern.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
           <ActionButton
-            label={editing ? "Update Period" : "Add Closed Period"}
+            label={editing ? cp("updatePeriod") : cp("addPeriod")}
             onPress={handleSave}
             loading={creating || updatingBlock}
             fullWidth

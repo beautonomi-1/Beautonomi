@@ -1,3 +1,5 @@
+import { fetchDeduped } from "@/lib/client/fetch-dedupe";
+
 type SocialAuthConfig = {
   google: boolean;
   apple: boolean;
@@ -8,7 +10,7 @@ let cachedSocialAuthConfig: SocialAuthConfig | null = null;
 export async function getSocialAuthConfig(): Promise<SocialAuthConfig> {
   if (cachedSocialAuthConfig) return cachedSocialAuthConfig;
   try {
-    const res = await fetch("/api/public/third-party-config?service=social_auth", {
+    const res = await fetchDeduped("/api/public/third-party-config?service=social_auth", {
       cache: "no-store",
       credentials: "same-origin",
     });

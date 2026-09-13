@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useMemo, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -27,6 +28,7 @@ type AvailabilityBlock = {
 };
 
 export default function BlockedTimeTypesSettings() {
+  const { t } = useTranslation();
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   const [blockType, setBlockType] = useState<AvailabilityBlock["block_type"]>("break");
   const [startAt, setStartAt] = useState<string>("");
@@ -55,7 +57,7 @@ export default function BlockedTimeTypesSettings() {
       console.error("Error loading blocks:", error);
       const errorMessage = error instanceof FetchError 
         ? error.message 
-        : error?.error?.message || "Failed to load blocked time";
+        : error?.error?.message || t("web.provider.settings.pages.appointment-activity/blocked-time.failedToLoad");
       setError(errorMessage);
       setBlocks([]);
     } finally {
@@ -72,7 +74,7 @@ export default function BlockedTimeTypesSettings() {
     try {
       setIsSaving(true);
       if (!startAt || !endAt) {
-        toast.error("Start and end date/time are required");
+        toast.error(t("web.provider.settings.pages.appointment-activity/blocked-time.startAndEndDateTimeAre"));
         return;
       }
 
@@ -83,12 +85,12 @@ export default function BlockedTimeTypesSettings() {
       const endDate = new Date(endAt);
 
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        toast.error("Invalid date/time format");
+        toast.error(t("web.provider.settings.pages.appointment-activity/blocked-time.invalidDateTimeFormat"));
         return;
       }
 
       if (endDate <= startDate) {
-        toast.error("End time must be after start time");
+        toast.error(t("web.provider.settings.pages.appointment-activity/blocked-time.endTimeMustBeAfterStart"));
         return;
       }
 
@@ -101,10 +103,10 @@ export default function BlockedTimeTypesSettings() {
       setStartAt("");
       setEndAt("");
       setReason("");
-      toast.success("Blocked time added successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/blocked-time.blockedTimeAddedSuccessfully"));
       await load();
     } catch (e: any) {
-      const errorMessage = e?.message || e?.error?.message || "Failed to add blocked time";
+      const errorMessage = e?.message || e?.error?.message || t("web.provider.settings.pages.appointment-activity/blocked-time.failedToAdd");
       toast.error(errorMessage);
       console.error("Error creating block:", e);
     } finally {
@@ -113,46 +115,46 @@ export default function BlockedTimeTypesSettings() {
   };
 
   const deleteBlock = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this blocked time?")) {
+    if (!confirm(t("web.provider.settings.pages.appointment-activity/blocked-time.removeConfirm"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/provider/availability-blocks/${id}`);
-      toast.success("Blocked time removed successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/blocked-time.blockedTimeRemovedSuccessfully"));
       await load();
     } catch (e: any) {
       const errorMessage = e instanceof FetchError 
         ? e.message 
-        : e?.error?.message || "Failed to remove blocked time";
+        : e?.error?.message || t("web.provider.settings.pages.appointment-activity/blocked-time.failedToRemove");
       toast.error(errorMessage);
       console.error("Error deleting block:", e);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Blocked Time" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.appointment-activity/blocked-time.blockedTime") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Blocked Time"
-        subtitle="Add breaks and maintenance blocks (these will remove availability)"
+        title={t("web.provider.settings.categories.appointmentActivity.items.blockedTime.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.blockedTime.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading blocked time..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.appointment-activity/blocked-time.loadingBlockedTime")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Blocked Time"
-      subtitle="Add breaks and maintenance blocks (these will remove availability)"
+      title={t("web.provider.settings.categories.appointmentActivity.items.blockedTime.title")}
+      subtitle={t("web.provider.settings.categories.appointmentActivity.items.blockedTime.description")}
       onSave={createBlock}
       isSaving={isSaving}
       breadcrumbs={breadcrumbs}
@@ -160,32 +162,32 @@ export default function BlockedTimeTypesSettings() {
       <SectionCard>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Type</Label>
+<Label>{t("web.provider.settings.pages.appointment-activity/blocked-time.type")}</Label>
             <Select value={blockType} onValueChange={(v) => setBlockType(v as any)}>
               <SelectTrigger>
-                <SelectValue placeholder="Select type" />
+                <SelectValue placeholder={t("web.provider.settings.pages.appointment-activity/blocked-time.selectType")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="break">Break</SelectItem>
-                <SelectItem value="maintenance">Maintenance</SelectItem>
+<SelectItem value="break">{t("web.provider.settings.pages.appointment-activity/blocked-time.break")}</SelectItem>
+<SelectItem value="maintenance">{t("web.provider.settings.pages.appointment-activity/blocked-time.maintenance")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Reason (optional)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lunch / Training / Meeting" />
+<Label>{t("web.provider.settings.pages.appointment-activity/blocked-time.reasonOptional")}</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("web.provider.settings.pages.appointment-activity/blocked-time.lunchTrainingMeeting")} />
           </div>
           <div className="space-y-2">
-            <Label>Start</Label>
+<Label>{t("web.provider.settings.pages.appointment-activity/blocked-time.start")}</Label>
             <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>End</Label>
+<Label>{t("web.provider.settings.pages.appointment-activity/blocked-time.end")}</Label>
             <Input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
           </div>
           <div className="md:col-span-2">
             <Button onClick={createBlock} disabled={isSaving}>
-              Add Block
+{t("web.provider.settings.pages.appointment-activity/blocked-time.addBlock")}
             </Button>
           </div>
         </div>
@@ -201,11 +203,11 @@ export default function BlockedTimeTypesSettings() {
 
       <SectionCard>
         <div className="space-y-3">
-          <div className="text-sm text-gray-600">Upcoming blocked time (next 14 days)</div>
+<div className="text-sm text-gray-600">{t("web.provider.settings.pages.appointment-activity/blocked-time.upcoming")}</div>
           {blocks.length === 0 ? (
             <EmptyState
-              title="No blocked time"
-              description="Add breaks or maintenance blocks to prevent bookings during those times."
+              title={t("web.provider.settings.pages.appointment-activity/blocked-time.noBlockedTime")}
+              description={t("web.provider.settings.pages.appointment-activity/blocked-time.emptyHint")}
             />
           ) : (
             <div className="space-y-2">
@@ -237,7 +239,7 @@ export default function BlockedTimeTypesSettings() {
                     size="sm"
                     onClick={() => deleteBlock(b.id)}
                   >
-                    Remove
+{t("web.provider.settings.pages.appointment-activity/blocked-time.remove")}
                   </Button>
                 </div>
               ))}

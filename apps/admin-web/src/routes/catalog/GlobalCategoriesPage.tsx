@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -27,13 +27,106 @@ type CatRow = Record<string, unknown> & {
   is_featured?: boolean;
   is_active?: boolean;
   provider_count?: number;
+  name_i18n?: Record<string, string> | null;
 };
+
+/** Matches the public language registry so admin labels cover every shipped locale. */
+const CATEGORY_I18N_LOCALES: { code: string; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "en-US", label: "English (US)" },
+  { code: "en-AU", label: "English (Australia)" },
+  { code: "af", label: "Afrikaans" },
+  { code: "zu", label: "isiZulu" },
+  { code: "xh", label: "isiXhosa" },
+  { code: "st", label: "Sesotho" },
+  { code: "nso", label: "Sepedi" },
+  { code: "tn", label: "Setswana" },
+  { code: "ts", label: "Xitsonga" },
+  { code: "ve", label: "Tshivenda" },
+  { code: "ss", label: "siSwati" },
+  { code: "fr", label: "Français" },
+  { code: "ar", label: "العربية" },
+  { code: "sw", label: "Kiswahili" },
+  { code: "pt", label: "Português" },
+  { code: "pt-BR", label: "Português (Brasil)" },
+  { code: "es", label: "Español" },
+  { code: "es-MX", label: "Español (México)" },
+  { code: "de", label: "Deutsch" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "tr", label: "Türkçe" },
+  { code: "am", label: "አማርኛ" },
+  { code: "rw", label: "Ikinyarwanda" },
+  { code: "nl", label: "Nederlands" },
+  { code: "it", label: "Italiano" },
+];
+
+function asNameI18n(raw: unknown, fallbackEn?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) out[k] = v.trim();
+    }
+  }
+  if (!out.en && fallbackEn?.trim()) out.en = fallbackEn.trim();
+  return out;
+}
+
+function CategoryTranslationsEditor({
+  slug,
+  name,
+  initial,
+  saving,
+  onSave,
+}: {
+  slug: string;
+  name: string;
+  initial: Record<string, string>;
+  saving: boolean;
+  onSave: (next: Record<string, string>) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>(initial);
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-600">
+        Customer apps show <code className="rounded bg-white px-1">web.categories.{slug || "slug"}</code> when that
+        key exists in locale files. Otherwise they use these names for the visitor&apos;s language, then the English
+        name <strong>{name || "—"}</strong>.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {CATEGORY_I18N_LOCALES.map((locale) => (
+          <label key={locale.code} className="block">
+            <span className="mb-1 block text-[11px] font-medium text-gray-500">
+              {locale.label} <span className="font-mono text-gray-400">{locale.code}</span>
+            </span>
+            <input
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+              value={draft[locale.code] ?? ""}
+              placeholder={name}
+              onChange={(e) => setDraft((prev) => ({ ...prev, [locale.code]: e.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        disabled={saving}
+        onClick={() => onSave(draft)}
+      >
+        {saving ? "Saving…" : "Save translations"}
+      </button>
+    </div>
+  );
+}
 
 export function GlobalCategoriesPage() {
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const [msg, setMsg] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", slug: "", description: "", icon: "" });
+  const [openTranslations, setOpenTranslations] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: adminQueryKeys.globalCategories(),
@@ -47,6 +140,7 @@ export function GlobalCategoriesPage() {
         name: form.name.trim(),
         slug: form.slug.trim().toLowerCase(),
         description: form.description.trim() || null,
+        name_i18n: { en: form.name.trim() },
         ...(form.icon.trim() ? { icon: form.icon.trim() } : {}),
       }),
     onSuccess: async () => {
@@ -98,7 +192,7 @@ export function GlobalCategoriesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Global service categories"
-        description="Platform-wide categories used for onboarding, ads targeting, and catalog. Changes apply per resolved admin tenant where data is scoped."
+        description="Platform-wide categories used for onboarding, ads targeting, and catalog. New slugs translate immediately via per-language names (or later via web.categories.<slug> in locale files)."
       />
       <AdminPanel className="border-slate-200 bg-slate-50/90">
         <p className="text-sm text-gray-800">
@@ -106,6 +200,11 @@ export function GlobalCategoriesPage() {
           <strong>public image URL</strong> (PNG/SVG/WebP hosted on your CDN or under{" "}
           <code className="rounded bg-white px-1 text-xs">/images/...</code> on the web app), or a short token your UI maps to an
           asset. It is stored on <code className="rounded bg-white px-1 text-xs">global_service_categories.icon</code>.
+        </p>
+        <p className="mt-2 text-sm text-gray-800">
+          <strong>Translations:</strong> bundled locale files cover the original catalog slugs (Hair, Nails, …). When
+          you add a new category, save translations on the row — the customer and provider apps pick the visitor&apos;s
+          language automatically. Untranslated languages fall back to English.
         </p>
       </AdminPanel>
       {msg ? (
@@ -171,61 +270,87 @@ export function GlobalCategoriesPage() {
           <AdminTableBody>
             {rows.map((r) => {
               const id = String(r.id ?? "");
+              const translationsOpen = openTranslations === id;
+              const filled = Object.keys(asNameI18n(r.name_i18n, String(r.name ?? ""))).length;
               return (
-                <tr key={id}>
-                  <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
-                  <AdminTd className="font-mono text-xs">{String(r.slug ?? "")}</AdminTd>
-                  <AdminTd className="max-w-[14rem]">
-                    <input
-                      className="w-full rounded border border-gray-200 px-1 py-1 font-mono text-xs"
-                      defaultValue={String(r.icon ?? "")}
-                      placeholder="https://…"
-                      title="Image URL or icon token"
-                      onBlur={(e) => {
-                        const v = e.target.value.trim();
-                        putMut.mutate({ id, body: { icon: v || null } });
-                      }}
-                    />
-                  </AdminTd>
-                  <AdminTd>
-                    <input
-                      type="number"
-                      className="w-20 rounded border border-gray-200 px-1 py-1 text-sm"
-                      defaultValue={Number(r.display_order ?? 0)}
-                      onBlur={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (!Number.isFinite(v)) return;
-                        putMut.mutate({ id, body: { display_order: v } });
-                      }}
-                    />
-                  </AdminTd>
-                  <AdminTd className="tabular-nums">{String(r.provider_count ?? 0)}</AdminTd>
-                  <AdminTd>
-                    <input
-                      type="checkbox"
-                      defaultChecked={Boolean(r.is_featured)}
-                      onChange={(e) => putMut.mutate({ id, body: { is_featured: e.target.checked } })}
-                    />
-                  </AdminTd>
-                  <AdminTd>
-                    <input
-                      type="checkbox"
-                      defaultChecked={r.is_active !== false}
-                      onChange={(e) => putMut.mutate({ id, body: { is_active: e.target.checked } })}
-                    />
-                  </AdminTd>
-                  <AdminTd>
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-rose-700 hover:underline"
-                      onClick={() => {
-                        if (confirm("Deactivate this category?")) deactivateMut.mutate(id);
-                      }}
-                    >
-                      Deactivate
-                    </button>
-                  </AdminTd>
-                </tr>
+                <Fragment key={id}>
+                  <tr>
+                    <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
+                    <AdminTd className="font-mono text-xs">{String(r.slug ?? "")}</AdminTd>
+                    <AdminTd className="max-w-[14rem]">
+                      <input
+                        className="w-full rounded border border-gray-200 px-1 py-1 font-mono text-xs"
+                        defaultValue={String(r.icon ?? "")}
+                        placeholder="https://…"
+                        title="Image URL or icon token"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          putMut.mutate({ id, body: { icon: v || null } });
+                        }}
+                      />
+                    </AdminTd>
+                    <AdminTd>
+                      <input
+                        type="number"
+                        className="w-20 rounded border border-gray-200 px-1 py-1 text-sm"
+                        defaultValue={Number(r.display_order ?? 0)}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (!Number.isFinite(v)) return;
+                          putMut.mutate({ id, body: { display_order: v } });
+                        }}
+                      />
+                    </AdminTd>
+                    <AdminTd className="tabular-nums">{String(r.provider_count ?? 0)}</AdminTd>
+                    <AdminTd>
+                      <input
+                        type="checkbox"
+                        defaultChecked={Boolean(r.is_featured)}
+                        onChange={(e) => putMut.mutate({ id, body: { is_featured: e.target.checked } })}
+                      />
+                    </AdminTd>
+                    <AdminTd>
+                      <input
+                        type="checkbox"
+                        defaultChecked={r.is_active !== false}
+                        onChange={(e) => putMut.mutate({ id, body: { is_active: e.target.checked } })}
+                      />
+                    </AdminTd>
+                    <AdminTd>
+                      <div className="flex flex-col items-start gap-1">
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-slate-700 hover:underline"
+                          onClick={() => setOpenTranslations((cur) => (cur === id ? null : id))}
+                        >
+                          {translationsOpen ? "Hide translations" : `Translations (${filled})`}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-rose-700 hover:underline"
+                          onClick={() => {
+                            if (confirm("Deactivate this category?")) deactivateMut.mutate(id);
+                          }}
+                        >
+                          Deactivate
+                        </button>
+                      </div>
+                    </AdminTd>
+                  </tr>
+                  {translationsOpen ? (
+                    <tr>
+                      <AdminTd colSpan={8}>
+                        <CategoryTranslationsEditor
+                          slug={String(r.slug ?? "")}
+                          name={String(r.name ?? "")}
+                          initial={asNameI18n(r.name_i18n, String(r.name ?? ""))}
+                          saving={putMut.isPending}
+                          onSave={(next) => putMut.mutate({ id, body: { name_i18n: next } })}
+                        />
+                      </AdminTd>
+                    </tr>
+                  ) : null}
+                </Fragment>
               );
             })}
           </AdminTableBody>

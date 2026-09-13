@@ -44,7 +44,7 @@ export default function SolutionsDropdown() {
               <Link
                 key={type.category}
                 href={type.href}
-                className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group"
+                className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg hover:bg-gray-50 transition-colors text-start group"
                 onClick={() => setIsOpen(false)}
               >
                 <span className="text-xl sm:text-2xl flex-shrink-0">{type.icon}</span>

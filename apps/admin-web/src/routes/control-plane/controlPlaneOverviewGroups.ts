@@ -88,9 +88,9 @@ export const CONTROL_PLANE_OVERVIEW_GROUPS: {
         icon: Bot,
       },
       {
-        title: "Gemini credentials",
-        to: "/admin/control-plane/integrations/gemini",
-        description: "API key, models, safety",
+        title: "AI providers",
+        to: "/admin/control-plane/integrations/ai",
+        description: "Runtime, models, credentials, kill switches",
         icon: Sparkles,
       },
       {

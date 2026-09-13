@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type BookingsTabType = "upcoming" | "past" | "cancelled";
 
@@ -61,37 +63,43 @@ function formatTime(s: string) {
   });
 }
 
-const STATUS_STYLES: Record<string, { bg: string; text: string; label?: string }> = {
-  confirmed: { bg: "#DCFCE7", text: "#15803D" },
-  pending: { bg: "#FEF9C3", text: "#A16207", label: "Awaiting provider" },
-  pending_payment: { bg: "#FEF3C7", text: "#92400E", label: "Pending Payment" },
-  cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
-  completed: { bg: "#DBEAFE", text: "#1E40AF" },
-  started: { bg: "#E0E7FF", text: "#3730A3" },
-  in_progress: { bg: "#E0E7FF", text: "#3730A3", label: "In Progress" },
-  no_show: { bg: "#F3F4F6", text: "#6B7280", label: "No Show" },
-};
+function useStatusStyles(): Record<string, { bg: string; text: string; label?: string }> {
+  const { t } = useTranslation();
+  const bk = (key: string) => t(`customer.mobile.tabs.bookings.${key}`) as string;
+  return {
+    confirmed: { bg: "#DCFCE7", text: "#15803D" },
+    pending: { bg: "#FEF9C3", text: "#A16207", label: bk("statusAwaitingProvider") },
+    pending_payment: { bg: "#FEF3C7", text: "#92400E", label: bk("statusPendingPayment") },
+    cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
+    completed: { bg: "#DBEAFE", text: "#1E40AF" },
+    started: { bg: "#E0E7FF", text: "#3730A3" },
+    in_progress: { bg: "#E0E7FF", text: "#3730A3", label: bk("statusInProgress") },
+    no_show: { bg: "#F3F4F6", text: "#6B7280", label: bk("statusNoShow") },
+  };
+}
 
 /** Empty list per tab — matches web account-settings bookings behavior; search = provider discovery (parity with web `/search`). */
 function EmptyBookingsTab({ tab }: { tab: BookingsTabType }) {
+  const { t } = useTranslation();
+  const bk = (key: string) => t(`customer.mobile.tabs.bookings.${key}`) as string;
   const goSearch = () => router.push("/(app)/(tabs)/search");
   const primary =
     tab === "upcoming"
       ? {
-          title: "No appointments scheduled...yet!",
-          body: "Unveil your radiance. It's time to pamper yourself with our expert care.",
-          cta: "Start Searching",
+          title: bk("emptyUpcomingTitle"),
+          body: bk("emptyUpcomingBody"),
+          cta: bk("emptyUpcomingCta"),
         }
       : tab === "past"
         ? {
-            title: "No past appointments yet",
-            body: "Completed visits will appear here once you've attended them.",
-            cta: "Find providers",
+            title: bk("emptyPastTitle"),
+            body: bk("emptyPastBody"),
+            cta: bk("emptyPastCta"),
           }
         : {
-            title: "No cancelled bookings",
-            body: "When you cancel an appointment, it will show in this list.",
-            cta: "Find providers",
+            title: bk("emptyCancelledTitle"),
+            body: bk("emptyCancelledBody"),
+            cta: bk("emptyCancelledCta"),
           };
 
   return (
@@ -106,8 +114,8 @@ function EmptyBookingsTab({ tab }: { tab: BookingsTabType }) {
         onPress={goSearch}
         style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
         accessibilityRole="button"
-        accessibilityLabel={tab === "upcoming" ? "Start searching for providers" : "Find providers to book"}
-        accessibilityHint="Opens search to find providers and book"
+        accessibilityLabel={tab === "upcoming" ? bk("startSearchingA11y") : bk("findProvidersA11y")}
+        accessibilityHint={bk("findProvidersHint")}
       >
         <Text style={{ color: Colors.white, fontWeight: "600" }}>{primary.cta}</Text>
       </TouchableOpacity>
@@ -116,10 +124,14 @@ function EmptyBookingsTab({ tab }: { tab: BookingsTabType }) {
 }
 
 function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => void }) {
+  const { t } = useTranslation();
+  const bk = (key: string, options?: Record<string, string>) =>
+    (options != null ? t(`customer.mobile.tabs.bookings.${key}`, options as never) : t(`customer.mobile.tabs.bookings.${key}`)) as string;
+  const statusStyles = useStatusStyles();
   const name =
     (booking as unknown as Record<string, unknown>).provider_name as string | undefined ||
     booking.services?.[0]?.offering_name ||
-    "Beauty Service";
+    bk("beautyServiceFallback");
   // Resolve a coherent lifecycle status: when payment has cleared but the row
   // is still `pending_payment`, treat as `pending` (awaiting provider) to
   // avoid the contradictory "Pending Payment" pill on a paid booking.
@@ -131,13 +143,16 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
       (typeof _bookingOutstanding === "number" && _bookingOutstanding <= 0.005))
       ? "pending"
       : booking.status;
-  const statusEntry = STATUS_STYLES[_resolvedStatus] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
+  const statusEntry = statusStyles[_resolvedStatus] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const statusStyle = statusEntry;
+  const lifecycleHint = (booking as { lifecycle_hint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null })
+    .lifecycle_hint;
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName: name,
     paymentStatus: _bookingPaymentStatus,
     outstandingBalance: _bookingOutstanding,
+    lifecycleHint,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: _bookingPaymentStatus,
@@ -146,7 +161,10 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     paymentOption: (booking as unknown as { payment_option?: string }).payment_option,
     depositRequired: (booking as unknown as { deposit_required?: boolean }).deposit_required,
   });
-  const statusLabel = statusEntry.label || lifecycleDisplay.label;
+  const statusLabel =
+    lifecycleHint === "awaiting_close_out"
+      ? lifecycleDisplay.label
+      : statusEntry.label || lifecycleDisplay.label;
 
   return (
     <AnimatedPressable
@@ -157,11 +175,11 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
         Shadows.cardSmall,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Booking with ${name}, ${statusLabel}, ${formatDate(booking.scheduled_at)}`}
-      accessibilityHint="View booking details"
+      accessibilityLabel={bk("bookingWithA11y", { name, status: statusLabel, date: formatDate(booking.scheduled_at) })}
+      accessibilityHint={bk("viewBookingDetailsHint")}
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-        <Text style={{ fontWeight: "600", fontSize: 18, color: Colors.gray[900], flex: 1, marginRight: 8 }} numberOfLines={1}>
+        <Text style={{ fontWeight: "600", fontSize: 18, color: Colors.gray[900], flex: 1, marginEnd: 8 }} numberOfLines={1}>
           {name}
         </Text>
         <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 9999, backgroundColor: statusStyle.bg }}>
@@ -172,10 +190,10 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
       <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{formatDate(booking.scheduled_at)}</Text>
       <Text style={{ color: Colors.gray[600], fontSize: 14, marginTop: 4 }}>{formatTime(booking.scheduled_at)}</Text>
       {booking.location_type === "at_salon" && (
-        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>At Salon</Text>
+        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>{bk("atSalon")}</Text>
       )}
       {booking.location_type === "at_home" && (
-        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>At your location</Text>
+        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>{bk("atYourLocation")}</Text>
       )}
 
       <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
@@ -184,7 +202,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
         </Text>
         {booking.is_group_booking && (
           <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-            Your portion · group booking
+            {bk("groupPortion")}
           </Text>
         )}
         <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>#{booking.booking_number}</Text>
@@ -193,7 +211,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fdf2f8", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
               <Ionicons name="people-outline" size={12} color="#db2777" />
               <Text style={{ fontSize: 11, fontWeight: "600", color: "#db2777" }}>
-                {booking.group_booking_ref ? `Group · ${booking.group_booking_ref}` : "Group booking"}
+                {booking.group_booking_ref ? bk("groupWithRef", { ref: booking.group_booking_ref }) : bk("groupBooking")}
               </Text>
             </View>
           )}
@@ -204,12 +222,12 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
           )}
           {!booking.is_group_booking && booking.booking_source === "walk_in" && (
             <View style={{ backgroundColor: "#f0fdf4", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: "#166534" }}>Walk-in</Text>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#166534" }}>{bk("walkIn")}</Text>
             </View>
           )}
           {!booking.is_group_booking && booking.booking_source === "online" && booking.special_requests?.startsWith("Custom order:") && (
             <View style={{ backgroundColor: "#eff6ff", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>Custom offer</Text>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>{bk("customOffer")}</Text>
             </View>
           )}
         </View>
@@ -219,9 +237,9 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
         onPress={onPress}
         style={{ marginTop: 16, paddingVertical: 10, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, alignItems: "center" }}
         accessibilityRole="button"
-        accessibilityLabel={`View details for booking with ${name}`}
+        accessibilityLabel={bk("viewDetailsA11y", { name })}
       >
-        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>View Details</Text>
+        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{bk("viewDetails")}</Text>
       </TouchableOpacity>
     </AnimatedPressable>
   );
@@ -244,6 +262,12 @@ function presetToApi(p: SortPreset): { sortBy: MeBookingsSortBy; sortDir: MeBook
 
 export default function BookingsScreen() {
   useScreenTracking("Bookings");
+  const { t } = useTranslation();
+  const bk = useCallback(
+    (key: string, options?: Record<string, string>) =>
+      (options != null ? t(`customer.mobile.tabs.bookings.${key}`, options as never) : t(`customer.mobile.tabs.bookings.${key}`)) as string,
+    [t],
+  );
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -287,18 +311,24 @@ export default function BookingsScreen() {
     };
   }, [user?.id]);
 
-  const tabs: { key: BookingsTabType; label: string }[] = [
-    { key: "upcoming", label: "Upcoming" },
-    { key: "past", label: "Past" },
-    { key: "cancelled", label: "Cancelled" },
-  ];
+  const tabs: { key: BookingsTabType; label: string }[] = useMemo(
+    () => [
+      { key: "upcoming", label: bk("tabUpcoming") },
+      { key: "past", label: bk("tabPast") },
+      { key: "cancelled", label: bk("tabCancelled") },
+    ],
+    [bk],
+  );
 
-  const sortChips: { key: SortPreset; label: string }[] = [
-    { key: "appt_desc", label: "Appt · newest" },
-    { key: "appt_asc", label: "Appt · soonest" },
-    { key: "booked_desc", label: "Booked · newest" },
-    { key: "booked_asc", label: "Booked · oldest" },
-  ];
+  const sortChips: { key: SortPreset; label: string }[] = useMemo(
+    () => [
+      { key: "appt_desc", label: bk("sortApptNewest") },
+      { key: "appt_asc", label: bk("sortApptSoonest") },
+      { key: "booked_desc", label: bk("sortBookedNewest") },
+      { key: "booked_asc", label: bk("sortBookedOldest") },
+    ],
+    [bk],
+  );
 
   const onBookingPress = useCallback(
     (b: Booking) => {
@@ -326,19 +356,19 @@ export default function BookingsScreen() {
         <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
           <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
-            Your appointments
+            {bk("guestTitle")}
           </Text>
           <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
-            Log in to view and manage your bookings
+            {bk("guestBody")}
           </Text>
           <TouchableOpacity
             onPress={() => pushCustomerLogin("/(app)/(tabs)/bookings")}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Log in"
-            accessibilityHint="Navigate to the login screen"
+            accessibilityLabel={bk("logInA11y")}
+            accessibilityHint={bk("logInHint")}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{bk("logIn")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -355,7 +385,7 @@ export default function BookingsScreen() {
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
       <View style={[contentContainerStyle, { backgroundColor: Colors.white, paddingTop: contentPadding, paddingBottom: 8 }]}>
         <View style={{ paddingHorizontal: contentPadding }}>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>Bookings</Text>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>{bk("screenTitle")}</Text>
           <TouchableOpacity
             onPress={() => {
               haptic.selection();
@@ -373,17 +403,17 @@ export default function BookingsScreen() {
               borderColor: Colors.gray[200],
             }}
             accessibilityRole="button"
-            accessibilityLabel="Custom requests and offers"
-            accessibilityHint="Open quotes and custom service requests from providers"
+            accessibilityLabel={bk("customRequestsA11y")}
+            accessibilityHint={bk("customRequestsHint")}
           >
             <Ionicons name="briefcase-outline" size={22} color={Colors.primary} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Custom requests & offers</Text>
+            <View style={{ flex: 1, marginStart: 12 }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{bk("customRequestsTitle")}</Text>
               <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-                Review quotes and respond to providers
+                {bk("customRequestsSubtitle")}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
           </TouchableOpacity>
           <View style={{ flexDirection: "row" }}>
             {tabs.map((t) => (
@@ -395,12 +425,12 @@ export default function BookingsScreen() {
                   paddingVertical: 8,
                   borderRadius: 9999,
                   backgroundColor: tab === t.key ? Colors.primary : Colors.gray[100],
-                  marginRight: 8,
+                  marginEnd: 8,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`${t.label} bookings`}
+                accessibilityLabel={bk("tabA11y", { label: t.label })}
                 accessibilityState={{ selected: tab === t.key }}
-                accessibilityHint={`Show ${t.label.toLowerCase()} bookings`}
+                accessibilityHint={bk("tabHint", { label: t.label.toLowerCase() })}
               >
                 <Text style={{ fontWeight: "500", color: tab === t.key ? Colors.white : Colors.gray[700] }}>
                   {t.label}
@@ -409,9 +439,9 @@ export default function BookingsScreen() {
             ))}
           </View>
           <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 14, marginBottom: 8 }}>
-            Sort
+            {bk("sortLabel")}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingEnd: 8 }}>
             {sortChips.map((c) => {
               const active = sortPreset === c.key;
               return (
@@ -426,10 +456,10 @@ export default function BookingsScreen() {
                     paddingVertical: 7,
                     borderRadius: 9999,
                     backgroundColor: active ? Colors.gray[900] : Colors.gray[100],
-                    marginRight: 8,
+                    marginEnd: 8,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Sort bookings: ${c.label}`}
+                  accessibilityLabel={bk("sortA11y", { label: c.label })}
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: "600", color: active ? Colors.white : Colors.gray[700] }}>
@@ -470,7 +500,7 @@ export default function BookingsScreen() {
             />
           }
           accessibilityRole="list"
-          accessibilityLabel={`${tab} bookings list`}
+          accessibilityLabel={bk("listA11y", { tab })}
           ListHeaderComponent={
             error ? (
               <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
@@ -479,10 +509,10 @@ export default function BookingsScreen() {
                   onPress={() => refetch()}
                   style={{ backgroundColor: Colors.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" }}
                   accessibilityRole="button"
-                  accessibilityLabel="Retry loading bookings"
-                  accessibilityHint="Attempts to reload your bookings"
+                  accessibilityLabel={bk("retryLoadingA11y")}
+                  accessibilityHint={bk("retryLoadingHint")}
                 >
-                  <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+                  <Text style={{ color: Colors.white, fontWeight: "600" }}>{bk("retry")}</Text>
                 </TouchableOpacity>
               </View>
             ) : null

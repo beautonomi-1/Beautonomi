@@ -9,6 +9,7 @@ import { LocationMapPickerDialog, type PickedMapLocation } from "./LocationMapPi
 import { LocateFixed, Loader2, MapPinned } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AddressFormProps {
   initialAddress?: {
@@ -47,6 +48,7 @@ export default function AddressForm({
   asForm = true,
   showHouseCallFields = true, // Default to true for saved addresses
 }: AddressFormProps) {
+  const { t } = useTranslation();
   // Parse access_codes if it's a string (from database JSONB)
   const parseAccessCodes = (codes: any): { gate?: string; buzzer?: string; door?: string } => {
     if (!codes) return {};
@@ -107,7 +109,7 @@ export default function AddressForm({
 
   const handleUseCurrentLocation = async () => {
     if (!("geolocation" in navigator)) {
-      window.alert("Current location is not available in this browser.");
+      window.alert(t("web.mapbox.addressForm.locationUnavailable"));
       return;
     }
 
@@ -127,7 +129,7 @@ export default function AddressForm({
               defaultCountryName: formData.country || country,
             });
             handleAddressSelect({
-              address_line1: mapped.address_line1 || "Current location",
+              address_line1: mapped.address_line1 || t("web.mapbox.addressForm.currentLocation"),
               city: mapped.city || "",
               state: mapped.state || undefined,
               postal_code: mapped.postal_code || undefined,
@@ -138,22 +140,22 @@ export default function AddressForm({
             });
           } else {
             handleAddressSelect({
-              address_line1: "Current location",
+              address_line1: t("web.mapbox.addressForm.currentLocation"),
               city: "",
               country: formData.country || country || "",
               latitude,
               longitude,
-              place_name: "Current location",
+              place_name: t("web.mapbox.addressForm.currentLocation"),
             });
           }
         } catch {
           handleAddressSelect({
-            address_line1: "Current location",
+            address_line1: t("web.mapbox.addressForm.currentLocation"),
             city: "",
             country: formData.country || country || "",
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-            place_name: "Current location",
+            place_name: t("web.mapbox.addressForm.currentLocation"),
           });
         } finally {
           setIsLocating(false);
@@ -161,7 +163,7 @@ export default function AddressForm({
       },
       (error) => {
         setIsLocating(false);
-        window.alert(error.message || "Could not get your current location.");
+        window.alert(error.message || t("web.mapbox.addressForm.locationFailed"));
       },
       { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 },
     );
@@ -190,22 +192,22 @@ export default function AddressForm({
     <FormWrapper {...formProps} className="space-y-4">
       {showLabel && (
         <div>
-          <Label htmlFor="label">Label (e.g., Home, Work)</Label>
+          <Label htmlFor="label">{t("web.mapbox.addressForm.labelHint")}</Label>
           <Input
             id="label"
             value={formData.label}
             onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-            placeholder="Home"
+            placeholder={t("web.mapbox.addressForm.labelPlaceholder")}
           />
         </div>
       )}
 
       <div>
-        <Label htmlFor="address">Address *</Label>
+        <Label htmlFor="address">{t("web.mapbox.addressForm.addressRequired")}</Label>
         <AddressAutocomplete
           value={formData.place_name || formData.address_line1}
           onChange={handleAddressSelect}
-          placeholder="Start typing an address..."
+          placeholder={t("web.mapbox.addressForm.addressPlaceholder")}
           country={formData.country || country}
           proximity={proximity}
           required
@@ -224,7 +226,7 @@ export default function AddressForm({
             ) : (
               <LocateFixed className="mr-2 h-4 w-4" />
             )}
-            Use current location
+            {t("web.mapbox.addressForm.useCurrentLocation")}
           </Button>
           <Button
             type="button"
@@ -234,24 +236,24 @@ export default function AddressForm({
             className="justify-center"
           >
             <MapPinned className="mr-2 h-4 w-4" />
-            Drop pin on map
+            {t("web.mapbox.addressForm.dropPin")}
           </Button>
         </div>
       </div>
 
       <div>
-        <Label htmlFor="address_line2">Apartment, suite, etc. (optional)</Label>
+        <Label htmlFor="address_line2">{t("web.mapbox.addressForm.apartmentOptional")}</Label>
         <Input
           id="address_line2"
           value={formData.address_line2}
           onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
-          placeholder="Apt 4B"
+          placeholder={t("web.mapbox.addressForm.apartmentPlaceholder")}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="city">City *</Label>
+          <Label htmlFor="city">{t("web.mapbox.addressForm.cityRequired")}</Label>
           <Input
             id="city"
             value={formData.city}
@@ -261,7 +263,7 @@ export default function AddressForm({
         </div>
 
         <div>
-          <Label htmlFor="state">State/Province</Label>
+          <Label htmlFor="state">{t("web.mapbox.addressForm.stateProvince")}</Label>
           <Input
             id="state"
             value={formData.state}
@@ -272,7 +274,7 @@ export default function AddressForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="postal_code">Postal Code</Label>
+          <Label htmlFor="postal_code">{t("web.mapbox.addressForm.postalCode")}</Label>
           <Input
             id="postal_code"
             value={formData.postal_code}
@@ -281,7 +283,7 @@ export default function AddressForm({
         </div>
 
         <div>
-          <Label htmlFor="country">Country *</Label>
+          <Label htmlFor="country">{t("web.mapbox.addressForm.countryRequired")}</Label>
           <Input
             id="country"
             value={formData.country}
@@ -294,55 +296,55 @@ export default function AddressForm({
       {/* House Call Specific Fields */}
       {showHouseCallFields && (
         <div className="space-y-4 pt-4 border-t">
-          <p className="text-sm font-medium text-gray-700">Additional Location Details (Optional)</p>
+          <p className="text-sm font-medium text-gray-700">{t("web.mapbox.addressForm.additionalDetails")}</p>
           <p className="text-xs text-gray-500 mb-3">
-            Help service providers find you easily by providing these details
+            {t("web.mapbox.addressForm.additionalDetailsHint")}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="apartment_unit">Apartment/Unit Number</Label>
+              <Label htmlFor="apartment_unit">{t("web.mapbox.addressForm.apartmentUnit")}</Label>
               <Input
                 id="apartment_unit"
                 value={formData.apartment_unit}
                 onChange={(e) => setFormData({ ...formData, apartment_unit: e.target.value })}
-                placeholder="e.g., Apt 5B, Unit 12"
+                placeholder={t("web.mapbox.addressForm.apartmentUnitPlaceholder")}
               />
             </div>
 
             <div>
-              <Label htmlFor="building_name">Building/Complex Name</Label>
+              <Label htmlFor="building_name">{t("web.mapbox.addressForm.buildingName")}</Label>
               <Input
                 id="building_name"
                 value={formData.building_name}
                 onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
-                placeholder="e.g., Sunset Towers"
+                placeholder={t("web.mapbox.addressForm.buildingNamePlaceholder")}
               />
             </div>
 
             <div>
-              <Label htmlFor="floor_number">Floor Number</Label>
+              <Label htmlFor="floor_number">{t("web.mapbox.addressForm.floorNumber")}</Label>
               <Input
                 id="floor_number"
                 value={formData.floor_number}
                 onChange={(e) => setFormData({ ...formData, floor_number: e.target.value })}
-                placeholder="e.g., 3rd Floor"
+                placeholder={t("web.mapbox.addressForm.floorNumberPlaceholder")}
               />
             </div>
 
             <div>
-              <Label htmlFor="parking_instructions">Parking Instructions</Label>
+              <Label htmlFor="parking_instructions">{t("web.mapbox.addressForm.parkingInstructions")}</Label>
               <Input
                 id="parking_instructions"
                 value={formData.parking_instructions}
                 onChange={(e) => setFormData({ ...formData, parking_instructions: e.target.value })}
-                placeholder="e.g., Free street parking, Visitor parking lot"
+                placeholder={t("web.mapbox.addressForm.parkingPlaceholder")}
               />
             </div>
           </div>
 
           <div>
-            <Label htmlFor="access_codes" className="mb-2 block">Access Codes (Optional)</Label>
+            <Label htmlFor="access_codes" className="mb-2 block">{t("web.mapbox.addressForm.accessCodesOptional")}</Label>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Input
@@ -352,9 +354,9 @@ export default function AddressForm({
                     ...formData,
                     access_codes: { ...formData.access_codes, gate: e.target.value },
                   })}
-                  placeholder="Gate code"
+                  placeholder={t("web.mapbox.addressForm.gateCodePlaceholder")}
                 />
-                <Label htmlFor="gate_code" className="text-xs text-gray-500 mt-0.5 block">Gate</Label>
+                <Label htmlFor="gate_code" className="text-xs text-gray-500 mt-0.5 block">{t("web.mapbox.addressForm.gate")}</Label>
               </div>
               <div>
                 <Input
@@ -364,9 +366,9 @@ export default function AddressForm({
                     ...formData,
                     access_codes: { ...formData.access_codes, buzzer: e.target.value },
                   })}
-                  placeholder="Buzzer code"
+                  placeholder={t("web.mapbox.addressForm.buzzerCodePlaceholder")}
                 />
-                <Label htmlFor="buzzer_code" className="text-xs text-gray-500 mt-0.5 block">Buzzer</Label>
+                <Label htmlFor="buzzer_code" className="text-xs text-gray-500 mt-0.5 block">{t("web.mapbox.addressForm.buzzer")}</Label>
               </div>
               <div>
                 <Input
@@ -376,20 +378,20 @@ export default function AddressForm({
                     ...formData,
                     access_codes: { ...formData.access_codes, door: e.target.value },
                   })}
-                  placeholder="Door code"
+                  placeholder={t("web.mapbox.addressForm.doorCodePlaceholder")}
                 />
-                <Label htmlFor="door_code" className="text-xs text-gray-500 mt-0.5 block">Door</Label>
+                <Label htmlFor="door_code" className="text-xs text-gray-500 mt-0.5 block">{t("web.mapbox.addressForm.door")}</Label>
               </div>
             </div>
           </div>
 
           <div>
-            <Label htmlFor="location_landmarks">Landmarks/Directions</Label>
+            <Label htmlFor="location_landmarks">{t("web.mapbox.addressForm.landmarks")}</Label>
             <Input
               id="location_landmarks"
               value={formData.location_landmarks}
               onChange={(e) => setFormData({ ...formData, location_landmarks: e.target.value })}
-              placeholder="e.g., Next to the blue mailbox, red door"
+              placeholder={t("web.mapbox.addressForm.landmarksPlaceholder")}
             />
           </div>
         </div>
@@ -398,7 +400,7 @@ export default function AddressForm({
       <div className="flex gap-2 justify-end">
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {t("web.mapbox.addressForm.cancel")}
           </Button>
         )}
         <Button 
@@ -406,7 +408,7 @@ export default function AddressForm({
           onClick={asForm ? undefined : handleSubmit}
           disabled={isSaving || !formData.address_line1 || !formData.city || !formData.country}
         >
-          {isSaving ? "Saving..." : "Save Address"}
+          {isSaving ? t("web.mapbox.addressForm.saving") : t("web.mapbox.addressForm.saveAddress")}
         </Button>
       </div>
       <LocationMapPickerDialog

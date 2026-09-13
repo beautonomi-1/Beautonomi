@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -26,6 +27,7 @@ type GiftCardSettingsResponse = {
 };
 
 export default function ProviderPaymentMethodsPage() {
+  const { t } = useTranslation();
   const { bundle, isLoading: isConfigLoading } = useConfigBundle();
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +64,7 @@ export default function ProviderPaymentMethodsPage() {
       );
       setGiftCardsEnabled(Boolean(giftCardResponse.data?.enabled));
     } catch (error: any) {
-      toast.error(error?.message || "Failed to load payment settings");
+toast.error(error?.message || t("web.provider.settings.pages.payments.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -70,7 +72,7 @@ export default function ProviderPaymentMethodsPage() {
 
   const handleSave = async () => {
     if (!acceptCash && !acceptCard && !acceptOnline) {
-      toast.error("Enable at least one payment method");
+      toast.error(t("web.provider.settings.pages.payments.enableAtLeastOnePaymentMethod"));
       return;
     }
 
@@ -87,9 +89,9 @@ export default function ProviderPaymentMethodsPage() {
           gift_cards_enabled: giftCardsEnabled,
         }),
       ]);
-      toast.success("Payment methods updated");
+      toast.success(t("web.provider.settings.pages.payments.paymentMethodsUpdated"));
     } catch (error: any) {
-      toast.error(error?.message || "Failed to save payment settings");
+toast.error(error?.message || t("web.provider.settings.pages.payments.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -97,81 +99,81 @@ export default function ProviderPaymentMethodsPage() {
 
   return (
     <SettingsDetailLayout
-      title="Payment Methods"
-      subtitle="Choose how customers can pay your business"
+      title={t("web.provider.settings.categories.sales.items.paymentMethods.title")}
+      subtitle={t("web.provider.settings.categories.sales.items.paymentMethods.description")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Changes"}
+      saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.common.saveChanges")}
       saveDisabled={isSaving || isLoading || isConfigLoading}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Payment Methods" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.payments.paymentMethods") },
       ]}
     >
       <SectionCard>
         {isLoading || isConfigLoading ? (
-          <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
+<div className="py-8 text-center text-sm text-gray-500">{t("web.provider.settings.common.loading")}</div>
         ) : (
           <div className="space-y-4">
             {yocoEnabled && (
               <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
                 <p className="text-xs text-blue-800">
-                  In-person card payments are processed through your Yoco terminal.
+{t("web.provider.settings.pages.payments.yocoBanner")}
                 </p>
                 <a
                   href="/provider/settings/sales/yoco-devices"
                   className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:text-blue-800 underline"
                 >
-                  Manage Yoco terminals
+{t("web.provider.settings.pages.payments.manageYoco")}
                 </a>
               </div>
             )}
             <MethodRow
-              label="Cash"
-              description="Accept cash at your business location."
+              label={t("web.provider.settings.pages.payments.cash")}
+description={t("web.provider.settings.pages.payments.cashDesc")}
               checked={acceptCash}
               onCheckedChange={setAcceptCash}
             />
             {yocoEnabled && (
               <MethodRow
-                label="In-person Card (Yoco Terminal)"
-                description="Accept in-person card payments via Yoco terminal."
+label={t("web.provider.settings.pages.payments.yocoCard")}
+description={t("web.provider.settings.pages.payments.yocoCardDesc")}
                 checked={acceptCard}
                 onCheckedChange={setAcceptCard}
               />
             )}
             <MethodRow
-              label="Online Payments"
-              description="Accept online checkout payments."
+label={t("web.provider.settings.pages.payments.online")}
+description={t("web.provider.settings.pages.payments.onlineDesc")}
               checked={acceptOnline}
               onCheckedChange={setAcceptOnline}
             />
             {paystackTerminalPlatformEnabled && (
               <div className="space-y-2">
                 <MethodRow
-                  label="Paystack Terminal (in-person QR / link)"
-                  description="Let customers pay in person by scanning your Paystack Terminal QR or link. Payments arrive in your terminal inbox to allocate."
+label={t("web.provider.settings.pages.payments.paystackTerminal")}
+description={t("web.provider.settings.pages.payments.paystackTerminalDesc")}
                   checked={acceptPaystackTerminal}
                   onCheckedChange={setAcceptPaystackTerminal}
                 />
                 {acceptPaystackTerminal && paystackTerminalActiveCount === 0 && (
                   <p className="px-1 text-xs text-amber-600">
-                    No active terminal yet. Request setup from{" "}
+{t("web.provider.settings.pages.payments.noActiveTerminal")}{" "}
                     <a
                       href="/provider/settings/sales/paystack-terminal"
                       className="font-semibold underline"
                     >
-                      Paystack Terminal settings
+{t("web.provider.settings.pages.payments.paystackTerminalSettings")}
                     </a>{" "}
-                    so it becomes selectable at checkout.
+{t("web.provider.settings.pages.payments.noActiveTerminalSuffix")}
                   </p>
                 )}
               </div>
             )}
             <MethodRow
-              label="Gift Cards"
-              description="Allow customers to redeem platform gift cards at your business."
+              label={t("web.provider.settings.pages.payments.giftCards")}
+description={t("web.provider.settings.pages.payments.giftCardsDesc")}
               checked={giftCardsEnabled}
               onCheckedChange={setGiftCardsEnabled}
             />
@@ -195,7 +197,7 @@ function MethodRow({
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <div className="pr-4">
+      <div className="pe-4">
         <Label className="text-sm font-semibold text-gray-900">{label}</Label>
         <p className="mt-1 text-xs text-gray-500">{description}</p>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ interface Location {
 }
 
 export default function LocationsSettings() {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState<Location[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<"forbidden" | "other" | null>(null);
@@ -74,10 +76,10 @@ export default function LocationsSettings() {
       console.error("Error loading locations:", error);
       if (error instanceof FetchError && error.status === 403) {
         setLoadError("forbidden");
-        toast.error("You need provider access to view locations. Please sign in with a provider account.");
+        toast.error(t("web.provider.settings.pages.locations.youNeedProviderAccessToView"));
       } else {
         setLoadError("other");
-        toast.error("Failed to load locations");
+        toast.error(t("web.provider.settings.pages.locations.failedToLoadLocations"));
       }
     } finally {
       setIsLoading(false);
@@ -95,7 +97,7 @@ export default function LocationsSettings() {
   };
 
   const handleDelete = async (location: Location) => {
-    if (!confirm(`Are you sure you want to delete "${location.name}"?`)) return;
+    if (!confirm(t("web.provider.settings.pages.locations.deleteConfirm", { name: location.name }))) return;
 
     try {
       const res = (await fetcher.delete(`/api/provider/locations/${location.id}`)) as {
@@ -104,12 +106,12 @@ export default function LocationsSettings() {
       const deactivated = Boolean(res?.data?.deactivated);
       toast.success(
         deactivated
-          ? "Location deactivated (it is still linked to bookings or other records)."
-          : "Location removed"
+          ? t("web.provider.settings.pages.locations.deactivatedLinked")
+          : t("web.provider.settings.pages.locations.locationRemoved")
       );
       loadLocations();
     } catch {
-      toast.error("Failed to delete location");
+      toast.error(t("web.provider.settings.pages.locations.failedToDeleteLocation"));
     }
   };
 
@@ -117,13 +119,13 @@ export default function LocationsSettings() {
     try {
       if (editingLocation) {
         await fetcher.patch(`/api/provider/locations/${editingLocation.id}`, locationData);
-        toast.success("Location updated");
+        toast.success(t("web.provider.settings.pages.locations.locationUpdated"));
       } else {
         await fetcher.post("/api/provider/locations", {
           name: (locationData.label as string) || "Location",
           ...locationData,
         });
-        toast.success("Location created");
+        toast.success(t("web.provider.settings.pages.locations.locationCreated"));
       }
       setShowDialog(false);
       setEditingLocation(null);
@@ -131,30 +133,30 @@ export default function LocationsSettings() {
       invalidateProviderPortalCache();
       loadLocations();
     } catch (error: unknown) {
-      toastPlanGateError(error, "Failed to save location");
+      toastPlanGateError(error, t("web.provider.settings.pages.locations.failedToSave"));
     }
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading locations..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.locations.loadingLocations")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Locations"
-        subtitle="Manage your business locations"
+        title={t("web.provider.settings.categories.appointmentActivity.items.locations.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.locations.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          ...(returnTo ? [{ label: "Get Started", href: returnTo }] : []),
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Locations" }
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          ...(returnTo ? [{ label: t("web.provider.settings.pages.locations.getStarted"), href: returnTo }] : []),
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.locations.locations") }
         ]}
         primaryAction={{
-          label: "Add a new location",
+          label: t("web.provider.settings.pages.locations.addANewLocation"),
           onClick: handleCreate,
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
@@ -165,17 +167,17 @@ export default function LocationsSettings() {
             <MapPin className="w-5 h-5 text-primary" />
             <div>
               <p className="text-sm font-medium text-gray-900">
-                Complete this step to continue your setup
+                {t("web.provider.settings.pages.locations.setupBannerTitle")}
               </p>
               <p className="text-xs text-gray-600">
-                Add your business location to help customers find you
+                {t("web.provider.settings.pages.locations.setupBannerBody")}
               </p>
             </div>
           </div>
           <Link href={returnTo}>
             <Button variant="outline" size="sm" className="border-primary/30 text-primary hover:bg-primary/10">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Get Started
+              <ArrowLeft className="w-4 h-4 me-2" />
+              {t("web.provider.settings.pages.locations.backToGetStarted")}
             </Button>
           </Link>
         </div>
@@ -184,11 +186,12 @@ export default function LocationsSettings() {
       {/* Quick link: set service radius / distance for house calls */}
       <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50/50 px-4 py-3 flex items-center justify-between gap-4">
         <p className="text-sm text-gray-700">
-          <span className="font-medium">House calls:</span> Set how far you&apos;re willing to travel (service radius).
+          <span className="font-medium">{t("web.provider.settings.pages.locations.houseCalls")}</span>
+          {t("web.provider.settings.pages.locations.houseCallsBody")}
         </p>
         <Link href="/provider/settings/distance">
           <Button variant="outline" size="sm" className="border-indigo-300 text-indigo-700 hover:bg-indigo-100 shrink-0">
-            Distance & radius
+            {t("web.provider.settings.pages.locations.distanceAndRadius")}
           </Button>
         </Link>
       </div>
@@ -197,27 +200,27 @@ export default function LocationsSettings() {
         <SectionCard className="p-12">
           <div className="text-center max-w-md mx-auto">
             <p className="text-muted-foreground mb-2">
-              You need provider access to view and manage locations.
+              {t("web.provider.settings.pages.locations.needProviderAccess")}
             </p>
             <p className="text-sm text-muted-foreground">
-              Please sign in with an account that has provider (owner or staff) access, or contact support if you believe you should have access.
+              {t("web.provider.settings.pages.locations.needProviderAccessHint")}
             </p>
           </div>
         </SectionCard>
       ) : loadError === "other" ? (
         <SectionCard className="p-12">
           <div className="text-center max-w-md mx-auto">
-            <p className="text-muted-foreground mb-4">Couldn&apos;t load locations.</p>
-            <Button onClick={loadLocations} variant="outline">Try again</Button>
+            <p className="text-muted-foreground mb-4">{t("web.provider.settings.pages.locations.couldntLoad")}</p>
+            <Button onClick={loadLocations} variant="outline">{t("web.provider.settings.pages.locations.tryAgain")}</Button>
           </div>
         </SectionCard>
       ) : locations.length === 0 ? (
         <SectionCard className="p-12">
           <EmptyState
-            title="No locations yet"
-            description="Add your business address for travel distance and fees. Add a salon location when clients can visit you in-studio."
+            title={t("web.provider.settings.categories.appointmentActivity.items.locations.title")}
+            description={t("web.provider.settings.pages.locations.emptyDescription")}
             action={{
-              label: "Add Location",
+              label: t("web.provider.settings.pages.locations.addLocation"),
               onClick: handleCreate,
             }}
           />
@@ -238,17 +241,17 @@ export default function LocationsSettings() {
                       <h3 className="font-semibold text-lg">{location.name}</h3>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {location.is_active ? (
-                          <span className="text-xs text-primary font-medium">Active</span>
+                          <span className="text-xs text-primary font-medium">{t("web.provider.settings.pages.locations.active")}</span>
                         ) : (
-                          <span className="text-xs text-amber-700 font-medium">Inactive</span>
+                          <span className="text-xs text-amber-700 font-medium">{t("web.provider.settings.pages.locations.inactive")}</span>
                         )}
                         {(location.location_type || "salon") === "salon" ? (
                           <span className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded font-medium">
-                            Salon — clients can visit
+                            {t("web.provider.settings.pages.locations.salonClientsCanVisit")}
                           </span>
                         ) : (
                           <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded font-medium">
-                            Base address (travel distance only)
+                            {t("web.provider.settings.pages.locations.baseTravelOnly")}
                           </span>
                         )}
                       </div>
@@ -266,7 +269,7 @@ export default function LocationsSettings() {
                   </p>
                   {location.latitude && location.longitude && (
                     <p className="text-xs text-gray-400 mb-4">
-                      Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                      {t("web.provider.settings.pages.locations.coordinates", { lat: location.latitude.toFixed(6), lng: location.longitude.toFixed(6) })}
                     </p>
                   )}
                   <div className="flex gap-2">
@@ -275,8 +278,8 @@ export default function LocationsSettings() {
                       size="sm"
                       onClick={() => handleEdit(location)}
                     >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit
+                      <Edit className="w-4 h-4 me-2" />
+                      {t("web.provider.common.edit")}
                     </Button>
                     <Button
                       variant="outline"
@@ -284,8 +287,8 @@ export default function LocationsSettings() {
                       onClick={() => handleDelete(location)}
                       className="text-red-600 hover:text-red-700"
                     >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
+                      <Trash2 className="w-4 h-4 me-2" />
+                      {t("web.provider.common.delete")}
                     </Button>
                   </div>
                 </div>
@@ -318,6 +321,7 @@ function LocationDialog({
   onClose: () => void;
   onSave: (data: Record<string, unknown>) => void;
 }) {
+  const { t } = useTranslation();
   const defaultHours: OperatingHours = {
     monday: { open: "09:00", close: "18:00", closed: false },
     tuesday: { open: "09:00", close: "18:00", closed: false },
@@ -391,7 +395,7 @@ function LocationDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.settings.pages.locations.enterAValidPhoneNumberOr"));
       return;
     }
     onSave({
@@ -409,11 +413,11 @@ function LocationDialog({
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         <div className="flex-shrink-0 px-6 pt-6 pb-2 border-b border-gray-100">
           <DialogHeader>
-            <DialogTitle className="text-xl">{location ? "Edit Location" : "Add Location"}</DialogTitle>
+            <DialogTitle className="text-xl">{location ? t("web.provider.settings.pages.locations.editLocation") : t("web.provider.settings.pages.locations.addLocation")}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground mt-1">
               {location
-                ? "Update address and location type. Salon locations allow in-studio bookings."
-                : "Add a business location. Salon = clients can visit; Base = house calls only. Address is geocoded."}
+                ? t("web.provider.settings.pages.locations.editLocationDesc")
+                : t("web.provider.settings.pages.locations.addLocationDesc")}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -422,9 +426,9 @@ function LocationDialog({
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
             {/* Location type */}
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900">Location type</h3>
+              <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.settings.pages.locations.locationType")}</h3>
               <p className="text-xs text-muted-foreground">
-                Salon: clients can book in-studio. Base: travel distance only (mobile).
+                {t("web.provider.settings.pages.locations.locationTypeHint")}
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <label
@@ -441,7 +445,7 @@ function LocationDialog({
                     onChange={() => setFormData({ ...formData, location_type: "salon" })}
                     className="rounded-full border-gray-300 text-primary focus:ring-primary"
                   />
-                  <span className="text-sm font-medium text-gray-900">Salon / studio — clients can visit</span>
+                  <span className="text-sm font-medium text-gray-900">{t("web.provider.settings.pages.locations.salonStudio")}</span>
                 </label>
                 <label
                   className={`flex items-center gap-3 cursor-pointer rounded-xl border-2 p-4 transition-colors ${
@@ -457,14 +461,14 @@ function LocationDialog({
                     onChange={() => setFormData({ ...formData, location_type: "base" })}
                     className="rounded-full border-gray-300 text-primary focus:ring-primary"
                   />
-                  <span className="text-sm font-medium text-gray-900">Base address only (travel distance)</span>
+                  <span className="text-sm font-medium text-gray-900">{t("web.provider.settings.pages.locations.baseAddressOnly")}</span>
                 </label>
               </div>
             </section>
 
             {/* Details */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-gray-900">Details</h3>
+              <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.settings.pages.locations.details")}</h3>
               {location && (
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -473,22 +477,22 @@ function LocationDialog({
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                     className="rounded border-gray-300 text-primary focus:ring-primary"
                   />
-                  <span className="text-sm text-gray-800">Location is active (shown in booking flows)</span>
+                  <span className="text-sm text-gray-800">{t("web.provider.settings.pages.locations.locationIsActive")}</span>
                 </label>
               )}
               <div>
-                <Label htmlFor="name">Location name *</Label>
+                <Label htmlFor="name">{t("web.provider.settings.pages.locations.locationName")}</Label>
                 <Input
                   id="name"
                   value={formData.label}
                   onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                  placeholder="Main Branch"
+                  placeholder={t("web.provider.settings.pages.locations.mainBranch")}
                   className="mt-1.5"
                   required
                 />
               </div>
               <div>
-                <Label htmlFor="description">Description (optional)</Label>
+                <Label htmlFor="description">{t("web.provider.settings.pages.locations.descriptionOptional")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
@@ -498,7 +502,7 @@ function LocationDialog({
                   }}
                   rows={2}
                   maxLength={36}
-                  placeholder="Brief description of this location"
+                  placeholder={t("web.provider.settings.pages.locations.briefDescriptionOfThisLocation")}
                   className="mt-1.5 resize-none"
                 />
                 <p className="text-xs text-muted-foreground mt-1">{formData.description.length}/36</p>
@@ -507,17 +511,17 @@ function LocationDialog({
 
             {/* Address */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-gray-900">Address</h3>
+              <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.settings.pages.locations.address")}</h3>
               <div>
-                <Label htmlFor="address">Address *</Label>
+                <Label htmlFor="address">{t("web.provider.settings.pages.locations.addressRequired")}</Label>
                 <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                  Type an address and pick a suggestion to fill city, state, postal code and coordinates.
+                  {t("web.provider.settings.pages.locations.addressHint")}
                 </p>
                 <AddressAutocomplete
                   value={formData.address_line1}
                   onChange={handleAddressSelect}
                   onInputChange={(value) => setFormData((prev) => ({ ...prev, address_line1: value }))}
-                  placeholder="Start typing an address..."
+                  placeholder={t("web.provider.settings.pages.locations.startTypingAnAddress")}
                   country={formData.country || "ZA"}
                   className="relative z-[1]"
                   required
@@ -525,26 +529,26 @@ function LocationDialog({
               </div>
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-3">
                 <p className="text-xs text-slate-600">
-                  Can&apos;t find the exact street number? Use the map pin and drag it to the door or gate.
+                  {t("web.provider.settings.pages.locations.mapPinHint")}
                 </p>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setLocationMapPickerOpen(true)}>
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Drop pin on map
+                  <MapPin className="w-4 h-4 me-2" />
+                  {t("web.provider.settings.pages.locations.dropPinOnMap")}
                 </Button>
               </div>
               <div>
-                <Label htmlFor="address_line2">Address line 2 (optional)</Label>
+                <Label htmlFor="address_line2">{t("web.provider.settings.pages.locations.addressLine2")}</Label>
                 <Input
                   id="address_line2"
                   value={formData.address_line2}
                   onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
-                  placeholder="Suite, unit, floor"
+                  placeholder={t("web.provider.settings.pages.locations.suiteUnitFloor")}
                   className="mt-1.5"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="city">City *</Label>
+                  <Label htmlFor="city">{t("web.provider.settings.pages.locations.cityRequired")}</Label>
                   <Input
                     id="city"
                     value={formData.city}
@@ -554,7 +558,7 @@ function LocationDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="state">State / Province</Label>
+                  <Label htmlFor="state">{t("web.provider.settings.pages.locations.stateProvince")}</Label>
                   <Input
                     id="state"
                     value={formData.state}
@@ -565,7 +569,7 @@ function LocationDialog({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="postal_code">Postal code</Label>
+                  <Label htmlFor="postal_code">{t("web.provider.settings.pages.locations.postalCode")}</Label>
                   <Input
                     id="postal_code"
                     value={formData.postal_code}
@@ -574,7 +578,7 @@ function LocationDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="country">Country *</Label>
+                  <Label htmlFor="country">{t("web.provider.settings.pages.locations.countryRequired")}</Label>
                   <Input
                     id="country"
                     value={formData.country}
@@ -587,10 +591,10 @@ function LocationDialog({
               <div>
                 <PhoneInput
                   inputId="settings-location-dialog-phone"
-                  label="Phone (optional)"
+                  label={t("web.provider.settings.pages.locations.phoneOptional")}
                   value={formData.phone}
                   onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-                  placeholder="Phone number"
+                  placeholder={t("web.provider.settings.pages.locations.phoneNumber")}
                   className="mt-1.5"
                 />
               </div>
@@ -598,8 +602,8 @@ function LocationDialog({
 
             {/* Operating hours */}
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900">Operating hours</h3>
-              <p className="text-xs text-muted-foreground">Opening and closing times for each day.</p>
+              <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.settings.pages.locations.operatingHours")}</h3>
+              <p className="text-xs text-muted-foreground">{t("web.provider.settings.pages.locations.operatingHoursHint")}</p>
               <OperatingHoursEditor
                 hours={formData.operating_hours}
                 onChange={(hours) => setFormData({ ...formData, operating_hours: hours })}
@@ -609,10 +613,10 @@ function LocationDialog({
 
           <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" disabled={!formData.label?.trim() || !formData.address_line1?.trim() || !formData.city?.trim()}>
-              {location ? "Update" : "Create"}
+              {location ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </div>
         </form>

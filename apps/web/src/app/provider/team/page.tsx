@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -19,19 +20,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { label: "Team members", href: "/provider/team/members", icon: Users, description: "Manage staff, roles, and permissions" },
-  { label: "Permissions", href: "/provider/settings/team/permissions", icon: Shield, description: "Per-person access for bookings and settings" },
-  { label: "Team notifications", href: "/provider/settings/team/notifications", icon: Bell, description: "Email, SMS, and alert preferences per staff member" },
-  { label: "My Earnings", href: "/provider/team/my-earnings", icon: DollarSign, description: "View your earnings and payouts" },
-  { label: "Days Off", href: "/provider/team/days-off", icon: CalendarOff, description: "Team days off and time off requests" },
-  { label: "Shifts", href: "/provider/team/shifts", icon: CalendarRange, description: "Schedule and manage shifts" },
-  { label: "Time Clock", href: "/provider/team/time-clock", icon: Clock, description: "Time tracking and clock in/out" },
-  { label: "Payroll", href: "/provider/team/payroll", icon: DollarSign, description: "Pay runs and staff pay" },
-  { label: "Totals", href: "/provider/team/totals", icon: BarChart3, description: "Daily and weekly performance metrics" },
-];
-
 export default function TeamHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    { label: t("web.provider.sidebar.items.teamMembers"), href: "/provider/team/members", icon: Users, description: t("web.provider.pages.team.membersDesc") },
+    { label: t("web.provider.settings.pages.team/permissions.permissions"), href: "/provider/settings/team/permissions", icon: Shield, description: t("web.provider.pages.team.permissionsDesc") },
+    { label: t("web.provider.pages.team.notifications"), href: "/provider/settings/team/notifications", icon: Bell, description: t("web.provider.pages.team.notificationsDesc") },
+    { label: t("web.provider.sidebar.items.myEarnings"), href: "/provider/team/my-earnings", icon: DollarSign, description: t("web.provider.pages.team.earningsDesc") },
+    { label: t("web.provider.sidebar.items.daysOff"), href: "/provider/team/days-off", icon: CalendarOff, description: t("web.provider.pages.team.daysOffDesc") },
+    { label: t("web.provider.sidebar.items.shifts"), href: "/provider/team/shifts", icon: CalendarRange, description: t("web.provider.pages.team.shiftsDesc") },
+    { label: t("web.provider.pages.team/time-clock.title"), href: "/provider/team/time-clock", icon: Clock, description: t("web.provider.pages.team.timeClockDesc") },
+    { label: t("web.provider.sidebar.items.payroll"), href: "/provider/team/payroll", icon: DollarSign, description: t("web.provider.pages.team.payrollDesc") },
+    { label: t("web.provider.pages.team.totals"), href: "/provider/team/totals", icon: BarChart3, description: t("web.provider.pages.team.totalsDesc") },
+  ];
   const [overCapUntil, setOverCapUntil] = useState<number | null>(null);
 
   useEffect(() => {
@@ -56,11 +57,11 @@ export default function TeamHubPage() {
   return (
     <div>
       <PageHeader
-        title="Team"
-        subtitle="Members, earnings, shifts, and payroll"
+title={t("web.provider.sidebar.items.team")}
+subtitle={t("web.provider.pages.team.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Team" },
+{ label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+{ label: t("web.provider.sidebar.items.team") },
         ]}
       />
 
@@ -68,9 +69,7 @@ export default function TeamHubPage() {
         <Alert className="mt-4 border-amber-200 bg-amber-50">
           <Info className="w-4 h-4 text-amber-700" />
           <AlertDescription className="text-amber-900">
-            Your plan is over the staff cap. Some team members stay deactivated until{" "}
-            {new Date(overCapUntil).toLocaleDateString()}. Upgrade or keep the roster at the new
-            limit to reactivate them.
+{t("web.provider.teamMembers.overCap", { date: new Date(overCapUntil).toLocaleDateString() })}
           </AlertDescription>
         </Alert>
       ) : null}

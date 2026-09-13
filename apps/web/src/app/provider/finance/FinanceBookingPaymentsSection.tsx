@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useEffect, useState } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { FilterParams, PaginationParams, PaymentTransaction } from "@/lib/provider-portal/types";
@@ -18,6 +20,7 @@ import { toast } from "sonner";
 
 /** Booking/order payment search — folded from the legacy /provider/payments page. */
 export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string | null }) {
+  const { t } = useTranslation();
   const { format: fmt } = useReportCurrency();
   const [expanded, setExpanded] = useState(false);
 
@@ -60,7 +63,7 @@ export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string 
       setPayments(response.data);
       setTotalPages(response.total_pages);
     } catch {
-      toast.error("Failed to load customer payments. Please try again.");
+      toast.error(t("web.provider.finance.bookingPayments.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -74,13 +77,13 @@ export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string 
     <div className="bg-white border rounded-lg p-6 mb-8" id="customer-payments">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div>
-          <h2 className="text-xl font-semibold">Customer payments</h2>
+<h2 className="text-xl font-semibold">{t("web.provider.finance.bookingPayments.title")}</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Search card, wallet and till captures tied to bookings and orders — separate from your ledger above.
+{t("web.provider.finance.bookingPayments.subtitle")}
           </p>
         </div>
         <Button variant="outline" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "Hide" : "Show search"}
+{expanded ? t("web.provider.common.hide") : t("web.provider.finance.bookingPayments.showSearch")}
         </Button>
       </div>
 
@@ -90,8 +93,8 @@ export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string 
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
-                className="pl-9"
-                placeholder="Search by client, booking ref, or amount…"
+                className="ps-9"
+placeholder={t("web.provider.finance.bookingPayments.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -104,26 +107,26 @@ export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string 
                   size="sm"
                   onClick={() => setDateRange(range)}
                 >
-                  {range === "today" ? "Today" : range === "week" ? "This week" : "This month"}
+{range === "today" ? t("web.provider.finance.rangeToday") : range === "week" ? t("web.provider.finance.rangeThisWeek") : t("web.provider.finance.rangeThisMonth")}
                 </Button>
               ))}
             </div>
           </div>
 
           {isLoading ? (
-            <LoadingTimeout loadingMessage="Loading payments…" />
+<LoadingTimeout loadingMessage={t("web.provider.finance.bookingPayments.loading")} />
           ) : payments.length === 0 ? (
-            <EmptyState title="No payments found" description="Try a different search or date range." />
+<EmptyState title={t("web.provider.finance.bookingPayments.emptyTitle")} description={t("web.provider.finance.bookingPayments.emptyDesc")} />
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+<TableHead>{t("web.provider.common.date")}</TableHead>
+<TableHead>{t("web.provider.finance.bookingPayments.reference")}</TableHead>
+<TableHead>{t("web.provider.finance.bookingPayments.method")}</TableHead>
+<TableHead>{t("web.provider.common.statusLabel")}</TableHead>
+<TableHead className="text-end">{t("web.provider.common.amount")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -136,12 +139,12 @@ export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string 
                               month: "short",
                               day: "numeric",
                             })
-                          : "—"}
+                          : t("web.provider.common.emDash")}
                       </TableCell>
-                      <TableCell>{payment.ref_number || payment.team_member_name || "—"}</TableCell>
+<TableCell>{payment.ref_number || payment.team_member_name || t("web.provider.common.emDash")}</TableCell>
                       <TableCell>{formatStatusLabel(payment.method)}</TableCell>
                       <TableCell>{formatStatusLabel(payment.status)}</TableCell>
-                      <TableCell className="text-right">{fmt(payment.amount)}</TableCell>
+                      <TableCell className="text-end">{fmt(payment.amount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -106,7 +106,7 @@ export default function User() {
       <div className="container">
         <div className="flex-col lg:flex-row flex gap-20 max-w-sm lg:max-w-full mx-auto">
           <div className="">
-            <div className=" flex-row flex gap-20 py-3 pl-10 shadow items-center rounded-xl justify-center mb-5">
+            <div className=" flex-row flex gap-20 py-3 ps-10 shadow items-center rounded-xl justify-center mb-5">
               <div className="relative w-full">
                 <div className="bg-muted h-8 w-8 justify-center items-center flex rounded-full absolute right-0 top-16">
                   <Image src={Badge} alt="" className="h-4 w-4" />
@@ -266,7 +266,7 @@ export default function User() {
                           <Image
                             src={Star}
                             alt="Star"
-                            className="h-5 w-5 mr-2"
+                            className="h-5 w-5 me-2"
                           />
                           <p className="text-base font-normal  text-secondary">
                             {listing.rating}

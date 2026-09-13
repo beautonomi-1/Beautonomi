@@ -12,6 +12,9 @@ import {
 } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 
 const initializeSchema = z
   .object({
@@ -126,6 +129,8 @@ export async function POST(request: NextRequest) {
         : rawCancelAction
       : defaultCancelAction;
     const supabase = await getSupabaseServer(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = (tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY).toUpperCase();
 
     const productOrderIdRaw =
       typeof rawMeta.product_order_id === "string" && rawMeta.product_order_id.trim()
@@ -239,12 +244,39 @@ export async function POST(request: NextRequest) {
       if (resolved.ok === false) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
-      const admin = getSupabaseAdmin();
-      const slotOk = await revalidateBookingSlotBeforePayment(admin, bookingIdFromMeta);
+      const slotOk = await revalidateBookingSlotBeforePayment(getSupabaseAdmin(), bookingIdFromMeta);
       if (slotOk.ok === false) {
         return errorResponse(slotOk.message, slotOk.code, 409);
       }
       paystackAmount = resolved.amountSmallestUnit;
+    }
+
+    const admin = getSupabaseAdmin();
+
+    let chargeCurrency = lastResortCurrency;
+    if (bookingIdFromMeta) {
+      const { data: bookingCurrencyRow } = await admin
+        .from("bookings")
+        .select("currency")
+        .eq("id", bookingIdFromMeta)
+        .maybeSingle();
+      chargeCurrency = String(
+        (bookingCurrencyRow as { currency?: string } | null)?.currency || lastResortCurrency,
+      ).toUpperCase();
+    } else if (productOrderIdRaw) {
+      const { data: orderCurrencyRow } = await admin
+        .from("product_orders")
+        .select("currency")
+        .eq("id", productOrderIdRaw)
+        .maybeSingle();
+      chargeCurrency = String(
+        (orderCurrencyRow as { currency?: string } | null)?.currency || lastResortCurrency,
+      ).toUpperCase();
+    }
+
+    const fxReady = await assertReportingCurrencyReady(admin, chargeCurrency);
+    if (fxReady.ok === false) {
+      return errorResponse(fxReady.message, fxReady.code, 503);
     }
 
     const PAYSTACK_SECRET_KEY = await getPaystackSecretKey({ tenantId });
@@ -259,7 +291,6 @@ export async function POST(request: NextRequest) {
     // Resolve split_code and subaccount for booking/order payments (matches payments/initialize)
     let splitCode: string | undefined;
     let subaccount: string | undefined;
-    const admin = getSupabaseAdmin();
 
     if (bookingIdFromMeta || productOrderIdRaw) {
       const { data: payoutSettings } = await admin

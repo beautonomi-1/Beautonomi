@@ -25,6 +25,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { resolveDefaultCountryName, resolveMarketCountryIso } from "@/lib/market-country";
 import { AddressMapPinModal, type ResolvedPinAddress } from "./AddressMapPinModal";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export interface AddressPickerSelection {
   label: string;
@@ -194,13 +195,13 @@ export function AddressPicker({
         onClose();
       } else {
         Alert.alert(
-          "No location data",
-          "This address doesn’t have coordinates. Drop a pin on the map, or delete and add this address again.",
-          [{ text: "OK" }],
+          t("customer.mobile.components.addressPicker.noLocationDataTitle"),
+          t("customer.mobile.components.addressPicker.noLocationDataBody"),
+          [{ text: t("common.ok") }],
         );
       }
     },
-    [onSelect, onClose],
+    [onSelect, onClose, t],
   );
 
   const handleSuggestionSelect = useCallback(
@@ -225,7 +226,7 @@ export function AddressPicker({
       const resolvedLine1 = resolved?.address_line1?.trim();
       const resolvedName = resolved?.place_name?.trim();
       if (resolvedLine1 || resolvedName) {
-        const line1 = resolvedLine1 || resolvedName || "Pinned location";
+        const line1 = resolvedLine1 || resolvedName || t("customer.mobile.components.addressPicker.pinnedLocation");
         onSelect({
           label: line1,
           latitude: lat,
@@ -263,19 +264,19 @@ export function AddressPicker({
       //    caller's editable address form (with the map preview) appears and the
       //    user can fill in the street/suburb.
       onSelect({
-        label: "Pinned location",
+        label: t("customer.mobile.components.addressPicker.pinnedLocation"),
         latitude: lat,
         longitude: lng,
-        displayName: "Pinned location",
+        displayName: t("customer.mobile.components.addressPicker.pinnedLocation"),
         structured: {
-          address_line1: "Pinned location",
+          address_line1: t("customer.mobile.components.addressPicker.pinnedLocation"),
           city: "",
           country: fallbackCountry,
         },
       });
       onClose();
     },
-    [applyGeocodeFeature, onSelect, onClose, defaultCountryLabel],
+    [applyGeocodeFeature, onSelect, onClose, defaultCountryLabel, t],
   );
 
   const resolveTypedAddress = useCallback(async () => {
@@ -335,7 +336,7 @@ export function AddressPicker({
       lastKnownCoordsRef.current = { latitude: lat, longitude: lng };
 
       let structured: AddressPickerSelection["structured"] | undefined;
-      let displayName = "Current location";
+      let displayName = t("customer.mobile.components.addressPicker.currentLocation");
 
       const { feature, error: reverseError } = await reverseGeocode(lat, lng);
       if (reverseError) {
@@ -350,7 +351,7 @@ export function AddressPicker({
           defaultCountryName: defaultCountryLabel,
         });
         structured = {
-          address_line1: mapped.address_line1 || "Current location",
+          address_line1: mapped.address_line1 || t("customer.mobile.components.addressPicker.currentLocation"),
           city: mapped.city || "",
           state: mapped.state || undefined,
           postal_code: mapped.postal_code || undefined,
@@ -358,14 +359,14 @@ export function AddressPicker({
         };
       } else {
         structured = {
-          address_line1: "Current location",
+          address_line1: t("customer.mobile.components.addressPicker.currentLocation"),
           city: "",
           country: defaultCountryLabel,
         };
       }
 
       onSelect({
-        label: "Current location",
+        label: t("customer.mobile.components.addressPicker.currentLocation"),
         latitude: lat,
         longitude: lng,
         displayName,
@@ -396,7 +397,7 @@ export function AddressPicker({
         style={styles.suggestionRow}
         accessibilityRole="button"
       >
-        <Ionicons name="location-outline" size={18} color={Colors.gray[500]} style={{ marginRight: 10 }} />
+        <Ionicons name="location-outline" size={18} color={Colors.gray[500]} style={{ marginEnd: 10 }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={2}>
             {item.text}
@@ -481,7 +482,7 @@ export function AddressPicker({
                   onStartShouldSetResponder={() => true}
                   onMoveShouldSetResponder={() => true}
                 >
-                  <Text style={styles.suggestionPanelTitle}>Search results</Text>
+                  <Text style={styles.suggestionPanelTitle}>{t("customer.mobile.components.addressPicker.searchResultsTitle")}</Text>
                   {searching && suggestions.length === 0 ? (
                     <View style={{ paddingVertical: 28, alignItems: "center", justifyContent: "center" }}>
                       <ActivityIndicator size="small" color={Colors.primary} />
@@ -507,7 +508,7 @@ export function AddressPicker({
                     name="warning-outline"
                     size={18}
                     color="#B45309"
-                    style={{ marginRight: 8, marginTop: 1 }}
+                    style={{ marginEnd: 8, marginTop: 1 }}
                   />
                   <Text style={styles.searchErrorText}>{searchError}</Text>
                 </View>
@@ -519,10 +520,10 @@ export function AddressPicker({
                     name="information-circle-outline"
                     size={18}
                     color={Colors.gray[400]}
-                    style={{ marginRight: 8, marginTop: 1 }}
+                    style={{ marginEnd: 8, marginTop: 1 }}
                   />
                   <Text style={styles.noMatchesText}>
-                    No matches yet. Keep typing, press search on the keyboard, or use the map pin.
+                    {t("customer.mobile.components.addressPicker.noMatchesYet")}
                   </Text>
                 </View>
               ) : null}
@@ -555,8 +556,10 @@ export function AddressPicker({
                     <Ionicons name="locate-outline" size={18} color={Colors.primary} />
                   )}
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginLeft: 10 }}>
-                  {gettingLocation ? "Getting location…" : "Use current location"}
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginStart: 10 }}>
+                  {gettingLocation
+                    ? t("customer.mobile.components.addressPicker.gettingLocation")
+                    : t("customer.mobile.components.addressPicker.useCurrentLocation")}
                 </Text>
               </TouchableOpacity>
 
@@ -573,7 +576,7 @@ export function AddressPicker({
                   borderColor: Colors.gray[100],
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Drop pin on map"
+                accessibilityLabel={t("customer.mobile.components.addressPicker.dropPinOnMap")}
               >
                 <View
                   style={{
@@ -587,13 +590,13 @@ export function AddressPicker({
                 >
                   <Ionicons name="map-outline" size={18} color={Colors.gray[700]} />
                 </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Drop pin on map</Text>
+                <View style={{ flex: 1, marginStart: 10 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{t("customer.mobile.components.addressPicker.dropPinOnMap")}</Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
-                    Tap or drag the pin, then confirm
+                    {t("customer.mobile.components.addressPicker.dropPinOnMapHint")}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
+                <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} />
               </TouchableOpacity>
             </View>
 
@@ -607,7 +610,7 @@ export function AddressPicker({
                 <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 8 }}>
                   <Text style={{ fontSize: 13, color: "#991B1B", marginBottom: 10 }}>{addressesError}</Text>
                   <TouchableOpacity onPress={() => void reloadAddresses()} accessibilityRole="button">
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Try again</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("customer.mobile.components.addressPicker.tryAgain")}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -615,7 +618,7 @@ export function AddressPicker({
               {user && addresses.length > 0 && (
                 <View style={{ paddingHorizontal: contentPadding, paddingTop: 12 }}>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
-                    Saved addresses
+                    {t("customer.mobile.components.addressPicker.savedAddressesTitle")}
                   </Text>
                   {addresses.map((item) => (
                     <TouchableOpacity
@@ -637,7 +640,7 @@ export function AddressPicker({
                           backgroundColor: Colors.gray[100],
                           alignItems: "center",
                           justifyContent: "center",
-                          marginRight: 10,
+                          marginEnd: 10,
                         }}
                       >
                         <Ionicons
@@ -661,7 +664,7 @@ export function AddressPicker({
                             paddingVertical: 2,
                           }}
                         >
-                          <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>Default</Text>
+                          <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>{t("customer.mobile.components.addressPicker.defaultBadge")}</Text>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -678,7 +681,7 @@ export function AddressPicker({
               {!addressesLoading && !addressesError && addresses.length === 0 && !searchActive && (
                 <View style={{ paddingHorizontal: contentPadding, paddingVertical: 24, alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: Colors.gray[400], textAlign: "center", lineHeight: 18 }}>
-                    Search above, use your location, or drop a pin. Saved addresses appear here for quick reuse.
+                    {t("customer.mobile.components.addressPicker.emptySavedHint")}
                   </Text>
                 </View>
               )}

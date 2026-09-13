@@ -179,7 +179,7 @@ export function BottomSheet({
 
               {title && (
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f3f4f6", paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
-                  <View style={{ marginRight: 12, flex: 1 }}>
+                  <View style={{ marginEnd: 12, flex: 1 }}>
                     <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{title}</Text>
                     {subtitle && (
                       <Text style={{ marginTop: 2, fontSize: 12, color: "#6b7280" }}>{subtitle}</Text>

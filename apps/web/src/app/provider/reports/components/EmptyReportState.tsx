@@ -40,7 +40,7 @@ export function EmptyReportState({
               disabled={action.disabled}
               className="rounded-xl"
             >
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="me-2 h-4 w-4" />
               {action.label}
             </Button>
           ) : null}

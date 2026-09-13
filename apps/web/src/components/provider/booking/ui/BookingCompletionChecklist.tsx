@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { Check, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChecklistItem } from "@beautonomi/provider-booking";
@@ -19,9 +21,10 @@ export function BookingCompletionChecklist({
   blockingLabels = [],
   className,
 }: BookingCompletionChecklistProps) {
+  const { t } = useTranslation();
   return (
     <BookingSectionCard className={className}>
-      <BookingSectionLabel className="mb-3">Before completing</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.beforeCompleting")}</BookingSectionLabel>
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.id} className="flex items-start gap-2">
@@ -43,7 +46,7 @@ export function BookingCompletionChecklist({
       </ul>
       {!allDone && blockingLabels.length > 0 ? (
         <p className="mt-3 text-xs text-amber-800">
-          Blocked: {blockingLabels.join(", ")}
+          {t("web.provider.bookings.detail.leftoverCopy.blockedItems", { items: blockingLabels.join(", ") })}
         </p>
       ) : null}
     </BookingSectionCard>

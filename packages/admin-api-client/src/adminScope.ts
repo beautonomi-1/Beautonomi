@@ -20,6 +20,8 @@ export const SCOPED_ADMIN_PATH_PREFIXES: readonly string[] = [
   "/api/admin/mapbox/config",
   "/api/admin/maintenance",
   "/api/admin/control-plane/integrations/gemini",
+  "/api/admin/control-plane/integrations/ai",
+  "/api/admin/control-plane/integrations/ai",
   "/api/admin/control-plane/integrations/aura",
   "/api/admin/control-plane/integrations/sumsub",
   "/api/admin/subscription-plans",

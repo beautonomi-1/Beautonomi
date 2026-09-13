@@ -18,6 +18,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
+vi.mock("@/lib/bookings/pending-confirmation-nudges", () => ({
+  countExpiringSoonPendingForProvider: vi.fn().mockResolvedValue(0),
+}));
+
 interface ChainState {
   filters: Record<string, unknown[]>;
   orFilters: string[];

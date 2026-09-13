@@ -1,5 +1,7 @@
 "use client";
 
+import { i18n } from "@beautonomi/i18n";
+
 import React from "react";
 
 // Only send debug logs when ingest server URL is set (e.g. local debug server on 7243)
@@ -51,7 +53,7 @@ export class RootErrorBoundary extends React.Component<
     if (this.state.hasError && this.state.error) {
       return (
         <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 600 }}>
-          <h1 style={{ color: "#c00", marginBottom: 16 }}>Something went wrong</h1>
+          <h1 style={{ color: "#c00", marginBottom: 16 }}>{i18n.t("common.error")}</h1>
           <p style={{ marginBottom: 8 }}><strong>{this.state.error.name}:</strong> {this.state.error.message}</p>
           {this.state.error.stack && (
             <pre style={{ fontSize: 12, overflow: "auto", background: "#f5f5f5", padding: 12 }}>{this.state.error.stack}</pre>

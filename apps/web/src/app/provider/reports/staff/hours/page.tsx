@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -38,6 +39,7 @@ interface StaffHoursData {
 export default function StaffHoursReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const exportCurrency = useReportExportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -97,10 +99,10 @@ export default function StaffHoursReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Hours & Attendance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/hours.title") },
         ]}
       >
         <ReportSkeleton />
@@ -112,15 +114,15 @@ export default function StaffHoursReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Hours & Attendance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/hours.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Hours & Attendance" />
-          <ReportSubscriptionRequired feature="Hours & Attendance" />
+          <PageHeader title={t("web.provider.reports.pages.staff/hours.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.staff/hours.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -130,15 +132,15 @@ export default function StaffHoursReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Hours & Attendance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/hours.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load staff hours data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.staff/hours.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -147,21 +149,21 @@ export default function StaffHoursReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Hours & Attendance" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.staff/hours.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Hours & Attendance"
-          subtitle="Track staff working hours and attendance"
+          title={t("web.provider.reports.pages.staff/hours.title")}
+          subtitle={t("web.provider.reports.pages.staff/hours.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -176,7 +178,7 @@ export default function StaffHoursReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Hours</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.totalHours")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -190,7 +192,7 @@ export default function StaffHoursReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Scheduled Hours</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.scheduledHours")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -204,7 +206,7 @@ export default function StaffHoursReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg Hours/Staff</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.avgHours")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -220,11 +222,11 @@ export default function StaffHoursReport() {
         {/* Staff Hours Table */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Staff Hours Breakdown</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.staff/hours.breakdown")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.staffHours.length === 0 ? (
-              <EmptyReportState title="No hours data" description="No hours data available for the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.staff/hours.emptyTitle")} description={t("web.provider.reports.pages.staff/hours.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.staffHours.map((staff) => (
@@ -239,17 +241,17 @@ export default function StaffHoursReport() {
                       <div>
                         <p className="font-medium text-gray-900">{staff.staffName}</p>
                         <p className="text-sm text-gray-600">
-                          {staff.completedBookings} completed • {staff.onTimeBookings} on-time
+                          {t("web.provider.reports.pages.staff/hours.completedOnTime", { completed: staff.completedBookings, onTime: staff.onTimeBookings })}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold text-gray-900">
                         {staff.totalHours.toFixed(1)}h
                       </p>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-600">
-                          {staff.attendanceRate.toFixed(0)}% attendance
+                          {t("web.provider.reports.pages.staff/hours.attendance", { pct: staff.attendanceRate.toFixed(0) })}
                         </span>
                         {staff.attendanceRate >= 90 && (
                           <CheckCircle className="w-4 h-4 text-green-600" />

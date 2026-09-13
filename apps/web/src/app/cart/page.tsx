@@ -6,6 +6,9 @@ import Link from "next/link";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import BottomNav from "@/components/layout/bottom-nav";
 import Footer from "@/components/layout/footer";
+import { formatCurrency } from "@/lib/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 function csrfHeaders(): HeadersInit {
   const h: Record<string, string> = {};
@@ -43,6 +46,10 @@ interface CartItem {
 }
 
 export default function CartPage() {
+  const { bundle } = useConfigBundle();
+  const currency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const fmt = (n: number) => formatCurrency(n, currency);
+
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -195,8 +202,8 @@ export default function CartPage() {
                           +
                         </button>
                       </div>
-                      <p className="w-20 flex-shrink-0 text-right font-bold text-gray-900 sm:w-24">
-                        R{linePrice(item).toFixed(2)}
+                      <p className="w-20 flex-shrink-0 text-end font-bold text-gray-900 sm:w-24">
+                        {fmt(linePrice(item))}
                       </p>
                       <button onClick={() => removeItem(item.id)} className="flex-shrink-0 text-red-400 hover:text-red-600">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -209,7 +216,7 @@ export default function CartPage() {
 
                 <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4">
                   <span className="text-sm text-gray-500">Subtotal</span>
-                  <span className="text-lg font-bold text-pink-600">R{group.subtotal.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-pink-600">{fmt(group.subtotal)}</span>
                 </div>
                 <div className="px-5 pb-4">
                   {group.items.some((i) => !i.in_stock) ? (
@@ -221,7 +228,7 @@ export default function CartPage() {
                       href={`/shop/checkout?provider_id=${group.provider?.id}`}
                       className="block w-full py-3 bg-pink-600 text-white text-center rounded-xl font-semibold hover:bg-pink-700 transition-colors"
                     >
-                      Checkout — R{group.subtotal.toFixed(2)}
+                      Checkout — {fmt(group.subtotal)}
                     </Link>
                   )}
                 </div>
@@ -231,7 +238,7 @@ export default function CartPage() {
             {/* Total */}
             <div className="flex items-center justify-between rounded-2xl bg-white px-6 py-5 shadow-sm">
               <span className="text-lg font-semibold text-gray-900">Total</span>
-              <span className="text-2xl font-extrabold text-pink-600">R{total.toFixed(2)}</span>
+              <span className="text-2xl font-extrabold text-pink-600">{fmt(total)}</span>
             </div>
           </div>
         )}

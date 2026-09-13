@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +9,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { ChevronLeft } from "lucide-react";
 
 export default function ProviderExploreNewPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const preseedCaption = searchParams.get("caption") ?? undefined;
@@ -26,13 +28,13 @@ export default function ProviderExploreNewPage() {
         <header className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           <Link
             href="/provider/explore"
-            className="flex items-center gap-1 text-gray-700 hover:text-gray-900 -ml-1"
+            className="flex items-center gap-1 text-gray-700 hover:text-gray-900 -ms-1"
           >
             <ChevronLeft className="w-6 h-6" />
-            <span className="text-base font-medium">Cancel</span>
+<span className="text-base font-medium">{t("web.provider.common.cancel")}</span>
           </Link>
           <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-900">
-            New post
+{t("web.provider.pages.explore/new.newPost")}
           </h1>
           <div className="w-14" /> {/* Spacer for center */}
         </header>

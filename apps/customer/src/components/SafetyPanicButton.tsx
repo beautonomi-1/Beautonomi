@@ -80,7 +80,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
       ) : (
         <>
           <Ionicons name="shield-checkmark-outline" size={20} color="#dc2626" />
-          <Text style={{ marginLeft: 8, fontWeight: "500", color: "#B91C1C" }}>{sp("buttonLabel")}</Text>
+          <Text style={{ marginStart: 8, fontWeight: "500", color: "#B91C1C" }}>{sp("buttonLabel")}</Text>
         </>
       )}
     </TouchableOpacity>

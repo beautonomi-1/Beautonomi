@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -24,6 +25,7 @@ type ServiceArea = {
 };
 
 export default function ServiceAreaPage() {
+  const { t } = useTranslation();
   const distanceConfig = useModuleConfig("distance") as { enabled?: boolean; default_radius_km?: number; max_radius_km?: number } | undefined;
   const radiusEnabled = useFeatureFlag("distance.provider_radius.enabled");
   const [data, setData] = useState<ServiceArea | null>(null);
@@ -70,11 +72,11 @@ export default function ServiceAreaPage() {
         home_longitude: form.mode === "radius" && form.home_longitude ? parseFloat(form.home_longitude) : null,
         zones: form.mode === "zones" ? (data?.zones ?? []) : [],
       });
-      toast.success("Service area saved");
+      toast.success(t("web.provider.settings.pages.service-area.serviceAreaSaved"));
       const res = await fetcher.get<{ data: ServiceArea | null }>("/api/provider/service-area");
       setData(res.data ?? null);
     } catch {
-      toast.error("Failed to save");
+      toast.error(t("web.provider.settings.pages.service-area.failedToSave"));
     } finally {
       setSaving(false);
     }
@@ -82,29 +84,29 @@ export default function ServiceAreaPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Service area" subtitle="Set your service radius or zones for house calls.">
-        <LoadingTimeout loadingMessage="Loading..." />
+      <SettingsDetailLayout title={t("web.provider.settings.pages.service-area.serviceArea")} subtitle={t("web.provider.settings.pages.service-area.setYourServiceRadiusOrZones")}>
+        <LoadingTimeout loadingMessage={t("common.loading")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
-    <SettingsDetailLayout title="Service area" subtitle="Optional radius or zones for display and analytics. To control how far you accept at-home bookings, use Distance Settings.">
+    <SettingsDetailLayout title={t("web.provider.settings.pages.service-area.serviceArea")} subtitle={t("web.provider.settings.pages.service-area.optionalRadiusOrZonesForDisplay")}>
       {!enabled && (
         <Alert className="mb-6">
-          <AlertDescription>Service area is not enabled. Enable the distance module in Control Plane to use this.</AlertDescription>
+          <AlertDescription>{t("web.provider.settings.pages.service-area.notEnabled")}</AlertDescription>
         </Alert>
       )}
 
       <Alert className="mb-6 border-blue-200 bg-blue-50">
         <AlertDescription>
-          <strong>What actually limits at-home bookings:</strong> The distance that controls whether customers can book you for house calls is set in{" "}
-          <a href="/provider/settings/distance" className="font-medium text-blue-700 underline hover:text-blue-800">Distance Settings</a>
-          {" "}(max service distance). Use this page for optional radius/zones if you use the zones feature.
+          <strong>{t("web.provider.settings.pages.service-area.whatLimitsStrong")}</strong>{t("web.provider.settings.pages.service-area.whatLimitsBody")}{" "}
+          <a href="/provider/settings/distance" className="font-medium text-blue-700 underline hover:text-blue-800">{t("web.provider.settings.pages.service-area.distanceSettings")}</a>
+          {" "}{t("web.provider.settings.pages.service-area.whatLimitsSuffix")}
         </AlertDescription>
       </Alert>
 
-      <SectionCard title="Service area">
+      <SectionCard title={t("web.provider.settings.pages.service-area.serviceArea")}>
         <div className="space-y-6">
           <RadioGroup
             value={form.mode}
@@ -113,18 +115,18 @@ export default function ServiceAreaPage() {
           >
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="radius" id="mode-radius" />
-              <Label htmlFor="mode-radius">Radius (km from my location)</Label>
+              <Label htmlFor="mode-radius">{t("web.provider.settings.pages.service-area.radiusFromLocation")}</Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="zones" id="mode-zones" />
-              <Label htmlFor="mode-zones">Zones (use Service Zones)</Label>
+              <Label htmlFor="mode-zones">{t("web.provider.settings.pages.service-area.zonesUseServiceZones")}</Label>
             </div>
           </RadioGroup>
 
           {form.mode === "radius" && (
             <>
               <div>
-                <Label>Radius (km)</Label>
+                <Label>{t("web.provider.settings.pages.service-area.radiusKm")}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -136,21 +138,21 @@ export default function ServiceAreaPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Home latitude (optional)</Label>
+                  <Label>{t("web.provider.settings.pages.service-area.homeLatitude")}</Label>
                   <Input
                     type="number"
                     step="any"
-                    placeholder="e.g. -33.9249"
+                    placeholder={t("web.provider.settings.pages.service-area.eG339249")}
                     value={form.home_latitude}
                     onChange={(e) => setForm((p) => ({ ...p, home_latitude: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <Label>Home longitude (optional)</Label>
+                  <Label>{t("web.provider.settings.pages.service-area.homeLongitude")}</Label>
                   <Input
                     type="number"
                     step="any"
-                    placeholder="e.g. 18.4241"
+                    placeholder={t("web.provider.settings.pages.service-area.eG184241")}
                     value={form.home_longitude}
                     onChange={(e) => setForm((p) => ({ ...p, home_longitude: e.target.value }))}
                   />
@@ -161,12 +163,12 @@ export default function ServiceAreaPage() {
 
           {form.mode === "zones" && (
             <p className="text-sm text-muted-foreground">
-              Manage your service zones in <a href="/provider/settings/service-zones" className="text-primary underline">Service Zones</a>. They will be used for at-home booking availability.
+              {t("web.provider.settings.pages.service-area.manageZonesPrefix")} <a href="/provider/settings/service-zones" className="text-primary underline">{t("web.provider.settings.pages.service-area.serviceZones")}</a>{t("web.provider.settings.pages.service-area.manageZonesSuffix")}
             </p>
           )}
 
           <Button onClick={save} disabled={saving || !enabled}>
-            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving…</> : <><MapPin className="h-4 w-4 mr-2" /> Save</>}
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin me-2" /> {t("web.provider.common.savingEllipsis")}</> : <><MapPin className="h-4 w-4 me-2" /> {t("web.provider.common.save")}</>}
           </Button>
         </div>
       </SectionCard>

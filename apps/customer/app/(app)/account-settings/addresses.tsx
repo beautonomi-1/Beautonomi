@@ -307,11 +307,11 @@ export default function AddressesScreen() {
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
             style={{ marginTop: 16, flexDirection: "row", alignItems: "center", borderRadius: RADIUS_BUTTON, backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 14 }}
-            accessibilityLabel="Add address"
+            accessibilityLabel={ad("addAddressA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={{ fontWeight: "500", color: Colors.white }}>Add address</Text>
+            <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginEnd: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.white }}>{ad("addAddress")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -329,26 +329,26 @@ export default function AddressesScreen() {
                   <Text style={{ color: Colors.gray[600] }}>{a.city}, {a.country}</Text>
                   {a.is_default && (
                     <View style={{ marginTop: 8, alignSelf: "flex-start", borderRadius: 4, backgroundColor: Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.primary }}>Default</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.primary }}>{ad("default")}</Text>
                     </View>
                   )}
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <TouchableOpacity
                     onPress={() => openEditModal(a)}
-                    style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                    style={{ marginEnd: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                     accessibilityLabel="Edit address"
                     accessibilityRole="button"
                   >
                     <Ionicons name="pencil-outline" size={18} color={Colors.gray[600]} />
                   </TouchableOpacity>
                   {!a.is_default && (
-                    <View style={{ marginRight: 8 }}>
+                    <View style={{ marginEnd: 8 }}>
                     <TouchableOpacity
                       onPress={() => handleSetDefault(a.id)}
                       disabled={!!settingDefaultId}
                       style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
-                      accessibilityLabel="Set as default"
+                      accessibilityLabel={ad("setDefaultA11y")}
                       accessibilityRole="button"
                     >
                       {settingDefaultId === a.id ? (
@@ -363,7 +363,7 @@ export default function AddressesScreen() {
                     onPress={() => handleDelete(a)}
                     disabled={!!deletingId}
                     style={{ borderRadius: 8, backgroundColor: "#FEF2F2", paddingHorizontal: 12, paddingVertical: 8 }}
-                    accessibilityLabel="Delete address"
+                    accessibilityLabel={ad("deleteAddressA11y")}
                     accessibilityRole="button"
                   >
                     {deletingId === a.id ? (
@@ -379,11 +379,11 @@ export default function AddressesScreen() {
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: RADIUS_CARD, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingVertical: 18 }}
-            accessibilityLabel="Add new address"
+            accessibilityLabel={ad("addNewAddressA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginRight: 8 }} />
-            <Text style={{ fontWeight: "500", color: Colors.primary }}>Add address</Text>
+            <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginEnd: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.primary }}>{ad("addAddress")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -406,22 +406,22 @@ export default function AddressesScreen() {
                 setAddModalVisible(false);
                 setPendingAddress(null);
               }}
-              accessibilityLabel="Cancel"
+              accessibilityLabel={ad("cancelA11y")}
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Cancel</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>{t("common.cancel")}</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Add address</Text>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{ad("addAddress")}</Text>
             <TouchableOpacity
               onPress={handleSaveNewAddress}
               disabled={!pendingAddress?.structured || saving}
-              accessibilityLabel="Save address"
+              accessibilityLabel={ad("saveAddressA11y")}
               accessibilityRole="button"
             >
               {saving ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
-                <Text style={{ fontWeight: "500", color: pendingAddress?.structured && !saving ? Colors.primary : Colors.gray[400] }}>Save</Text>
+                <Text style={{ fontWeight: "500", color: pendingAddress?.structured && !saving ? Colors.primary : Colors.gray[400] }}>{t("common.save")}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -432,26 +432,26 @@ export default function AddressesScreen() {
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{ad("labelField")}</Text>
             <TextInput
               style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, color: Colors.gray[900] }}
               value={addLabel}
               onChangeText={setAddLabel}
-              placeholder="Home"
+              placeholder={ad("labelPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{ad("addressField")}</Text>
             <TouchableOpacity
               onPress={() => setPickerVisible(true)}
               style={{ flexDirection: "row", alignItems: "center", borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}
-              accessibilityLabel="Search address"
+              accessibilityLabel={ad("searchAddressA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="search-outline" size={20} color={Colors.gray[400]} />
               <Text style={{ color: pendingAddress ? Colors.gray[900] : Colors.gray[500] }}>
                 {pendingAddress?.structured
                   ? `${pendingAddress.structured.address_line1}, ${pendingAddress.structured.city}`
-                  : "Search for an address"}
+                  : ad("searchForAddress")}
               </Text>
             </TouchableOpacity>
             <AddressPicker
@@ -462,60 +462,60 @@ export default function AddressesScreen() {
             />
             {pendingAddress?.structured && (
               <View style={{ marginTop: 16, borderRadius: RADIUS_INPUT, backgroundColor: "#F0FDF4", padding: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>{ad("selected")}</Text>
                 <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
                   {pendingAddress.structured.address_line1}, {pendingAddress.structured.city},{" "}
                   {pendingAddress.structured.country}
                 </Text>
               </View>
             )}
-            <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
+            <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{ad("houseCallDetails")}</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("apartmentUnit")}</Text>
             <TextInput
               style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addApartmentUnit}
               onChangeText={setAddApartmentUnit}
-              placeholder="e.g. 5B"
+              placeholder={ad("unitPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("buildingName")}</Text>
             <TextInput
               style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addBuildingName}
               onChangeText={setAddBuildingName}
-              placeholder="e.g. Sunset Towers"
+              placeholder={ad("complexPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("floor")}</Text>
             <TextInput
               style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addFloorNumber}
               onChangeText={setAddFloorNumber}
-              placeholder="e.g. 3"
+              placeholder={ad("floorPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("accessCodes")}</Text>
             <TextInput
               style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addAccessCodesText}
               onChangeText={setAddAccessCodesText}
-              placeholder="Gate: 1234, Buzzer: Apt 5"
+              placeholder={ad("gatePlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("parkingInstructions")}</Text>
             <TextInput
               style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addParkingInstructions}
               onChangeText={setAddParkingInstructions}
-              placeholder="e.g. Visitor bay 12"
+              placeholder={ad("parkingPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
-            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("landmarks")}</Text>
             <TextInput
               style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addLocationLandmarks}
               onChangeText={setAddLocationLandmarks}
-              placeholder="e.g. Next to blue pharmacy"
+              placeholder={ad("landmarkPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
             />
           </ScrollView>
@@ -541,22 +541,22 @@ export default function AddressesScreen() {
                 setEditingAddress(null);
                 setEditPendingAddress(null);
               }}
-              accessibilityLabel="Cancel"
+              accessibilityLabel={ad("cancelA11y")}
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Cancel</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>{t("common.cancel")}</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Edit address</Text>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{ad("editAddress")}</Text>
             <TouchableOpacity
               onPress={handleUpdateAddress}
               disabled={!!updatingId}
-              accessibilityLabel="Save changes"
+              accessibilityLabel={ad("saveChangesA11y")}
               accessibilityRole="button"
             >
               {updatingId ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
-                <Text style={{ fontWeight: "500", color: Colors.primary }}>Save</Text>
+                <Text style={{ fontWeight: "500", color: Colors.primary }}>{t("common.save")}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -569,23 +569,23 @@ export default function AddressesScreen() {
           >
             {editingAddress && (
               <>
-                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{ad("labelField")}</Text>
                 <TextInput
                   style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editLabel}
                   onChangeText={setEditLabel}
-                  placeholder="Home"
+                  placeholder={ad("labelPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{ad("addressField")}</Text>
                 <TouchableOpacity
                   onPress={() => setEditPickerVisible(true)}
                   style={{ flexDirection: "row", alignItems: "center", borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
-                  accessibilityLabel="Change address"
+                  accessibilityLabel={ad("changeAddressA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="search-outline" size={20} color={Colors.gray[400]} />
-                  <Text style={{ color: editPendingAddress ? Colors.gray[900] : Colors.gray[500], marginLeft: 10 }}>
+                  <Text style={{ color: editPendingAddress ? Colors.gray[900] : Colors.gray[500], marginStart: 10 }}>
                     {editPendingAddress?.structured
                       ? `${editPendingAddress.structured.address_line1}, ${editPendingAddress.structured.city}`
                       : `${editingAddress.address_line1}, ${editingAddress.city}`}
@@ -600,60 +600,60 @@ export default function AddressesScreen() {
                 />
                 {editPendingAddress?.structured && (
                   <View style={{ marginTop: 16, borderRadius: RADIUS_INPUT, backgroundColor: "#F0FDF4", padding: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>{ad("selected")}</Text>
                     <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
                       {editPendingAddress.structured.address_line1}, {editPendingAddress.structured.city},{" "}
                       {editPendingAddress.structured.country}
                     </Text>
                   </View>
                 )}
-                <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
+                <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{ad("houseCallDetails")}</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("apartmentUnit")}</Text>
                 <TextInput
                   style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editApartmentUnit}
                   onChangeText={setEditApartmentUnit}
-                  placeholder="e.g. 5B"
+                  placeholder={ad("unitPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("buildingName")}</Text>
                 <TextInput
                   style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editBuildingName}
                   onChangeText={setEditBuildingName}
-                  placeholder="e.g. Sunset Towers"
+                  placeholder={ad("complexPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("floor")}</Text>
                 <TextInput
                   style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editFloorNumber}
                   onChangeText={setEditFloorNumber}
-                  placeholder="e.g. 3"
+                  placeholder={ad("floorPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("accessCodes")}</Text>
                 <TextInput
                   style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editAccessCodesText}
                   onChangeText={setEditAccessCodesText}
-                  placeholder="Gate: 1234, Buzzer: Apt 5"
+                  placeholder={ad("gatePlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("parkingInstructions")}</Text>
                 <TextInput
                   style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editParkingInstructions}
                   onChangeText={setEditParkingInstructions}
-                  placeholder="e.g. Visitor bay 12"
+                  placeholder={ad("parkingPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>{ad("landmarks")}</Text>
                 <TextInput
                   style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editLocationLandmarks}
                   onChangeText={setEditLocationLandmarks}
-                  placeholder="e.g. Next to blue pharmacy"
+                  placeholder={ad("landmarkPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                 />
               </>

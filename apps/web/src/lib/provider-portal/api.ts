@@ -934,6 +934,7 @@ export class ProviderApiClient implements ProviderApi {
       created_date: booking.created_at || new Date().toISOString(),
       notes: booking.special_requests || "",
       cancellation_reason: booking.cancellation_reason,
+      scheduled_at: booking.scheduled_at ?? null,
       location_type: booking.location_type || "at_salon",
       location_id: booking.location_id || "",
       location_name: location.name || "",
@@ -986,6 +987,13 @@ export class ProviderApiClient implements ProviderApi {
           }
         : {}),
       ...(db_status !== undefined ? { db_status } : {}),
+      ...(booking.customer_running_late_at
+        ? {
+            customer_running_late_at: booking.customer_running_late_at,
+            customer_running_late_minutes: booking.customer_running_late_minutes ?? null,
+            provider_late_ack_at: booking.provider_late_ack_at ?? null,
+          }
+        : {}),
       ...(booking.provider_form_responses != null &&
       typeof booking.provider_form_responses === "object" &&
       Object.keys(booking.provider_form_responses).length > 0
@@ -1469,6 +1477,16 @@ export class ProviderApiClient implements ProviderApi {
           : ((booking as { payment_status?: string }).payment_status as string | undefined),
         current_stage: (booking as { current_stage?: string }).current_stage,
         estimated_arrival: (booking as { estimated_arrival?: string | null }).estimated_arrival ?? null,
+        customer_running_late_at:
+          (booking as { customer_running_late_at?: string | null }).customer_running_late_at ?? null,
+        customer_running_late_minutes:
+          (booking as { customer_running_late_minutes?: number | null }).customer_running_late_minutes ??
+          null,
+        provider_late_ack_at:
+          (booking as { provider_late_ack_at?: string | null }).provider_late_ack_at ?? null,
+        contact_attempts:
+          ((booking as { contact_attempts?: Appointment["contact_attempts"] }).contact_attempts) ??
+          null,
         booking_id: isGroupAppointment ? id : String((booking as { id?: unknown }).id ?? ""),
         travel_fee: Number((booking as { travel_fee?: unknown }).travel_fee) || 0,
         // Services array for detailed view
@@ -4886,6 +4904,10 @@ export class ProviderApiClient implements ProviderApi {
       arrival_otp: booking.arrival_otp,
       arrival_otp_expires_at: booking.arrival_otp_expires_at,
       arrival_otp_verified: booking.arrival_otp_verified,
+      customer_running_late_at: booking.customer_running_late_at ?? null,
+      customer_running_late_minutes: booking.customer_running_late_minutes ?? null,
+      provider_late_ack_at: booking.provider_late_ack_at ?? null,
+      contact_attempts: booking.contact_attempts ?? null,
       qr_code_data: booking.qr_code_data,
       qr_code_verification_code: booking.qr_code_verification_code,
       qr_code_expires_at: booking.qr_code_expires_at,
