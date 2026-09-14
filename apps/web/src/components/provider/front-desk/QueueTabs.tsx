@@ -4,14 +4,15 @@ import React from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
-const TABS: { id: string; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "needs_confirmation", label: "To confirm" },
-  { id: "arrivals", label: "Arrivals" },
-  { id: "in_service", label: "In Service" },
-  { id: "ready_to_pay", label: "Ready to Pay" },
-  { id: "completed", label: "Completed" },
+const TABS: { id: string; labelKey: string }[] = [
+  { id: "all", labelKey: "web.provider.frontDesk.queueTabs.all" },
+  { id: "needs_confirmation", labelKey: "web.provider.frontDesk.queueTabs.toConfirm" },
+  { id: "arrivals", labelKey: "web.provider.frontDesk.queueTabs.arrivals" },
+  { id: "in_service", labelKey: "web.provider.frontDesk.queueTabs.inService" },
+  { id: "ready_to_pay", labelKey: "web.provider.frontDesk.queueTabs.readyToPay" },
+  { id: "completed", labelKey: "web.provider.frontDesk.queueTabs.completed" },
 ];
 
 interface QueueTabsProps {
@@ -21,6 +22,8 @@ interface QueueTabsProps {
 }
 
 export function QueueTabs({ activeTab, onTabChange, counts }: QueueTabsProps) {
+  const { t } = useTranslation();
+
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
       <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-auto lg:inline-flex h-auto p-1 bg-muted/50">
@@ -32,7 +35,7 @@ export function QueueTabs({ activeTab, onTabChange, counts }: QueueTabsProps) {
               value={tab.id}
               className="relative gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white"
             >
-              {tab.label}
+              {t(tab.labelKey)}
               <Badge
                 variant={activeTab === tab.id ? "secondary" : "outline"}
                 className={cn(

@@ -236,7 +236,7 @@ export default function ClientListPage() {
         <SectionCard>
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
             <div className="relative flex-1 w-full">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 placeholder={t("web.provider.settings.pages.clients/list.searchClientsByNameEmailPhone")}
                 value={searchQuery}
@@ -615,7 +615,7 @@ function ServicedCustomerCard({
       <div className="space-y-2 text-sm border-t pt-3">
         <div className="flex items-center gap-2 text-gray-600">
           <Calendar className="h-4 w-4" />
-          <span>Last service: {formatDate(customer.last_service_date)}</span>
+          <span>{t("web.provider.settings.pages.clients/list.lastService", { date: formatDate(customer.last_service_date) })}</span>
         </div>
         <div className="flex items-center gap-2 text-gray-600">
           <User className="h-4 w-4" />

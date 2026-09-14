@@ -342,7 +342,7 @@ export default function VendorIntegrationPage() {
                       <button
                         type="button"
                         onClick={() => setShowApiKey((p) => !p)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                       >
                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -366,7 +366,7 @@ export default function VendorIntegrationPage() {
                       <button
                         type="button"
                         onClick={() => setShowApiSecret((p) => !p)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                       >
                         {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>

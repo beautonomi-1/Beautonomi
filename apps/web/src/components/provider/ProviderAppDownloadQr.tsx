@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 
 interface ProviderAppDownloadQrProps {
@@ -16,8 +17,10 @@ export function ProviderAppDownloadQr({
   url,
   size = 160,
   className,
-  caption = "Scan with your phone to download",
+  caption,
 }: ProviderAppDownloadQrProps) {
+  const { t } = useTranslation();
+  const resolvedCaption = caption ?? t("web.provider.appDownloadQr.scanCaption");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
@@ -54,7 +57,7 @@ export function ProviderAppDownloadQr({
         {dataUrl ? (
           <img
             src={dataUrl}
-            alt="QR code to download the Beautonomi Provider app"
+            alt={t("web.provider.appDownloadQr.alt")}
             width={size}
             height={size}
             className="block"
@@ -68,7 +71,9 @@ export function ProviderAppDownloadQr({
           </div>
         )}
       </div>
-      {caption ? <p className="max-w-[200px] text-center text-xs text-gray-500">{caption}</p> : null}
+      {resolvedCaption ? (
+        <p className="max-w-[200px] text-center text-xs text-gray-500">{resolvedCaption}</p>
+      ) : null}
     </div>
   );
 }

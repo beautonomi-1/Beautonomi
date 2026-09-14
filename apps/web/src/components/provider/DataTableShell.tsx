@@ -50,7 +50,7 @@ export function DataTableShell({
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="relative flex-1 w-full md:max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             placeholder={searchPlaceholder ?? t("web.provider.dataTableShell.searchPlaceholder")}
             value={searchValue}

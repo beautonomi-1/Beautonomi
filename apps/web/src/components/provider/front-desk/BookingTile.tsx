@@ -40,8 +40,16 @@ const BADGE_STYLES: Record<string, string> = {
   confirmed: "bg-slate-100 text-slate-600",
 };
 
-const BADGE_LABELS: Record<string, string> = {
-  needs_confirmation: "Confirm first",
+const BADGE_I18N_KEYS: Record<string, string> = {
+  needs_confirmation: "web.provider.frontDesk.confirmFirst",
+  late: "web.provider.frontDesk.badgeLate",
+  arriving: "web.provider.frontDesk.badgeArriving",
+  checked_in: "web.provider.frontDesk.badgeCheckedIn",
+  in_service: "web.provider.frontDesk.badgeInService",
+  ready_to_pay: "web.provider.frontDesk.badgeReadyToPay",
+  completed: "web.provider.frontDesk.badgeCompleted",
+  cancelled: "web.provider.frontDesk.badgeCancelled",
+  confirmed: "web.provider.frontDesk.badgeConfirmed",
 };
 
 function getInitials(name: string) {
@@ -77,21 +85,21 @@ export function BookingTile({
   isLoading,
 }: BookingTileProps) {
   const { t } = useTranslation();
-  const name = booking.customer_name || "Customer";
+  const name = booking.customer_name || t("web.provider.common.customer");
   const badge = booking.operationalBadge || "confirmed";
   const locationType = (booking as any).location_type as string | undefined;
   const isAtHome = locationType === "at_home";
 
   // Combine services and products for display
   const serviceNames = (booking.services || [])
-    .map((s: any) => s.offering_name || s.service_name || s.name || "Service")
+    .map((s: any) => s.offering_name || s.service_name || s.name || t("web.provider.common.service"))
     .filter(Boolean);
   const productNames = (booking.products || [])
-    .map((p: any) => `${p.product_name || "Product"}${(p.quantity || 1) > 1 ? ` ×${p.quantity}` : ""}`)
+    .map((p: any) => `${p.product_name || t("web.provider.common.product")}${(p.quantity || 1) > 1 ? ` ×${p.quantity}` : ""}`)
     .filter(Boolean);
   const hasProducts = productNames.length > 0;
   const servicesAndProducts = [...serviceNames, ...productNames].slice(0, 3);
-  const servicesProductsLabel = servicesAndProducts.length > 0 ? servicesAndProducts.join(" + ") : "—";
+  const servicesProductsLabel = servicesAndProducts.length > 0 ? servicesAndProducts.join(" + ") : t("web.provider.common.emDash");
 
   const bkTotalPaid = (booking as any).total_paid || 0;
   const bkTotalRefunded = (booking as any).total_refunded || 0;
@@ -143,7 +151,7 @@ export function BookingTile({
     e.stopPropagation();
     const customerId = (booking as any).customer_id;
     if (!customerId) {
-      toast.error("Customer not found for this booking.");
+      toast.error(t("web.provider.frontDesk.customerNotFound"));
       return;
     }
     setIsMessaging(true);
@@ -156,11 +164,11 @@ export function BookingTile({
       if (convId) {
         window.location.assign(`/provider/messaging?conversationId=${convId}`);
       } else {
-        toast.error("Could not open conversation.");
+        toast.error(t("web.provider.frontDesk.couldNotOpenConversation"));
         setIsMessaging(false);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to open conversation.";
+      const msg = err instanceof Error ? err.message : t("web.provider.frontDesk.failedOpenConversation");
       toast.error(msg);
       setIsMessaging(false);
     }
@@ -203,7 +211,7 @@ export function BookingTile({
             BADGE_STYLES[badge] || BADGE_STYLES.confirmed
           )}
         >
-          {badge === "needs_confirmation" ? t("web.provider.frontDesk.confirmFirst") : (BADGE_LABELS[badge] ?? badge.replace(/_/g, " "))}
+          {BADGE_I18N_KEYS[badge] ? t(BADGE_I18N_KEYS[badge]) : badge.replace(/_/g, " ")}
         </span>
       </div>
 
@@ -213,7 +221,11 @@ export function BookingTile({
       {/* SERVICE Label + Service Name */}
       <div className="flex-1 min-h-0">
         <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
-          {hasProducts && serviceNames.length > 0 ? "SERVICE & PRODUCTS" : hasProducts ? "PRODUCTS" : "SERVICE"}
+          {hasProducts && serviceNames.length > 0
+            ? t("web.provider.frontDesk.serviceAndProductsLabel")
+            : hasProducts
+              ? t("web.provider.frontDesk.productsLabel")
+              : t("web.provider.frontDesk.serviceLabel")}
         </p>
         <p className="mt-1 text-base font-semibold text-slate-900 truncate">
           {servicesProductsLabel}
@@ -237,7 +249,7 @@ export function BookingTile({
             onClick={handleMessage}
             disabled={isMessaging}
             className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-70 disabled:cursor-wait"
-            aria-label="Message"
+            aria-label={t("web.provider.frontDesk.message")}
           >
             {isMessaging ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
           </button>
@@ -246,7 +258,7 @@ export function BookingTile({
                 <button
                   type="button"
                   className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                  aria-label="More options"
+                  aria-label={t("web.provider.common.moreOptions")}
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>

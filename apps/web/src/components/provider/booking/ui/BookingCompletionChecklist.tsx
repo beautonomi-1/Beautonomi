@@ -24,7 +24,7 @@ export function BookingCompletionChecklist({
   const { t } = useTranslation();
   return (
     <BookingSectionCard className={className}>
-      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.beforeCompleting")}</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.completion.beforeCompleting")}</BookingSectionLabel>
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.id} className="flex items-start gap-2">
@@ -46,7 +46,7 @@ export function BookingCompletionChecklist({
       </ul>
       {!allDone && blockingLabels.length > 0 ? (
         <p className="mt-3 text-xs text-amber-800">
-          {t("web.provider.bookings.detail.leftoverCopy.blockedItems", { items: blockingLabels.join(", ") })}
+          {t("web.provider.bookings.detail.completion.blockedItems", { items: blockingLabels.join(", ") })}
         </p>
       ) : null}
     </BookingSectionCard>

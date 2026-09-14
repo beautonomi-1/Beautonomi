@@ -1,4 +1,5 @@
 import i18n, { createInstance, type i18n as I18nInstance, type InitOptions } from "i18next";
+import { initReactI18next } from "./client";
 import { FALLBACK_LNG_MAP, getLanguageMeta, LANGUAGE_STORAGE_KEY, LANGUAGE_COOKIE } from "./language-registry";
 import { defaultNS, resources } from "./resources-core";
 import {
@@ -106,9 +107,7 @@ export function initI18n(lng: string = "en") {
     return i18n;
   }
 
-  // Lazy-load react-i18next so RSC/server importers of registry-only symbols never pull createContext.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { initReactI18next } = require("react-i18next") as typeof import("react-i18next");
+  // initReactI18next comes from ./client (same ESM graph as useTranslation) — never require("react-i18next").
   i18n.use(initReactI18next).init(buildInitOptions(resolved));
 
   initialized = true;

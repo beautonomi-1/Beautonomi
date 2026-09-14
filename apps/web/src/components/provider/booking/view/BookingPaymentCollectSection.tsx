@@ -179,11 +179,11 @@ export function BookingPaymentCollectSection({
       <BookingSectionCard data-testid="booking-collect-payment">
         <BookingSectionLabel className="mb-3 flex items-center gap-1.5">
           <CreditCard className="h-4 w-4" />
-          {t("web.provider.bookings.detail.leftoverCopy.collectPayment")}
+          {t("web.provider.bookings.detail.paymentCollect.title")}
         </BookingSectionLabel>
         {depositAmount != null && depositAmount > 0 ? (
           <p className="text-xs text-gray-600 mb-2">
-            {t("web.provider.bookings.detail.leftoverCopy.depositDueNow", { deposit: depositAmount.toFixed(2), outstanding: fullOutstanding.toFixed(2) })}
+            {t("web.provider.bookings.detail.paymentCollect.depositDueNow", { deposit: depositAmount.toFixed(2), outstanding: fullOutstanding.toFixed(2) })}
           </p>
         ) : null}
         <div className="flex flex-col gap-2">
@@ -208,12 +208,12 @@ export function BookingPaymentCollectSection({
           ) : null}
           {yocoEnabled ? (
             <BookingActionButton variant="outline" onClick={() => setYocoOpen(true)}>
-              {t("web.provider.bookings.detail.leftoverCopy.collectWithYoco", { amount: terminalAmount.toFixed(2) })}
+              {t("web.provider.bookings.detail.paymentCollect.collectWithYoco", { amount: terminalAmount.toFixed(2) })}
             </BookingActionButton>
           ) : null}
           {paystackEnabled && paystackReady ? (
             <BookingActionButton variant="outline" onClick={() => setPaystackOpen(true)}>
-              {t("web.provider.bookings.detail.leftoverCopy.paystackTerminal")}
+              {t("web.provider.bookings.detail.paymentCollect.paystackTerminal")}
             </BookingActionButton>
           ) : null}
           <BookingActionButton
@@ -222,7 +222,7 @@ export function BookingPaymentCollectSection({
             onClick={() => void handleMarkPaid("cash")}
           >
             <Banknote className="me-2 h-4 w-4" />
-            {markingCash ? t("web.provider.bookings.detail.leftoverCopy.recording") : t("web.provider.bookings.detail.leftoverCopy.markPaidCash", { amount: terminalAmount.toFixed(2) })}
+            {markingCash ? t("web.provider.bookings.detail.paymentCollect.recording") : t("web.provider.bookings.detail.paymentCollect.markPaidCash", { amount: terminalAmount.toFixed(2) })}
           </BookingActionButton>
           {manualCardEnabled ? (
             <BookingActionButton
@@ -231,13 +231,13 @@ export function BookingPaymentCollectSection({
               onClick={() => void handleMarkPaid("card")}
             >
               <CreditCard className="me-2 h-4 w-4" />
-              {markingCard ? t("web.provider.bookings.detail.leftoverCopy.recording") : `${manualCardCollectOptionLabel()} · ${terminalAmount.toFixed(2)}`}
+              {markingCard ? t("web.provider.bookings.detail.paymentCollect.recording") : `${manualCardCollectOptionLabel()} · ${terminalAmount.toFixed(2)}`}
             </BookingActionButton>
           ) : null}
           {canSendPaymentLink ? (
             <BookingActionButton variant="outline" onClick={() => setPaymentLinkOpen(true)}>
               <Link2 className="me-2 h-4 w-4" />
-              {t("web.provider.bookings.detail.leftoverCopy.sendPaymentLink")}
+              {t("web.provider.bookings.detail.paymentCollect.sendPaymentLink")}
             </BookingActionButton>
           ) : null}
         </div>

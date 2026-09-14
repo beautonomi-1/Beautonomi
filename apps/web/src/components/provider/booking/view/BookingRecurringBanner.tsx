@@ -43,10 +43,10 @@ export function BookingRecurringBanner({ appointment }: { appointment: Appointme
       </BookingSectionLabel>
       <p className="text-sm font-medium text-blue-900">{details.label}</p>
       <div className="mt-2 space-y-0.5 text-xs text-blue-800">
-        {start ? <p>{t("web.provider.bookings.detail.leftoverCopy.startedOn", { date: start })}</p> : null}
-        {details.occurrences ? <p>{t("web.provider.bookings.detail.leftoverCopy.visitsPlanned", { count: details.occurrences })}</p> : null}
-        {end ? <p>{t("web.provider.bookings.detail.leftoverCopy.untilDate", { date: end })}</p> : null}
-        {last ? <p>{t("web.provider.bookings.detail.leftoverCopy.lastGenerated", { date: last })}</p> : null}
+        {start ? <p>{t("web.provider.bookings.detail.recurring.startedOn", { date: start })}</p> : null}
+        {details.occurrences ? <p>{t("web.provider.bookings.detail.recurring.visitsPlanned", { count: details.occurrences })}</p> : null}
+        {end ? <p>{t("web.provider.bookings.detail.recurring.untilDate", { date: end })}</p> : null}
+        {last ? <p>{t("web.provider.bookings.detail.recurring.lastGenerated", { date: last })}</p> : null}
       </div>
       <Link
         href={seriesHref}

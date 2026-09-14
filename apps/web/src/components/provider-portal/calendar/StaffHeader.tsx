@@ -42,7 +42,7 @@ function StaffHeaderComponent({
   return (
     <div
       className={cn(
-        "border-r border-gray-200 last:border-r-0 py-3 px-2",
+        "border-e border-gray-200 last:border-e-0 py-3 px-2",
         "flex flex-col items-center gap-1 transition-all",
         STAFF_DAY_COLUMN_LAYOUT,
       )}
@@ -61,7 +61,7 @@ function StaffHeaderComponent({
                 </AvatarFallback>
               </Avatar>
               {bookingCount > 0 && (
-                <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-primary text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
+                <span className="absolute -bottom-1 -end-1 w-5 h-5 bg-primary text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
                   {bookingCount}
                 </span>
               )}

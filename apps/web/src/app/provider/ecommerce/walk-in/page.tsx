@@ -593,7 +593,7 @@ export default function WalkInSalePage() {
                 ) : null}
               </div>
               <div className="relative mb-4">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Search className="absolute start-3 top-3 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
                   value={search}
@@ -633,7 +633,7 @@ export default function WalkInSalePage() {
                         className="group relative overflow-hidden rounded-xl border bg-white p-3 text-start transition hover:border-pink-300 hover:shadow-sm"
                       >
                         {inCartQty > 0 && (
-                          <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-pink-600 text-xs font-bold text-white">
+                          <span className="absolute end-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-pink-600 text-xs font-bold text-white">
                             {inCartQty}
                           </span>
                         )}
@@ -730,7 +730,7 @@ export default function WalkInSalePage() {
                 {/* Customer info (optional) */}
                 <div className="border-t px-5 py-4 space-y-3">
                   <div className="relative">
-                    <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 z-10" />
+                    <User className="absolute start-3 top-2.5 h-4 w-4 text-gray-400 z-10" />
                     <input
                       type="text"
                       value={customerName}

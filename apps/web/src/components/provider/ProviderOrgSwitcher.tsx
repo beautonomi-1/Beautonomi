@@ -135,7 +135,9 @@ export function ProviderOrgSwitcher({
       ) : (
         <p className={cn("text-sm font-medium truncate", isLight ? "text-gray-900" : "text-white")}>
           {current?.business_name}
-          {current?.relationship === "owner" ? " (owner)" : " (staff)"}
+          {current?.relationship === "owner"
+            ? ` (${t("provider.mobile.components.providerOrgSwitcher.owner")})`
+            : ` (${t("provider.mobile.components.providerOrgSwitcher.staff")})`}
         </p>
       )}
     </div>

@@ -178,7 +178,14 @@ export default function TwilioIntegrationPage() {
         }
       );
       setIntegration(response.data);
-      toast.success(`${channel.toUpperCase()} ${enabled ? "enabled" : "disabled"}`);
+      toast.success(
+        t("web.provider.settings.pages.integrations/twilio.channelToggled", {
+          channel: channel.toUpperCase(),
+          state: enabled
+            ? t("web.provider.settings.pages.integrations/twilio.enabled")
+            : t("web.provider.settings.pages.integrations/twilio.disabled"),
+        }),
+      );
     } catch (error: any) {
       console.error("Failed to update integration:", error);
       const errorMessage = error instanceof FetchError
@@ -223,7 +230,11 @@ export default function TwilioIntegrationPage() {
         test_phone: testPhone,
         channel: testChannel,
       });
-      toast.success(`Test ${testChannel.toUpperCase()} sent successfully!`);
+      toast.success(
+        t("web.provider.settings.pages.integrations/twilio.testSentSuccessfully", {
+          channel: testChannel.toUpperCase(),
+        }),
+      );
       await loadData();
     } catch (error: any) {
       console.error("Failed to send test message:", error);

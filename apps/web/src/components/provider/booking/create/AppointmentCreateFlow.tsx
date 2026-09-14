@@ -516,6 +516,7 @@ export function AppointmentCreateFlow({
 
     try {
       const { appointment, successPayload, warnings } = await submitCreateBooking({
+        t,
         clientName,
         clientId,
         notes,

@@ -7,6 +7,50 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { i18n } from "@beautonomi/i18n";
 import { toast } from "sonner";
 
+const EXPORT_NS = "web.provider.reports.export";
+
+function exportT(key: string, params?: Record<string, string | number>): string {
+  const full = `${EXPORT_NS}.${key}`;
+  const result = i18n.t(full, params as Record<string, string>);
+  return result === full ? key : result;
+}
+
+function exportMetric(label: string, params?: Record<string, string | number>): string {
+  const slug = ({"Active products":"activeProducts","Allocated":"allocated","Appointment ledger revenue":"appointmentLedgerRevenue","Appointments with ledger activity":"appointmentsWithLedgerActivity","Average Booking Value":"averageBookingValue","Average LTV":"averageLtv","Avg booked value / booking":"avgBookedValueBooking","Avg bookings per client":"avgBookingsPerClient","Avg ledger / booking (with earnings)":"avgLedgerBookingWithEarnings","Avg ledger / scheduled booking · current":"avgLedgerScheduledBookingCurrent","Avg ledger / scheduled booking · previous":"avgLedgerScheduledBookingPrevious","Avg ledger per appointment (with activity)":"avgLedgerPerAppointmentWithActivity","Avg ledger per bucket":"avgLedgerPerBucket","Avg per redemption row":"avgPerRedemptionRow","Avg per row":"avgPerRow","Avg rating (weighted)":"avgRatingWeighted","Avg revenue per unit sold":"avgRevenuePerUnitSold","Avg spend per client (window)":"avgSpendPerClientWindow","Avg visits / client":"avgVisitsClient","Basis":"basis","Basis (counts & ledger)":"basisCountsLedger","Basis (summary)":"basisSummary","Booked net of refunds":"bookedNetOfRefunds","Booked package value":"bookedPackageValue","Booking count":"bookingCount","Booking payments total":"bookingPaymentsTotal","Booking statuses":"bookingStatuses","Booking-linked":"bookingLinked","Bookings (excl. pending)":"bookingsExclPending","Bookings in window":"bookingsInWindow","Calendar window":"calendarWindow","Cancellation Rate":"cancellationRate","Cancellation fees":"cancellationFees","Cancellation fees (net)":"cancellationFeesNet","Cancellation rate":"cancellationRate2","Capture window":"captureWindow","Cashback total (till cash-out, not in recorded total)":"cashbackTotalTillCashOutNotInRecordedTotal","Completed appointments (unique)":"completedAppointmentsUnique","Completed · today":"completedToday","Completion Rate":"completionRate","Completion rate":"completionRate2","Current window (YMD)":"currentWindowYmd","Customer Funds Settled (deduped)":"customerFundsSettledDeduped","Customer Payments by Method Total":"customerPaymentsByMethodTotal","Customer refund gross":"customerRefundGross","Date":"date","Date range (provider TZ)":"dateRangeProviderTz","Days in range":"daysInRange","Declined":"declined","Distinct clients":"distinctClients","Distinct clients (deduped)":"distinctClientsDeduped","Distinct clients · current":"distinctClientsCurrent","Distinct clients · month":"distinctClientsMonth","Distinct clients · previous":"distinctClientsPrevious","Distinct offerings":"distinctOfferings","Eligible":"eligible","Failed captures in window (all)":"failedCapturesInWindowAll","Failed captures linked to bookings here":"failedCapturesLinkedToBookingsHere","Fees % of gross booked":"feesOfGrossBooked","Gateway charge rows (payment_transactions)":"gatewayChargeRowsPaymentTransactions","Generated at":"generatedAt","Granularity":"granularity","Gross Booked Value":"grossBookedValue","Gross booked (linked rows)":"grossBookedLinkedRows","Growth · avg ledger / booking %":"growthAvgLedgerBooking","Growth · bookings %":"growthBookings","Growth · clients %":"growthClients","Growth · ledger headline %":"growthLedgerHeadline","Held":"held","Inactive products":"inactiveProducts","Ledger earnings (provider_earnings)":"ledgerEarningsProviderEarnings","Ledger earnings · current":"ledgerEarningsCurrent","Ledger earnings · month":"ledgerEarningsMonth","Ledger earnings · previous":"ledgerEarningsPrevious","Ledger earnings · today":"ledgerEarningsToday","Ledger earnings · week":"ledgerEarningsWeek","Ledger from bookings":"ledgerFromBookings","Ledger from bookings · current":"ledgerFromBookingsCurrent","Ledger from bookings · month":"ledgerFromBookingsMonth","Ledger from bookings · previous":"ledgerFromBookingsPrevious","Ledger from bookings · today":"ledgerFromBookingsToday","Ledger from bookings · week":"ledgerFromBookingsWeek","Ledger from product orders":"ledgerFromProductOrders","Ledger from product orders · current":"ledgerFromProductOrdersCurrent","Ledger from product orders · month":"ledgerFromProductOrdersMonth","Ledger from product orders · previous":"ledgerFromProductOrdersPrevious","Ledger from product orders · today":"ledgerFromProductOrdersToday","Ledger from product orders · week":"ledgerFromProductOrdersWeek","Ledger growth vs prior window":"ledgerGrowthVsPriorWindow","Ledger net (in window)":"ledgerNetInWindow","Ledger net (sum of buckets)":"ledgerNetSumOfBuckets","Ledger net (sum)":"ledgerNetSum","Ledger net allocated (total)":"ledgerNetAllocatedTotal","Ledger rows":"ledgerRows","Ledger transaction types":"ledgerTransactionTypes","Ledger window":"ledgerWindow","Line revenue (all SKUs in window)":"lineRevenueAllSkusInWindow","Lost Revenue":"lostRevenue","Low stock (count)":"lowStockCount","Month window (YMD)":"monthWindowYmd","Net after refunds & cancellation fees":"netAfterRefundsCancellationFees","Net provider earnings":"netProviderEarnings","New Clients (first-ever in scope in window)":"newClientsFirstEverInScopeInWindow","No-Show Rate":"noShowRate","No-show rate":"noShowRate2","Not synced (booking-linked)":"notSyncedBookingLinked","Note":"note","Out of stock (count)":"outOfStockCount","Payment ledger in window (ratio denominator)":"paymentLedgerInWindowRatioDenominator","Payments succeeded / total":"paymentsSucceededTotal","Period (calendar)":"periodCalendar","Period occupancy %":"periodOccupancy","Period total available (min)":"periodTotalAvailableMin","Period total booked (min)":"periodTotalBookedMin","Platform & service fees":"platformServiceFees","Previous window (YMD)":"previousWindowYmd","Products tracking stock":"productsTrackingStock","Provider Earnings":"providerEarnings","Provider Net Activity":"providerNetActivity","Provider earnings reversal":"providerEarningsReversal","Rank list limit":"rankListLimit","Received":"received","Recorded takings total (logged in-app)":"recordedTakingsTotalLoggedInApp","Recorded — booking payments":"recordedBookingPayments","Recorded — cancellation fees":"recordedCancellationFees","Recorded — retail & legacy sales":"recordedRetailLegacySales","Recorded — tips (ledger date)":"recordedTipsLedgerDate","Recorded — wallet on bookings":"recordedWalletOnBookings","Redeemed value":"redeemedValue","Redeemed value (sum of amounts)":"redeemedValueSumOfAmounts","Redemption rows":"redemptionRows","Refund Rate":"refundRate","Refund ledger rows":"refundLedgerRows","Refund share of payment ledger %":"refundShareOfPaymentLedger","Refunded Amount":"refundedAmount","Refunds (ledger)":"refundsLedger","Repeat clients (2+ visits)":"repeatClients2Visits","Repeat share %":"repeatShare","Retail ledger revenue":"retailLedgerRevenue","Retail stock value":"retailStockValue","Retention %":"retention","Return Rate":"returnRate","Returning (2+ bookings in window)":"returning2BookingsInWindow","Revenue from appointment add-ons":"revenueFromAppointmentAddOns","Revenue from paid retail orders":"revenueFromPaidRetailOrders","Row limit":"rowLimit","Rows returned":"rowsReturned","Sale-linked only":"saleLinkedOnly","Sales total":"salesTotal","Scheduled appointments (all statuses)":"scheduledAppointmentsAllStatuses","Scheduled bookings (all statuses)":"scheduledBookingsAllStatuses","Scheduled bookings · current":"scheduledBookingsCurrent","Scheduled bookings · month":"scheduledBookingsMonth","Scheduled bookings · previous":"scheduledBookingsPrevious","Scheduled bookings · today":"scheduledBookingsToday","Scheduled bookings · week":"scheduledBookingsWeek","Scheduled visits (sum)":"scheduledVisitsSum","Single-visit clients":"singleVisitClients","Staff in scope":"staffInScope","Staff profiles (provider-wide)":"staffProfilesProviderWide","Summary (one line)":"summaryOneLine","Synced (booking_payments)":"syncedBookingPayments","Timezone":"timezone","Tips (ledger)":"tipsLedger","Tips total":"tipsTotal","Today window (YMD)":"todayWindowYmd","Total":"total","Total Bookings":"totalBookings","Total Bookings (denominator)":"totalBookingsDenominator","Total Cancelled":"totalCancelled","Total Clients":"totalClients","Total Clients (distinct in window)":"totalClientsDistinctInWindow","Total Cost (supply_price × qty)":"totalCostSupplyPriceQty","Total New Clients":"totalNewClients","Total No-Shows":"totalNoShows","Total Profit":"totalProfit","Total Revenue":"totalRevenue","Total amount":"totalAmount","Total line items":"totalLineItems","Total products":"totalProducts","Total revenue (ledger net)":"totalRevenueLedgerNet","Total units sold":"totalUnitsSold","Unallocated":"unallocated","Unique appointments (summary)":"uniqueAppointmentsSummary","Units from appointment add-ons (booking_products)":"unitsFromAppointmentAddOnsBookingProducts","Units from paid retail orders":"unitsFromPaidRetailOrders","Units sold (all SKUs in window)":"unitsSoldAllSkusInWindow","Unlinked":"unlinked","Usage events":"usageEvents","Wallet total (split-safe)":"walletTotalSplitSafe","Week window (YMD)":"weekWindowYmd","What this report counts":"whatThisReportCounts","Window":"window","Δ revenue vs prior bucket":"revenueVsPriorBucket","Δ visits vs prior bucket":"visitsVsPriorBucket"} as Record<string, string>)[label];
+  if (slug) return exportT(`metrics.${slug}`, params);
+  if (label.startsWith("Recorded takings — ")) {
+    return exportT("dynamic.recordedTakingsMethod", { method: label.slice("Recorded takings — ".length) });
+  }
+  if (label.startsWith("Payment: ")) {
+    return exportT("dynamic.paymentField", { method: label.slice("Payment: ".length) });
+  }
+  return label;
+}
+
+function exportColumnHeaderFromKey(key: string): string {
+  const colSlug = ({"#":"unknown","Amount match":"amountMatch","Appointments (staff)":"appointmentsStaff","Available (min)":"availableMin","Average rating":"averageRating","Avg / booking":"avgBooking","Avg / unit":"avgUnit","Avg events / client":"avgEventsClient","Avg ledger per visit":"avgLedgerPerVisit","Booked (min)":"bookedMin","Booked Amount":"bookedAmount","Booked Net of Refunds":"bookedNetOfRefunds2","Booked total (snapshot)":"bookedTotalSnapshot","Booked value":"bookedValue","Booking synced":"bookingSynced","Captured at":"capturedAt","Client Name":"clientName","Clients in bucket":"clientsInBucket","Commission":"commission","Created at":"createdAt","Daily bucket":"dailyBucket","Display price":"displayPrice","Distinct clients":"distinctClients2","First Visit":"firstVisit","Gateway amount":"gatewayAmount","Gateway rows":"gatewayRows","Hours worked":"hoursWorked","Last Visit":"lastVisit","Ledger amount":"ledgerAmount","Ledger net":"ledgerNet","Line items":"lineItems","Line retail value":"lineRetailValue","Line rows":"lineRows","Link kind":"linkKind","Net earnings":"netEarnings","Occupancy %":"occupancy","Package-included bookings":"packageIncludedBookings","Payout eligibility":"payoutEligibility","Pct of rows":"pctOfRows","Platform Fee":"platformFee","Prior bucket clients":"priorBucketClients","Quantity Sold":"quantitySold","Recent at":"recentAt","Retention vs prior %":"retentionVsPrior","Returned from prior":"returnedFromPrior","Rows with earnings":"rowsWithEarnings","Scheduled bookings that day":"scheduledBookingsThatDay","Settlement at":"settlementAt","Staff Name":"staffName","Staff name":"staffName2","Stock value":"stockValue","Till / manual amount":"tillManualAmount","Till / manual rows":"tillManualRows","Top client":"topClient","Total Bookings":"totalBookings2","Total Hours":"totalHours","Total Revenue":"totalRevenue2","Total Spent":"totalSpent","Total amount":"totalAmount2","Track stock":"trackStock","Upcoming at":"upcomingAt","Usage events":"usageEvents2","Wallet split amount":"walletSplitAmount","Wallet split rows":"walletSplitRows","Yoco ID":"yocoId"} as Record<string, string>)[key];
+  if (colSlug) return exportT(`columns.${colSlug}`);
+  const headerSlug = ({
+    totalBookings: "totalBookings",
+    totalRevenue: "totalRevenue",
+    serviceName: "serviceName",
+    staffName: "staffName",
+    clientName: "clientName",
+    created_at: "created_at",
+    paystack_reference: "paystack_reference",
+    paid_amount: "paid_amount",
+    allocation_status: "allocation_status",
+    amount_match_status: "amount_match_status",
+    payout_eligibility_status: "payout_eligibility_status",
+  } as Record<string, string>)[key];
+  if (headerSlug) return exportT(`headers.${headerSlug}`);
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+
 /** Generic report row shape for export formatters */
 export type ReportRow = Record<string, unknown>;
 
@@ -33,24 +77,7 @@ export function fm(amount: unknown, currencyCode: string): string {
 
 /** Human-readable CSV column titles from camelCase / snake_case keys. */
 export function humanizeExportHeader(key: string): string {
-  const known: Record<string, string> = {
-    totalBookings: "Total bookings",
-    totalRevenue: "Total revenue",
-    serviceName: "Service name",
-    staffName: "Staff name",
-    clientName: "Client name",
-    created_at: "Created at",
-    paystack_reference: "Paystack reference",
-    paid_amount: "Paid amount",
-    allocation_status: "Allocation status",
-    amount_match_status: "Amount match status",
-    payout_eligibility_status: "Payout eligibility",
-  };
-  if (known[key]) return known[key];
-  return key
-    .replace(/_/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return exportColumnHeaderFromKey(key);
 }
 
 export function escapeCsvCell(value: unknown): string {
@@ -66,7 +93,7 @@ export function escapeCsvCell(value: unknown): string {
 
 export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (!data || data.length === 0) {
-    toast.error("No data to export");
+    toast.error(exportT("toast.noData"));
     return;
   }
 
@@ -94,15 +121,16 @@ export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   document.body.removeChild(link);
 
   URL.revokeObjectURL(url);
-  toast.success("CSV downloaded");
+  toast.success(exportT("toast.csvDownloaded"));
 }
 
 /**
  * Export report to PDF using browser print functionality
  * Can export either from a report element ID or from data array
  */
-export function exportToPDF(reportIdOrData: string | unknown[], filename?: string, title: string = "Report") {
-  const toastId = toast.loading("Preparing PDF…");
+export function exportToPDF(reportIdOrData: string | unknown[], filename?: string, title?: string) {
+  const resolvedTitle = title ?? exportT("toast.defaultReportTitle");
+  const toastId = toast.loading(exportT("toast.preparingPdf"));
   const finish = (ok: boolean, message?: string) => {
     toast.dismiss(toastId);
     if (!ok && message) toast.error(message);
@@ -112,7 +140,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   if (typeof reportIdOrData === "string") {
     const reportElement = document.getElementById(reportIdOrData);
     if (!reportElement) {
-      finish(false, "Report element not found");
+      finish(false, exportT("toast.reportElementNotFound"));
       return;
     }
 
@@ -120,7 +148,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
     const clonedElement = reportElement.cloneNode(true) as HTMLElement;
     
     // Create HTML document
-    const safeTitle = escapeHtml(title);
+    const safeTitle = escapeHtml(resolvedTitle);
     const html = `
       <!DOCTYPE html>
       <html>
@@ -159,7 +187,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
             #reportRoot td {
               border: 1px solid #ccc;
               padding: 6px 8px;
-              text-align: left;
+              text-align: start;
               font-size: 12px;
               color: #111;
               background: #fff;
@@ -169,7 +197,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
         </head>
         <body>
           <h1>${safeTitle}</h1>
-          <p>Generated: ${escapeHtml(new Date().toLocaleString())}</p>
+          <p>${escapeHtml(exportT("toast.generatedAt", { date: new Date().toLocaleString() }))}</p>
           <div id="reportRoot">${clonedElement.outerHTML}</div>
           <div class="footer">
             <p>${i18n.t("web.provider.reports.common.generatedByBeautonomi")}</p>
@@ -181,7 +209,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
     // Open in new window and print
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      finish(false, "Allow popups to export PDF");
+      finish(false, exportT("toast.allowPopups"));
       return;
     }
 
@@ -200,7 +228,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   // Otherwise, treat as data array (legacy support)
   const data = reportIdOrData;
   if (!data || data.length === 0) {
-    finish(false, "No data to export");
+    finish(false, exportT("toast.noData"));
     return;
   }
 
@@ -235,7 +263,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
     <!DOCTYPE html>
     <html>
       <head>
-        <title>${title}</title>
+        <title>${resolvedTitle}</title>
         <style>
           @media print {
             @page { margin: 1cm; }
@@ -257,7 +285,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
           th, td {
             border: 1px solid #ddd;
             padding: 8px;
-            text-align: left;
+            text-align: start;
           }
           th {
             background-color: #f5f5f5;
@@ -275,8 +303,8 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
         </style>
       </head>
       <body>
-        <h1>${escapeHtml(title)}</h1>
-        <p>Generated: ${escapeHtml(new Date().toLocaleString())}</p>
+        <h1>${escapeHtml(resolvedTitle)}</h1>
+        <p>${escapeHtml(exportT("toast.generatedAt", { date: new Date().toLocaleString() }))}</p>
         <table>
           <thead>
             <tr>${headerCells}</tr>
@@ -295,7 +323,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   // Open in new window and print
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    finish(false, "Allow popups to export PDF");
+    finish(false, exportT("toast.allowPopups"));
     return;
   }
 
@@ -318,9 +346,9 @@ export function formatReportDataForExport(
   switch (reportType) {
     case "booking-summary":
       return [
-        { Metric: "Total Bookings", Value: data.totalBookings || 0 },
-        { Metric: "Total Revenue", Value: fm((data.totalRevenue as number), currencyCode) },
-        { Metric: "Average Booking Value", Value: fm((data.averageBookingValue as number), currencyCode) },
+        { Metric: exportMetric("Total Bookings"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Total Revenue"), Value: fm((data.totalRevenue as number), currencyCode) },
+        { Metric: exportMetric("Average Booking Value"), Value: fm((data.averageBookingValue as number), currencyCode) },
         ...((data.statusBreakdown as ReportRow[]) || []).map((status) => ({
           Status: status.status,
           Count: status.count,
@@ -345,51 +373,51 @@ export function formatReportDataForExport(
       const month = (data.month ?? {}) as Record<string, unknown>;
       const windows = data.windows as Record<string, { fromYmd?: string; toYmd?: string }> | undefined;
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "Basis (summary)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Basis (summary)"), Value: data.reportBasis }]
           : []),
         ...(windows?.today?.fromYmd && windows?.today?.toYmd
-          ? [{ Metric: "Today window (YMD)", Value: `${windows.today.fromYmd} → ${windows.today.toYmd}` }]
+          ? [{ Metric: exportMetric("Today window (YMD)"), Value: `${windows.today.fromYmd} → ${windows.today.toYmd}` }]
           : []),
         ...(windows?.week?.fromYmd && windows?.week?.toYmd
-          ? [{ Metric: "Week window (YMD)", Value: `${windows.week.fromYmd} → ${windows.week.toYmd}` }]
+          ? [{ Metric: exportMetric("Week window (YMD)"), Value: `${windows.week.fromYmd} → ${windows.week.toYmd}` }]
           : []),
         ...(windows?.month?.fromYmd && windows?.month?.toYmd
-          ? [{ Metric: "Month window (YMD)", Value: `${windows.month.fromYmd} → ${windows.month.toYmd}` }]
+          ? [{ Metric: exportMetric("Month window (YMD)"), Value: `${windows.month.fromYmd} → ${windows.month.toYmd}` }]
           : []),
-        { Metric: "Ledger earnings · today", Value: fm(Number(today.revenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Ledger earnings · today"), Value: fm(Number(today.revenue ?? 0), currencyCode) },
         {
-          Metric: "Ledger from bookings · today",
+          Metric: exportMetric("Ledger from bookings · today"),
           Value: fm(Number(today.ledgerFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders · today",
+          Metric: exportMetric("Ledger from product orders · today"),
           Value: fm(Number(today.ledgerFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Scheduled bookings · today", Value: Number(today.bookings ?? 0) },
-        { Metric: "Completed · today", Value: Number(today.completed ?? 0) },
-        { Metric: "Ledger earnings · week", Value: fm(Number(week.revenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Scheduled bookings · today"), Value: Number(today.bookings ?? 0) },
+        { Metric: exportMetric("Completed · today"), Value: Number(today.completed ?? 0) },
+        { Metric: exportMetric("Ledger earnings · week"), Value: fm(Number(week.revenue ?? 0), currencyCode) },
         {
-          Metric: "Ledger from bookings · week",
+          Metric: exportMetric("Ledger from bookings · week"),
           Value: fm(Number(week.ledgerFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders · week",
+          Metric: exportMetric("Ledger from product orders · week"),
           Value: fm(Number(week.ledgerFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Scheduled bookings · week", Value: Number(week.bookings ?? 0) },
-        { Metric: "Ledger earnings · month", Value: fm(Number(month.revenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Scheduled bookings · week"), Value: Number(week.bookings ?? 0) },
+        { Metric: exportMetric("Ledger earnings · month"), Value: fm(Number(month.revenue ?? 0), currencyCode) },
         {
-          Metric: "Ledger from bookings · month",
+          Metric: exportMetric("Ledger from bookings · month"),
           Value: fm(Number(month.ledgerFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders · month",
+          Metric: exportMetric("Ledger from product orders · month"),
           Value: fm(Number(month.ledgerFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Scheduled bookings · month", Value: Number(month.bookings ?? 0) },
-        { Metric: "Distinct clients · month", Value: Number(month.clients ?? 0) },
+        { Metric: exportMetric("Scheduled bookings · month"), Value: Number(month.bookings ?? 0) },
+        { Metric: exportMetric("Distinct clients · month"), Value: Number(month.clients ?? 0) },
         ...((data.upcomingBookings as ReportRow[]) || []).map((booking) => ({
           "Upcoming at": new Date((booking.scheduled_at as string) || 0).toLocaleString(),
           Status: booking.status,
@@ -412,24 +440,24 @@ export function formatReportDataForExport(
               .filter(([, amt]) => Number(amt) > 0.005)
               .sort((a, b) => Number(b[1]) - Number(a[1]))
               .map(([method, amt]) => ({
-                Metric: `Recorded takings — ${method}`,
+                Metric: exportMetric(`Recorded takings — ${method}`),
                 Value: fm(Number(amt), currencyCode),
               }))
           : [];
       return [
-        { Metric: "Total revenue (ledger net)", Value: fm(data.totalRevenue, currencyCode) },
-        { Metric: "Appointment ledger revenue", Value: fm(Number(data.appointmentLedgerRevenue ?? data.totalRevenue ?? 0), currencyCode) },
-        { Metric: "Retail ledger revenue", Value: fm(Number(data.retailLedgerRevenue ?? 0), currencyCode) },
-        { Metric: "Recorded takings total (logged in-app)", Value: fm(Number(rt?.total ?? 0), currencyCode) },
-        { Metric: "Recorded — booking payments", Value: fm(Number(rt?.bookingPaymentsTotal ?? 0), currencyCode) },
-        { Metric: "Recorded — wallet on bookings", Value: fm(Number(rt?.walletTotal ?? 0), currencyCode) },
-        { Metric: "Recorded — retail & legacy sales", Value: fm(Number(rt?.retailAndLegacySalesTotal ?? 0), currencyCode) },
-        { Metric: "Recorded — tips (ledger date)", Value: fm(Number(rt?.tipsTotal ?? 0), currencyCode) },
-        { Metric: "Recorded — cancellation fees", Value: fm(Number(rt?.cancellationFeesTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Total revenue (ledger net)"), Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Appointment ledger revenue"), Value: fm(Number(data.appointmentLedgerRevenue ?? data.totalRevenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Retail ledger revenue"), Value: fm(Number(data.retailLedgerRevenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded takings total (logged in-app)"), Value: fm(Number(rt?.total ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded — booking payments"), Value: fm(Number(rt?.bookingPaymentsTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded — wallet on bookings"), Value: fm(Number(rt?.walletTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded — retail & legacy sales"), Value: fm(Number(rt?.retailAndLegacySalesTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded — tips (ledger date)"), Value: fm(Number(rt?.tipsTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Recorded — cancellation fees"), Value: fm(Number(rt?.cancellationFeesTotal ?? 0), currencyCode) },
         ...methodRows,
-        { Metric: "Scheduled appointments (all statuses)", Value: data.totalBookings || 0 },
-        { Metric: "Appointments with ledger activity", Value: Number(data.bookingsWithLedgerActivity ?? 0) },
-        { Metric: "Avg ledger per appointment (with activity)", Value: fm(data.averageBookingValue, currencyCode) },
+        { Metric: exportMetric("Scheduled appointments (all statuses)"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Appointments with ledger activity"), Value: Number(data.bookingsWithLedgerActivity ?? 0) },
+        { Metric: exportMetric("Avg ledger per appointment (with activity)"), Value: fm(data.averageBookingValue, currencyCode) },
         ...((data.revenueByDay as ReportRow[]) || []).map((item) => ({
           Date: item.date,
           Revenue: fm((item.revenue as number), currencyCode),
@@ -443,9 +471,9 @@ export function formatReportDataForExport(
       return [
         ...(sum
           ? [
-              { Metric: "Unique appointments (summary)", Value: Number(sum.uniqueAppointments ?? sum.totalBookings ?? 0) },
-              { Metric: "Ledger net (sum)", Value: fm(Number(sum.totalRevenue ?? 0), currencyCode) },
-              { Metric: "Avg rating (weighted)", Value: Number(sum.averageRating ?? 0).toFixed(2) },
+              { Metric: exportMetric("Unique appointments (summary)"), Value: Number(sum.uniqueAppointments ?? sum.totalBookings ?? 0) },
+              { Metric: exportMetric("Ledger net (sum)"), Value: fm(Number(sum.totalRevenue ?? 0), currencyCode) },
+              { Metric: exportMetric("Avg rating (weighted)"), Value: Number(sum.averageRating ?? 0).toFixed(2) },
             ]
           : []),
         ...((data.staffMembers as ReportRow[]) || []).map((staff) => ({
@@ -462,25 +490,25 @@ export function formatReportDataForExport(
     case "client-summary": {
       const cs = data as ReportRow & { clientRetention?: { retentionRate?: number } };
       return [
-        { Metric: "Total Clients (distinct in window)", Value: data.totalClients || 0 },
-        { Metric: "New Clients (first-ever in scope in window)", Value: data.newClients || 0 },
-        { Metric: "Returning (2+ bookings in window)", Value: data.returningClients || 0 },
-        { Metric: "Avg spend per client (window)", Value: fm(Number(data.averageLifetimeValue ?? 0), currencyCode) },
+        { Metric: exportMetric("Total Clients (distinct in window)"), Value: data.totalClients || 0 },
+        { Metric: exportMetric("New Clients (first-ever in scope in window)"), Value: data.newClients || 0 },
+        { Metric: exportMetric("Returning (2+ bookings in window)"), Value: data.returningClients || 0 },
+        { Metric: exportMetric("Avg spend per client (window)"), Value: fm(Number(data.averageLifetimeValue ?? 0), currencyCode) },
         {
-          Metric: "Avg bookings per client",
+          Metric: exportMetric("Avg bookings per client"),
           Value: Number(cs.averageBookingsPerClient ?? 0).toFixed(2),
         },
         {
-          Metric: "Retention %",
+          Metric: exportMetric("Retention %"),
           Value: `${Number(cs.clientRetention?.retentionRate ?? 0).toFixed(1)}%`,
         },
         ...(typeof data.basisNote === "string" && data.basisNote.trim()
-          ? [{ Metric: "Basis", Value: data.basisNote }]
+          ? [{ Metric: exportMetric("Basis"), Value: data.basisNote }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "Summary (one line)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Summary (one line)"), Value: data.reportBasis }]
           : []),
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...((data.topClients as ReportRow[]) || []).map((client) => ({
           "Client Name": client.clientName,
           "Total Bookings": client.totalBookings,
@@ -492,15 +520,15 @@ export function formatReportDataForExport(
 
     case "booking-status":
       return [
-        { Metric: "Total Bookings", Value: data.totalBookings || 0 },
-        { Metric: "Completion Rate", Value: `${Number(data.completionRate ?? 0).toFixed(1)}%` },
-        { Metric: "Cancellation Rate", Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
-        { Metric: "No-Show Rate", Value: `${Number(data.noShowRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Total Bookings"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Completion Rate"), Value: `${Number(data.completionRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Cancellation Rate"), Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("No-Show Rate"), Value: `${Number(data.noShowRate ?? 0).toFixed(1)}%` },
         ...(typeof data.basisNote === "string" && data.basisNote.trim()
-          ? [{ Metric: "Basis (counts & ledger)", Value: data.basisNote }]
+          ? [{ Metric: exportMetric("Basis (counts & ledger)"), Value: data.basisNote }]
           : []),
         ...(Array.isArray(data.ledgerTransactionTypes) && data.ledgerTransactionTypes.length
-          ? [{ Metric: "Ledger transaction types", Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
+          ? [{ Metric: exportMetric("Ledger transaction types"), Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
           : []),
         ...((data.bookingsByStatus as ReportRow[]) || []).map((status) => ({
           Status: status.status,
@@ -512,11 +540,11 @@ export function formatReportDataForExport(
 
     case "service-performance":
       return [
-        { Metric: "Distinct offerings", Value: data.totalServices || 0 },
-        { Metric: "Completed appointments (unique)", Value: data.totalBookings || 0 },
-        { Metric: "Ledger net allocated (total)", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Distinct offerings"), Value: data.totalServices || 0 },
+        { Metric: exportMetric("Completed appointments (unique)"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Ledger net allocated (total)"), Value: fm(data.totalRevenue, currencyCode) },
         ...(Array.isArray(data.ledgerTransactionTypes) && data.ledgerTransactionTypes.length
-          ? [{ Metric: "Ledger transaction types", Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
+          ? [{ Metric: exportMetric("Ledger transaction types"), Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
           : []),
         ...((data.topServices as ReportRow[]) || (data.allServices as ReportRow[]) || []).map((s) => ({
           Service: s.serviceName,
@@ -536,30 +564,30 @@ export function formatReportDataForExport(
 
     case "revenue-trends":
       return [
-        { Metric: "Granularity", Value: data.period || "" },
+        { Metric: exportMetric("Granularity"), Value: data.period || "" },
         ...(data.dateRange && typeof data.dateRange === "object"
           ? [
               {
-                Metric: "Window",
+                Metric: exportMetric("Window"),
                 Value: `${(data.dateRange as { fromYmd?: string }).fromYmd ?? ""} → ${(data.dateRange as { toYmd?: string }).toYmd ?? ""}`,
               },
               ...((data.dateRange as { timezone?: string }).timezone
-                ? [{ Metric: "Timezone", Value: String((data.dateRange as { timezone: string }).timezone) }]
+                ? [{ Metric: exportMetric("Timezone"), Value: String((data.dateRange as { timezone: string }).timezone) }]
                 : []),
             ]
           : []),
         ...(typeof (data as ReportRow).reportBasis === "string" && String((data as ReportRow).reportBasis).trim()
-          ? [{ Metric: "Basis (summary)", Value: String((data as ReportRow).reportBasis) }]
+          ? [{ Metric: exportMetric("Basis (summary)"), Value: String((data as ReportRow).reportBasis) }]
           : []),
-        { Metric: "Ledger net (sum of buckets)", Value: fm(data.totalRevenue, currencyCode) },
-        { Metric: "Scheduled visits (sum)", Value: data.totalBookings || 0 },
-        { Metric: "Avg ledger per bucket", Value: fm(Number(data.averageRevenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Ledger net (sum of buckets)"), Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Scheduled visits (sum)"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Avg ledger per bucket"), Value: fm(Number(data.averageRevenue ?? 0), currencyCode) },
         {
-          Metric: "Δ revenue vs prior bucket",
+          Metric: exportMetric("Δ revenue vs prior bucket"),
           Value: `${Number(data.revenueGrowth ?? 0).toFixed(1)}%`,
         },
         {
-          Metric: "Δ visits vs prior bucket",
+          Metric: exportMetric("Δ visits vs prior bucket"),
           Value: `${Number(data.bookingsGrowth ?? 0).toFixed(1)}%`,
         },
         ...((data.trends as ReportRow[]) || []).map((t) => ({
@@ -571,41 +599,41 @@ export function formatReportDataForExport(
 
     case "business-overview":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Calendar window", Value: `${data.fromYmd} → ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Calendar window"), Value: `${data.fromYmd} → ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "Basis (summary)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Basis (summary)"), Value: data.reportBasis }]
           : []),
-        { Metric: "Ledger earnings (provider_earnings)", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Ledger earnings (provider_earnings)"), Value: fm(data.totalRevenue, currencyCode) },
         {
-          Metric: "Ledger from bookings",
+          Metric: exportMetric("Ledger from bookings"),
           Value: fm(Number((data as ReportRow).ledgerEarningsFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders",
+          Metric: exportMetric("Ledger from product orders"),
           Value: fm(Number((data as ReportRow).ledgerEarningsFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Net after refunds & cancellation fees", Value: fm(data.netRevenue, currencyCode) },
-        { Metric: "Refunds (ledger)", Value: fm(data.totalRefunded, currencyCode) },
-        { Metric: "Cancellation fees (net)", Value: fm(Number((data as ReportRow).cancellationFees ?? 0), currencyCode) },
-        { Metric: "Tips (ledger)", Value: fm(Number((data as ReportRow).tipsTotal ?? 0), currencyCode) },
-        { Metric: "Scheduled bookings (all statuses)", Value: data.totalBookings || 0 },
-        { Metric: "Distinct clients", Value: data.uniqueClients || 0 },
-        { Metric: "Avg ledger / booking (with earnings)", Value: fm(data.averageBookingValue, currencyCode) },
-        { Metric: "Completion rate", Value: `${Number(data.completionRate ?? 0).toFixed(1)}%` },
-        { Metric: "Cancellation rate", Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
-        { Metric: "No-show rate", Value: `${Number(data.noShowRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Net after refunds & cancellation fees"), Value: fm(data.netRevenue, currencyCode) },
+        { Metric: exportMetric("Refunds (ledger)"), Value: fm(data.totalRefunded, currencyCode) },
+        { Metric: exportMetric("Cancellation fees (net)"), Value: fm(Number((data as ReportRow).cancellationFees ?? 0), currencyCode) },
+        { Metric: exportMetric("Tips (ledger)"), Value: fm(Number((data as ReportRow).tipsTotal ?? 0), currencyCode) },
+        { Metric: exportMetric("Scheduled bookings (all statuses)"), Value: data.totalBookings || 0 },
+        { Metric: exportMetric("Distinct clients"), Value: data.uniqueClients || 0 },
+        { Metric: exportMetric("Avg ledger / booking (with earnings)"), Value: fm(data.averageBookingValue, currencyCode) },
+        { Metric: exportMetric("Completion rate"), Value: `${Number(data.completionRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Cancellation rate"), Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("No-show rate"), Value: `${Number(data.noShowRate ?? 0).toFixed(1)}%` },
         {
-          Metric: "Ledger growth vs prior window",
+          Metric: exportMetric("Ledger growth vs prior window"),
           Value: `${Number(data.revenueGrowth ?? 0).toFixed(1)}%`,
         },
         {
-          Metric: "Payments succeeded / total",
+          Metric: exportMetric("Payments succeeded / total"),
           Value: `${Number((data as ReportRow).successfulPayments ?? 0)} / ${Number((data as ReportRow).totalPayments ?? 0)}`,
         },
-        { Metric: "Staff profiles (provider-wide)", Value: (data as ReportRow).totalStaff ?? "" },
+        { Metric: exportMetric("Staff profiles (provider-wide)"), Value: (data as ReportRow).totalStaff ?? "" },
       ];
 
     case "business-comparison": {
@@ -616,15 +644,15 @@ export function formatReportDataForExport(
         | Record<string, { fromYmd?: string; toYmd?: string; description?: string }>
         | undefined;
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
-        ...(typeof data.period === "string" ? [{ Metric: "Granularity", Value: data.period }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
+        ...(typeof data.period === "string" ? [{ Metric: exportMetric("Granularity"), Value: data.period }] : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "Basis (summary)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Basis (summary)"), Value: data.reportBasis }]
           : []),
         ...(windows?.current?.fromYmd && windows?.current?.toYmd
           ? [
               {
-                Metric: "Current window (YMD)",
+                Metric: exportMetric("Current window (YMD)"),
                 Value: `${windows.current.fromYmd} → ${windows.current.toYmd}`,
               },
             ]
@@ -632,46 +660,46 @@ export function formatReportDataForExport(
         ...(windows?.previous?.fromYmd && windows?.previous?.toYmd
           ? [
               {
-                Metric: "Previous window (YMD)",
+                Metric: exportMetric("Previous window (YMD)"),
                 Value: `${windows.previous.fromYmd} → ${windows.previous.toYmd}`,
               },
             ]
           : []),
-        { Metric: "Ledger earnings · current", Value: fm(Number(current.revenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Ledger earnings · current"), Value: fm(Number(current.revenue ?? 0), currencyCode) },
         {
-          Metric: "Ledger from bookings · current",
+          Metric: exportMetric("Ledger from bookings · current"),
           Value: fm(Number(current.ledgerFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders · current",
+          Metric: exportMetric("Ledger from product orders · current"),
           Value: fm(Number(current.ledgerFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Ledger earnings · previous", Value: fm(Number(previous.revenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Ledger earnings · previous"), Value: fm(Number(previous.revenue ?? 0), currencyCode) },
         {
-          Metric: "Ledger from bookings · previous",
+          Metric: exportMetric("Ledger from bookings · previous"),
           Value: fm(Number(previous.ledgerFromBookings ?? 0), currencyCode),
         },
         {
-          Metric: "Ledger from product orders · previous",
+          Metric: exportMetric("Ledger from product orders · previous"),
           Value: fm(Number(previous.ledgerFromProductOrders ?? 0), currencyCode),
         },
-        { Metric: "Growth · ledger headline %", Value: `${Number(growth.revenue ?? 0).toFixed(1)}%` },
-        { Metric: "Scheduled bookings · current", Value: Number(current.bookings ?? 0) },
-        { Metric: "Scheduled bookings · previous", Value: Number(previous.bookings ?? 0) },
-        { Metric: "Growth · bookings %", Value: `${Number(growth.bookings ?? 0).toFixed(1)}%` },
-        { Metric: "Distinct clients · current", Value: Number(current.clients ?? 0) },
-        { Metric: "Distinct clients · previous", Value: Number(previous.clients ?? 0) },
-        { Metric: "Growth · clients %", Value: `${Number(growth.clients ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Growth · ledger headline %"), Value: `${Number(growth.revenue ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Scheduled bookings · current"), Value: Number(current.bookings ?? 0) },
+        { Metric: exportMetric("Scheduled bookings · previous"), Value: Number(previous.bookings ?? 0) },
+        { Metric: exportMetric("Growth · bookings %"), Value: `${Number(growth.bookings ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Distinct clients · current"), Value: Number(current.clients ?? 0) },
+        { Metric: exportMetric("Distinct clients · previous"), Value: Number(previous.clients ?? 0) },
+        { Metric: exportMetric("Growth · clients %"), Value: `${Number(growth.clients ?? 0).toFixed(1)}%` },
         {
-          Metric: "Avg ledger / scheduled booking · current",
+          Metric: exportMetric("Avg ledger / scheduled booking · current"),
           Value: fm(Number(current.averageLedgerPerScheduledBooking ?? current.averageValue ?? 0), currencyCode),
         },
         {
-          Metric: "Avg ledger / scheduled booking · previous",
+          Metric: exportMetric("Avg ledger / scheduled booking · previous"),
           Value: fm(Number(previous.averageLedgerPerScheduledBooking ?? previous.averageValue ?? 0), currencyCode),
         },
         {
-          Metric: "Growth · avg ledger / booking %",
+          Metric: exportMetric("Growth · avg ledger / booking %"),
           Value: `${Number(growth.averageLedgerPerScheduledBooking ?? 0).toFixed(1)}%`,
         },
       ];
@@ -679,16 +707,16 @@ export function formatReportDataForExport(
 
     case "gift-card-sales":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "What this report counts", Value: String(data.reportBasis) }]
+          ? [{ Metric: exportMetric("What this report counts"), Value: String(data.reportBasis) }]
           : []),
-        { Metric: "Redemption rows", Value: data.totalGiftCardsSold || 0 },
-        { Metric: "Redeemed value (sum of amounts)", Value: fm(data.totalRevenue, currencyCode) },
-        { Metric: "Avg per redemption row", Value: fm(Number(data.averageGiftCardValue ?? 0), currencyCode) },
+        { Metric: exportMetric("Redemption rows"), Value: data.totalGiftCardsSold || 0 },
+        { Metric: exportMetric("Redeemed value (sum of amounts)"), Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Avg per redemption row"), Value: fm(Number(data.averageGiftCardValue ?? 0), currencyCode) },
         ...((data.giftCardSales as ReportRow[]) || []).map((item) => ({
           Section: "By amount",
           Amount: fm(Number(item.amount || 0), currencyCode),
@@ -700,16 +728,16 @@ export function formatReportDataForExport(
 
     case "gift-card-redemptions":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "What this report counts", Value: String(data.reportBasis) }]
+          ? [{ Metric: exportMetric("What this report counts"), Value: String(data.reportBasis) }]
           : []),
-        { Metric: "Redemption rows", Value: data.totalRedemptions || 0 },
-        { Metric: "Redeemed value", Value: fm(data.totalRedeemedValue, currencyCode) },
-        { Metric: "Avg per row", Value: fm(Number(data.averageRedemptionValue ?? 0), currencyCode) },
+        { Metric: exportMetric("Redemption rows"), Value: data.totalRedemptions || 0 },
+        { Metric: exportMetric("Redeemed value"), Value: fm(data.totalRedeemedValue, currencyCode) },
+        { Metric: exportMetric("Avg per row"), Value: fm(Number(data.averageRedemptionValue ?? 0), currencyCode) },
         ...((data.redemptions as ReportRow[]) || []).map((r) => ({
           Section: "Capture",
           Amount: fm(Number(r.amount || 0), currencyCode),
@@ -719,20 +747,20 @@ export function formatReportDataForExport(
 
     case "cancellations":
       return [
-        { Metric: "Total Cancelled", Value: data.totalCancelled || 0 },
-        { Metric: "Total Bookings (denominator)", Value: data.totalBookings ?? "" },
-        { Metric: "Cancellation Rate", Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
-        { Metric: "Ledger net (in window)", Value: fm(Number(data.lostRevenue ?? 0), currencyCode) },
+        { Metric: exportMetric("Total Cancelled"), Value: data.totalCancelled || 0 },
+        { Metric: exportMetric("Total Bookings (denominator)"), Value: data.totalBookings ?? "" },
+        { Metric: exportMetric("Cancellation Rate"), Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Ledger net (in window)"), Value: fm(Number(data.lostRevenue ?? 0), currencyCode) },
         ...(typeof data.basisNote === "string" && data.basisNote.trim()
-          ? [{ Metric: "Basis", Value: data.basisNote }]
+          ? [{ Metric: exportMetric("Basis"), Value: data.basisNote }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "Summary (one line)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Summary (one line)"), Value: data.reportBasis }]
           : []),
         ...(Array.isArray(data.ledgerTransactionTypes) && data.ledgerTransactionTypes.length
-          ? [{ Metric: "Ledger transaction types", Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
+          ? [{ Metric: exportMetric("Ledger transaction types"), Value: (data.ledgerTransactionTypes as string[]).join(", ") }]
           : []),
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...((data.dailyBreakdown as ReportRow[]) || []).map((d) => ({
           "Daily bucket": d.date,
           Cancellations: d.count,
@@ -746,8 +774,8 @@ export function formatReportDataForExport(
 
     case "no-shows":
       return [
-        { Metric: "Total No-Shows", Value: data.totalNoShows || 0 },
-        { Metric: "Lost Revenue", Value: fm(data.lostRevenue, currencyCode) },
+        { Metric: exportMetric("Total No-Shows"), Value: data.totalNoShows || 0 },
+        { Metric: exportMetric("Lost Revenue"), Value: fm(data.lostRevenue, currencyCode) },
         ...((data.repeatOffenders as ReportRow[]) || []).map((r) => ({
           Name: r.name,
           Count: r.count,
@@ -757,31 +785,31 @@ export function formatReportDataForExport(
 
     case "product-sales":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "What this report counts", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("What this report counts"), Value: data.reportBasis }]
           : []),
-        { Metric: "Total units sold", Value: data.totalProductsSold || 0 },
+        { Metric: exportMetric("Total units sold"), Value: data.totalProductsSold || 0 },
         ...(typeof data.unitsFromBookings === "number"
-          ? [{ Metric: "Units from appointment add-ons (booking_products)", Value: data.unitsFromBookings }]
+          ? [{ Metric: exportMetric("Units from appointment add-ons (booking_products)"), Value: data.unitsFromBookings }]
           : []),
         ...(typeof data.unitsFromOrders === "number"
-          ? [{ Metric: "Units from paid retail orders", Value: data.unitsFromOrders }]
+          ? [{ Metric: exportMetric("Units from paid retail orders"), Value: data.unitsFromOrders }]
           : []),
-        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Total Revenue"), Value: fm(data.totalRevenue, currencyCode) },
         ...(typeof data.revenueFromBookings === "number"
-          ? [{ Metric: "Revenue from appointment add-ons", Value: fm(data.revenueFromBookings, currencyCode) }]
+          ? [{ Metric: exportMetric("Revenue from appointment add-ons"), Value: fm(data.revenueFromBookings, currencyCode) }]
           : []),
         ...(typeof data.revenueFromOrders === "number"
-          ? [{ Metric: "Revenue from paid retail orders", Value: fm(data.revenueFromOrders, currencyCode) }]
+          ? [{ Metric: exportMetric("Revenue from paid retail orders"), Value: fm(data.revenueFromOrders, currencyCode) }]
           : []),
-        { Metric: "Total Cost (supply_price × qty)", Value: fm((data.totalCost ?? 0), currencyCode) },
-        { Metric: "Total Profit", Value: fm((data.totalProfit ?? 0), currencyCode) },
+        { Metric: exportMetric("Total Cost (supply_price × qty)"), Value: fm((data.totalCost ?? 0), currencyCode) },
+        { Metric: exportMetric("Total Profit"), Value: fm((data.totalProfit ?? 0), currencyCode) },
         {
-          Metric: "Avg revenue per unit sold",
+          Metric: exportMetric("Avg revenue per unit sold"),
           Value: fm(
             typeof data.averageRevenuePerUnitSold === "number"
               ? data.averageRevenuePerUnitSold
@@ -809,20 +837,20 @@ export function formatReportDataForExport(
     case "payment-summary":
       return [
         ...(typeof (data as ReportRow).reportBasis === "string" && String((data as ReportRow).reportBasis).trim()
-          ? [{ Metric: "Basis", Value: (data as ReportRow).reportBasis }]
+          ? [{ Metric: exportMetric("Basis"), Value: (data as ReportRow).reportBasis }]
           : []),
         ...(typeof (data as ReportRow).timezone === "string"
-          ? [{ Metric: "Timezone", Value: (data as ReportRow).timezone }]
+          ? [{ Metric: exportMetric("Timezone"), Value: (data as ReportRow).timezone }]
           : []),
-        { Metric: "Bookings (excl. pending)", Value: data.totalPayments || 0 },
-        { Metric: "Gross Booked Value", Value: fm(data.grossBookedValue ?? data.totalAmount, currencyCode) },
-        { Metric: "Customer Funds Settled (deduped)", Value: fm(data.settledLedgerAmount ?? data.totalCollected, currencyCode) },
-        { Metric: "Customer Payments by Method Total", Value: fm(data.customerPaymentsByMethodTotal, currencyCode) },
-        { Metric: "Gateway charge rows (payment_transactions)", Value: (data as ReportRow).gatewayChargeCount ?? "" },
-        { Metric: "Provider Earnings", Value: fm(data.providerEarnings, currencyCode) },
-        { Metric: "Provider Net Activity", Value: fm(data.providerNetActivity ?? data.netAmount, currencyCode) },
-        { Metric: "Refunded Amount", Value: fm(data.refundedAmount, currencyCode) },
-        { Metric: "Refund Rate", Value: `${Number(data.refundRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Bookings (excl. pending)"), Value: data.totalPayments || 0 },
+        { Metric: exportMetric("Gross Booked Value"), Value: fm(data.grossBookedValue ?? data.totalAmount, currencyCode) },
+        { Metric: exportMetric("Customer Funds Settled (deduped)"), Value: fm(data.settledLedgerAmount ?? data.totalCollected, currencyCode) },
+        { Metric: exportMetric("Customer Payments by Method Total"), Value: fm(data.customerPaymentsByMethodTotal, currencyCode) },
+        { Metric: exportMetric("Gateway charge rows (payment_transactions)"), Value: (data as ReportRow).gatewayChargeCount ?? "" },
+        { Metric: exportMetric("Provider Earnings"), Value: fm(data.providerEarnings, currencyCode) },
+        { Metric: exportMetric("Provider Net Activity"), Value: fm(data.providerNetActivity ?? data.netAmount, currencyCode) },
+        { Metric: exportMetric("Refunded Amount"), Value: fm(data.refundedAmount, currencyCode) },
+        { Metric: exportMetric("Refund Rate"), Value: `${Number(data.refundRate ?? 0).toFixed(1)}%` },
         ...((data.paymentsByMethod as ReportRow[]) || []).map((p) => ({
           Method: p.method,
           Count: p.count,
@@ -832,30 +860,30 @@ export function formatReportDataForExport(
 
     case "new-clients":
       return [
-        { Metric: "Total New Clients", Value: data.totalNewClients || 0 },
-        { Metric: "Return Rate", Value: `${Number(data.returnRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Total New Clients"), Value: data.totalNewClients || 0 },
+        { Metric: exportMetric("Return Rate"), Value: `${Number(data.returnRate ?? 0).toFixed(1)}%` },
         ...((data.newClients as ReportRow[]) || []).map((c) => ({
           "Client Name": c.clientName,
           "First Visit": c.firstVisit,
           "Total Spent": fm(((c.totalSpent as number) || 0), currencyCode),
-          Returned: c.hasReturned ? "Yes" : "No",
+          Returned: c.hasReturned ? exportT("yesNo.yes") : exportT("yesNo.no"),
         })),
       ];
 
     case "client-retention":
       return [
-        { Metric: "Distinct clients", Value: data.totalClients ?? "" },
-        { Metric: "Single-visit clients", Value: data.newClients ?? "" },
-        { Metric: "Repeat clients (2+ visits)", Value: data.returningClients ?? "" },
-        { Metric: "Repeat share %", Value: `${Number(data.overallRetentionRate ?? 0).toFixed(1)}%` },
-        { Metric: "Avg visits / client", Value: Number((data as ReportRow).averageVisitsPerClient ?? 0).toFixed(2) },
+        { Metric: exportMetric("Distinct clients"), Value: data.totalClients ?? "" },
+        { Metric: exportMetric("Single-visit clients"), Value: data.newClients ?? "" },
+        { Metric: exportMetric("Repeat clients (2+ visits)"), Value: data.returningClients ?? "" },
+        { Metric: exportMetric("Repeat share %"), Value: `${Number(data.overallRetentionRate ?? 0).toFixed(1)}%` },
+        { Metric: exportMetric("Avg visits / client"), Value: Number((data as ReportRow).averageVisitsPerClient ?? 0).toFixed(2) },
         ...(typeof data.basisNote === "string" && data.basisNote.trim()
-          ? [{ Metric: "Basis", Value: data.basisNote }]
+          ? [{ Metric: exportMetric("Basis"), Value: data.basisNote }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "Summary (one line)", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Summary (one line)"), Value: data.reportBasis }]
           : []),
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(((data.retentionByPeriod as ReportRow[]) || (data.periods as ReportRow[]) || []) as ReportRow[]).map(
           (p) => ({
             Period: p.period,
@@ -869,8 +897,8 @@ export function formatReportDataForExport(
 
     case "lifetime-value":
       return [
-        { Metric: "Total Clients", Value: data.totalClients || 0 },
-        { Metric: "Average LTV", Value: fm(data.averageLTV, currencyCode) },
+        { Metric: exportMetric("Total Clients"), Value: data.totalClients || 0 },
+        { Metric: exportMetric("Average LTV"), Value: fm(data.averageLTV, currencyCode) },
         ...((data.topClients as ReportRow[]) || (data.clientLTV as ReportRow[]) || []).slice(0, 50).map((c) => ({
           Client: c.clientName ?? c.customerId,
           "Total Spent": fm(((c.totalSpent as number) || 0), currencyCode),
@@ -880,15 +908,15 @@ export function formatReportDataForExport(
 
     case "package-usage":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "Basis", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Basis"), Value: data.reportBasis }]
           : []),
-        { Metric: "Usage events", Value: data.totalPackagesUsed || 0 },
-        { Metric: "Distinct clients (deduped)", Value: data.totalUniqueClients || 0 },
+        { Metric: exportMetric("Usage events"), Value: data.totalPackagesUsed || 0 },
+        { Metric: exportMetric("Distinct clients (deduped)"), Value: data.totalUniqueClients || 0 },
         ...((data.packageUsage as ReportRow[]) || []).map((p) => ({
           Package: p.packageName ?? p.name,
           "Usage events": p.totalUsage || 0,
@@ -904,17 +932,17 @@ export function formatReportDataForExport(
 
     case "package-sales":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
         ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
-          ? [{ Metric: "Basis", Value: data.reportBasis }]
+          ? [{ Metric: exportMetric("Basis"), Value: data.reportBasis }]
           : []),
-        { Metric: "Bookings in window", Value: data.totalPackagesSold || 0 },
-        { Metric: "Booked package value", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Bookings in window"), Value: data.totalPackagesSold || 0 },
+        { Metric: exportMetric("Booked package value"), Value: fm(data.totalRevenue, currencyCode) },
         {
-          Metric: "Avg booked value / booking",
+          Metric: exportMetric("Avg booked value / booking"),
           Value: fm(data.averagePackageValue ?? 0, currencyCode),
         },
         ...((data.packageSales as ReportRow[]) || []).map((p) => ({
@@ -928,32 +956,32 @@ export function formatReportDataForExport(
     case "payouts":
       return [
         ...(typeof (data as ReportRow).timezone === "string"
-          ? [{ Metric: "Timezone", Value: String((data as ReportRow).timezone) }]
+          ? [{ Metric: exportMetric("Timezone"), Value: String((data as ReportRow).timezone) }]
           : []),
         ...(typeof (data as ReportRow).fromYmd === "string" && typeof (data as ReportRow).toYmd === "string"
-          ? [{ Metric: "Ledger window", Value: `${(data as ReportRow).fromYmd} → ${(data as ReportRow).toYmd}` }]
+          ? [{ Metric: exportMetric("Ledger window"), Value: `${(data as ReportRow).fromYmd} → ${(data as ReportRow).toYmd}` }]
           : []),
         ...(typeof (data as ReportRow).reportBasis === "string" && String((data as ReportRow).reportBasis).trim()
-          ? [{ Metric: "Basis", Value: String((data as ReportRow).reportBasis) }]
+          ? [{ Metric: exportMetric("Basis"), Value: String((data as ReportRow).reportBasis) }]
           : []),
-        { Metric: "Ledger rows", Value: data.totalPayouts || 0 },
-        { Metric: "Net provider earnings", Value: fm((data.totalPayoutAmount || 0), currencyCode) },
+        { Metric: exportMetric("Ledger rows"), Value: data.totalPayouts || 0 },
+        { Metric: exportMetric("Net provider earnings"), Value: fm((data.totalPayoutAmount || 0), currencyCode) },
         {
-          Metric: "Gross booked (linked rows)",
+          Metric: exportMetric("Gross booked (linked rows)"),
           Value: fm(data.totalBookedAmount ?? (data as ReportRow).bookedAmount ?? data.totalGrossAmount, currencyCode),
         },
         {
-          Metric: "Booked net of refunds",
+          Metric: exportMetric("Booked net of refunds"),
           Value: fm(
             (data as ReportRow).totalBookedNetOfRefunds ?? (data as ReportRow).bookedNetOfRefunds ?? 0,
             currencyCode,
           ),
         },
-        { Metric: "Platform & service fees", Value: fm(data.totalPlatformFees, currencyCode) },
-        { Metric: "Refunds (ledger)", Value: fm(data.totalRefunded, currencyCode) },
-        { Metric: "Avg per row", Value: fm(data.averagePayout, currencyCode) },
+        { Metric: exportMetric("Platform & service fees"), Value: fm(data.totalPlatformFees, currencyCode) },
+        { Metric: exportMetric("Refunds (ledger)"), Value: fm(data.totalRefunded, currencyCode) },
+        { Metric: exportMetric("Avg per row"), Value: fm(data.averagePayout, currencyCode) },
         {
-          Metric: "Fees % of gross booked",
+          Metric: exportMetric("Fees % of gross booked"),
           Value: `${Number((data as ReportRow).platformFeeRate ?? 0).toFixed(2)}%`,
         },
         ...((data.monthlyBreakdown as ReportRow[]) || []).map((m) => ({
@@ -973,16 +1001,16 @@ export function formatReportDataForExport(
 
     case "top-products":
       return [
-        ...(typeof data.timezone === "string" ? [{ Metric: "Timezone", Value: data.timezone }] : []),
+        ...(typeof data.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: data.timezone }] : []),
         ...(typeof data.fromYmd === "string" && typeof data.toYmd === "string"
-          ? [{ Metric: "Period (calendar)", Value: `${data.fromYmd} – ${data.toYmd}` }]
+          ? [{ Metric: exportMetric("Period (calendar)"), Value: `${data.fromYmd} – ${data.toYmd}` }]
           : []),
-        ...(typeof data.limit === "number" ? [{ Metric: "Rank list limit", Value: data.limit }] : []),
+        ...(typeof data.limit === "number" ? [{ Metric: exportMetric("Rank list limit"), Value: data.limit }] : []),
         ...(typeof data.reportBasis === "string" && String(data.reportBasis).trim()
-          ? [{ Metric: "What this report counts", Value: String(data.reportBasis) }]
+          ? [{ Metric: exportMetric("What this report counts"), Value: String(data.reportBasis) }]
           : []),
-        { Metric: "Units sold (all SKUs in window)", Value: data.totalProductsSold || 0 },
-        { Metric: "Line revenue (all SKUs in window)", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: exportMetric("Units sold (all SKUs in window)"), Value: data.totalProductsSold || 0 },
+        { Metric: exportMetric("Line revenue (all SKUs in window)"), Value: fm(data.totalRevenue, currencyCode) },
         ...((data.topProducts as ReportRow[]) || []).map((p, idx) => ({
           "#": idx + 1,
           Product: p.productName ?? p.name,
@@ -997,16 +1025,16 @@ export function formatReportDataForExport(
     case "payment-methods":
       return [
         ...(typeof (data as ReportRow).timezone === "string"
-          ? [{ Metric: "Timezone", Value: String((data as ReportRow).timezone) }]
+          ? [{ Metric: exportMetric("Timezone"), Value: String((data as ReportRow).timezone) }]
           : []),
         ...(typeof (data as ReportRow).fromYmd === "string" && typeof (data as ReportRow).toYmd === "string"
-          ? [{ Metric: "Date range (provider TZ)", Value: `${(data as ReportRow).fromYmd} → ${(data as ReportRow).toYmd}` }]
+          ? [{ Metric: exportMetric("Date range (provider TZ)"), Value: `${(data as ReportRow).fromYmd} → ${(data as ReportRow).toYmd}` }]
           : []),
         ...(typeof (data as ReportRow).reportBasis === "string" && String((data as ReportRow).reportBasis).trim()
-          ? [{ Metric: "Basis", Value: String((data as ReportRow).reportBasis) }]
+          ? [{ Metric: exportMetric("Basis"), Value: String((data as ReportRow).reportBasis) }]
           : []),
-        { Metric: "Total line items", Value: (data as ReportRow).totalLineItems ?? (data as ReportRow).totalPayments ?? 0 },
-        { Metric: "Total amount", Value: fm(Number((data as ReportRow).totalAmount ?? 0), currencyCode) },
+        { Metric: exportMetric("Total line items"), Value: (data as ReportRow).totalLineItems ?? (data as ReportRow).totalPayments ?? 0 },
+        { Metric: exportMetric("Total amount"), Value: fm(Number((data as ReportRow).totalAmount ?? 0), currencyCode) },
         ...(() => {
           const d = (data as ReportRow).diagnostics as
             | { failedCaptureAttemptsInRange?: number; failedCaptureAttemptsAttributed?: number }
@@ -1014,10 +1042,10 @@ export function formatReportDataForExport(
           if (!d) return [] as Array<{ Metric: string; Value: string | number }>;
           const rows: Array<{ Metric: string; Value: string | number }> = [];
           if (typeof d.failedCaptureAttemptsInRange === "number") {
-            rows.push({ Metric: "Failed captures in window (all)", Value: d.failedCaptureAttemptsInRange });
+            rows.push({ Metric: exportMetric("Failed captures in window (all)"), Value: d.failedCaptureAttemptsInRange });
           }
           if (typeof d.failedCaptureAttemptsAttributed === "number") {
-            rows.push({ Metric: "Failed captures linked to bookings here", Value: d.failedCaptureAttemptsAttributed });
+            rows.push({ Metric: exportMetric("Failed captures linked to bookings here"), Value: d.failedCaptureAttemptsAttributed });
           }
           return rows;
         })(),
@@ -1040,22 +1068,22 @@ export function formatReportDataForExport(
     case "refunds": {
       const d = data as ReportRow;
       return [
-        ...(typeof d.timezone === "string" ? [{ Metric: "Timezone", Value: d.timezone }] : []),
+        ...(typeof d.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: d.timezone }] : []),
         ...(typeof d.reportBasis === "string" && String(d.reportBasis).trim()
-          ? [{ Metric: "Basis", Value: d.reportBasis }]
+          ? [{ Metric: exportMetric("Basis"), Value: d.reportBasis }]
           : []),
-        { Metric: "Refund ledger rows", Value: d.totalRefunds || 0 },
-        { Metric: "Customer refund gross", Value: fm((d.totalRefundAmount as number) || 0, currencyCode) },
-        { Metric: "Provider earnings reversal", Value: fm((d.providerEarningsReversed as number) || 0, currencyCode) },
+        { Metric: exportMetric("Refund ledger rows"), Value: d.totalRefunds || 0 },
+        { Metric: exportMetric("Customer refund gross"), Value: fm((d.totalRefundAmount as number) || 0, currencyCode) },
+        { Metric: exportMetric("Provider earnings reversal"), Value: fm((d.providerEarningsReversed as number) || 0, currencyCode) },
         {
-          Metric: "Payment ledger in window (ratio denominator)",
+          Metric: exportMetric("Payment ledger in window (ratio denominator)"),
           Value: fm(
             ((d.totalPaymentLedgerAmount as number) ?? (d.totalPaymentAmount as number)) || 0,
             currencyCode,
           ),
         },
         {
-          Metric: "Refund share of payment ledger %",
+          Metric: exportMetric("Refund share of payment ledger %"),
           Value: `${Number(d.refundShareOfPaymentLedgerPercent ?? d.refundRate ?? 0).toFixed(2)}%`,
         },
         ...((d.methodBreakdown as ReportRow[]) || (d.refunds as ReportRow[]) || []).map((r) => ({
@@ -1071,15 +1099,15 @@ export function formatReportDataForExport(
       const totals = (d.totals as Record<string, number>) || {};
       return [
         ...(typeof d.fromYmd === "string" && typeof d.toYmd === "string"
-          ? [{ Metric: "Capture window", Value: `${d.fromYmd} → ${d.toYmd}` }]
+          ? [{ Metric: exportMetric("Capture window"), Value: `${d.fromYmd} → ${d.toYmd}` }]
           : []),
-        { Metric: "Rows returned", Value: d.count ?? (d.rows as ReportRow[])?.length ?? 0 },
-        { Metric: "Received", Value: fm(Number(totals.received ?? 0), currencyCode) },
-        { Metric: "Allocated", Value: fm(Number(totals.allocated ?? 0), currencyCode) },
-        { Metric: "Unallocated", Value: fm(Number(totals.unallocated ?? 0), currencyCode) },
-        { Metric: "Held", Value: fm(Number(totals.held ?? 0), currencyCode) },
-        { Metric: "Eligible", Value: fm(Number(totals.eligible ?? 0), currencyCode) },
-        { Metric: "Declined", Value: fm(Number(totals.declined ?? 0), currencyCode) },
+        { Metric: exportMetric("Rows returned"), Value: d.count ?? (d.rows as ReportRow[])?.length ?? 0 },
+        { Metric: exportMetric("Received"), Value: fm(Number(totals.received ?? 0), currencyCode) },
+        { Metric: exportMetric("Allocated"), Value: fm(Number(totals.allocated ?? 0), currencyCode) },
+        { Metric: exportMetric("Unallocated"), Value: fm(Number(totals.unallocated ?? 0), currencyCode) },
+        { Metric: exportMetric("Held"), Value: fm(Number(totals.held ?? 0), currencyCode) },
+        { Metric: exportMetric("Eligible"), Value: fm(Number(totals.eligible ?? 0), currencyCode) },
+        { Metric: exportMetric("Declined"), Value: fm(Number(totals.declined ?? 0), currencyCode) },
         ...((d.rows as ReportRow[]) || []).map((row) => ({
           Reference: row.paystack_reference,
           Amount: fm(Number(row.paid_amount ?? 0), currencyCode),
@@ -1096,27 +1124,27 @@ export function formatReportDataForExport(
       const summary = data.summary as Record<string, unknown> | undefined;
       const d = data as ReportRow;
       return [
-        ...(typeof d.timezone === "string" ? [{ Metric: "Timezone", Value: String(d.timezone) }] : []),
+        ...(typeof d.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: String(d.timezone) }] : []),
         ...(typeof d.fromYmd === "string" && typeof d.toYmd === "string"
-          ? [{ Metric: "Capture window", Value: `${d.fromYmd} → ${d.toYmd}` }]
+          ? [{ Metric: exportMetric("Capture window"), Value: `${d.fromYmd} → ${d.toYmd}` }]
           : []),
         ...(typeof d.reportBasis === "string" && String(d.reportBasis).trim()
-          ? [{ Metric: "Basis", Value: String(d.reportBasis) }]
+          ? [{ Metric: exportMetric("Basis"), Value: String(d.reportBasis) }]
           : []),
-        { Metric: "Row limit", Value: (d.limit as number) ?? "" },
-        { Metric: "Rows returned", Value: (summary?.total as number) ?? 0 },
-        { Metric: "Booking-linked", Value: (summary?.with_booking as number) ?? 0 },
-        { Metric: "Synced (booking_payments)", Value: (summary?.synced as number) ?? 0 },
-        { Metric: "Not synced (booking-linked)", Value: (summary?.not_synced as number) ?? 0 },
-        { Metric: "Sale-linked only", Value: (summary?.with_sale_only as number) ?? 0 },
-        { Metric: "Unlinked", Value: (summary?.unlinked as number) ?? 0 },
+        { Metric: exportMetric("Row limit"), Value: (d.limit as number) ?? "" },
+        { Metric: exportMetric("Rows returned"), Value: (summary?.total as number) ?? 0 },
+        { Metric: exportMetric("Booking-linked"), Value: (summary?.with_booking as number) ?? 0 },
+        { Metric: exportMetric("Synced (booking_payments)"), Value: (summary?.synced as number) ?? 0 },
+        { Metric: exportMetric("Not synced (booking-linked)"), Value: (summary?.not_synced as number) ?? 0 },
+        { Metric: exportMetric("Sale-linked only"), Value: (summary?.with_sale_only as number) ?? 0 },
+        { Metric: exportMetric("Unlinked"), Value: (summary?.unlinked as number) ?? 0 },
         ...((data.payments as ReportRow[]) || []).map((p) => ({
           Date: p.created_at,
           "Yoco ID": p.yoco_payment_id,
           Amount: `${((p.amount as number) / 100).toFixed(2)} ${p.currency}`,
           Status: p.status,
           "Link kind": (p.link_kind as string) ?? "",
-          "Booking synced": p.link_kind === "booking" ? (p.booking_synced ? "Yes" : "No") : "—",
+          "Booking synced": p.link_kind === "booking" ? (p.booking_synced ? exportT("yesNo.yes") : exportT("yesNo.no")) : "—",
         })),
       ];
     }
@@ -1125,17 +1153,17 @@ export function formatReportDataForExport(
       const inv = data as ReportRow;
       return [
         ...(typeof inv.reportBasis === "string" && String(inv.reportBasis).trim()
-          ? [{ Metric: "Basis", Value: String(inv.reportBasis) }]
+          ? [{ Metric: exportMetric("Basis"), Value: String(inv.reportBasis) }]
           : []),
-        ...(typeof inv.timezone === "string" ? [{ Metric: "Timezone", Value: inv.timezone }] : []),
-        ...(typeof inv.asOf === "string" ? [{ Metric: "Generated at", Value: inv.asOf }] : []),
-        { Metric: "Total products", Value: inv.totalProducts ?? 0 },
-        { Metric: "Active products", Value: inv.activeProducts ?? 0 },
-        { Metric: "Inactive products", Value: inv.inactiveProducts ?? 0 },
-        { Metric: "Products tracking stock", Value: inv.productsTrackingStock ?? 0 },
-        { Metric: "Retail stock value", Value: fm(Number(inv.totalStockValue ?? 0), currencyCode) },
-        { Metric: "Low stock (count)", Value: inv.lowStockCount ?? 0 },
-        { Metric: "Out of stock (count)", Value: inv.outOfStockCount ?? 0 },
+        ...(typeof inv.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: inv.timezone }] : []),
+        ...(typeof inv.asOf === "string" ? [{ Metric: exportMetric("Generated at"), Value: inv.asOf }] : []),
+        { Metric: exportMetric("Total products"), Value: inv.totalProducts ?? 0 },
+        { Metric: exportMetric("Active products"), Value: inv.activeProducts ?? 0 },
+        { Metric: exportMetric("Inactive products"), Value: inv.inactiveProducts ?? 0 },
+        { Metric: exportMetric("Products tracking stock"), Value: inv.productsTrackingStock ?? 0 },
+        { Metric: exportMetric("Retail stock value"), Value: fm(Number(inv.totalStockValue ?? 0), currencyCode) },
+        { Metric: exportMetric("Low stock (count)"), Value: inv.lowStockCount ?? 0 },
+        { Metric: exportMetric("Out of stock (count)"), Value: inv.outOfStockCount ?? 0 },
         ...((inv.categoryBreakdown as ReportRow[]) || []).map((c) => ({
           Category: (c.category as string) ?? "",
           Products: c.count ?? 0,
@@ -1151,9 +1179,9 @@ export function formatReportDataForExport(
           return {
             Product: p.name ?? p.productName,
             Category: (p.category as string) ?? "",
-            Active: p.is_active === false ? "No" : "Yes",
-            "Track stock": p.track_stock_quantity === false ? "No" : "Yes",
-            Variants: (p.has_variants as boolean) ? "Yes" : "No",
+            Active: p.is_active === false ? exportT("yesNo.no") : exportT("yesNo.yes"),
+            "Track stock": p.track_stock_quantity === false ? exportT("yesNo.no") : exportT("yesNo.yes"),
+            Variants: (p.has_variants as boolean) ? exportT("yesNo.yes") : exportT("yesNo.no"),
             Stock: qty,
             "Display price": fm(displayPrice, currencyCode),
             "Line retail value": fm(lineRetail, currencyCode),
@@ -1194,23 +1222,23 @@ export function formatReportDataForExport(
       return [
         ...(summary
           ? [
-              { Metric: "Period total available (min)", Value: summary.totalAvailableMinutes ?? "" },
-              { Metric: "Period total booked (min)", Value: summary.totalBookedMinutes ?? "" },
-              { Metric: "Period occupancy %", Value: pct(summary.occupancyPercent) },
-              { Metric: "Staff in scope", Value: summary.staffMemberCount ?? "" },
-              { Metric: "Days in range", Value: summary.dayCount ?? "" },
+              { Metric: exportMetric("Period total available (min)"), Value: summary.totalAvailableMinutes ?? "" },
+              { Metric: exportMetric("Period total booked (min)"), Value: summary.totalBookedMinutes ?? "" },
+              { Metric: exportMetric("Period occupancy %"), Value: pct(summary.occupancyPercent) },
+              { Metric: exportMetric("Staff in scope"), Value: summary.staffMemberCount ?? "" },
+              { Metric: exportMetric("Days in range"), Value: summary.dayCount ?? "" },
             ]
           : []),
         ...(typeof d.basisNote === "string" && d.basisNote.trim()
-          ? [{ Metric: "Basis", Value: d.basisNote }]
+          ? [{ Metric: exportMetric("Basis"), Value: d.basisNote }]
           : []),
         ...(typeof d.reportBasis === "string" && d.reportBasis.trim()
-          ? [{ Metric: "Summary (one line)", Value: d.reportBasis }]
+          ? [{ Metric: exportMetric("Summary (one line)"), Value: d.reportBasis }]
           : []),
         ...(Array.isArray(d.includedBookingStatuses) && d.includedBookingStatuses.length
-          ? [{ Metric: "Booking statuses", Value: (d.includedBookingStatuses as string[]).join(", ") }]
+          ? [{ Metric: exportMetric("Booking statuses"), Value: (d.includedBookingStatuses as string[]).join(", ") }]
           : []),
-        ...(typeof d.timezone === "string" ? [{ Metric: "Timezone", Value: d.timezone }] : []),
+        ...(typeof d.timezone === "string" ? [{ Metric: exportMetric("Timezone"), Value: d.timezone }] : []),
         ...byDate.map((row) => ({
           View: "by_date",
           "Staff name": "",
@@ -1237,27 +1265,27 @@ export function formatReportDataForExport(
       const d = data as ReportRow;
       const byM = (d.byPaymentMethod as Record<string, number> | undefined) || {};
       return [
-        { Field: "Date", Value: String(d.date ?? "") },
+        { Field: exportMetric("Date"), Value: String(d.date ?? "") },
         ...(typeof (d as ReportRow).timezone === "string"
-          ? [{ Field: "Timezone", Value: (d as ReportRow).timezone }]
+          ? [{ Field: exportMetric("Timezone"), Value: (d as ReportRow).timezone }]
           : []),
         ...(typeof (d as ReportRow).reportBasis === "string" && String((d as ReportRow).reportBasis).trim()
-          ? [{ Field: "Basis", Value: (d as ReportRow).reportBasis }]
+          ? [{ Field: exportMetric("Basis"), Value: (d as ReportRow).reportBasis }]
           : []),
-        { Field: "Booking count", Value: d.bookingCount },
-        { Field: "Total", Value: fm((d.total as number) || 0, currencyCode) },
-        { Field: "Booking payments total", Value: fm((d.bookingPaymentsTotal as number) || 0, currencyCode) },
-        { Field: "Wallet total (split-safe)", Value: fm((d.walletTotal as number) || 0, currencyCode) },
-        { Field: "Sales total", Value: fm((d.salesTotal as number) || 0, currencyCode) },
-        { Field: "Tips total", Value: fm((d.tipsTotal as number) || 0, currencyCode) },
+        { Field: exportMetric("Booking count"), Value: d.bookingCount },
+        { Field: exportMetric("Total"), Value: fm((d.total as number) || 0, currencyCode) },
+        { Field: exportMetric("Booking payments total"), Value: fm((d.bookingPaymentsTotal as number) || 0, currencyCode) },
+        { Field: exportMetric("Wallet total (split-safe)"), Value: fm((d.walletTotal as number) || 0, currencyCode) },
+        { Field: exportMetric("Sales total"), Value: fm((d.salesTotal as number) || 0, currencyCode) },
+        { Field: exportMetric("Tips total"), Value: fm((d.tipsTotal as number) || 0, currencyCode) },
         {
-          Field: "Cashback total (till cash-out, not in recorded total)",
+          Field: exportMetric("Cashback total (till cash-out, not in recorded total)"),
           Value: fm((d.cashbackTotal as number) || 0, currencyCode),
         },
-        { Field: "Cancellation fees", Value: fm((d.cancellationFeesTotal as number) || 0, currencyCode) },
-        { Field: "Note", Value: String(d.note ?? "") },
+        { Field: exportMetric("Cancellation fees"), Value: fm((d.cancellationFeesTotal as number) || 0, currencyCode) },
+        { Field: exportMetric("Note"), Value: String(d.note ?? "") },
         ...Object.keys(byM).map((k) => ({
-          Field: `Payment: ${k}`,
+          Field: exportMetric(`Payment: ${k}`),
           Value: fm((byM[k] as number) || 0, currencyCode),
         })),
       ];

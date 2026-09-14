@@ -195,7 +195,11 @@ export default function ProfilePage() {
             type: 'image/jpeg',
             lastModified: Date.now(),
           });
-          toast.success(`Compressed: ${compressionResult.compressionRatio.toFixed(1)}% reduction`);
+          toast.success(
+            t("web.provider.settings.pages.gallery.compressedPercent", {
+              percent: compressionResult.compressionRatio.toFixed(1),
+            }),
+          );
         }
       }
 
@@ -243,7 +247,7 @@ export default function ProfilePage() {
       });
       const errorMessage =
         error instanceof Error ? error.message : t("web.provider.pages.account/profile.failedToUploadPicture");
-      toast.error(`Profile picture upload failed: ${errorMessage}. Please check console for details.`);
+      toast.error(t("web.provider.pages.account/profile.uploadFailedDetails", { message: errorMessage }));
       // Revert optimistic update on error
       setAvatarPreview(null);
       // Reload to get original state

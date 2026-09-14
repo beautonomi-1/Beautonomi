@@ -58,7 +58,7 @@ export function ProviderTopbar() {
   const isCalendarPage = pathname?.startsWith("/provider/calendar");
 
   const mobilePageTitle = (() => {
-    if (!pathname) return provider?.business_name || branding?.site_name || "Beautonomi";
+    if (!pathname) return provider?.business_name || branding?.site_name || t("web.seo.siteName");
     const segments: [string, string][] = [
       ["/provider/calendar", t("web.provider.topbar.mobileTitles.calendar")],
       ["/provider/dashboard", t("web.provider.topbar.mobileTitles.dashboard")],
@@ -95,7 +95,7 @@ export function ProviderTopbar() {
     for (const [prefix, title] of segments) {
       if (pathname.startsWith(prefix)) return title;
     }
-    return provider?.business_name || branding?.site_name || "Beautonomi";
+    return provider?.business_name || branding?.site_name || t("web.seo.siteName");
   })();
 
   return (
@@ -108,7 +108,7 @@ export function ProviderTopbar() {
             className="hidden md:flex items-center justify-center flex-shrink-0 rounded-lg bg-white p-1 shadow-sm ring-1 ring-primary/20 hover:ring-primary/35 transition-shadow"
           >
             <PlatformLogo
-              alt={branding?.site_name ? t("web.provider.topbar.logoAlt", { name: branding.site_name }) : t("web.provider.topbar.logoAlt", { name: "Beautonomi" })}
+              alt={t("web.provider.topbar.logoAlt", { name: branding?.site_name || t("web.seo.siteName") })}
               className="h-7 w-auto max-h-7 object-contain"
             />
           </Link>

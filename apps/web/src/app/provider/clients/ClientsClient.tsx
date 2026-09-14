@@ -330,7 +330,7 @@ export function ClientsClient({
           });
           toast.success(t("web.provider.settings.pages.clients/list.clientSavedSuccessfully"));
         } else {
-          throw new Error("Invalid client data");
+          throw new Error(t("web.provider.clientsPage.invalidClient"));
         }
       } else {
         // Create new client from scratch

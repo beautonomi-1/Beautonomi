@@ -200,6 +200,40 @@ export const formatTime12h = (time: string) => {
   return `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`;
 };
 
+type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
+
+const CALENDAR_MOBILE_NS = "web.provider.calendarMobile";
+
+/** Locale-aware 12-hour time label (AM/PM from i18n). */
+export function formatTime12hI18n(time: string, t: TranslateFn): string {
+  const { hour, minute } = parseScheduledTime(time);
+  const period = hour >= 12 ? t(`${CALENDAR_MOBILE_NS}.pm`) : t(`${CALENDAR_MOBILE_NS}.am`);
+  const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+  return `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`;
+}
+
+/** Mangomint calendar status label for provider portal UI. */
+export function getCalendarStatusLabel(t: TranslateFn, status: AppointmentStatus): string {
+  switch (status) {
+    case AppointmentStatus.UNCONFIRMED:
+      return t(`${CALENDAR_MOBILE_NS}.statusUnconfirmed`);
+    case AppointmentStatus.CONFIRMED:
+      return t(`${CALENDAR_MOBILE_NS}.statusBooked`);
+    case AppointmentStatus.WAITING:
+      return t(`${CALENDAR_MOBILE_NS}.statusWaiting`);
+    case AppointmentStatus.IN_SERVICE:
+      return t(`${CALENDAR_MOBILE_NS}.statusInService`);
+    case AppointmentStatus.COMPLETED:
+      return t(`${CALENDAR_MOBILE_NS}.statusCompleted`);
+    case AppointmentStatus.CANCELED:
+      return t(`${CALENDAR_MOBILE_NS}.statusCanceled`);
+    case AppointmentStatus.NO_SHOW:
+      return t(`${CALENDAR_MOBILE_NS}.statusNoShow`);
+    default:
+      return t(`${CALENDAR_MOBILE_NS}.statusBooked`);
+  }
+}
+
 export const isNewBooking = (createdDate: string, status?: string) => {
   const completedStatuses = ["completed", "cancelled", "no_show"];
   if (status && completedStatuses.includes(status)) return false;

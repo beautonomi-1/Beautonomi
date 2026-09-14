@@ -737,7 +737,7 @@ export function ProductCreateEditDialog({
                   <div>
                     <Label htmlFor="amount">{t("web.provider.catalogue.productDialog.amount")}</Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{formData.measure}</span>
+                      <span className="absolute start-3 top-2.5 text-gray-500 text-sm">{formData.measure}</span>
                       <Input
                         id="amount"
                         type="number"
@@ -1040,7 +1040,7 @@ export function ProductCreateEditDialog({
                 <div>
                   <Label htmlFor="supplyPrice">{t("web.provider.catalogue.productDialog.supplyPrice")}</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
+                    <span className="absolute start-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                     <Input
                       id="supplyPrice"
                       type="number"
@@ -1082,7 +1082,7 @@ export function ProductCreateEditDialog({
                     <div>
                       <Label htmlFor="retailPrice">{t("web.provider.catalogue.productDialog.retailPrice")}</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
+                        <span className="absolute start-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                         <Input
                           id="retailPrice"
                           type="number"
@@ -1097,7 +1097,7 @@ export function ProductCreateEditDialog({
                     <div>
                       <Label htmlFor="markup">{t("web.provider.catalogue.productDialog.markup")}</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-gray-500 text-sm">%</span>
+                        <span className="absolute start-3 top-2.5 text-gray-500 text-sm">%</span>
                         <Input
                           id="markup"
                           type="number"
@@ -1303,7 +1303,7 @@ export function ProductCreateEditDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 bg-white hover:bg-gray-100"
+                        className="absolute top-2 end-2 bg-white hover:bg-gray-100"
                         onClick={() => setFormData({ ...formData, mainImageUrl: "", imageUrls: formData.imageUrls.filter(url => url !== formData.mainImageUrl) })}
                       >
                         <X className="h-4 w-4" />
@@ -1355,7 +1355,7 @@ export function ProductCreateEditDialog({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="absolute top-1 right-1 bg-white/80 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-1 end-1 bg-white/80 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => {
                               const newUrls = formData.imageUrls.filter((u) => u !== url);
                               const newMain = formData.mainImageUrl === url ? "" : formData.mainImageUrl;

@@ -126,9 +126,9 @@ type PaymentMethodCharge =
   | "paycloud_terminal";
 
 const SEND_LINK_OPTIONS = [
-  { label: "Email", value: "email" as const, labelKey: "email" as const },
-  { label: "SMS", value: "sms" as const, labelKey: "sms" as const },
-  { label: "Email & SMS", value: "both" as const, labelKey: "both" as const },
+  { value: "email" as const },
+  { value: "sms" as const },
+  { value: "both" as const },
 ];
 
 type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
@@ -752,7 +752,9 @@ export default function ProviderBookingDetail() {
         `/api/provider/bookings/${bookingId}/additional-charges/${chargeMarkPaidId}/mark-paid`,
         {
           payment_method: chargeMarkPaidMethod,
-          notes: `Marked as paid by provider via ${chargeMarkPaidMethod}`,
+          notes: t("web.provider.bookings.detail.toast.chargeMarkedPaidNote", {
+            method: chargeMarkPaidMethod,
+          }),
         }
       );
       toast.success(t("web.provider.bookings.detail.toast.chargeMarkedPaid"));
@@ -903,7 +905,9 @@ export default function ProviderBookingDetail() {
           total_amount: chargeAmount,
           payment_method: "yoco",
           payment_status: "pending",
-          notes: `Booking ${b.booking_number ?? bookingId}`,
+          notes: t("web.provider.bookings.detail.toast.yocoChargeBookingNote", {
+            number: b.booking_number ?? bookingId,
+          }),
         });
         const newId = res.data?.id;
         if (!newId) {
@@ -1177,7 +1181,7 @@ export default function ProviderBookingDetail() {
       } catch (err) {
         toast.error(
           err instanceof FetchError
-            ? t("web.provider.bookings.detail.leftoverCopy.saleSavedBookingFailedError", { error: err.message })
+            ? t("web.provider.bookings.detail.toast.saleSavedBookingFailed", { error: err.message })
             : t("web.provider.bookings.detail.toast.saleSavedBookingFailed")
         );
         await loadBooking();
@@ -1221,7 +1225,7 @@ export default function ProviderBookingDetail() {
       await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
       toast.success(
         etaMinutes != null && etaMinutes > 0
-          ? t("web.provider.bookings.detail.leftoverCopy.journeyStartedEta", { minutes: etaMinutes })
+          ? t("web.provider.bookings.detail.toast.journeyStartedEta", { minutes: etaMinutes })
           : t("web.provider.bookings.detail.toast.journeyStarted"),
       );
       loadBooking();
@@ -1978,7 +1982,7 @@ export default function ProviderBookingDetail() {
                       ? t("web.provider.bookings.detail.atHome.starting")
                       : journeyEtaMinutes == null
                         ? t("web.provider.bookings.detail.atHome.startJourneyNoEta")
-                        : t("web.provider.bookings.detail.leftoverCopy.startJourneyMin", { minutes: journeyEtaMinutes })}
+                        : t("web.provider.bookings.detail.atHome.startJourneyWithEta", { minutes: journeyEtaMinutes })}
                   </Button>
                 </div>
               )}
@@ -2051,7 +2055,7 @@ export default function ProviderBookingDetail() {
                         {t("web.provider.bookings.detail.atHome.startService")}
                       </Button>
                       <p className="text-xs text-gray-500">
-                        {t("web.provider.bookings.detail.leftoverCopy.sameActionPrefix")} <span className="font-medium">{t("web.provider.bookings.detail.atHome.startService")}</span> {t("web.provider.bookings.detail.leftoverCopy.sameActionSuffix")}
+                        {t("web.provider.bookings.detail.atHome.startServiceHint")}
                       </p>
                     </div>
                   )}
@@ -2097,7 +2101,7 @@ export default function ProviderBookingDetail() {
                               disabled={isOverridingArrival}
                               className="min-h-[44px] text-amber-800"
                             >
-                              {isOverridingArrival ? t("web.provider.bookings.detail.atHome.saving") : t("web.provider.bookings.detail.leftoverCopy.customerCantVerify")}
+                              {isOverridingArrival ? t("web.provider.bookings.detail.atHome.saving") : t("web.provider.bookings.detail.atHome.customerCantVerify")}
                             </Button>
                           </div>
                         </div>
@@ -2129,7 +2133,7 @@ export default function ProviderBookingDetail() {
                                 e.target.value.replace(/\s/g, "").toUpperCase().slice(0, 12)
                               )
                             }
-                            placeholder={t("web.provider.bookings.detail.leftoverCopy.qrPlaceholder")}
+                            placeholder={t("web.provider.bookings.detail.atHome.qrCodePlaceholder")}
                             autoCapitalize="characters"
                             autoCorrect="off"
                             spellCheck={false}
@@ -2213,9 +2217,9 @@ export default function ProviderBookingDetail() {
                 className="flex justify-between items-center py-3 border-b last:border-0"
               >
                 <div>
-                  <p className="font-medium">{service.offering_name || "Service"}</p>
+                  <p className="font-medium">{service.offering_name || t("web.provider.bookings.detail.services.fallback")}</p>
                   {service.duration_minutes != null && (
-                    <p className="text-sm text-gray-600">{service.duration_minutes} mins</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.services.durationMins", { minutes: service.duration_minutes })}</p>
                   )}
                 </div>
                 {service.price != null && (
@@ -2499,7 +2503,7 @@ export default function ProviderBookingDetail() {
                     : t("web.provider.bookings.detail.paymentSummary.taxAmount")}
                   {booking.currency} {booking.tax_amount.toFixed(2)}.
                   {booking.tax_rate != null && booking.tax_rate >= 0.15
-                    ? t("web.provider.bookings.detail.leftoverCopy.sarsRemit")
+                    ? t("web.provider.bookings.detail.paymentSummary.sarsRemit")
                     : ""}
                 </p>
               </div>
@@ -2534,7 +2538,7 @@ export default function ProviderBookingDetail() {
 
           {settlementPlan && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-              <span className="font-medium">{t("web.provider.bookings.detail.leftoverCopy.recommended")}</span>
+              <span className="font-medium">{t("web.provider.bookings.detail.charges.recommended")}</span>
               {settlementPlan.recommendedAction === "charge_card_on_file"
                 ? t("web.provider.bookings.detail.charges.chargeCardOnFile")
                 : settlementPlan.recommendedAction === "customer_pay"
@@ -2544,7 +2548,7 @@ export default function ProviderBookingDetail() {
           )}
 
           {additionalCharges.length === 0 ? (
-            <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.leftoverCopy.noAdditionalCharges")}</p>
+            <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.charges.empty")}</p>
           ) : (
             <div className="space-y-3">
               {additionalCharges.map((c) => (
@@ -3347,7 +3351,7 @@ export default function ProviderBookingDetail() {
                 const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
                 if (!c) {
                   return (
-                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.leftoverCopy.chargeNotFound")}</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.refund.chargeNotFound")}</p>
                   );
                 }
                 return (
@@ -3382,7 +3386,7 @@ export default function ProviderBookingDetail() {
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {markingChargePaid
-                    ? t("web.provider.bookings.detail.leftoverCopy.processingEllipsis")
+                    ? t("web.provider.bookings.detail.refund.processing")
                     : chargeMarkPaidMethod === "paycloud_terminal"
                       ? t("web.provider.bookings.detail.dialogs.chargeOnTerminal")
                       : t("common.confirm")}
@@ -3401,7 +3405,7 @@ export default function ProviderBookingDetail() {
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
               <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.paymentActions.issueRefund")}</h3>
               <p className="text-sm text-gray-600">
-                {t("web.provider.bookings.detail.leftoverCopy.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(maxRefundable) })}
+                {t("web.provider.bookings.detail.refund.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(maxRefundable) })}
               </p>
               <div>
                 <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.refundAmount")}</label>
@@ -3416,11 +3420,11 @@ export default function ProviderBookingDetail() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.leftoverCopy.reasonRequired")}</label>
+                <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.refund.reasonRequired")}</label>
                 <Textarea
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder={t("web.provider.bookings.detail.leftoverCopy.refundReasonPlaceholder")}
+                  placeholder={t("web.provider.bookings.detail.refund.reasonPlaceholder")}
                   rows={3}
                   className="resize-y min-h-[72px]"
                 />
@@ -3437,13 +3441,13 @@ export default function ProviderBookingDetail() {
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    {t("web.provider.bookings.detail.leftoverCopy.inPersonCash")}
+                    {t("web.provider.bookings.detail.refund.inPersonCash")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       if (!booking?.customer_id) {
-                        toast.error(t("web.provider.bookings.detail.leftoverCopy.thisCustomerNoWallet"));
+                        toast.error(t("web.provider.bookings.detail.refund.noWallet"));
                         return;
                       }
                       setRefundMethod("store_credit");
@@ -3460,8 +3464,8 @@ export default function ProviderBookingDetail() {
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
                   {refundMethod === "cash"
-                    ? t("web.provider.bookings.detail.leftoverCopy.refundInPersonHint")
-                    : t("web.provider.bookings.detail.leftoverCopy.walletCreditHint")}
+                    ? t("web.provider.bookings.detail.refund.inPersonHint")
+                    : t("web.provider.bookings.detail.refund.walletCreditHint")}
                 </p>
               </div>
               <div className="flex gap-3">
@@ -3488,9 +3492,9 @@ export default function ProviderBookingDetail() {
             open={showProviderCompletionModal}
             bookingId={String(bookingId)}
             providerPointsEarned={booking.provider_points_earned}
-            primaryServiceName={booking.services?.[0]?.offering_name || t("web.provider.bookings.detail.leftoverCopy.appointmentFallback")}
+            primaryServiceName={booking.services?.[0]?.offering_name || t("web.provider.bookings.detail.fallbacks.appointment")}
             primaryOfferingId={booking.services?.[0]?.offering_id}
-            customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : t("web.provider.bookings.detail.leftoverCopy.clientFallback")}
+            customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : t("web.provider.bookings.detail.fallbacks.client")}
             onDismiss={dismissProviderCompletionModal}
           />
         ) : null}
@@ -3519,7 +3523,7 @@ export default function ProviderBookingDetail() {
           onSuccess={async () => {
             toast.success(
               paycloudEntityType === "additional_charge"
-                ? t("web.provider.bookings.detail.leftoverCopy.additionalChargePaymentRecorded")
+                ? t("web.provider.bookings.detail.refund.additionalChargePaymentRecorded")
                 : t("web.provider.bookings.detail.toast.paymentRecorded"),
             );
             await Promise.all([loadBooking(), loadAdditionalCharges()]);

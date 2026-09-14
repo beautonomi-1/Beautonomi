@@ -46,9 +46,28 @@ const baseStats = {
 
 const fmt = (n: number) => `R${n.toFixed(2)}`;
 
+const t = (key: string, params?: Record<string, string | number>) => {
+  const map: Record<string, string> = {
+    "web.provider.dashboard.payoutBalance.availableToWithdraw": "Available to withdraw",
+    "web.provider.dashboard.payoutBalance.balanceOwed": "Balance owed",
+    "web.provider.dashboard.payoutBalance.owedToPlatformReview": "{{prefix}}Owed to platform — review in Finance",
+    "web.provider.dashboard.payoutBalance.platformHeldReady": "{{prefix}}Platform-held · ready to request payout",
+    "web.provider.dashboard.payoutBalance.payoutQueue": "{{prefix}}{{amount}} in payout queue",
+    "web.provider.dashboard.payoutBalance.holdOnEarnings": "{{prefix}}{{days}}-day hold on new earnings",
+    "web.provider.dashboard.payoutBalance.allLocationsPrefix": "All locations · ",
+  };
+  let out = map[key] ?? key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      out = out.replace(`{{${k}}}`, String(v));
+    }
+  }
+  return out;
+};
+
 describe("buildPayoutBalanceCardView", () => {
   it("uses finance-aligned available balance with finance link", () => {
-    const view = buildPayoutBalanceCardView(baseStats, fmt);
+    const view = buildPayoutBalanceCardView(baseStats, fmt, t);
     expect(view.title).toBe("Available to withdraw");
     expect(view.value).toBe(1250.5);
     expect(view.href).toBe("/provider/finance");
@@ -59,6 +78,7 @@ describe("buildPayoutBalanceCardView", () => {
     const view = buildPayoutBalanceCardView(
       { ...baseStats, pending_payout_queue: 200 },
       fmt,
+      t,
     );
     expect(view.subtitle).toContain("R200.00");
     expect(view.subtitle).toContain("payout queue");
@@ -68,6 +88,7 @@ describe("buildPayoutBalanceCardView", () => {
     const view = buildPayoutBalanceCardView(
       { ...baseStats, payout_hold_days: 7 },
       fmt,
+      t,
     );
     expect(view.subtitle).toContain("7-day hold");
   });
@@ -81,6 +102,7 @@ describe("buildPayoutBalanceCardView", () => {
         balance_owed_to_platform: 42,
       },
       fmt,
+      t,
     );
     expect(view.title).toBe("Balance owed");
     expect(view.value).toBe(42);
@@ -88,7 +110,7 @@ describe("buildPayoutBalanceCardView", () => {
   });
 
   it("notes all-locations scope when a location filter is active", () => {
-    const view = buildPayoutBalanceCardView(baseStats, fmt, { locationFiltered: true });
+    const view = buildPayoutBalanceCardView(baseStats, fmt, t, { locationFiltered: true });
     expect(view.subtitle.startsWith("All locations ·")).toBe(true);
   });
 });

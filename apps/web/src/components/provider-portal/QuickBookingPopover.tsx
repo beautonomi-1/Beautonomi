@@ -231,7 +231,7 @@ export function QuickBookingPopover({
               </div>
             ) : (
               <div className="mt-1.5 relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder={t("web.provider.portal.quickBookingPopover.searchPlaceholder")}
                   value={clientSearchQuery || formData.client_name}

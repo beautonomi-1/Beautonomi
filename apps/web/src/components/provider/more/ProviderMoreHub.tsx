@@ -548,13 +548,13 @@ export function ProviderMoreHub() {
               >
                 <Icon className="h-5 w-5" style={{ color: action.color }} />
                 {badge ? (
-                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
+                  <span className="absolute -end-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
                     {badge}
                   </span>
                 ) : null}
               </div>
               <span className="text-xs font-medium text-gray-700 text-center leading-snug">
-                {t(action.labelKey, { defaultValue: action.label })}
+                {t(action.labelKey)}
               </span>
               {isCardMachines && paycloudEnabled ? (
                 <span className="mt-1 text-[10px] text-gray-500 text-center">
@@ -705,7 +705,7 @@ export function ProviderMoreHub() {
             >
               <CollapsibleTrigger className="flex w-full items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 text-start hover:bg-gray-50 transition-colors touch-manipulation">
                 <span className="font-medium text-gray-900">
-                  {t(section.titleKey, { defaultValue: section.title })}
+                  {t(section.titleKey)}
                 </span>
                 {isExpanded ? (
                   <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -734,10 +734,10 @@ export function ProviderMoreHub() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900">
-                          {t(item.labelKey, { defaultValue: item.label })}
+                          {t(item.labelKey)}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
-                          {t(item.subtitleKey, { defaultValue: item.subtitle })}
+                          {t(item.subtitleKey)}
                         </p>
                       </div>
                       {badge ? (

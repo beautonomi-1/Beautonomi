@@ -188,7 +188,7 @@ function ProviderSalesContent() {
       {/* Mobile-optimized filters */}
       <div className="px-4 md:px-0 mb-4 md:mb-6 space-y-3 md:space-y-0 md:flex md:flex-row md:gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <Input
             placeholder={t("web.provider.pages.sales.searchPlaceholder")}
             value={searchQuery}

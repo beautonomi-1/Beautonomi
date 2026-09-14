@@ -15,11 +15,11 @@ import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
 import { NativePermissionsOnboardingProvider } from "@/providers/NativePermissionsOnboardingProvider";
 import { PushNotificationsProvider } from "@/providers/PushNotificationsProvider";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorBoundary as AppErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
-import { i18n, useTranslation } from "@beautonomi/i18n";
+import { i18n, I18nextProvider, useTranslation } from "@beautonomi/i18n";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
 import { AttTrackingBootstrap } from "@/components/AttTrackingBootstrap";
 import {
@@ -147,7 +147,7 @@ function RootLayout() {
     ...(isWeb ? { width: "100%", minHeight: "100%" } : {}),
   };
   return (
-    <ErrorBoundary>
+    <AppErrorBoundary>
       <GestureHandlerRootView style={rootStyle}>
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <KeyboardRootProvider>
@@ -155,6 +155,7 @@ function RootLayout() {
           <ThemeProvider>
             <ImageCropperProvider>
             <LanguageReactiveRoot>
+            <I18nextProvider i18n={i18n}>
             <AuthProvider>
               <NativePermissionsOnboardingProvider>
               <NotificationsProvider>
@@ -170,13 +171,14 @@ function RootLayout() {
               </NotificationsProvider>
               </NativePermissionsOnboardingProvider>
             </AuthProvider>
+            </I18nextProvider>
             </LanguageReactiveRoot>
             </ImageCropperProvider>
           </ThemeProvider>
           </KeyboardRootProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
 }
 
@@ -188,5 +190,7 @@ function MarketHostBootstrap() {
   }, []);
   return null;
 }
+
+export { ErrorBoundary } from "expo-router";
 
 export default Sentry.wrap(RootLayout);

@@ -7,6 +7,7 @@ import { Search, User, Calendar, Package, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface ProviderSearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -25,13 +26,15 @@ interface ProviderGlobalSearchProps {
 }
 
 export function ProviderGlobalSearch({
-  placeholder = "Search clients, appointments, services...",
+  placeholder,
   className,
   inputClassName,
   inputStyle,
   onFocusChange,
 }: ProviderGlobalSearchProps) {
+  const { t } = useTranslation();
   const router = useRouter();
+  const resolvedPlaceholder = placeholder ?? t("web.provider.globalSearch.placeholder");
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<ProviderSearchSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -195,18 +198,18 @@ export function ProviderGlobalSearch({
   const getTypeLabel = (type: ProviderSearchSuggestion["type"]) => {
     switch (type) {
       case "client":
-        return "Client";
+        return t("web.provider.globalSearch.typeClient");
       case "appointment":
-        return "Appointment";
+        return t("web.provider.globalSearch.typeAppointment");
       case "service":
-        return "Service";
+        return t("web.provider.globalSearch.typeService");
     }
   };
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <Input
           ref={inputRef}
           type="text"
@@ -217,20 +220,20 @@ export function ProviderGlobalSearch({
             if (suggestions.length > 0) setIsOpen(true);
             onFocusChange?.(true);
           }}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           className={cn(
             "ps-10 bg-gray-50 border-gray-200 w-full text-base md:text-sm",
             inputClassName
           )}
           style={inputStyle}
-          aria-label="Search clients, appointments, and services"
+          aria-label={t("web.provider.globalSearch.ariaLabel")}
           aria-expanded={isOpen}
           aria-autocomplete="list"
           aria-controls="provider-search-results"
           role="combobox"
         />
         {isLoading && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+          <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
         )}
       </div>
 

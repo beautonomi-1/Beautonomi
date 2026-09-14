@@ -80,13 +80,13 @@ export function GradientStatCard({
       {/* Background decoration */}
       <div
         className={cn(
-          "absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-10 bg-gradient-to-br",
+          "absolute -end-4 -top-4 w-24 h-24 rounded-full opacity-10 bg-gradient-to-br",
           gradients[gradient]
         )}
       />
       <div
         className={cn(
-          "absolute -right-2 -bottom-8 w-16 h-16 rounded-full opacity-5 bg-gradient-to-br",
+          "absolute -end-2 -bottom-8 w-16 h-16 rounded-full opacity-5 bg-gradient-to-br",
           gradients[gradient]
         )}
       />
@@ -524,14 +524,14 @@ export function WelcomeBanner({
       {/* Background pattern */}
       <div className="absolute inset-0 opacity-10">
         <div
-          className="absolute -right-20 -top-20 w-64 h-64 rounded-full"
+          className="absolute -end-20 -top-20 w-64 h-64 rounded-full"
           style={{
             background:
               "radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%)",
           }}
         />
         <div
-          className="absolute -left-10 -bottom-10 w-48 h-48 rounded-full"
+          className="absolute -start-10 -bottom-10 w-48 h-48 rounded-full"
           style={{
             background:
               "radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%)",

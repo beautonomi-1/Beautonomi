@@ -111,9 +111,9 @@ export function ProviderBottomNav() {
     <>
       {/* Bottom Navigation Bar */}
       <nav
-        aria-label="Provider navigation"
+        aria-label={t("web.provider.bottomNav.ariaLabel")}
         className={cn(
-          "md:hidden fixed bottom-0 left-0 right-0 z-50",
+          "md:hidden fixed bottom-0 inset-x-0 z-50",
           "bg-white/95 backdrop-blur-lg border-t border-gray-200",
           "transition-transform duration-300 ease-in-out",
           "pb-safe",
@@ -182,7 +182,7 @@ export function ProviderBottomNav() {
             "transition-all duration-300 ease-in-out active:scale-95",
             "hover:bg-primary-hover hover:shadow-xl",
             // Responsive positioning and sizing
-            "right-3 sm:right-4",
+            "end-3 sm:end-4",
             "p-2.5 sm:p-3",
             "w-11 h-11 sm:w-12 sm:h-12",
             isVisible ? "bottom-20 sm:bottom-24" : "bottom-6 sm:bottom-8"

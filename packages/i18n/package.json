@@ -16,7 +16,11 @@
   "scripts": {
     "i18n:check": "node scripts/check-locales.mjs",
     "i18n:scan": "node scripts/scan-hardcoded.mjs",
+    "i18n:scan:provider": "node scripts/scan-provider-web.mjs",
+    "i18n:check:leftover-ns": "node scripts/check-leftover-namespaces.mjs",
     "i18n:merge": "node scripts/merge-en-into-locales.mjs",
+    "i18n:sync:provider-common": "node scripts/sync-provider-common-and-prune.mjs",
+    "i18n:translate:web-provider": "node scripts/apply-wave-a-web-provider.mjs --merge",
     "i18n:migrate-plurals": "node scripts/migrate-plural-keys.mjs",
     "test": "pnpm exec vitest run"
   },

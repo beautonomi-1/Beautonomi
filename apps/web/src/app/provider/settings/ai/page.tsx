@@ -153,7 +153,9 @@ export default function ProviderAiStudioPage() {
       <div className="mt-6 space-y-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm">
         {data.fallback ? (
           <p className="text-xs text-amber-700">
-            Template fallback ({String(data.fallback_reason ?? "budget")})
+            {t("web.provider.settings.pages.ai.templateFallback", {
+              reason: String(data.fallback_reason ?? "budget"),
+            })}
           </p>
         ) : null}
         {data.replies ? <ul className="space-y-2">{list("replies")}</ul> : null}
@@ -166,14 +168,14 @@ export default function ProviderAiStudioPage() {
             ))}
           </ul>
         ) : null}
-        {data.reminder_sms ? <p><strong>Reminder:</strong> {String(data.reminder_sms)}</p> : null}
-        {data.no_show_sms ? <p><strong>No-show:</strong> {String(data.no_show_sms)}</p> : null}
-        {data.reschedule_message ? <p><strong>Reschedule:</strong> {String(data.reschedule_message)}</p> : null}
+        {data.reminder_sms ? <p><strong>{t("web.provider.settings.pages.ai.reminderLabel")}:</strong> {String(data.reminder_sms)}</p> : null}
+        {data.no_show_sms ? <p><strong>{t("web.provider.settings.pages.ai.noShowLabel")}:</strong> {String(data.no_show_sms)}</p> : null}
+        {data.reschedule_message ? <p><strong>{t("web.provider.settings.pages.ai.rescheduleLabel")}:</strong> {String(data.reschedule_message)}</p> : null}
         {data.review_replies ? <ul className="space-y-2">{list("review_replies")}</ul> : null}
-        {data.recovery_tips ? <ul className="list-disc pl-5">{list("recovery_tips")}</ul> : null}
-        {data.caption ? <p><strong>Caption:</strong> {String(data.caption)}</p> : null}
-        {data.alt_text ? <p><strong>Alt text:</strong> {String(data.alt_text)}</p> : null}
-        {data.tags ? <p><strong>Tags:</strong> {(data.tags as string[]).join(", ")}</p> : null}
+        {data.recovery_tips ? <ul className="list-disc ps-5">{list("recovery_tips")}</ul> : null}
+        {data.caption ? <p><strong>{t("web.provider.settings.pages.ai.captionLabel")}:</strong> {String(data.caption)}</p> : null}
+        {data.alt_text ? <p><strong>{t("web.provider.settings.pages.ai.altTextLabel")}:</strong> {String(data.alt_text)}</p> : null}
+        {data.tags ? <p><strong>{t("web.provider.settings.pages.ai.tagsLabel")}:</strong> {(data.tags as string[]).join(", ")}</p> : null}
       </div>
     );
   }
@@ -233,7 +235,7 @@ toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.p
           className="mb-6 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
           value={imageUrl}
           onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="https://… (for Look describe)"
+          placeholder={t("web.provider.settings.pages.ai.lookDescribePlaceholder")}
         />
 
         <div className="grid gap-4 md:grid-cols-2">

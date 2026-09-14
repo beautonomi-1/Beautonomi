@@ -77,7 +77,7 @@ function StaffColumnComponent({
   return (
     <div
       className={cn(
-        "border-r border-gray-200 last:border-r-0 relative transition-all",
+        "border-e border-gray-200 last:border-e-0 relative transition-all",
         STAFF_DAY_COLUMN_LAYOUT,
       )}
     >

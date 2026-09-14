@@ -359,7 +359,7 @@ function CalendarGridComponent({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header Row — multi-staff: horizontal scroll synced with grid body */}
         <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white flex-shrink-0 min-w-0">
-          <div className="flex-shrink-0 border-r border-gray-200" style={{ width: `${TIME_COLUMN_WIDTH}px` }} />
+          <div className="flex-shrink-0 border-e border-gray-200" style={{ width: `${TIME_COLUMN_WIDTH}px` }} />
 
           {isMultiStaffView ? (
             <div
@@ -387,7 +387,7 @@ function CalendarGridComponent({
               <div
                 key={idx}
                 className={cn(
-                  "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 py-3 text-center",
+                  "flex-1 min-w-[90px] max-w-[200px] border-e border-gray-200 last:border-e-0 py-3 text-center",
                   isTodayInTz(date, tz) && "bg-primary/5",
                 )}
               >

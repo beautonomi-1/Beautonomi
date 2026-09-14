@@ -91,7 +91,7 @@ export function BookingScheduleCard({
                 </span>
               ) : null}
             </div>
-            <p className="text-sm text-gray-600 mt-0.5 truncate">{serviceLabel(booking, t("web.provider.bookings.detail.leftoverCopy.bookingFallback"), t("web.provider.common.service"))}</p>
+            <p className="text-sm text-gray-600 mt-0.5 truncate">{serviceLabel(booking, t("web.provider.bookings.detail.fallbacks.booking"), t("web.provider.common.service"))}</p>
             {booking.total_amount != null && booking.total_amount > 0 ? (
               <p className="text-xs text-gray-500 mt-1">
                 <Money amount={booking.total_amount} />

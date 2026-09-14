@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as StoreReview from "expo-store-review";
 import { Platform } from "react-native";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
@@ -91,6 +90,7 @@ export async function recordStoreReviewAccepted(userId: string): Promise<void> {
 
 export async function requestAppStoreReview(): Promise<void> {
   try {
+    const StoreReview = await import("expo-store-review");
     const available = await StoreReview.isAvailableAsync();
     const reviewApi = StoreReview as typeof StoreReview & { hasAction?: () => Promise<boolean> };
     const hasAction = typeof reviewApi.hasAction === "function" ? await reviewApi.hasAction() : true;
@@ -99,7 +99,7 @@ export async function requestAppStoreReview(): Promise<void> {
       return;
     }
   } catch {
-    // fall through to store URL
+    // Native module missing or review API unavailable — open store listing.
   }
   await openNativeStoreReview();
 }

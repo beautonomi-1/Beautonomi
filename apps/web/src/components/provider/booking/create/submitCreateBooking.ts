@@ -21,7 +21,10 @@ function isLikelyUuid(value: string): boolean {
   return UUID_RE.test(value.trim());
 }
 
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+
 export type SubmitCreateBookingInput = {
+  t: TranslateFn;
   clientName: string;
   clientId: string;
   notes: string;
@@ -164,8 +167,11 @@ export async function submitCreateBooking(
       created = recurring as unknown as Appointment;
       warnings = (recurring as unknown as { _warnings?: string[] })._warnings;
     } catch (recErr) {
-      const reason = formatApiErrorMessage(recErr, "Could not create repeating series");
-      throw new Error(`${reason}. Try a single booking instead.`);
+      const reason = formatApiErrorMessage(
+        recErr,
+        input.t("web.provider.bookings.appointmentCreate.couldNotCreateRecurring"),
+      );
+      throw new Error(input.t("web.provider.bookings.appointmentCreate.recurringFailedTrySingle", { reason }));
     }
   } else {
     created = await providerApi.createAppointment(appointmentData as Appointment);

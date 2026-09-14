@@ -163,11 +163,11 @@ export default function BusinessDescriptionPage() {
                     </span>
                   ) : (
                     <span className="flex items-center gap-2 flex-wrap">
-                      <span className="whitespace-nowrap">{t("web.provider.onboarding.leftover3.charsOf2000", { count: description.length })}</span>
+                      <span className="whitespace-nowrap">{t("web.provider.onboarding.business.charsOf2000", { count: description.length })}</span>
                       {isGoodLength && (
                         <span className="text-green-600 flex items-center gap-1 whitespace-nowrap">
                           <Check className="w-3 h-3 flex-shrink-0" />
-<span>{t("web.provider.onboarding.leftover.goodLength")}</span>
+<span>{t("web.provider.onboarding.business.goodLength")}</span>
                         </span>
                       )}
                     </span>
@@ -178,7 +178,7 @@ export default function BusinessDescriptionPage() {
                   onClick={handleUseTemplate}
                   className="text-xs text-primary hover:underline whitespace-nowrap flex-shrink-0 self-start sm:self-auto"
                 >
-{t("web.provider.onboarding.leftover.useTemplate")}
+{t("web.provider.onboarding.business.useTemplate")}
                 </button>
               </div>
             </div>

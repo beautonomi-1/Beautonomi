@@ -102,7 +102,7 @@ function DateColumnComponent({
   return (
     <div
       className={cn(
-        "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 relative",
+        "flex-1 min-w-[90px] max-w-[200px] border-e border-gray-200 last:border-e-0 relative",
         isTodayInTz(date, tz) && "bg-primary/3",
       )}
     >

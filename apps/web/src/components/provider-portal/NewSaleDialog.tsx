@@ -1015,7 +1015,7 @@ export function NewSaleDialog({
           <SheetHeader className="px-6 sm:px-8 pb-4 border-b border-gray-100 relative">
             <button
               onClick={() => onOpenChange(false)}
-              className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
+              className="absolute end-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
               aria-label={t("web.provider.portal.newSaleDialog.close")}
             >
               <X className="w-5 h-5 text-gray-600" />
@@ -1081,7 +1081,7 @@ export function NewSaleDialog({
                   </div>
                 ) : (
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       placeholder={t("web.provider.portal.newSaleDialog.searchClientPlaceholder")}
                       value={clientSearchQuery}
@@ -1226,7 +1226,7 @@ export function NewSaleDialog({
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-100 hover:bg-blue-200 flex items-center justify-center transition-colors"
+                            className="absolute top-2 end-2 w-5 h-5 rounded-full bg-blue-100 hover:bg-blue-200 flex items-center justify-center transition-colors"
                             onClick={(e) => {
                               e.stopPropagation();
                               setServiceLocationType("house-call");
@@ -1668,7 +1668,7 @@ export function NewSaleDialog({
                                       e.stopPropagation();
                                       handleQuickAddService(service);
                                     }}
-                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                    className="absolute top-2 end-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                                     title={t("web.provider.portal.newSaleDialog.quickAddToCart")}
                                   >
                                     <Plus className="w-4 h-4" />
@@ -1772,7 +1772,7 @@ export function NewSaleDialog({
                               e.stopPropagation();
                               openProductOrAdd(product);
                             }}
-                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                            className="absolute top-2 end-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                             title={t("web.provider.portal.newSaleDialog.addToCart")}
                           >
                             <Plus className="w-4 h-4" />
@@ -1980,7 +1980,7 @@ export function NewSaleDialog({
                           )}
                         >
                           {isSelected && (
-                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                            <div className="absolute top-2 end-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
                               <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                               </svg>
@@ -2016,7 +2016,7 @@ export function NewSaleDialog({
 
         {/* Sticky Total Strip - E-commerce style */}
         {cart.length > 0 && (
-          <div className="sticky bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 sm:px-6 md:px-8 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
+          <div className="sticky bottom-0 start-0 end-0 border-t border-gray-200 bg-white px-4 sm:px-6 md:px-8 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
             <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.portal.newSaleDialog.total")}</p>

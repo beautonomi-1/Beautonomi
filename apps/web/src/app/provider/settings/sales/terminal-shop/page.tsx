@@ -767,7 +767,7 @@ export default function TerminalShopPage() {
                         <div className="relative">
                           <ProductImage product={p} />
                           {includedOption ? (
-                            <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-pink-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm">
+                            <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-full bg-pink-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm">
                               <Sparkles className="h-3 w-3" />
                               {t("web.provider.settings.pages.sales/terminal-shop.includedInYourPlan")}
                             </span>
@@ -775,7 +775,7 @@ export default function TerminalShopPage() {
                           {p.stock_status !== "in_stock" ? (
                             <Badge
                               variant="outline"
-                              className="absolute right-2 top-2 bg-white/90 capitalize text-xs"
+                              className="absolute end-2 top-2 bg-white/90 capitalize text-xs"
                             >
                               {p.stock_status.replace(/_/g, " ")}
                             </Badge>

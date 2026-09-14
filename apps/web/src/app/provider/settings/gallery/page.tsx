@@ -606,7 +606,7 @@ export default function GalleryManagementPage() {
                       e.currentTarget.src = "/images/placeholder-image.jpg";
                     }}
                   />
-                  <div className="absolute bottom-0 right-0 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl flex items-center gap-1">
+                  <div className="absolute bottom-0 end-0 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl flex items-center gap-1">
                     <CircleUser className="w-3 h-3" />
                     <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.face")}</span>
                   </div>
@@ -675,7 +675,7 @@ export default function GalleryManagementPage() {
                       e.currentTarget.src = '/images/placeholder-image.jpg';
                     }}
                   />
-                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1">
+                  <div className="absolute top-1 end-1 sm:top-2 sm:end-2 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1">
                     <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
                     <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.thumbnail")}</span>
                   </div>
@@ -868,13 +868,13 @@ export default function GalleryManagementPage() {
                       
                       {/* Listing image & Profile circle badges */}
                       {thumbnailUrl === url && (
-                        <div className="absolute top-1 right-1 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
+                        <div className="absolute top-1 end-1 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
                           <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.listing")}</span>
                         </div>
                       )}
                       {avatarUrl === url && (
-                        <div className="absolute bottom-1 right-1 bg-indigo-600 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
+                        <div className="absolute bottom-1 end-1 bg-indigo-600 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <CircleUser className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                           <span className="hidden sm:inline">{t("web.provider.settings.pages.gallery.face")}</span>
                         </div>
@@ -888,7 +888,7 @@ export default function GalleryManagementPage() {
                             e.stopPropagation();
                             handleReorder(index, index - 1);
                           }}
-                          className="absolute top-1 left-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
+                          className="absolute top-1 start-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
                           title={t("web.provider.settings.pages.gallery.moveUp")}
                         >
                           ↑
@@ -901,7 +901,7 @@ export default function GalleryManagementPage() {
                             e.stopPropagation();
                             handleReorder(index, index + 1);
                           }}
-                          className="absolute bottom-1 left-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
+                          className="absolute bottom-1 start-1 opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md font-medium h-6 w-6 sm:h-7 sm:w-7 p-0 touch-manipulation hidden sm:flex items-center justify-center"
                           title={t("web.provider.settings.pages.gallery.moveDown")}
                         >
                           ↓
@@ -991,7 +991,7 @@ export default function GalleryManagementPage() {
                             <span className="text-xs sm:text-sm">{t("web.provider.common.delete")}</span>
                           </Button>
                         </div>
-                        <div className="absolute top-2 sm:top-4 right-2 sm:right-4 text-white text-xs sm:text-sm bg-black/70 backdrop-blur-sm rounded px-2 py-1">
+                        <div className="absolute top-2 sm:top-4 end-2 sm:end-4 text-white text-xs sm:text-sm bg-black/70 backdrop-blur-sm rounded px-2 py-1">
                           {selectedImageIndex + 1} / {gallery.length}
                         </div>
                         {selectedImageIndex > 0 && (
@@ -1003,7 +1003,7 @@ export default function GalleryManagementPage() {
                               e.stopPropagation();
                               setSelectedImageIndex(selectedImageIndex - 1);
                             }}
-                            className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
+                            className="absolute start-2 sm:start-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
                             aria-label={t("web.provider.settings.pages.gallery.previousImage")}
                           >
                             ←
@@ -1018,7 +1018,7 @@ export default function GalleryManagementPage() {
                               e.stopPropagation();
                               setSelectedImageIndex(selectedImageIndex + 1);
                             }}
-                            className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
+                            className="absolute end-2 sm:end-4 top-1/2 transform -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation min-w-[44px] min-h-[44px]"
                             aria-label={t("web.provider.settings.pages.gallery.nextImage")}
                           >
                             →

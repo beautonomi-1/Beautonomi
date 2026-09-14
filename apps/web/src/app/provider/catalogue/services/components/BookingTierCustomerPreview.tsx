@@ -33,7 +33,7 @@ export function BookingTierCustomerPreview({
     <div
       className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3.5"
       role="region"
-      aria-label={`Customers choose from ${options.length} booking options`}
+      aria-label={t("web.provider.catalogue.serviceDialog.bookingOptionsA11y", { count: options.length })}
     >
       <div className="mb-3 flex items-start gap-2.5">
         <div className="rounded-full bg-indigo-100 p-1.5 text-indigo-600">
@@ -44,8 +44,8 @@ export function BookingTierCustomerPreview({
             {t("web.provider.catalogue.serviceDialog.customerBookingView")}
           </p>
           <p className="text-xs text-indigo-600/90">
-            {options.length} option{options.length === 1 ? "" : "s"} to choose from
-            {serviceTitle ? ` · ${serviceTitle}` : ""}
+            {t("web.provider.catalogue.serviceDialog.optionsToChooseFrom", { count: options.length })}
+            {serviceTitle ? t("web.provider.catalogue.serviceDialog.serviceTitleSuffix", { title: serviceTitle }) : ""}
           </p>
         </div>
       </div>

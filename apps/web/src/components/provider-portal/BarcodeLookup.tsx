@@ -122,7 +122,7 @@ export function BarcodeLookup({
       )}
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <ScanBarcode className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <Input
             id="barcode-lookup"
             ref={inputRef}

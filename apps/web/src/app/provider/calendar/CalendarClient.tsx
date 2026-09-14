@@ -1530,7 +1530,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     options?: { sendReceipt?: boolean; paycloudSettled?: boolean },
   ) => {
     if (!selectedAppointment) {
-      throw new Error("No appointment selected");
+      throw new Error(t("web.provider.calendarPage.noAppointmentSelected"));
     }
 
     const apt = selectedAppointment;
@@ -1806,7 +1806,7 @@ aria-label={t("web.provider.calendarPage.loadingLayout")}
           top-right overlay so both surfaces communicate the stale state.
         */}
         {isRefreshing && (
-          <div className="absolute top-3 right-3 z-40 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-1.5 flex items-center gap-2 border border-gray-200 pointer-events-none">
+          <div className="absolute top-3 end-3 z-40 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-1.5 flex items-center gap-2 border border-gray-200 pointer-events-none">
             <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin" />
 <span className="text-xs text-gray-600">{t("web.provider.calendarPage.refreshingEllipsis")}</span>
           </div>
@@ -2219,7 +2219,7 @@ toast.success(t("web.provider.calendarPage.statusUpdated"));
         ) : (
           <>
             {isRefreshing && (
-              <div className="absolute top-20 right-4 z-50 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex items-center gap-2 border border-gray-200">
+              <div className="absolute top-20 end-4 z-50 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex items-center gap-2 border border-gray-200">
                 <RefreshCw className="w-4 h-4 text-primary animate-spin" />
 <span className="text-xs text-gray-600">{t("web.provider.calendarPage.refreshing")}</span>
               </div>
@@ -2322,7 +2322,7 @@ toast.success(t("web.provider.calendarPage.statusUpdated"));
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("calendar-scroll-to-now"))}
-                className="fixed bottom-20 left-4 z-40 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-semibold shadow-lg active:scale-95 transition-transform"
+                className="fixed bottom-20 start-4 z-40 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-semibold shadow-lg active:scale-95 transition-transform"
 aria-label={t("web.provider.calendarPage.scrollToNow")}
               >
                 <Clock className="w-3.5 h-3.5" />

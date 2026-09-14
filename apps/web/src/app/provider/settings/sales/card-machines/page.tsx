@@ -241,27 +241,30 @@ export default function CardMachinesPage() {
     if (inFlight > 0) {
       items.push({
         id: "in-flight",
-        label: `${inFlight} payment${inFlight === 1 ? "" : "s"} waiting on card machine`,
+        label: t("web.provider.settings.pages.sales/card-machines.paymentsWaitingOnMachine", { count: inFlight }),
         detail: t("web.provider.settings.pages.sales/card-machines.checkStatusToSync"),
       });
     }
     if (reconcileExceptions > 0) {
       items.push({
         id: "exceptions",
-        label: `${reconcileExceptions} amount mismatch${reconcileExceptions === 1 ? "" : "es"}`,
+        label: t("web.provider.settings.pages.sales/card-machines.amountMismatch", { count: reconcileExceptions }),
         detail: t("web.provider.settings.pages.sales/card-machines.reviewRecentPayments"),
       });
     }
-    for (const t of paycloudTerminals) {
-      if (t.last_error) {
+    for (const terminal of paycloudTerminals) {
+      if (terminal.last_error) {
         items.push({
-          id: `error-${t.id}`,
-          label: `${t.display_name}: ${t.last_error}`,
+          id: `error-${terminal.id}`,
+          label: t("web.provider.settings.pages.sales/card-machines.terminalError", {
+            name: terminal.display_name,
+            error: terminal.last_error,
+          }),
         });
       }
     }
     return items;
-  }, [paycloudSettings?.terminals?.inFlight, reconcileExceptions, paycloudTerminals]);
+  }, [paycloudSettings?.terminals?.inFlight, reconcileExceptions, paycloudTerminals, t]);
 
   const handleAddTerminal = async () => {
     if (!form.terminal_sn.trim() || !form.display_name.trim()) {
@@ -343,7 +346,11 @@ export default function CardMachinesPage() {
     try {
       await paycloudApi.createTerminal({
         terminal_sn: activationSerial.trim(),
-        display_name: activationName.trim() || `Card machine ${activationSerial.trim().slice(-4)}`,
+        display_name:
+          activationName.trim() ||
+          t("web.provider.settings.pages.sales/card-machines.cardMachineNamed", {
+            serial: activationSerial.trim().slice(-4),
+          }),
       });
       toast.success(t("web.provider.settings.pages.sales/card-machines.cardMachineActivated"));
       setActivationSerial("");
@@ -401,14 +408,25 @@ export default function CardMachinesPage() {
     try {
       const summary = await paycloudApi.reconcilePayments();
       const parts = [
-        summary.settled > 0 ? `${summary.settled} settled` : null,
-        summary.processing > 0 ? `${summary.processing} still processing` : null,
-        summary.closed > 0 ? `${summary.closed} closed` : null,
+        summary.settled > 0
+          ? t("web.provider.settings.pages.sales/card-machines.settledCount", { count: summary.settled })
+          : null,
+        summary.processing > 0
+          ? t("web.provider.settings.pages.sales/card-machines.stillProcessingCount", { count: summary.processing })
+          : null,
+        summary.closed > 0
+          ? t("web.provider.settings.pages.sales/card-machines.closedCount", { count: summary.closed })
+          : null,
       ].filter(Boolean);
       toast.success(
         parts.length > 0
-          ? `Checked ${summary.checked} payment${summary.checked === 1 ? "" : "s"} — ${parts.join(", ")}`
-          : `Checked ${summary.checked} payment${summary.checked === 1 ? "" : "s"} — no changes`,
+          ? t("web.provider.settings.pages.sales/card-machines.checkedPaymentsChanges", {
+              count: summary.checked,
+              parts: parts.join(", "),
+            })
+          : t("web.provider.settings.pages.sales/card-machines.checkedPaymentsNoChanges", {
+              count: summary.checked,
+            }),
       );
       await loadData();
     } catch (e: any) {
@@ -473,7 +491,9 @@ export default function CardMachinesPage() {
             <p className="mt-1 text-xs text-gray-500">
               {t("web.provider.settings.pages.sales/card-machines.activeMachineCount", { count: activePaycloud })}
               {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)
-                ? ` · ${paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}`
+                ? t("web.provider.settings.pages.sales/card-machines.environmentSuffix", {
+                    environment: paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment),
+                  })
                 : ""}
             </p>
           </div>

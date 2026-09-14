@@ -392,7 +392,7 @@ export default function ProviderTeamMembers() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full max-w-full ps-10 pe-4 py-2.5 sm:py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/35 min-h-[44px] touch-manipulation box-border provider-input"
           />
-          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 flex-shrink-0" />
+          <User className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 flex-shrink-0" />
         </div>
       </div>
 

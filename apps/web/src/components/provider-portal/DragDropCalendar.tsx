@@ -103,9 +103,10 @@ interface DragDropContextValue {
 const DragDropContext = React.createContext<DragDropContextValue | null>(null);
 
 export function useDragDrop() {
+  const { t } = useTranslation();
   const context = React.useContext(DragDropContext);
   if (!context) {
-    throw new Error("useDragDrop must be used within a DragDropProvider");
+    throw new Error(t("web.provider.portal.dragDropCalendar.useDragDropError"));
   }
   return context;
 }
@@ -883,7 +884,7 @@ export function DroppableTimeSlot({
       
       {/* Validation indicator tooltip */}
       {isCurrentDropTarget && validationState && !validationState.valid && (
-        <div className="absolute top-1 left-1 right-1 z-50 pointer-events-none">
+        <div className="absolute top-1 start-1 end-1 z-50 pointer-events-none">
           <div className="bg-red-600 text-white text-xs px-2 py-1 rounded shadow-lg flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
             <span className="truncate">{validationState.reason || t("web.provider.portal.dragDropCalendar.cannotPlaceHere")}</span>
@@ -893,7 +894,7 @@ export function DroppableTimeSlot({
       
       {/* Valid placement indicator */}
       {isCurrentDropTarget && validationState?.valid && (
-        <div className="absolute top-1 right-1 z-50 pointer-events-none">
+        <div className="absolute top-1 end-1 z-50 pointer-events-none">
           <div className="bg-green-600 text-white p-1 rounded-full shadow-lg">
             <Check className="w-3 h-3" />
           </div>
@@ -1069,7 +1070,7 @@ export function SnapLineIndicator({
       style={{ top: `${top}px` }}
     >
       <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-primary" />
-      <div className="absolute left-2 -top-3 text-[10px] font-medium text-primary bg-white px-1 rounded shadow">
+      <div className="absolute start-2 -top-3 text-[10px] font-medium text-primary bg-white px-1 rounded shadow">
         {snapTime}
       </div>
     </div>

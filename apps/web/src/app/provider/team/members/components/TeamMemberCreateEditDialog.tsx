@@ -624,7 +624,7 @@ export function TeamMemberCreateEditDialog({
                     </Avatar>
                     <label
                       htmlFor="avatar-upload"
-                      className="absolute -bottom-1 -right-1 p-2.5 sm:p-3 bg-primary text-white rounded-full cursor-pointer hover:bg-primary-hover transition-all shadow-lg hover:scale-110 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+                      className="absolute -bottom-1 -end-1 p-2.5 sm:p-3 bg-primary text-white rounded-full cursor-pointer hover:bg-primary-hover transition-all shadow-lg hover:scale-110 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
                     >
                       <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
                       <input

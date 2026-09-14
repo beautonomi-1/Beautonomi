@@ -123,7 +123,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
                       {/* Progress Fill */}
                       <div 
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary to-primary-hover rounded-full transition-all duration-500 ease-out"
+                        className="absolute top-0 start-0 h-full bg-gradient-to-r from-primary to-primary-hover rounded-full transition-all duration-500 ease-out"
                         style={{ width: `${showProgress.progress_percentage}%` }}
                       />
                     </div>

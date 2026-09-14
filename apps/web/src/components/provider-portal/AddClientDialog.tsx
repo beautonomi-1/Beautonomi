@@ -340,7 +340,7 @@ export function AddClientDialog({
         <SheetHeader className="px-6 sm:px-8 pb-4 border-b border-gray-100 relative">
           <button
             onClick={() => onOpenChange(false)}
-            className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
+            className="absolute end-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
             aria-label={t("web.provider.portal.addClientDialog.close")}
           >
             <X className="w-5 h-5 text-gray-600" />
@@ -464,7 +464,7 @@ export function AddClientDialog({
                   {t("web.provider.portal.addClientDialog.email")}
                 </Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <Input
                     type="email"
                     placeholder={t("web.provider.portal.addClientDialog.emailPlaceholder")}

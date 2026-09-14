@@ -1,6 +1,6 @@
 import "../global.css";
 import "@/lib/i18n";
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, Text, TouchableOpacity, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
@@ -14,7 +14,7 @@ import { NativePermissionsOnboardingProvider } from "@/providers/NativePermissio
 import { PushNotificationsProvider } from "@/providers/PushNotificationsProvider";
 import { InAppBannerProvider } from "@/providers/InAppBannerProvider";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorBoundary as AppErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
@@ -29,7 +29,7 @@ import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBoot
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 import { ImageCropperProvider } from "@/components/image-crop";
 import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
-import { useTranslation } from "@beautonomi/i18n";
+import { i18n, I18nextProvider, useTranslation } from "@beautonomi/i18n";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -125,6 +125,16 @@ function ThemedApp() {
   );
 }
 
+function LanguageReactiveRoot({ children }: { children: React.ReactNode }) {
+  const [, setLocale] = useState(() => i18n.language || "en");
+  useEffect(() => {
+    const handler = (lng: string) => setLocale(lng || "en");
+    i18n.on("languageChanged", handler);
+    return () => i18n.off("languageChanged", handler);
+  }, []);
+  return <>{children}</>;
+}
+
 function RootLayout() {
   useEffect(() => {
     void initializeRuntimeMarketHost();
@@ -136,9 +146,11 @@ function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KeyboardRootProvider>
-      <ErrorBoundary>
+      <AppErrorBoundary>
         <ThemeProvider>
           <ImageCropperProvider>
+          <LanguageReactiveRoot>
+          <I18nextProvider i18n={i18n}>
           <AuthProvider>
             <NativePermissionsOnboardingProvider>
             <AnalyticsProvider>
@@ -148,14 +160,18 @@ function RootLayout() {
             </AnalyticsProvider>
             </NativePermissionsOnboardingProvider>
           </AuthProvider>
+          </I18nextProvider>
+          </LanguageReactiveRoot>
           </ImageCropperProvider>
         </ThemeProvider>
-      </ErrorBoundary>
+      </AppErrorBoundary>
       </KeyboardRootProvider>
     </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+export { ErrorBoundary } from "expo-router";
 
 // Wrap with Sentry for automatic crash/performance reporting
 export default Sentry.wrap(RootLayout);

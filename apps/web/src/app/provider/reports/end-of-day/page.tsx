@@ -49,7 +49,7 @@ function paymentLabels(t: (k: string) => string): Record<string, string> {
     paycloud: t("web.provider.reports.pages.end-of-day.cardMachine"),
     gift_card: t("web.provider.reports.pages.end-of-day.giftCard"),
     wallet: t("web.provider.reports.pages.end-of-day.wallet"),
-    other: t("web.provider.onboarding.leftover2.other"),
+    other: t("web.provider.common.other"),
   };
 }
 

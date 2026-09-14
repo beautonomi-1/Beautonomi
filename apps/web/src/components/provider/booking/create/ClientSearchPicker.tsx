@@ -197,7 +197,7 @@ export function ClientSearchPicker({
           autoComplete="off"
         />
         {searching ? (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+          <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
         ) : null}
         {showResults && results.length > 0 ? (
           <ul className="absolute z-20 mt-1 w-full rounded-xl border bg-white shadow-lg max-h-48 overflow-y-auto">

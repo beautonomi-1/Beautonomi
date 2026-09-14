@@ -889,7 +889,7 @@ export default function ProviderOnboarding() {
         (formData.gallery || []).some((url) => isDataUrl(url))
       ) {
         toast.error(
-          t("web.provider.onboarding.leftover.photosStillUploading"),
+          t("web.provider.onboarding.toast.photosStillUploading"),
         );
         setCurrentStep(8);
         return;
@@ -1006,7 +1006,7 @@ export default function ProviderOnboarding() {
       }>("/api/provider/onboarding", onboardingData);
 
       const successMessage =
-        response.data?.message || t("web.provider.onboarding.leftover.submittedApplication");
+        response.data?.message || t("web.provider.onboarding.toast.submittedApplication");
       const autoConfig = response.data?.auto_configured;
       const subscriptionEndpoint = response.data?.subscription_endpoint;
       const selectedPlanId = response.data?.selected_plan_id;
@@ -1093,7 +1093,7 @@ export default function ProviderOnboarding() {
               validationErrors.forEach((err, idx) => {
                 console.error(`Error ${idx + 1}: ${err}`);
               });
-              errorMessage += t("web.provider.onboarding.leftover.andMoreSeeConsole", { count: validationErrors.length - 1 });
+              errorMessage += t("web.provider.onboarding.validation.andMoreSeeConsole", { count: validationErrors.length - 1 });
             }
           }
         } else if (error.message) {
@@ -1358,7 +1358,7 @@ function Step1TeamSize({
             >
               {option.badge && (
                 <span
-                  className={`absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                  className={`absolute end-4 top-4 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
                     isSelected ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
                   }`}
                 >
@@ -1662,10 +1662,10 @@ function Step2Identity({
           </div>
           <div className="min-w-0">
             <h4 className="text-base font-semibold text-slate-900 sm:text-lg">
-              {t("web.provider.onboarding.leftover.ownerContactTitle")}
+              {t("web.provider.onboarding.identity.ownerContactTitle")}
             </h4>
             <p className="mt-1 text-sm leading-relaxed text-slate-600">
-              {t("web.provider.onboarding.leftover.ownerContactBody")}
+              {t("web.provider.onboarding.identity.ownerContactBody")}
             </p>
           </div>
         </div>
@@ -1675,7 +1675,7 @@ function Step2Identity({
         {/* Name */}
         <div>
           <Label htmlFor="owner_name" className="mb-2 block text-sm font-semibold text-slate-900">
-            {t("web.provider.onboarding.leftover.yourName")} <span className="text-slate-400">*</span>
+            {t("web.provider.onboarding.identity.yourName")} <span className="text-slate-400">*</span>
           </Label>
           <Input
             id="owner_name"
@@ -1690,7 +1690,7 @@ function Step2Identity({
         {/* Email with OTP verification */}
         <div>
           <Label className="mb-2 block text-sm font-semibold text-slate-900">
-            {t("web.provider.onboarding.leftover.emailAddress")} <span className="text-slate-400">*</span>
+            {t("web.provider.onboarding.identity.emailAddress")} <span className="text-slate-400">*</span>
           </Label>
 
           {data.email_verified ? (
@@ -1710,7 +1710,7 @@ function Step2Identity({
                 onClick={handleStartChangeEmail}
                 className="h-11 rounded-xl border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
               >
-{t("web.provider.onboarding.leftover.changeEmail")}
+{t("web.provider.onboarding.identity.changeEmail")}
               </Button>
             </div>
           ) : (
@@ -1739,7 +1739,7 @@ function Step2Identity({
                   {isSendingEmailCode ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : emailResendCooldown > 0 ? (
-                    t("web.provider.onboarding.leftover.resendInParens", { seconds: emailResendCooldown })
+                    t("web.provider.onboarding.identity.resendInParens", { seconds: emailResendCooldown })
                   ) : emailCodeSent ? (
                     t("web.provider.onboarding.identity.resendCode")
                   ) : (
@@ -1748,7 +1748,7 @@ function Step2Identity({
                 </Button>
               </div>
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
-                {t("web.provider.onboarding.leftover.emailOtpHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
+                {t("web.provider.onboarding.identity.emailOtpHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
               </p>
 
               {emailCodeSent && (
@@ -1757,7 +1757,7 @@ function Step2Identity({
                     htmlFor="provider-onboarding-email-otp-0"
                     className="mb-2 block text-sm font-semibold text-slate-900"
                   >
-                    {t("web.provider.onboarding.leftover.enterEmailCode")} <span className="text-slate-400">*</span>
+                    {t("web.provider.onboarding.identity.enterEmailCode")} <span className="text-slate-400">*</span>
                   </Label>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <OtpDigitInput
@@ -1791,7 +1791,7 @@ function Step2Identity({
         {/* Phone with OTP verification */}
         <div>
           <Label htmlFor="owner_phone" className="mb-2 block text-sm font-semibold text-slate-900">
-            {t("web.provider.onboarding.leftover.mobileNumber")} <span className="text-slate-400">*</span>
+            {t("web.provider.onboarding.identity.mobileNumber")} <span className="text-slate-400">*</span>
           </Label>
 
           {data.phone_verified ? (
@@ -1811,7 +1811,7 @@ function Step2Identity({
                 onClick={handleStartChangePhone}
                 className="h-11 rounded-xl border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
               >
-                {t("web.provider.onboarding.leftover.changeNumber")}
+                {t("web.provider.onboarding.identity.changeNumber")}
               </Button>
             </div>
           ) : (
@@ -1838,7 +1838,7 @@ function Step2Identity({
                   {isSendingPhoneCode ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : phoneResendCooldown > 0 ? (
-                    t("web.provider.onboarding.leftover.resendInParens", { seconds: phoneResendCooldown })
+                    t("web.provider.onboarding.identity.resendInParens", { seconds: phoneResendCooldown })
                   ) : phoneCodeSent ? (
                     t("web.provider.onboarding.identity.resendCode")
                   ) : (
@@ -1847,13 +1847,13 @@ function Step2Identity({
                 </Button>
               </div>
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
-                {t("web.provider.onboarding.leftover.phoneOtpHint", {
+                {t("web.provider.onboarding.identity.phoneOtpHint", {
                   digits: SUPABASE_AUTH_OTP_LENGTH,
                   minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)),
                   minuteWord:
                     Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1
-                      ? t("web.provider.onboarding.leftover.minute")
-                      : t("web.provider.onboarding.leftover.minutes"),
+                      ? t("web.provider.onboarding.identity.minute")
+                      : t("web.provider.onboarding.identity.minutes"),
                 })}
               </p>
 
@@ -1863,7 +1863,7 @@ function Step2Identity({
                     htmlFor="provider-onboarding-verify-otp-0"
                     className="mb-2 block text-sm font-semibold text-slate-900"
                   >
-                    {t("web.provider.onboarding.leftover.enterPhoneCode")} <span className="text-slate-400">*</span>
+                    {t("web.provider.onboarding.identity.enterPhoneCode")} <span className="text-slate-400">*</span>
                   </Label>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <OtpDigitInput
@@ -2090,24 +2090,24 @@ function Step8Photos({
           </div>
           <div className="min-w-0 space-y-2">
             <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-              {t("web.provider.onboarding.leftover.whyPhotosMatter")}
+              {t("web.provider.onboarding.photos.whyPhotosMatter")}
             </h4>
             {data.business_type === "mobile" ? (
               <div className="space-y-2 text-sm leading-relaxed text-slate-600">
                 <p>
-                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.yourPhotoLabel")}</strong> {t("web.provider.onboarding.leftover.yourPhotoBody")}
+                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.yourPhotoLabel")}</strong> {t("web.provider.onboarding.photos.yourPhotoBody")}
                 </p>
                 <p>
-                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.galleryLabel")}</strong> {t("web.provider.onboarding.leftover.galleryFreelancerBody")}
+                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.galleryLabel")}</strong> {t("web.provider.onboarding.photos.galleryFreelancerBody")}
                 </p>
               </div>
             ) : (
               <div className="space-y-2 text-sm leading-relaxed text-slate-600">
                 <p>
-                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.salonOwnerLabel")}</strong> {t("web.provider.onboarding.leftover.salonOwnerPhotoBody")}
+                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.salonOwnerLabel")}</strong> {t("web.provider.onboarding.photos.salonOwnerPhotoBody")}
                 </p>
                 <p>
-                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.galleryLabel")}</strong> {t("web.provider.onboarding.leftover.gallerySalonBody")}
+                  <strong className="text-slate-900">{t("web.provider.onboarding.photos.galleryLabel")}</strong> {t("web.provider.onboarding.photos.gallerySalonBody")}
                 </p>
               </div>
             )}
@@ -2119,16 +2119,16 @@ function Step8Photos({
       <div>
         <Label className="mb-2 block text-sm font-semibold text-slate-900 sm:text-base">
           {data.business_type === "mobile" ? t("web.provider.onboarding.photos.yourPhoto") : t("web.provider.onboarding.photos.salonOrOwner")}
-          <span className="ms-2 text-xs font-semibold text-rose-600 sm:text-sm">{t("web.provider.onboarding.leftover.requiredParen")}</span>
+          <span className="ms-2 text-xs font-semibold text-rose-600 sm:text-sm">{t("web.provider.onboarding.photos.requiredParen")}</span>
         </Label>
         <p className="mb-3 text-xs leading-relaxed text-slate-700 sm:text-sm">
           {data.business_type === "mobile" ? (
             <>
-              <strong>{t("web.provider.onboarding.photos.forFreelancers")}</strong> {t("web.provider.onboarding.leftover.forFreelancersBody")}
+              <strong>{t("web.provider.onboarding.photos.forFreelancers")}</strong> {t("web.provider.onboarding.photos.forFreelancersBody")}
             </>
           ) : (
             <>
-              <strong>{t("web.provider.onboarding.photos.forSalons")}</strong> {t("web.provider.onboarding.leftover.forSalonsBody")}
+              <strong>{t("web.provider.onboarding.photos.forSalons")}</strong> {t("web.provider.onboarding.photos.forSalonsBody")}
             </>
           )}
         </p>
@@ -2140,7 +2140,7 @@ function Step8Photos({
                 type="button"
                 variant="destructive"
                 size="sm"
-                className="absolute top-2 right-2"
+                className="absolute top-2 end-2"
                 onClick={() => {
                   setThumbnailFile(null);
                   setThumbnailPreview(null);
@@ -2202,11 +2202,11 @@ function Step8Photos({
       {/* Profile circle (required) - business face on listing cards */}
       <div>
         <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          {t("web.provider.onboarding.leftover.profileCircleLabel")}
-          <span className="text-rose-600 font-semibold text-xs sm:text-sm ms-2">{t("web.provider.onboarding.leftover.requiredParen")}</span>
+          {t("web.provider.onboarding.photos.profileCircleLabel")}
+          <span className="text-rose-600 font-semibold text-xs sm:text-sm ms-2">{t("web.provider.onboarding.photos.requiredParen")}</span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-3">
-          {t("web.provider.onboarding.leftover.profileCircleHint")}
+          {t("web.provider.onboarding.photos.profileCircleHint")}
         </p>
         <div className="flex flex-col sm:flex-row gap-4 items-start">
           {avatarPreview ? (
@@ -2222,7 +2222,7 @@ function Step8Photos({
                 type="button"
                 variant="destructive"
                 size="sm"
-                className="absolute top-1 right-1"
+                className="absolute top-1 end-1"
                 onClick={() => {
                   setAvatarFile(null);
                   setAvatarPreview(null);
@@ -2279,13 +2279,13 @@ function Step8Photos({
       {/* Gallery Upload */}
       <div>
         <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          {t("web.provider.onboarding.leftover.portfolioGallery")}
+          {t("web.provider.onboarding.photos.portfolioGallery")}
           <span className="text-gray-500 font-normal text-xs sm:text-sm ms-2">
-            {t("web.provider.onboarding.leftover.optionalRecommended")}
+            {t("web.provider.common.optionalRecommended")}
           </span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-3">
-          <strong>{t("web.provider.onboarding.photos.showcase")}</strong> {t("web.provider.onboarding.leftover.showcaseBody")}
+          <strong>{t("web.provider.onboarding.photos.showcase")}</strong> {t("web.provider.onboarding.photos.showcaseBody")}
         </p>
         <Input
           ref={galleryInputRef}
@@ -2330,7 +2330,7 @@ function Step8Photos({
                   type="button"
                   variant="destructive"
                   size="sm"
-                  className="absolute top-2 right-2"
+                  className="absolute top-2 end-2"
                   onClick={() => removeGalleryImage(index)}
                 >
                   <X className="w-3 h-3" />
@@ -2343,7 +2343,7 @@ function Step8Photos({
         {(data.gallery?.length ?? 0) > 0 && (
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600">
-              {t("web.provider.onboarding.leftover.photosUploaded", { count: data.gallery?.length ?? 0 })}
+              {t("web.provider.onboarding.photos.photosUploaded", { count: data.gallery?.length ?? 0 })}
             </p>
           </div>
         )}
@@ -2353,7 +2353,7 @@ function Step8Photos({
         <Alert className="bg-amber-50 border-amber-200">
           <AlertCircle className="w-4 h-4 text-amber-600" />
           <AlertDescription className="text-amber-800 text-sm">
-            <strong>{t("web.provider.onboarding.photos.required")}</strong> {t("web.provider.onboarding.leftover.requiredBothPhotos")}
+            <strong>{t("web.provider.onboarding.photos.required")}</strong> {t("web.provider.onboarding.photos.requiredBothPhotos")}
           </AlertDescription>
         </Alert>
       )}
@@ -2443,10 +2443,10 @@ function Step3BusinessDetails({
           </div>
           <div className="min-w-0 space-y-1">
             <p className="text-base font-semibold text-slate-900 sm:text-lg">
-              {t("web.provider.onboarding.leftover3.completeProfiles")}
+              {t("web.provider.onboarding.business.completeProfiles")}
             </p>
             <p className="text-sm leading-relaxed text-slate-600">
-              {t("web.provider.onboarding.leftover3.operateHint")}
+              {t("web.provider.onboarding.business.operateHint")}
             </p>
           </div>
         </div>
@@ -2454,7 +2454,7 @@ function Step3BusinessDetails({
 
       <section className="space-y-3">
         <Label htmlFor="business_name" className="text-sm font-semibold text-slate-900">
-{t("web.provider.onboarding.leftover3.businessName")} <span className="text-slate-400">*</span>
+{t("web.provider.onboarding.business.businessName")} <span className="text-slate-400">*</span>
         </Label>
         <p className={helperMuted}>{t("web.provider.onboarding.business.howCustomersSee")}</p>
         <Input
@@ -2469,10 +2469,10 @@ function Step3BusinessDetails({
 
       <section className="space-y-3">
         <Label className="text-sm font-semibold text-slate-900">
-{t("web.provider.onboarding.leftover3.businessType")} <span className="text-slate-400">*</span>
+{t("web.provider.onboarding.business.businessType")} <span className="text-slate-400">*</span>
         </Label>
         <p className={helperMuted}>
-{t("web.provider.onboarding.leftover3.determinesSetup")}
+{t("web.provider.onboarding.business.determinesSetup")}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {(
@@ -2505,10 +2505,10 @@ function Step3BusinessDetails({
 
       <section className="space-y-3">
         <Label htmlFor="description" className="text-sm font-semibold text-slate-900">
-{t("web.provider.onboarding.leftover3.businessDescription")} <span className="text-slate-400 font-normal">{t("web.provider.onboarding.leftover3.recommendedParen")}</span>
+{t("web.provider.onboarding.business.businessDescription")} <span className="text-slate-400 font-normal">{t("web.provider.onboarding.business.recommendedParen")}</span>
         </Label>
         <p className={helperMuted}>
-{t("web.provider.onboarding.leftover3.descriptionAppears")}
+{t("web.provider.onboarding.business.descriptionAppears")}
         </p>
         <Textarea
           id="description"
@@ -2520,13 +2520,13 @@ function Step3BusinessDetails({
         />
         <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm tabular-nums text-slate-500">
-{t("web.provider.onboarding.leftover3.charsOf2000", { count: data.description?.length || 0 })}
+{t("web.provider.onboarding.business.charsOf2000", { count: data.description?.length || 0 })}
           </p>
           {data.description != null &&
             data.description.length > 0 &&
             data.description.length < 50 && (
               <p className="text-sm font-medium text-amber-600">
-{t("web.provider.onboarding.leftover3.considerMoreDetail")}
+{t("web.provider.onboarding.business.considerMoreDetail")}
               </p>
             )}
         </div>
@@ -2534,7 +2534,7 @@ function Step3BusinessDetails({
 
       <section className="space-y-3">
         <Label htmlFor="years_in_business" className="text-sm font-semibold text-slate-900">
-{t("web.provider.onboarding.leftover3.yearsInBusiness")} <span className="text-slate-400 font-normal">{t("web.provider.onboarding.leftover2.optionalParen")}</span>
+{t("web.provider.onboarding.business.yearsInBusiness")} <span className="text-slate-400 font-normal">{t("web.provider.common.optionalParen")}</span>
         </Label>
         <p className={helperMuted}>{t("web.provider.onboarding.business.experienceHint")}</p>
         <select
@@ -2564,10 +2564,10 @@ function Step3BusinessDetails({
       <section className="space-y-2">
         <Label htmlFor="languages_spoken" className="text-base font-semibold text-slate-900">
           {t("provider.mobile.screens.businessSettings.languagesYouSpeak")}{" "}
-          <span className="text-slate-600 font-normal text-sm">{t("web.provider.onboarding.leftover.optionalRecommended")}</span>
+          <span className="text-slate-600 font-normal text-sm">{t("web.provider.common.optionalRecommended")}</span>
         </Label>
         <p className={helper}>
-{t("web.provider.onboarding.leftover.languagesHint")}
+{t("web.provider.onboarding.business.languagesHint")}
         </p>
         <div className="mt-2">
           <ChipCombobox
@@ -2590,7 +2590,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">{t("web.provider.onboarding.business.websiteUrl")}</p>
               <p className={`${helperMuted} mt-0.5`}>
-                {t("web.provider.onboarding.leftover.websiteOptionalHint")}
+                {t("web.provider.onboarding.business.websiteOptionalHint")}
               </p>
             </div>
           </div>
@@ -2599,7 +2599,7 @@ function Step3BusinessDetails({
               id="onboarding-website-toggle-label"
               className="text-sm font-medium text-slate-800"
             >
-{t("web.provider.onboarding.leftover3.addWebsite")}
+{t("web.provider.onboarding.business.addWebsite")}
             </span>
             <Switch
               checked={websiteOpen}
@@ -2614,7 +2614,7 @@ function Step3BusinessDetails({
               {t("web.provider.onboarding.business.websiteUrl")}
             </Label>
             <p className={helperMuted}>
-              {t("web.provider.onboarding.leftover3.pasteFullLink")}
+              {t("web.provider.onboarding.business.pasteFullLink")}
             </p>
             <Input
               id="website"
@@ -2642,7 +2642,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">{t("web.provider.onboarding.business.socialLinks")}</p>
               <p className={`${helperMuted} mt-0.5`}>
-{t("web.provider.onboarding.leftover3.socialFollowHint")}
+{t("web.provider.onboarding.business.socialFollowHint")}
               </p>
             </div>
           </div>
@@ -2651,7 +2651,7 @@ function Step3BusinessDetails({
               id="onboarding-social-toggle-label"
               className="text-sm font-medium text-slate-800"
             >
-{t("web.provider.onboarding.leftover3.addProfiles")}
+{t("web.provider.onboarding.business.addProfiles")}
             </span>
             <Switch
               checked={socialOpen}
@@ -2664,7 +2664,7 @@ function Step3BusinessDetails({
           <div className="grid gap-4 p-4 sm:grid-cols-2 sm:gap-5 sm:p-5">
             <div className="space-y-1.5">
               <Label htmlFor="facebook" className="text-sm font-semibold text-slate-800">
-                {t("web.provider.onboarding.leftover3.facebook")}
+                {t("web.provider.onboarding.business.facebook")}
               </Label>
               <Input
                 id="facebook"
@@ -2685,7 +2685,7 @@ function Step3BusinessDetails({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="instagram" className="text-sm font-semibold text-slate-800">
-                {t("web.provider.onboarding.leftover3.instagram")}
+                {t("web.provider.onboarding.business.instagram")}
               </Label>
               <Input
                 id="instagram"
@@ -2706,7 +2706,7 @@ function Step3BusinessDetails({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="twitter" className="text-sm font-semibold text-slate-800">
-                {t("web.provider.onboarding.leftover3.x")}
+                {t("web.provider.onboarding.business.x")}
               </Label>
               <Input
                 id="twitter"
@@ -2727,7 +2727,7 @@ function Step3BusinessDetails({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="linkedin" className="text-sm font-semibold text-slate-800">
-                {t("web.provider.onboarding.leftover3.linkedin")}
+                {t("web.provider.onboarding.business.linkedin")}
               </Label>
               <Input
                 id="linkedin"
@@ -2784,13 +2784,13 @@ function Step4PaymentSetup({
   },
 ];
   const TERMINAL_VENDOR_OPTIONS = [
-  { id: "yoco", label: "Yoco" },
-  { id: "ikhokha", label: "iKhokha" },
-  { id: "capitec", label: "Capitec" },
-  { id: "fnb", label: "FNB" },
-  { id: "nedbank", label: "Nedbank" },
-  { id: "absa", label: "Absa" },
-  { id: "standard_bank", label: "Standard Bank" },
+  { id: "yoco", label: t("web.provider.onboarding.terminalVendors.yoco") },
+  { id: "ikhokha", label: t("web.provider.onboarding.terminalVendors.ikhokha") },
+  { id: "capitec", label: t("web.provider.onboarding.terminalVendors.capitec") },
+  { id: "fnb", label: t("web.provider.onboarding.terminalVendors.fnb") },
+  { id: "nedbank", label: t("web.provider.onboarding.terminalVendors.nedbank") },
+  { id: "absa", label: t("web.provider.onboarding.terminalVendors.absa") },
+  { id: "standard_bank", label: t("web.provider.onboarding.terminalVendors.standard_bank") },
   { id: "psp", label: t("web.provider.onboarding.payment.psp") },
   { id: "other", label: t("web.provider.bookings.detail.paymentMethods.other") },
   { id: "unsure", label: t("provider.mobile.screens.onboardingWizard.payment.ownership.unsure") },
@@ -2804,13 +2804,13 @@ function Step4PaymentSetup({
 ];
   const TERMINAL_USAGE_OPTIONS = [
   { id: "yes", label: t("web.provider.onboarding.payment.yesActivelyUsed") },
-  { id: "sometimes", label: t("web.provider.onboarding.leftover.sometimes") },
+  { id: "sometimes", label: t("web.provider.onboarding.payment.sometimes") },
   { id: "no", label: t("web.provider.onboarding.payment.noNotUsed") },
   { id: "unsure", label: t("provider.mobile.screens.onboardingWizard.payment.ownership.unsure") },
 ];
   const TERMINAL_INTEREST_OPTIONS = [
   { id: "yes", label: t("common.yes") },
-  { id: "maybe_later", label: t("web.provider.onboarding.leftover.maybeLater") },
+  { id: "maybe_later", label: t("web.provider.onboarding.payment.maybeLater") },
   { id: "no", label: t("common.no") },
 ];
   const ownershipStatus = data.terminal_ownership_status;
@@ -2864,7 +2864,7 @@ function Step4PaymentSetup({
           <div className="min-w-0 space-y-1">
             <p className="text-base font-semibold text-slate-900 sm:text-lg">{t("web.provider.onboarding.payment.cardMachineTitle")}</p>
             <p className="text-sm leading-relaxed text-slate-600">
-{t("web.provider.onboarding.leftover3.paymentHint")}
+{t("web.provider.onboarding.payment.paymentHint")}
             </p>
           </div>
         </div>
@@ -2974,7 +2974,7 @@ function Step4PaymentSetup({
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">{t("web.provider.onboarding.payment.vatRegistration")}</h3>
           <p className="text-sm text-gray-600 mb-4">
-{t("web.provider.onboarding.leftover3.vatSarsHint")}
+{t("web.provider.onboarding.payment.vatSarsHint")}
           </p>
         </div>
 
@@ -3063,7 +3063,7 @@ function Step4PaymentSetup({
               className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
             <p className="text-xs text-gray-600 mt-2">
-              {t("web.provider.onboarding.leftover2.vatNumberHint")}
+              {t("web.provider.onboarding.payment.vatNumberHint")}
             </p>
             {data.vat_number &&
               data.vat_number.length === 10 &&
@@ -3078,7 +3078,7 @@ function Step4PaymentSetup({
         {data.is_vat_registered === false && (
           <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
             <p className="text-sm text-green-800">
-              <strong>{t("web.provider.onboarding.payment.notVatRegistered")}</strong> {t("web.provider.onboarding.leftover2.notVatSuitable")}
+              <strong>{t("web.provider.onboarding.payment.notVatRegistered")}</strong> {t("web.provider.onboarding.payment.notVatSuitable")}
             </p>
           </div>
         )}
@@ -3088,10 +3088,10 @@ function Step4PaymentSetup({
       <div className="mt-8 pt-6 border-t border-gray-200">
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-medium text-amber-900">
-            {t("web.provider.onboarding.leftover2.payoutAccountTitle")}
+            {t("web.provider.onboarding.payment.payoutAccountTitle")}
           </p>
           <p className="mt-1 text-sm text-amber-800">
-            {t("web.provider.onboarding.leftover2.payoutAccountBody", { path: t("web.provider.onboarding.payment.payoutAccountsPath") })}
+            {t("web.provider.onboarding.payment.payoutAccountBody", { path: t("web.provider.onboarding.payment.payoutAccountsPath") })}
           </p>
         </div>
       </div>
@@ -3140,9 +3140,9 @@ function Step5CurrentSoftware({
       : data.previous_software || null;
   const staticSuggestions = useMemo(
     () => [
-      { value: "none", label: t("web.provider.onboarding.leftover.softwareNew") },
+      { value: "none", label: t("web.provider.onboarding.software.softwareNew") },
       ...softwareOptions.map((opt) => ({ value: opt.slug, label: opt.name })),
-      { value: "other", label: t("web.provider.onboarding.leftover2.other") },
+      { value: "other", label: t("web.provider.common.other") },
     ],
     [softwareOptions, t]
   );
@@ -3168,7 +3168,7 @@ function Step5CurrentSoftware({
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{t("web.provider.onboarding.steps.software.title")}</h3>
         <p className="text-base text-gray-600 mb-2">{t("web.provider.onboarding.steps.software.description")}</p>
         <p className="text-sm text-gray-500">
-{t("web.provider.onboarding.leftover.softwareHint")}
+{t("web.provider.onboarding.software.softwareHint")}
         </p>
       </div>
 
@@ -3193,7 +3193,7 @@ function Step5CurrentSoftware({
                 htmlFor="previous_software_other"
                 className="text-base font-semibold text-gray-900 mb-2 block"
               >
-                {t("web.provider.onboarding.leftover.whatSoftware")}
+                {t("web.provider.onboarding.software.whatSoftware")}
               </Label>
               <Input
                 id="previous_software_other"
@@ -3220,7 +3220,7 @@ function Step6Payroll({
 }) {
   const { t } = useTranslation();
   const options = [
-    { id: "commission", title: t("web.provider.onboarding.leftover.commission"), description: t("web.provider.onboarding.payroll.commissionSub") },
+    { id: "commission", title: t("web.provider.onboarding.payroll.commission"), description: t("web.provider.onboarding.payroll.commissionSub") },
     { id: "hourly", title: t("web.provider.onboarding.payroll.hourly"), description: t("web.provider.onboarding.payroll.hourlySub") },
     { id: "both", title: t("provider.mobile.screens.onboardingWizard.business.bothLabel"), description: t("web.provider.onboarding.payroll.bothSub") },
     { id: "other", title: t("web.provider.bookings.detail.paymentMethods.other"), description: t("web.provider.onboarding.payroll.otherSub") },
@@ -3248,7 +3248,7 @@ function Step6Payroll({
           <div className="min-w-0 space-y-1">
             <p className="text-base font-semibold text-slate-900 sm:text-lg">{t("web.provider.onboarding.payroll.title")}</p>
             <p className="text-sm leading-relaxed text-slate-600">
-{t("web.provider.onboarding.leftover.payrollHint")}
+{t("web.provider.onboarding.payroll.payrollHint")}
             </p>
           </div>
         </div>
@@ -3293,7 +3293,7 @@ function Step6Payroll({
             htmlFor="payroll_details"
             className="text-sm font-semibold text-slate-900 mb-2 block"
           >
-            {t("web.provider.onboarding.leftover.describePayroll")}
+            {t("web.provider.onboarding.payroll.describePayroll")}
           </Label>
           <Textarea
             id="payroll_details"
@@ -3325,7 +3325,7 @@ function Step7Location({
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
-  const defaultCountryDisplay = data.address?.country?.trim() || "South Africa";
+  const defaultCountryDisplay = data.address?.country?.trim() || t("web.provider.onboarding.defaultCountry");
 
   const mapboxCountryIso = useMemo(() => {
     const row = countries.find((c) => c.name === defaultCountryDisplay);
@@ -3363,16 +3363,16 @@ function Step7Location({
         if (countriesData.length === 0) {
           console.warn("Countries API returned empty array, using fallback");
           setCountries([
-            { code: "ZA", name: "South Africa" },
-            { code: "KE", name: "Kenya" },
-            { code: "GH", name: "Ghana" },
-            { code: "NG", name: "Nigeria" },
-            { code: "EG", name: "Egypt" },
-            { code: "US", name: "United States" },
-            { code: "GB", name: "United Kingdom" },
-            { code: "CA", name: "Canada" },
-            { code: "AU", name: "Australia" },
-            { code: "NZ", name: "New Zealand" },
+            { code: "ZA", name: t("web.provider.onboarding.countries.ZA") },
+            { code: "KE", name: t("web.provider.onboarding.countries.KE") },
+            { code: "GH", name: t("web.provider.onboarding.countries.GH") },
+            { code: "NG", name: t("web.provider.onboarding.countries.NG") },
+            { code: "EG", name: t("web.provider.onboarding.countries.EG") },
+            { code: "US", name: t("web.provider.onboarding.countries.US") },
+            { code: "GB", name: t("web.provider.onboarding.countries.GB") },
+            { code: "CA", name: t("web.provider.onboarding.countries.CA") },
+            { code: "AU", name: t("web.provider.onboarding.countries.AU") },
+            { code: "NZ", name: t("web.provider.onboarding.countries.NZ") },
           ]);
         } else {
           setCountries(countriesData);
@@ -3380,16 +3380,16 @@ function Step7Location({
       } catch (error) {
         console.error("Error loading countries:", error);
         setCountries([
-          { code: "ZA", name: "South Africa" },
-          { code: "KE", name: "Kenya" },
-          { code: "GH", name: "Ghana" },
-          { code: "NG", name: "Nigeria" },
-          { code: "EG", name: "Egypt" },
-          { code: "US", name: "United States" },
-          { code: "GB", name: "United Kingdom" },
-          { code: "CA", name: "Canada" },
-          { code: "AU", name: "Australia" },
-          { code: "NZ", name: "New Zealand" },
+          { code: "ZA", name: t("web.provider.onboarding.countries.ZA") },
+          { code: "KE", name: t("web.provider.onboarding.countries.KE") },
+          { code: "GH", name: t("web.provider.onboarding.countries.GH") },
+          { code: "NG", name: t("web.provider.onboarding.countries.NG") },
+          { code: "EG", name: t("web.provider.onboarding.countries.EG") },
+          { code: "US", name: t("web.provider.onboarding.countries.US") },
+          { code: "GB", name: t("web.provider.onboarding.countries.GB") },
+          { code: "CA", name: t("web.provider.onboarding.countries.CA") },
+          { code: "AU", name: t("web.provider.onboarding.countries.AU") },
+          { code: "NZ", name: t("web.provider.onboarding.countries.NZ") },
         ]);
       } finally {
         setIsLoadingCountries(false);
@@ -3485,28 +3485,28 @@ function Step7Location({
           </div>
           <div className="min-w-0 space-y-2">
             <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-              {t("web.provider.onboarding.leftover2.businessLocation")}
+              {t("web.provider.onboarding.location.businessLocation")}
             </h4>
             {isMobileOnly ? (
               <p className={helper}>
-                {t("web.provider.onboarding.leftover2.enterYour")} <strong className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover2.baseAddress")}</strong>{" "}
-                {t("web.provider.onboarding.leftover2.mobileLocationBody")}
+                {t("web.provider.onboarding.location.enterYour")} <strong className="font-semibold text-slate-900">{t("web.provider.onboarding.location.baseAddress")}</strong>{" "}
+                {t("web.provider.onboarding.location.mobileLocationBody")}
               </p>
             ) : isSalon ? (
               <p className={helper}>
-                {t("web.provider.onboarding.leftover2.enterYour")} <strong className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover2.salonOrStudio")}</strong>{" "}
-                {t("web.provider.onboarding.leftover2.salonLocationBody")}
+                {t("web.provider.onboarding.location.enterYour")} <strong className="font-semibold text-slate-900">{t("web.provider.onboarding.location.salonOrStudio")}</strong>{" "}
+                {t("web.provider.onboarding.location.salonLocationBody")}
               </p>
             ) : (
               <p className={helper}>
-                {t("web.provider.onboarding.leftover2.operateFromBody")}
+                {t("web.provider.onboarding.location.operateFromBody")}
               </p>
             )}
             {houseCallOrNoSalonNote ? (
               <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className={`${helperMuted} text-sm`}>
                   <span className="font-semibold text-slate-800">{t("web.provider.onboarding.location.houseCallsHint")}</span>{" "}
-                  {t("web.provider.onboarding.leftover2.houseCallsBody")}
+                  {t("web.provider.onboarding.location.houseCallsBody")}
                 </p>
               </div>
             ) : null}
@@ -3521,11 +3521,11 @@ function Step7Location({
               htmlFor="provider-onboarding-address"
               className="text-sm font-semibold text-slate-900"
             >
-              {t("web.provider.onboarding.leftover2.streetAddress")} <span className="text-slate-400">*</span>
+              {t("web.provider.onboarding.location.streetAddress")} <span className="text-slate-400">*</span>
             </Label>
             <p className={`${helperMuted} mt-1 max-w-xl`}>
-              {t("web.provider.onboarding.leftover2.searchMapboxHint")}{" "}
-              <strong className="font-medium text-slate-800">{t("web.provider.onboarding.location.chooseSuggestion")}</strong> {t("web.provider.onboarding.leftover2.chooseSuggestionSuffix")}
+              {t("web.provider.onboarding.location.searchMapboxHint")}{" "}
+              <strong className="font-medium text-slate-800">{t("web.provider.onboarding.location.chooseSuggestion")}</strong> {t("web.provider.onboarding.location.chooseSuggestionSuffix")}
             </p>
           </div>
           <Button
@@ -3560,13 +3560,13 @@ function Step7Location({
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
               <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
             </div>
-            {t("web.provider.onboarding.leftover2.mapCoordsSaved")}
+            {t("web.provider.onboarding.location.mapCoordsSaved")}
           </div>
         ) : (
           <p
             className={`${helperMuted} mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-amber-950`}
           >
-            {t("web.provider.onboarding.leftover2.noGpsYet", { action: t("provider.mobile.screens.locationDetail.dropPin") })}
+            {t("web.provider.onboarding.location.noGpsYet", { action: t("provider.mobile.screens.locationDetail.dropPin") })}
           </p>
         )}
       </section>
@@ -3582,7 +3582,7 @@ function Step7Location({
 
       <section className="space-y-3">
         <Label htmlFor="address_line2" className="text-sm font-semibold text-slate-900">
-          {t("web.provider.onboarding.leftover2.apartmentSuite")} <span className="text-slate-400 font-normal">{t("web.provider.onboarding.leftover2.optionalParen")}</span>
+          {t("web.provider.onboarding.location.apartmentSuite")} <span className="text-slate-400 font-normal">{t("web.provider.common.optionalParen")}</span>
         </Label>
         <p className={helperMuted}>{t("web.provider.onboarding.location.unitHint")}</p>
         <Input
@@ -3603,7 +3603,7 @@ function Step7Location({
 
       <section className="space-y-3">
         <Label htmlFor="city" className="text-sm font-semibold text-slate-900">
-          {t("web.provider.onboarding.leftover2.cityLabel")} <span className="text-slate-400">*</span>
+          {t("web.provider.onboarding.location.cityLabel")} <span className="text-slate-400">*</span>
         </Label>
         <Input
           id="city"
@@ -3622,7 +3622,7 @@ function Step7Location({
         />
         {data.address?.city ? (
           <p className="text-sm font-medium text-emerald-800">
-{t("web.provider.onboarding.leftover3.filledFromMapbox")}
+{t("web.provider.onboarding.location.filledFromMapbox")}
           </p>
         ) : null}
       </section>
@@ -3630,7 +3630,7 @@ function Step7Location({
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <section className="space-y-2">
           <Label htmlFor="state" className="text-base font-semibold text-slate-900">
-            {t("web.provider.onboarding.leftover2.stateProvince")} <span className="text-slate-600 text-sm font-normal">{t("web.provider.onboarding.leftover2.optionalParen")}</span>
+            {t("web.provider.onboarding.location.stateProvince")} <span className="text-slate-600 text-sm font-normal">{t("web.provider.common.optionalParen")}</span>
           </Label>
           <Input
             id="state"
@@ -3649,7 +3649,7 @@ function Step7Location({
         </section>
         <section className="space-y-2">
           <Label htmlFor="postal_code" className="text-base font-semibold text-slate-900">
-            {t("web.provider.onboarding.leftover2.postalCodeLabel")} <span className="text-slate-600 text-sm font-normal">{t("web.provider.onboarding.leftover2.optionalParen")}</span>
+            {t("web.provider.onboarding.location.postalCodeLabel")} <span className="text-slate-600 text-sm font-normal">{t("web.provider.common.optionalParen")}</span>
           </Label>
           <Input
             id="postal_code"
@@ -3670,10 +3670,10 @@ function Step7Location({
 
       <section className="space-y-2">
         <Label htmlFor="country" className="text-base font-semibold text-slate-900">
-          {t("web.provider.onboarding.leftover2.countryLabel")} <span className="text-primary">*</span>
+          {t("web.provider.onboarding.location.countryLabel")} <span className="text-primary">*</span>
         </Label>
         <p className={helperMuted}>
-          {t("web.provider.onboarding.leftover2.countryBiasHint")}
+          {t("web.provider.onboarding.location.countryBiasHint")}
         </p>
         {isLoadingCountries ? (
           <div
@@ -3684,7 +3684,7 @@ function Step7Location({
         ) : (
           <select
             id="country"
-            value={data.address?.country || "South Africa"}
+            value={data.address?.country || t("web.provider.onboarding.defaultCountry")}
             onChange={(e) =>
               updateData({
                 address: {
@@ -3696,11 +3696,16 @@ function Step7Location({
             className={cn(fieldClass, "w-full px-4")}
             required
           >
-            {countries.map((country) => (
-              <option key={country.code} value={country.name}>
-                {country.name}
-              </option>
-            ))}
+            {countries.map((country) => {
+              const countryKey = `web.provider.onboarding.countries.${country.code}`;
+              const translated = t(countryKey);
+              const label = translated === countryKey ? country.name : translated;
+              return (
+                <option key={country.code} value={country.name}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         )}
       </section>
@@ -3728,18 +3733,18 @@ function formatWebPlatformTravelDefaults(
     }).format(amount);
   const parts: string[] = [];
   if (limits.default_rate_per_km != null && Number.isFinite(limits.default_rate_per_km)) {
-    parts.push(t("web.provider.onboarding.leftover2.ratePerKm", { amount: fmt(limits.default_rate_per_km) }));
+    parts.push(t("web.provider.onboarding.zones.ratePerKm", { amount: fmt(limits.default_rate_per_km) }));
   }
   if (limits.default_minimum_fee != null && Number.isFinite(limits.default_minimum_fee)) {
-    parts.push(t("web.provider.onboarding.leftover2.minFee", { amount: fmt(limits.default_minimum_fee) }));
+    parts.push(t("web.provider.onboarding.zones.minFee", { amount: fmt(limits.default_minimum_fee) }));
   }
   if (limits.default_free_within_km != null && limits.default_free_within_km > 0) {
-    parts.push(t("web.provider.onboarding.leftover2.freeWithinKm", { km: limits.default_free_within_km }));
+    parts.push(t("web.provider.onboarding.zones.freeWithinKm", { km: limits.default_free_within_km }));
   } else if (limits.default_free_within_km === 0) {
     parts.push(t("web.provider.onboarding.location.chargedFromFirstKm"));
   }
   if (limits.default_maximum_fee != null && Number.isFinite(limits.default_maximum_fee)) {
-    parts.push(t("web.provider.onboarding.leftover2.maxFee", { amount: fmt(limits.default_maximum_fee) }));
+    parts.push(t("web.provider.onboarding.zones.maxFee", { amount: fmt(limits.default_maximum_fee) }));
   }
   return parts.length > 0 ? parts.join(" · ") : t("web.provider.onboarding.location.platformRatesApply");
 }
@@ -3810,7 +3815,7 @@ function Step9ServiceZones({
           setSelectedZoneIds(autoSelected);
           updateData({ selected_zone_ids: autoSelected });
           toast.success(
-            t("web.provider.onboarding.leftover2.autoSelectedZones", { count: autoSelected.length })
+            t("web.provider.onboarding.zones.autoSelectedZones", { count: autoSelected.length })
           );
         }
       } catch (error) {
@@ -3851,7 +3856,7 @@ function Step9ServiceZones({
         <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50/50 px-8 py-10 text-center shadow-sm">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
           <p className="text-sm font-medium text-slate-800">
-            {t("web.provider.onboarding.leftover2.findingZones")}
+            {t("web.provider.onboarding.zones.findingZones")}
           </p>
         </div>
       </div>
@@ -3863,7 +3868,7 @@ function Step9ServiceZones({
       <Alert className="rounded-[1.5rem] border-none bg-slate-50">
         <AlertCircle className="w-5 h-5 text-slate-500" />
         <AlertDescription className="text-sm leading-relaxed text-slate-600 ms-2">
-          {t("web.provider.onboarding.leftover2.completeLocationFirst")}
+          {t("web.provider.onboarding.zones.completeLocationFirst")}
         </AlertDescription>
       </Alert>
     );
@@ -3874,33 +3879,33 @@ function Step9ServiceZones({
       <Alert className="rounded-[1.5rem] border-none bg-slate-50">
         <AlertCircle className="h-5 w-5 text-slate-500" />
         <AlertDescription className="text-sm leading-relaxed text-slate-600 ms-2">
-          <strong className="text-slate-900">{t("web.provider.onboarding.zones.title")}</strong> {t("web.provider.onboarding.leftover2.zonesIntro")}
+          <strong className="text-slate-900">{t("web.provider.onboarding.zones.title")}</strong> {t("web.provider.onboarding.zones.zonesIntro")}
         </AlertDescription>
       </Alert>
 
       <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50/70 p-4 sm:p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-          {t("web.provider.onboarding.leftover2.travelFeesDefaults")}
+          {t("web.provider.onboarding.zones.travelFeesDefaults")}
         </p>
         <p className="mt-1 text-sm text-slate-800">
           {formatWebPlatformTravelDefaults(platformTravelLimits, t)}
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          {t("web.provider.onboarding.leftover2.customizeTravelFees")}
+          {t("web.provider.onboarding.zones.customizeTravelFees")}
         </p>
       </div>
 
       {suggestedZones.length === 0 ? (
         <div className="rounded-[1.5rem] border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
           <p className="text-sm font-medium text-amber-900">
-            {t("web.provider.onboarding.leftover2.noZonesMatched")}
+            {t("web.provider.onboarding.zones.noZonesMatched")}
           </p>
         </div>
       ) : (
         <>
           <div className="flex flex-col gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-700">
-              {t("web.provider.onboarding.leftover2.foundZones", { count: suggestedZones.length })}
+              {t("web.provider.onboarding.zones.foundZones", { count: suggestedZones.length })}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -3917,7 +3922,7 @@ function Step9ServiceZones({
                 className="rounded-full shadow-sm"
                 onClick={deselectAll}
               >
-                {t("web.provider.onboarding.leftover2.deselectAll")}
+                {t("web.provider.onboarding.zones.deselectAll")}
               </Button>
             </div>
           </div>
@@ -3949,14 +3954,14 @@ function Step9ServiceZones({
                         checked={selectedZoneIds.includes(zone.id)}
                         onChange={() => toggleZone(zone.id)}
                         className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                        aria-label={t("web.provider.onboarding.leftover2.selectZoneAria", { name: zone.name })}
+                        aria-label={t("web.provider.onboarding.zones.selectZoneAria", { name: zone.name })}
                       />
                       <h3 className="text-lg font-semibold text-slate-900">{zone.name}</h3>
                       <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                         {zone.zone_type === "postal_code"
-                          ? t("web.provider.onboarding.leftover2.postalCodeType")
+                          ? t("web.provider.onboarding.zones.postalCodeType")
                           : zone.zone_type === "city"
-                            ? t("web.provider.onboarding.leftover2.cityType")
+                            ? t("web.provider.onboarding.zones.cityType")
                             : zone.zone_type === "radius"
                               ? t("web.provider.onboarding.zones.radius")
                               : t("web.provider.onboarding.zones.polygon")}
@@ -3972,7 +3977,7 @@ function Step9ServiceZones({
           {selectedZoneIds.length > 0 && (
             <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
               <p className="text-sm font-medium text-slate-900">
-                {t("web.provider.onboarding.leftover2.zonesSelectedTravel", { count: selectedZoneIds.length })}
+                {t("web.provider.onboarding.zones.zonesSelectedTravel", { count: selectedZoneIds.length })}
               </p>
             </div>
           )}
@@ -4018,7 +4023,7 @@ function Step10GlobalCategories({
       if (commonCategories.length > 0) {
         updateData({ global_category_ids: commonCategories });
         toast.info(
-          t("web.provider.onboarding.leftover2.preselectedCategories", { count: commonCategories.length }),
+          t("web.provider.onboarding.categories.preselectedCategories", { count: commonCategories.length }),
           { duration: 3000 }
         );
       }
@@ -4094,11 +4099,11 @@ function Step10GlobalCategories({
       <Alert className="rounded-2xl border-indigo-200 bg-indigo-50 sm:rounded-3xl">
         <Sparkles className="h-4 w-4 text-indigo-700" />
         <AlertDescription className="text-sm leading-relaxed text-indigo-950">
-          <strong className="text-indigo-950">{t("web.provider.onboarding.categories.tip")}</strong> {t("web.provider.onboarding.leftover2.categoriesTipBody")}
+          <strong className="text-indigo-950">{t("web.provider.onboarding.categories.tip")}</strong> {t("web.provider.onboarding.categories.categoriesTipBody")}
           {(!data.services || data.services.length === 0) && (
             <span>
               {" "}
-              {t("web.provider.onboarding.leftover2.categoriesDraftHint")}
+              {t("web.provider.onboarding.categories.categoriesDraftHint")}
             </span>
           )}
         </AlertDescription>
@@ -4106,7 +4111,7 @@ function Step10GlobalCategories({
       {globalCategories.length === 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
           <p className="text-sm font-medium text-amber-950">
-            {t("web.provider.onboarding.leftover2.noCategoriesAvailable")}
+            {t("web.provider.onboarding.categories.noCategoriesAvailable")}
           </p>
         </div>
       ) : (
@@ -4159,7 +4164,7 @@ function Step10GlobalCategories({
       {data.global_category_ids && data.global_category_ids.length > 0 && (
         <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
           <p className="text-sm font-medium text-slate-900">
-{t("web.provider.onboarding.leftover.categorySelected", { count: data.global_category_ids.length })}
+{t("web.provider.onboarding.review.categorySelected", { count: data.global_category_ids.length })}
           </p>
         </div>
       )}
@@ -4240,7 +4245,7 @@ function Step11ServiceCatalog({
       <Alert className="rounded-[1.5rem] border-none bg-slate-50">
         <AlertCircle className="h-5 w-5 text-slate-500" />
         <AlertDescription className="text-sm leading-relaxed text-slate-600 ms-2">
-{t("web.provider.onboarding.leftover3.catalogIntro")}
+{t("web.provider.onboarding.catalog.catalogIntro")}
         </AlertDescription>
       </Alert>
 
@@ -4294,7 +4299,7 @@ function Step11ServiceCatalog({
               {/* Addons Section */}
               {service.addons && service.addons.length > 0 && (
                 <div className="space-y-2 border-s-2 border-primary/25 ps-4">
-                  <p className="text-xs font-semibold text-slate-600">{t("web.provider.onboarding.leftover.addOns")}</p>
+                  <p className="text-xs font-semibold text-slate-600">{t("web.provider.onboarding.catalog.addOns")}</p>
                   {service.addons.map((addon, addonIndex) => (
                     <div
                       key={addonIndex}
@@ -4302,7 +4307,7 @@ function Step11ServiceCatalog({
                     >
                       <span>
                         {addon.name}{" "}
-                        {addon.duration_minutes ? t("web.provider.onboarding.leftover2.plusMinsParen", { minutes: addon.duration_minutes }) : ""}
+                        {addon.duration_minutes ? t("web.provider.onboarding.catalog.plusMinsParen", { minutes: addon.duration_minutes }) : ""}
                       </span>
                       <span className="font-medium">
                         {addon.currency} {addon.price}
@@ -4334,9 +4339,9 @@ function Step11ServiceCatalog({
             </div>
             <div>
               <Label htmlFor="service_description">
-                {t("web.provider.onboarding.leftover.description")}
+                {t("web.provider.onboarding.catalog.descriptionLabel")}
                 <span className="text-gray-500 font-normal text-xs ms-2">
-                  {t("web.provider.onboarding.leftover.recommendedChars")}
+                  {t("web.provider.onboarding.catalog.recommendedChars")}
                 </span>
               </Label>
               <Textarea
@@ -4348,7 +4353,7 @@ function Step11ServiceCatalog({
                     setFormService({ ...formService, description: value });
                   }
                 }}
-                placeholder={t("web.provider.onboarding.leftover2.serviceDescPlaceholder")}
+                placeholder={t("web.provider.onboarding.catalog.serviceDescPlaceholder")}
                 rows={3}
                 maxLength={500}
               />
@@ -4356,13 +4361,13 @@ function Step11ServiceCatalog({
                 <p className="text-xs text-gray-500">
                   {formService.description && formService.description.length < 20 ? (
                     <span className="text-amber-600">
-                      {t("web.provider.onboarding.leftover.considerMoreDetails", { count: formService.description.length })}
+                      {t("web.provider.onboarding.business.considerMoreDetails", { count: formService.description.length })}
                     </span>
                   ) : (
                     <span>
-                      {t("web.provider.onboarding.leftover.charsCount", { count: formService.description?.length || 0 })}
+                      {t("web.provider.onboarding.catalog.charsCount", { count: formService.description?.length || 0 })}
                       {formService.description && formService.description.length >= 20 && (
-                        <span className="text-green-600 ms-2">{t("web.provider.onboarding.leftover.goodLength")}</span>
+                        <span className="text-green-600 ms-2">{t("web.provider.onboarding.business.goodLength")}</span>
                       )}
                     </span>
                   )}
@@ -4371,16 +4376,16 @@ function Step11ServiceCatalog({
                   type="button"
                   onClick={() => {
                     const templates = [
-                      t("web.provider.onboarding.leftover2.descTemplate1"),
-                      t("web.provider.onboarding.leftover2.descTemplate2"),
-                      t("web.provider.onboarding.leftover2.descTemplate3"),
+                      t("web.provider.onboarding.catalog.descTemplate1"),
+                      t("web.provider.onboarding.catalog.descTemplate2"),
+                      t("web.provider.onboarding.catalog.descTemplate3"),
                     ];
                     const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
                     setFormService({ ...formService, description: randomTemplate });
                   }}
                   className="text-xs text-primary hover:underline"
                 >
-                  {t("web.provider.onboarding.leftover.useTemplate")}
+                  {t("web.provider.onboarding.business.useTemplate")}
                 </button>
               </div>
             </div>
@@ -4443,7 +4448,7 @@ function Step11ServiceCatalog({
                     setFormService({ ...formService, supports_at_salon: e.target.checked })
                   }
                 />
-                <span className="text-sm">{t("web.provider.onboarding.leftover.availableAtSalon")}</span>
+                <span className="text-sm">{t("web.provider.onboarding.catalog.availableAtSalon")}</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -4453,7 +4458,7 @@ function Step11ServiceCatalog({
                     setFormService({ ...formService, supports_at_home: e.target.checked })
                   }
                 />
-                <span className="text-sm">{t("web.provider.onboarding.leftover.availableAtHome")}</span>
+                <span className="text-sm">{t("web.provider.onboarding.catalog.availableAtHome")}</span>
               </label>
             </div>
 
@@ -4469,7 +4474,7 @@ function Step11ServiceCatalog({
                 onClick={handleAddService}
                 className="bg-primary hover:bg-primary-hover text-white"
               >
-                {editingIndex !== null ? t("web.provider.onboarding.leftover.updateService") : t("web.provider.onboarding.leftover.addServiceBtn")}
+                {editingIndex !== null ? t("web.provider.onboarding.catalog.updateService") : t("web.provider.onboarding.catalog.addServiceBtn")}
               </Button>
               <Button
                 variant="outline"
@@ -4571,9 +4576,9 @@ function ServiceAddonsManager({
     <div className="space-y-3 pt-4 border-t">
       <div className="flex items-center justify-between">
         <div>
-          <Label className="text-sm font-medium">{t("web.provider.onboarding.leftover.addonsOptional")}</Label>
+          <Label className="text-sm font-medium">{t("web.provider.onboarding.catalog.addonsOptional")}</Label>
           <p className="text-xs text-gray-500 mt-1">
-            {t("web.provider.onboarding.leftover.addonsHint")}
+            {t("web.provider.onboarding.catalog.addonsHint")}
           </p>
         </div>
         {!showAddForm && (
@@ -4639,7 +4644,7 @@ function ServiceAddonsManager({
           <div className="space-y-3">
             <div>
               <Label htmlFor="addon_name" className="text-xs">
-                {t("web.provider.onboarding.leftover2.nameRequired")}
+                {t("web.provider.common.nameRequired")}
               </Label>
               <Input
                 id="addon_name"
@@ -4652,7 +4657,7 @@ function ServiceAddonsManager({
             </div>
             <div>
               <Label htmlFor="addon_description" className="text-xs">
-                {t("web.provider.onboarding.leftover.description")}
+                {t("web.provider.onboarding.catalog.descriptionLabel")}
               </Label>
               <Textarea
                 id="addon_description"
@@ -4703,7 +4708,7 @@ function ServiceAddonsManager({
               </div>
               <div>
                 <Label htmlFor="addon_duration" className="text-xs">
-                  {t("web.provider.onboarding.leftover3.extraTimeMins")}
+                  {t("web.provider.onboarding.catalog.extraTimeMins")}
                 </Label>
                 <Input
                   id="addon_duration"
@@ -4728,7 +4733,7 @@ function ServiceAddonsManager({
                 size="sm"
                 className="bg-primary hover:bg-primary-hover text-white"
               >
-                {editingIndex !== null ? t("web.provider.onboarding.leftover3.updateAddon") : t("web.provider.onboarding.catalog.addAddon")}
+                {editingIndex !== null ? t("web.provider.onboarding.catalog.updateAddon") : t("web.provider.onboarding.catalog.addAddon")}
               </Button>
               <Button
                 type="button"
@@ -4825,11 +4830,11 @@ function Step12Hours({
         >
           {isFreelancer ? (
             <span>
-              <strong className="text-emerald-900">{t("web.provider.onboarding.leftover2.freelancerHoursTitle")}</strong> {t("web.provider.onboarding.leftover2.freelancerHoursBody")}
+              <strong className="text-emerald-900">{t("web.provider.onboarding.hours.freelancerHoursTitle")}</strong> {t("web.provider.onboarding.hours.freelancerHoursBody")}
             </span>
           ) : (
             <span>
-              <strong className="text-slate-900">{t("web.provider.onboarding.leftover2.locationBookingWindowTitle")}</strong> {t("web.provider.onboarding.leftover2.locationBookingWindowBody")}
+              <strong className="text-slate-900">{t("web.provider.onboarding.hours.locationBookingWindowTitle")}</strong> {t("web.provider.onboarding.hours.locationBookingWindowBody")}
             </span>
           )}
         </AlertDescription>
@@ -4862,7 +4867,7 @@ function Step12Hours({
                     onChange={(e) => updateHours(day.key, "open", e.target.value)}
                     className="w-full sm:w-32 text-sm sm:text-base"
                   />
-                  <span className="text-sm sm:text-base">{t("web.provider.onboarding.leftover2.hoursTo")}</span>
+                  <span className="text-sm sm:text-base">{t("web.provider.onboarding.hours.hoursTo")}</span>
                   <Input
                     type="time"
                     value={dayHours?.close || "18:00"}
@@ -4884,25 +4889,25 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
   return (
     <div className="space-y-5 sm:space-y-6">
       <div>
-        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.businessInformation")}</h3>
+        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.businessInformation")}</h3>
         <div className={`${ONBOARDING_REVIEW_CARD} space-y-2`}>
           <p>
-            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover.nameColon")}</span> {data.business_name}
+            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.nameColon")}</span> {data.business_name}
           </p>
           <p>
-            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover.typeColon")}</span> {data.business_type}
+            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.typeColon")}</span> {data.business_type}
           </p>
           <p>
-            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover.phoneColon")}</span> {data.phone}
+            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.phoneColon")}</span> {data.phone}
           </p>
           <p>
-            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover.emailColon")}</span> {data.email}
+            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.emailColon")}</span> {data.email}
           </p>
           {data.previous_software && (
             <p>
-              <span className="font-semibold text-slate-900">{t("web.provider.onboarding.leftover.previousSoftware")}</span>{" "}
+              <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.previousSoftware")}</span>{" "}
               {data.previous_software === "other"
-                ? data.previous_software_other || t("web.provider.onboarding.leftover2.other")
+                ? data.previous_software_other || t("web.provider.common.other")
                 : data.previous_software === "none"
                   ? t("web.provider.onboarding.software.noneFirstTime")
                   : data.previous_software.charAt(0).toUpperCase() +
@@ -4913,15 +4918,15 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
       </div>
       {data.description && (
         <div>
-          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.businessDescription")}</h3>
+          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.businessDescriptionLabel")}</h3>
           <div className={ONBOARDING_REVIEW_CARD}>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
               {data.description}
             </p>
             <p className="mt-3 text-xs text-slate-600">
-              {t("web.provider.onboarding.leftover.characters", { count: data.description.length })}
+              {t("web.provider.onboarding.review.characters", { count: data.description.length })}
               {data.description.length >= 50 && (
-                <span className="ms-2 font-medium text-emerald-700">{t("web.provider.onboarding.leftover.goodLength")}</span>
+                <span className="ms-2 font-medium text-emerald-700">{t("web.provider.onboarding.business.goodLength")}</span>
               )}
             </p>
           </div>
@@ -4936,7 +4941,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
           </p>
           {data.address?.latitude && data.address?.longitude && (
             <p className="mt-2 text-xs text-slate-600">
-              {t("web.provider.onboarding.leftover.coordinates", { lat: data.address.latitude.toFixed(6), lng: data.address.longitude.toFixed(6) })}
+              {t("web.provider.onboarding.review.coordinates", { lat: data.address.latitude.toFixed(6), lng: data.address.longitude.toFixed(6) })}
             </p>
           )}
         </div>
@@ -4948,38 +4953,38 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
             <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.zones.title")}</h3>
             <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:rounded-3xl sm:p-5">
               <p className="text-sm font-medium text-sky-950">
-                {t("web.provider.onboarding.leftover.zonesSelected", { count: data.selected_zone_ids.length })}
+                {t("web.provider.onboarding.review.zonesSelected", { count: data.selected_zone_ids.length })}
               </p>
               <p className="mt-2 text-xs leading-relaxed text-sky-900">
-                {t("web.provider.onboarding.leftover.travelFeesDefault")}
+                {t("web.provider.onboarding.review.travelFeesDefault")}
               </p>
             </div>
           </div>
         )}
       <div>
-        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.serviceCategories")}</h3>
+        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.serviceCategories")}</h3>
         <div className={ONBOARDING_REVIEW_CARD}>
           {data.global_category_ids && data.global_category_ids.length > 0 ? (
             <p className="text-slate-800">
-              {t("web.provider.onboarding.leftover.categorySelected", { count: data.global_category_ids.length })}
+              {t("web.provider.onboarding.review.categorySelected", { count: data.global_category_ids.length })}
             </p>
           ) : (
-            <p className="text-slate-600">{t("web.provider.onboarding.leftover.noCategories")}</p>
+            <p className="text-slate-600">{t("web.provider.onboarding.review.noCategories")}</p>
           )}
         </div>
       </div>
       {(data.selected_plan_id || data.selected_plan_name) && (
         <div>
-          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.subscriptionPlan")}</h3>
+          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.subscriptionPlan")}</h3>
           <div className="rounded-2xl border border-primary/30 bg-primary/[0.07] p-4 sm:rounded-3xl sm:p-5">
             <p className="text-sm text-slate-900">
               {data.selected_plan_name ? (
                 <span className="font-semibold">{data.selected_plan_name}</span>
               ) : (
-                <span className="font-semibold">{t("web.provider.onboarding.leftover.planSelected")}</span>
+                <span className="font-semibold">{t("web.provider.onboarding.review.planSelected")}</span>
               )}
               {data.selected_plan_id && !data.selected_plan_name && (
-                <span className="ms-1 text-slate-600">{t("web.provider.onboarding.leftover.confirmNextStep")}</span>
+                <span className="ms-1 text-slate-600">{t("web.provider.onboarding.review.confirmNextStep")}</span>
               )}
             </p>
           </div>
@@ -4987,13 +4992,13 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
       )}
       {data.services && data.services.length > 0 ? (
         <div>
-          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.servicesCount", { count: data.services.length })}</h3>
+          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.servicesCount", { count: data.services.length })}</h3>
           <div className={`${ONBOARDING_REVIEW_CARD} space-y-4`}>
             {data.services.map((service, index) => (
               <div key={index} className="border-b border-slate-200 pb-4 last:border-0 last:pb-0">
                 <div className="text-sm">
                   <div className="mb-1 font-medium text-slate-900">
-                    {t("web.provider.onboarding.leftover2.serviceReviewLine", {
+                    {t("web.provider.onboarding.review.serviceReviewLine", {
                       title: service.title,
                       minutes: service.duration_minutes,
                       currency: service.currency,
@@ -5011,14 +5016,14 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                     <div className="mt-2 space-y-1 border-s-2 border-slate-200 ps-4">
                       {service.addons.map((addon, addonIndex) => (
                         <div key={addonIndex} className="text-xs text-slate-700">
-                          {t("web.provider.onboarding.leftover2.addonReviewLine", {
+                          {t("web.provider.onboarding.review.addonReviewLine", {
                             name: addon.name,
                             currency: addon.currency,
                             price: addon.price,
                           })}
                           {addon.duration_minutes &&
                             addon.duration_minutes > 0 &&
-                            t("web.provider.onboarding.leftover2.plusMinSuffix", { minutes: addon.duration_minutes })}
+                            t("web.provider.onboarding.catalog.plusMinSuffix", { minutes: addon.duration_minutes })}
                         </div>
                       ))}
                     </div>
@@ -5030,16 +5035,16 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
         </div>
       ) : (
         <div>
-          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.services")}</h3>
+          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.services")}</h3>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
             <p className="text-sm font-medium text-amber-950">
-              <span className="font-semibold">{t("web.provider.onboarding.leftover2.draftServicesLabel")}</span> {t("web.provider.onboarding.leftover.draftServicesBody")}
+              <span className="font-semibold">{t("web.provider.onboarding.review.draftServicesLabel")}</span> {t("web.provider.onboarding.review.draftServicesBody")}
             </p>
           </div>
         </div>
       )}
       <div>
-        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.leftover.operatingHours")}</h3>
+        <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.operatingHours")}</h3>
         <div className={ONBOARDING_REVIEW_CARD}>
           {data.operating_hours && Object.keys(data.operating_hours).length > 0 ? (
             <div className="space-y-2 text-sm">
@@ -5056,19 +5061,19 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
               ))}
             </div>
           ) : (
-            <p className="text-slate-600">{t("web.provider.onboarding.leftover.defaultHours")}</p>
+            <p className="text-slate-600">{t("web.provider.onboarding.review.defaultHours")}</p>
           )}
         </div>
       </div>
       <Alert className="rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl">
         <Check className="h-4 w-4 text-emerald-700" />
         <AlertDescription className="text-sm leading-relaxed text-emerald-950">
-          <strong className="text-emerald-950">{t("web.provider.onboarding.leftover.almostDone")}</strong> {t("web.provider.onboarding.leftover.afterSubmit")}
+          <strong className="text-emerald-950">{t("web.provider.onboarding.review.almostDone")}</strong> {t("web.provider.onboarding.review.afterSubmit")}
           <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-emerald-950/95">
             {data.business_type === "mobile" && <li>{t("web.provider.onboarding.review.markMobileReady")}</li>}
             {data.selected_zone_ids && data.selected_zone_ids.length > 0 && (
               <li>
-                {t("web.provider.onboarding.leftover.attachZones", { count: data.selected_zone_ids.length })}
+                {t("web.provider.onboarding.review.attachZones", { count: data.selected_zone_ids.length })}
               </li>
             )}
             {(!data.services || data.services.length === 0) &&
@@ -5142,7 +5147,7 @@ function Step14PlanSelection({
       <div className="flex items-center justify-center py-14">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/90 px-6 py-5 shadow-sm sm:rounded-3xl">
           <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
-          <span className="text-sm font-medium text-slate-800">{t("web.provider.onboarding.leftover.loadingPlans")}</span>
+          <span className="text-sm font-medium text-slate-800">{t("web.provider.onboarding.review.loadingPlans")}</span>
         </div>
       </div>
     );
@@ -5154,7 +5159,7 @@ function Step14PlanSelection({
         <Alert>
           <AlertCircle className="w-4 h-4" />
           <AlertDescription>
-            {t("web.provider.onboarding.leftover2.noPlansAvailable")}
+            {t("web.provider.onboarding.plan.noPlansAvailable")}
           </AlertDescription>
         </Alert>
       </div>
@@ -5168,10 +5173,10 @@ function Step14PlanSelection({
     <div className="space-y-6 sm:space-y-8">
       <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-8">
         <h3 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-          {t("web.provider.onboarding.leftover2.chooseYourPlan")}
+          {t("web.provider.onboarding.plan.chooseYourPlan")}
         </h3>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600 sm:mt-3 sm:text-base">
-          {t("web.provider.onboarding.leftover2.planIntro")}
+          {t("web.provider.onboarding.plan.planIntro")}
         </p>
       </div>
 
@@ -5202,7 +5207,7 @@ function Step14PlanSelection({
               {plan.is_popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 transform">
                   <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white shadow-sm">
-                    {t("web.provider.onboarding.leftover2.mostPopularLower")}
+                    {t("web.provider.onboarding.plan.mostPopularLower")}
                   </span>
                 </div>
               )}
@@ -5212,7 +5217,7 @@ function Step14PlanSelection({
                   <h4 className="text-xl font-bold text-slate-900">{plan.name}</h4>
                   {planIsFree ? (
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                      {t("web.provider.onboarding.leftover2.free")}
+                      {t("web.provider.onboarding.plan.free")}
                     </span>
                   ) : null}
                 </div>
@@ -5267,10 +5272,10 @@ function Step14PlanSelection({
                 {isSelected ? (
                   <div className="flex items-center gap-2">
                     <Check className="h-5 w-5" aria-hidden />
-                    <span className="font-semibold">{t("web.provider.onboarding.leftover2.selected")}</span>
+                    <span className="font-semibold">{t("web.provider.onboarding.plan.selected")}</span>
                   </div>
                 ) : (
-                  <span className="font-semibold">{t("web.provider.onboarding.leftover2.selectPlan")}</span>
+                  <span className="font-semibold">{t("web.provider.onboarding.plan.selectPlan")}</span>
                 )}
               </div>
             </div>
@@ -5294,15 +5299,15 @@ function Step14PlanSelection({
           >
             <strong>{selectedIsFree ? t("web.provider.onboarding.toast.freePlanSelected") : t("web.provider.onboarding.toast.paidPlanSelected")}</strong>{" "}
             {selectedIsFree
-              ? t("web.provider.onboarding.leftover2.afterSubmitFreeActual")
-              : t("web.provider.onboarding.leftover2.afterSubmitPaidActual")}
+              ? t("web.provider.onboarding.plan.afterSubmitFreeActual")
+              : t("web.provider.onboarding.plan.afterSubmitPaidActual")}
           </AlertDescription>
         </Alert>
       ) : (
         <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
           <AlertCircle className="h-4 w-4 text-slate-700" />
           <AlertDescription className="text-sm leading-relaxed text-slate-800">
-            {t("web.provider.onboarding.leftover2.selectPlanToContinue")}
+            {t("web.provider.onboarding.plan.selectPlanToContinue")}
           </AlertDescription>
         </Alert>
       )}

@@ -929,7 +929,7 @@ export function AppointmentDialog({
               {showClientSearch && (
                 <div className="space-y-2">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     <Input
                       ref={searchInputRef}
                       placeholder={t("web.provider.portal.appointmentDialog.searchClientPlaceholder")}
@@ -1207,7 +1207,7 @@ export function AppointmentDialog({
                     <SelectTrigger className="w-full min-h-[44px] rounded-xl relative">
                       <SelectValue />
                       {isLoadingSlots && (
-                        <Loader2 className="w-3 h-3 animate-spin absolute right-8 text-gray-400" />
+                        <Loader2 className="w-3 h-3 animate-spin absolute end-8 text-gray-400" />
                       )}
                     </SelectTrigger>
                     <SelectContent className="!z-[10000] max-h-64" position="popper" sideOffset={4}>
@@ -1417,7 +1417,7 @@ export function AppointmentDialog({
           <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
             <DialogTitle className="text-base font-semibold mb-3">{t("web.provider.portal.appointmentDialog.addAService")}</DialogTitle>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
                 autoFocus
                 placeholder={t("web.provider.portal.appointmentDialog.searchServicesPlaceholder")}
@@ -1450,7 +1450,7 @@ export function AppointmentDialog({
             </DialogTitle>
             {!variantProduct && (
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
                   autoFocus
                   placeholder={t("web.provider.portal.appointmentDialog.searchProductsPlaceholder")}

@@ -306,7 +306,7 @@ export function ClientQuickView({
         </div>
 
         {/* Action Buttons */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t space-y-2">
+        <div className="absolute bottom-0 start-0 end-0 p-4 bg-white border-t space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"

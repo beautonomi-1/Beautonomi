@@ -10,7 +10,8 @@ import { DraggableAppointment } from "@/components/provider-portal/DragDropCalen
 import type { Appointment } from "@/lib/provider-portal/types";
 import {
   getAppointmentColors,
-  formatTime12h,
+  formatTime12hI18n,
+  getCalendarStatusLabel,
   getEndTime,
   isNewBooking,
   parseScheduledTime,
@@ -45,6 +46,7 @@ function BookingBlockComponent({
 }: BookingBlockProps) {
   const { t } = useTranslation();
   const fmtPrice = formatPrice ?? ((n: number) => formatCurrency(n, "ZAR"));
+  const formatTime12h = (time: string) => formatTime12hI18n(time, t);
   const isGroupBooking = !!(apt as any).is_group_booking;
   const { hour, minute: min } = parseScheduledTime(apt.scheduled_time);
   const top = (hour - startHour) * HOUR_HEIGHT + (min / 60) * HOUR_HEIGHT;
@@ -83,13 +85,13 @@ function BookingBlockComponent({
           {showNonBookedBadge && (() => {
             const sc = getStatusColors(mapStatus(apt));
             return (
-              <span className={cn("absolute top-0.5 right-0.5 text-[8px] font-semibold px-1 py-0 rounded", sc.badgeClasses)}>
-                {sc.label}
+              <span className={cn("absolute top-0.5 end-0.5 text-[8px] font-semibold px-1 py-0 rounded", sc.badgeClasses)}>
+                {getCalendarStatusLabel(t, mapStatus(apt))}
               </span>
             );
           })()}
           {isGroupBooking && (
-            <span className="absolute top-0.5 left-0.5 text-[7px] font-bold px-0.5 rounded bg-purple-600 text-white leading-tight">
+            <span className="absolute top-0.5 start-0.5 text-[7px] font-bold px-0.5 rounded bg-purple-600 text-white leading-tight">
               {t("web.calendarBlock.grp")}
             </span>
           )}
@@ -127,7 +129,7 @@ function BookingBlockComponent({
         onClick={(e) => { e.stopPropagation(); onClick(apt); }}
       >
         <div className="px-2 py-1 h-full flex flex-col">
-          <div className="absolute top-1 right-1 flex items-center gap-1 flex-wrap justify-end max-w-full">
+          <div className="absolute top-1 end-1 flex items-center gap-1 flex-wrap justify-end max-w-full">
             {isGroupBooking && (
               <span className="text-[8px] font-bold px-1 py-0 rounded shrink-0 bg-purple-600 text-white">
                 {t("web.calendarBlock.group")}
@@ -145,7 +147,7 @@ function BookingBlockComponent({
               const sc = getStatusColors(mapStatus(apt));
               return (
                 <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0", sc.badgeClasses)}>
-                  {sc.label.toUpperCase()}
+                  {getCalendarStatusLabel(t, mapStatus(apt)).toUpperCase()}
                 </span>
               );
             })()}
@@ -162,7 +164,7 @@ function BookingBlockComponent({
               <p className="text-[10px] opacity-70 mt-auto" style={{ color: colors.text }}>
                 {formatTime12h(apt.scheduled_time)} - {formatTime12h(endTime!)}
                 {showPrices && (apt.price != null || (apt as any).total_amount != null) && (
-                  <span className="ml-1 font-semibold">
+                  <span className="ms-1 font-semibold">
                     · {fmtPrice((apt as any).total_amount ?? apt.price ?? 0)}
                   </span>
                 )}

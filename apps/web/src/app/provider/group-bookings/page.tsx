@@ -34,10 +34,12 @@ import { openGroupViewMode, openGroupSheet, openGroupEditMode } from "@/stores/a
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 
 function GroupBookingsPageInner() {
   const searchParams = useSearchParams();
   const { t } = useTranslation();
+  const { formatLocale } = useLocale();
   const { hasPermission, isOwner } = usePermissions();
   const canCreateGroups = isOwner || hasPermission("create_appointments");
   const canEditGroups = isOwner || hasPermission("edit_appointments");
@@ -195,8 +197,8 @@ function GroupBookingsPageInner() {
     if (booking.scheduled_at) {
       const d = new Date(booking.scheduled_at);
       return {
-        dateStr: new Intl.DateTimeFormat("en-ZA", { year: "numeric", month: "short", day: "numeric" }).format(d),
-        timeStr: new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit" }).format(d),
+        dateStr: d.toLocaleDateString(formatLocale, { year: "numeric", month: "short", day: "numeric" }),
+        timeStr: d.toLocaleTimeString(formatLocale, { hour: "2-digit", minute: "2-digit" }),
       };
     }
     return { dateStr: booking.scheduled_date || t("web.provider.common.emDash"), timeStr: booking.scheduled_time || "" };
@@ -257,7 +259,7 @@ label: t("web.provider.groupBookingsPage.newGroupBooking"),
       {/* Filters */}
       <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
 placeholder={t("web.provider.groupBookingsPage.searchPlaceholder")}
             value={searchQuery}

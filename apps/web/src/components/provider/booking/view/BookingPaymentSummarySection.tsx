@@ -32,7 +32,7 @@ export function BookingPaymentSummarySection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.paymentSummary")}</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.paymentSummaryBlock.title")}</BookingSectionLabel>
       {totalAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.total")} value={formatMoney(totalAmount)} /> : null}
       {discountAmount > 0 ? (
         <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.discount")} value={`−${formatMoney(discountAmount)}`} />
@@ -44,9 +44,9 @@ export function BookingPaymentSummarySection({
       ) : null}
       {totalPaid > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentActions.paid")} value={formatMoney(totalPaid)} /> : null}
       {outstanding > 0 ? (
-        <BookingSummaryRow label={t("web.provider.bookings.detail.leftoverCopy.balanceDue")} value={formatMoney(outstanding)} emphasize />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummaryBlock.balanceDue")} value={formatMoney(outstanding)} emphasize />
       ) : paymentStatus === "paid" ? (
-        <BookingSummaryRow label={t("web.provider.bookings.detail.leftoverCopy.status")} value={t("web.provider.bookings.detail.leftoverCopy.paidInFull")} />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummaryBlock.statusLabel")} value={t("web.provider.bookings.detail.paymentSummaryBlock.paidInFull")} />
       ) : null}
     </BookingSectionCard>
   );
