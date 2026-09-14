@@ -21696,7 +21696,12 @@
           "noAddons": "Hakuna viongezeo kwa huduma hii",
           "groupSession": "Kikao cha kikundi",
           "serviceFallback": "Huduma",
-          "productFallback": "Bidhaa"
+          "productFallback": "Bidhaa",
+          "headerSummary": "Header Summary",
+          "reviewSpotsStill": "Review Spots Still",
+          "spotsAvailable": "Spots Available",
+          "subtotalParticipants": "Subtotal Participants",
+          "subtotalProducts": "Subtotal Products"
         },
         "newSaleDialog": {
           "variantFallback": "Tofauti",
@@ -21838,7 +21843,8 @@
           "serviceNameAndPriceRequired": "Huduma jina and bei are inahitajika",
           "validPriceRequired": "Tafadhali weka a valid bei",
           "validDurationRequired": "Tafadhali weka a valid duration",
-          "customServiceAdded": "Custom huduma added to cart"
+          "customServiceAdded": "Custom huduma added to cart",
+          "cartItem": "Cart Item"
         },
         "addClientDialog": {
           "close": "Funga",
@@ -22260,7 +22266,8 @@
           "close": "Funga",
           "cancel": "Ghairi",
           "processing": "Inachakata...",
-          "processPayment": "Process Malipo"
+          "processPayment": "Process Malipo",
+          "txnCount": "Txn Count"
         },
         "qrScanner": {
           "invalidOrExpired": "Invalid or expired QR code"
@@ -22757,7 +22764,8 @@
           "closeOutQueueCount": "Funga-out queue ({{count}})",
           "bookingsCount": "Uhifadhi ({{count}})",
           "closeOutEmptyNow": "No appointments need close-out right now.",
-          "noMatchFilter": "Hapana uhifadhi match this chuja."
+          "noMatchFilter": "Hapana uhifadhi match this chuja.",
+          "needCloseOut": "Need Close Out"
         },
         "bulkActions": {
           "selectAll": "Chagua Zote",
@@ -23150,7 +23158,77 @@
             "saleSavedBookingFailed": "Uuzaji ulihifadhiwa, lakini kusasisha uhifadhi kumeshindwa: {{error}}",
             "journeyStartedEta": "Journey started. ETA {{minutes}} min.",
             "chargeMarkedPaidNote": "Marked as paid by provider via {{method}}",
-            "yocoChargeBookingNote": "Uhifadhi {{number}}"
+            "yocoChargeBookingNote": "Uhifadhi {{number}}",
+            "bookingChanged": "This booking changed, reload",
+            "cancelFailed": "Failed to cancel booking",
+            "cancellationNoticeFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSendFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSent": "Cancellation notice sent",
+            "cancelled": "Booking cancelled",
+            "cannotCharge": "Cannot charge this booking",
+            "cardPaymentFailed": "Card payment failed",
+            "chargeMarkedPaid": "Charge marked as paid",
+            "chargeSendFailed": "Failed to send charge",
+            "chargeSent": "Charge sent to client",
+            "codeSent": "Verification code sent",
+            "confirmationResent": "Confirmation resent",
+            "documentUploaded": "Document uploaded",
+            "emailRequired": "Email is required",
+            "enterDescription": "Enter a description",
+            "enterRefundReason": "Enter a refund reason",
+            "enterValidAmount": "Enter a valid amount",
+            "etaFailed": "Failed to update ETA",
+            "etaRange": "Enter ETA between 1 and 180 minutes",
+            "etaUpdated": "ETA updated to {{minutes}} minutes",
+            "journeyFailed": "Failed to start journey",
+            "journeyStarted": "Journey started",
+            "markArrivedFailed": "Failed to mark as arrived",
+            "markPaidFailed": "Failed to mark as paid",
+            "markedArrived": "Marked as arrived",
+            "markedNoShow": "Booking marked as no-show",
+            "markedPaid": "Marked as paid",
+            "missingReference": "Missing payment reference",
+            "missingSaleRecord": "Missing sale record",
+            "noBalance": "There is no remaining balance on this booking.",
+            "noBalanceCollect": "No balance to collect",
+            "noBalanceOverpaid": "This booking is overpaid",
+            "noPaystackTerminal": "No Paystack terminal configured",
+            "noPermission": "You do not have permission for this action",
+            "noReasonProvided": "No reason provided",
+            "noShowFailed": "Failed to mark as no-show",
+            "notesSaveFailed": "Failed to save notes",
+            "notesSaved": "Notes saved",
+            "notificationFailed": "Notification failed",
+            "notificationSendFailed": "Failed to send notification",
+            "overrideFailed": "Failed to override",
+            "overridePrompt": "Override verification?",
+            "overrideSuccess": "Override applied",
+            "paymentRecorded": "Booking payment recorded",
+            "paystackPrepareFailed": "Could not prepare Paystack payment",
+            "permissionToCollect": "You do not have permission to collect payment",
+            "phoneRequired": "Phone number is required",
+            "refundCash": "Refund issued (cash)",
+            "refundExceeds": "Refund cannot exceed {{amount}}",
+            "refundFailed": "Refund failed",
+            "refundWallet": "Refund issued (wallet)",
+            "reminderFailed": "Failed to send reminder",
+            "reminderSent": "Reminder sent",
+            "reminderSentCustomer": "Reminder sent to customer",
+            "rescheduleFailed": "Failed to reschedule booking",
+            "rescheduled": "Booking rescheduled",
+            "resendFailed": "Failed to resend",
+            "selectDateTime": "Select a date and time",
+            "serviceCompleted": "Service completed",
+            "serviceStarted": "Service started",
+            "startBeforeCard": "Start or complete the service before collecting card payment.",
+            "statusUpdateFailed": "Failed to update booking status",
+            "statusUpdated": "Booking status updated",
+            "terminalFinalizeFailed": "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
+            "uploadFailed": "Upload failed",
+            "verifiedCanStart": "Customer verified – you can start the service.",
+            "verifyFailed": "Payment verification failed",
+            "verifyQrFailed": "Failed to verify QR",
+            "verifyQrHint": "Enter an 8-character code or paste the QR JSON from the customer."
           },
           "resources": {
             "fallback": "Resource",
@@ -23190,7 +23268,9 @@
             "emailFailed": "Imeshindwa barua pepe receipt",
             "emailReceipt": "Barua pepe receipt",
             "downloadPdf": "Pakua PDF",
-            "sendsTo": "Sends to {{email}}"
+            "sendsTo": "Sends to {{email}}",
+            "titleEmailFailed": "Failed to email receipt",
+            "titleEmailed": "Receipt emailed"
           },
           "productFulfillment": {
             "title": "Bidhaa pickup",
@@ -23540,7 +23620,8 @@
         "refunds": "Marejesho",
         "tips": "Bahashishi",
         "cancellationFees": "Cancellation Fees",
-        "additionalCharges": "Ada za ziada"
+        "additionalCharges": "Ada za ziada",
+        "request": "Request"
       },
       "onboarding": {
         "steps": {
@@ -23752,7 +23833,8 @@
           "showcaseBody": "Upload photos of your completed work, before/after transformations, or examples of your services. This is your portfolio that helps clients see the quality of your work. You can add up to 10 images. Minimum 3 recommended for best results.",
           "photosUploaded_one": "{{count}} photo uploaded",
           "photosUploaded_other": "{{count}} photos uploaded",
-          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app."
+          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app.",
+          "photosUploaded": "Photos Uploaded"
         },
         "languages": {
           "en": "Kiingereza",
@@ -23939,7 +24021,10 @@
           "postalCodeType": "Msimbo wa posta",
           "cityType": "Jiji",
           "zonesSelectedTravel_one": "{{count}} zone selected — set travel fees anytime after signup.",
-          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup."
+          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup.",
+          "autoSelectedZones": "Auto Selected Zones",
+          "foundZones": "Found Zones",
+          "zonesSelectedTravel": "Zones Selected Travel"
         },
         "categories": {
           "loadFailed": "Imeshindwa load categories",
@@ -24022,7 +24107,10 @@
           "loadingPlans": "Inapakia plans…",
           "serviceReviewLine": "{{title}} — {{minutes}} min — {{currency}} {{price}}",
           "addonReviewLine": "+ {{name}} — {{currency}} {{price}}",
-          "draftServicesLabel": "Draft huduma:"
+          "draftServicesLabel": "Draft huduma:",
+          "attachZones": "Attach Zones",
+          "categorySelected": "Category Selected",
+          "zonesSelected": "Selected all {{count}} zones"
         },
         "plan": {
           "activatesInstantly": "Activates instantly",
@@ -24229,7 +24317,9 @@
           "recentActivity": "Shughuli za hivi karibuni",
           "truncatedBoth": "Some booking and ledger totals may be incomplete for very high-volume accounts.",
           "truncatedBookings": "Booking status counts may be incomplete for very high-volume accounts.",
-          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts."
+          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
+          "bookingsCount": "Bookings ({{count}})",
+          "saleCount": "Sale ({{count}})"
         }
       },
       "settings": {
@@ -24811,7 +24901,9 @@
             "notNow": "Sio sasa",
             "openingSecureCheckout": "Opening secure checkout…",
             "paySecurely": "Pay securely",
-            "unknownDays": "?"
+            "unknownDays": "?",
+            "dayCount": "Day Count",
+            "targetingCategory": "Targeting Category"
           },
           "ai": {
             "aiStudio": "AI studio",
@@ -25248,7 +25340,9 @@
             "invoiceNumber": "Invoice #",
             "period": "Period",
             "receipt": "Risiti",
-            "setAsDefault": "Weka kama chaguo-msingi"
+            "setAsDefault": "Weka kama chaguo-msingi",
+            "invoiceCount": "Invoice Count",
+            "paymentMethodCount": "Payment Method Count"
           },
           "business-description": {
             "businessDescription": "Business Description",
@@ -25494,7 +25588,9 @@
             "bookings_other": "{{count}} uhifadhi",
             "combinedRating_one": "{{rating}} combined ({{count}} rating)",
             "combinedRating_other": "{{rating}} combined ({{count}} ratings)",
-            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})"
+            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})",
+            "bookings": "Bookings",
+            "combinedRating": "Combined Rating"
           },
           "clients/referrals": {
             "referralSources": "Referral Sources",
@@ -25661,7 +25757,8 @@
             "captionOptional": "Caption (si lazima)",
             "editPhotoDetails": "Hariri photo details",
             "providerIdNotFound": "Mtoa huduma ID haijapatikana",
-            "uploadTimeoutNamed": "Upload timeout for {{name}}"
+            "uploadTimeoutNamed": "Upload timeout for {{name}}",
+            "imagesUploaded": "Images Uploaded"
           },
           "integrations/email": {
             "emailMarketingIntegration": "Barua pepe Marketing Integration",
@@ -25876,7 +25973,8 @@
             "email": "Barua pepe",
             "activeVisible": "Active (visible to wateja)",
             "polygon": "Polygon",
-            "radius": "Radius"
+            "radius": "Radius",
+            "zonesMatching": "Zones Matching"
           },
           "marketing-integrations": {
             "marketingIntegrations": "Marketing Integrations",
@@ -26144,7 +26242,8 @@
             "matchBankStatement": "Make sure the account name matches exactly as it appears on your bank statement.",
             "verificationOptionalSuffix": " Account verification is optional — if it's unavailable for your bank, enter the name manually.",
             "adding": "Inaongeza...",
-            "addAccount": "Ongeza Akaunti"
+            "addAccount": "Ongeza Akaunti",
+            "bankAccountCount": "Bank Account Count"
           },
           "sales/card-machines": {
             "cardMachines": "Mashine za kadi",
@@ -26286,7 +26385,11 @@
             "cardMachine": "Mashine ya kadi",
             "setupGuideCheckoutRest": "— customer taps, inserts, swipes, or scans QR.",
             "setupGuideRefunds": "Refunds are done on the physical machine, then recorded in Beautonomi.",
-            "cardMachinePayoutsNote": "Mashine ya kadi payments stay in your merchant account — not Beautonomi online payouts."
+            "cardMachinePayoutsNote": "Mashine ya kadi payments stay in your merchant account — not Beautonomi online payouts.",
+            "activeMachineCount": "Active Machine Count",
+            "amountMismatch": "Amount Mismatch",
+            "paymentsCount": "Payments ({{count}})",
+            "paymentsWaitingOnMachine": "Payments Waiting On Machine"
           },
           "sales/gift-cards": {
             "giftCards": "Kadi za zawadi",
@@ -26689,7 +26792,8 @@
             "checkoutSteps": "Checkout steps",
             "delivery": "Uwasilishaji",
             "review": "Tathmini",
-            "beautonomiCardMachines": "Beautonomi card machines"
+            "beautonomiCardMachines": "Beautonomi card machines",
+            "devicesActive": "Devices Active"
           },
           "sales/tips": {
             "tips": "Bahashishi",
@@ -26952,7 +27056,8 @@
             "completed": "Imekamilika",
             "completionRate": "Completion Rate",
             "cancelledCount_one": "{{count}} imeghairiwa uhifadhi",
-            "cancelledCount_other": "{{count}} imeghairiwa uhifadhi"
+            "cancelledCount_other": "{{count}} imeghairiwa uhifadhi",
+            "cancelledCount": "{{count}} cancelled"
           },
           "service-zones": {
             "serviceZones": "Huduma Zones",
@@ -27050,7 +27155,8 @@
             "planName": "Plan Jina *",
             "monthlyPrice": "Monthly Bei *",
             "discountPercentage": "Punguzo Percentage",
-            "discountHint": "Punguzo percentage (0-100) applied to huduma"
+            "discountHint": "Punguzo percentage (0-100) applied to huduma",
+            "extendedBy": "Extended By"
           },
           "services/menu": {
             "servicesMenu": "Hudumas Menu",
@@ -27159,7 +27265,9 @@
             "hoursBefore_other": "{{count}} saa before",
             "minutesBefore_one": "{{count}} dakika before",
             "minutesBefore_other": "{{count}} dakika before",
-            "chooseWhenToSend": "Choose when to send miadi reminders"
+            "chooseWhenToSend": "Choose when to send miadi reminders",
+            "hoursBefore": "{{hours}}h before",
+            "minutesBefore": "{{minutes}}m before"
           },
           "team/permissions": {
             "permissions": "Ruhusa",
@@ -27234,7 +27342,8 @@
             "sendMessages": "Send Ujumbe",
             "sendMessagesDesc": "Reply to client conversations",
             "createExplorePosts": "Unda Explore Posts",
-            "createExplorePostsDesc": "Unda and simamia mtoa huduma Explore posts"
+            "createExplorePostsDesc": "Unda and simamia mtoa huduma Explore posts",
+            "permissionCount": "Permission Count"
           },
           "team/roles": {
             "roles": "Majukumu",
@@ -27294,7 +27403,8 @@
               "send_messages": "Send Ujumbe",
               "create_explore_posts": "Unda Explore Posts"
             },
-            "catEngagement": "Ushiriki"
+            "catEngagement": "Ushiriki",
+            "permissionCount": "Permission Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "Muda Off Types",
@@ -27832,7 +27942,8 @@
           "personal": "Binafsi",
           "publicHoliday": "Public holiday",
           "orTypeYourOwn": "Or type your own…",
-          "savingEllipsis": "Inahifadhi…"
+          "savingEllipsis": "Inahifadhi…",
+          "overlappingBookings": "Overlapping Bookings"
         },
         "ecommerce/shipping": {
           "failedToSave": "Imeshindwa Hifadhi shipping configuration. Tafadhali jaribu tena.",
@@ -28374,7 +28485,9 @@
           "nextSteps": "Ifuatayo Steps:",
           "nextStepsBody": "Remit {{amount}} to SARS by {{date}}.",
           "submitEfiling": "Wasilisha via SARS eFiling →",
-          "markAsRemitted": "Mark as Remitted to SARS"
+          "markAsRemitted": "Mark as Remitted to SARS",
+          "daysRemaining": "{{count}} days remaining",
+          "transaction": "Transaction"
         },
         "marketing/segment-builder": {
           "bookingCriteria": "Uhifadhi Criteria",
@@ -28879,7 +28992,11 @@
             "avgLineItems_other": "Avg {{amount}} · {{count}} line items",
             "dateRange": "{{from}} → {{to}}",
             "amountSuffix": " · {{amount}}",
-            "listSeparator": " · "
+            "listSeparator": " · ",
+            "gatewayRows": "Gateway rows",
+            "lineItems": "Line items",
+            "tillLogs": "Till Logs",
+            "walletAdj": "Wallet Adj"
           },
           "staff/commission": {
             "title": "Commission Reports",
@@ -28953,7 +29070,10 @@
             "noServiceRevenue": "No service revenue data available for the selected period.",
             "revenueByStaff": "Revenue by staff",
             "revenueByStaffHint": "Allocated from each booking’s ledger net by share of line items assigned to staff (retail not included).",
-            "noStaffRevenue": "No staff revenue data available for the selected period."
+            "noStaffRevenue": "No staff revenue data available for the selected period.",
+            "appointmentsCount": "Appointments Count",
+            "ordersCount": "Orders Count",
+            "scheduledAppointmentsCount": "Scheduled Appointments Count"
           },
           "payments/summary": {
             "title": "Malipo Summary",
@@ -28994,7 +29114,9 @@
             "transactionsCount_other": "Miamala {{count}}",
             "noPaymentMethodData": "No njia ya malipo data available for the selected period.",
             "paymentsByStatus": "Malipo by Hali",
-            "noPaymentStatusData": "No payment status data available for the selected period."
+            "noPaymentStatusData": "No payment status data available for the selected period.",
+            "cashStyle": "Cash Style",
+            "transactionsCount": "{{count}} transactions"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -29032,7 +29154,8 @@
             "bookingSync": "Uhifadhi sync",
             "booking": "Uhifadhi",
             "sale": "Uuzaji",
-            "missingBookingPayment": "Missing uhifadhi malipo"
+            "missingBookingPayment": "Missing uhifadhi malipo",
+            "gap": "Gap"
           },
           "payments/paystack-terminal-reconciliation": {
             "unavailableTitle": "Paystack Terminal haipatikani",
@@ -29172,7 +29295,8 @@
             "noCategories": "Hapana categories",
             "noCategoriesDesc": "Hapana bidhaa categories inapatikana.",
             "productsCount_one": "{{count}} bidhaa",
-            "productsCount_other": "{{count}} bidhaa"
+            "productsCount_other": "{{count}} bidhaa",
+            "productsCount": "Products ({{count}})"
           },
           "products/sales": {
             "title": "Bidhaa Sales",
@@ -29235,7 +29359,10 @@
             "offering_one": "{{count}} offering",
             "offering_other": "{{count}} offerings",
             "visit_one": "{{count}} visit",
-            "visit_other": "{{count}} visits"
+            "visit_other": "{{count}} visits",
+            "offering": "Offering",
+            "visit": "Visit",
+            "visitsAvg": "Visits Avg"
           },
           "payments/payouts": {
             "title": "Payout earnings",
@@ -29277,7 +29404,8 @@
             "settled": "Settled {{when}}",
             "bookedFees": "Booked {{booked}} · Fees {{fees}}",
             "refundsAmount": " · Refunds {{amount}}",
-            "netEarnings": "net earnings"
+            "netEarnings": "net earnings",
+            "rowsWithEarnings": "Rows with earnings"
           },
           "payments/refunds": {
             "title": "Marejesho",
@@ -29321,7 +29449,8 @@
             "methodCard": "Kadi",
             "methodWallet": "Pochi",
             "methodBankTransfer": "Uhamisho wa benki",
-            "methodOther": "Nyingine"
+            "methodOther": "Nyingine",
+            "rowsCount": "Rows Count"
           },
           "occupancy": {
             "title": "Occupancy",
@@ -29358,7 +29487,8 @@
             "occupancy": "Occupancy",
             "noActiveStaff": "Hapana active staff match this chuja.",
             "noDaysInRange": "Hapana siku in range.",
-            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range."
+            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range.",
+            "daysCount": "Days Count"
           },
           "business/comparison": {
             "monthVsPrior": "Mwezi vs prior mwezi",
@@ -29518,7 +29648,8 @@
             "bookingsCount_other": "{{count}} uhifadhi",
             "topServices": "Top Huduma",
             "noServicesFound": "Hapana huduma found",
-            "noServiceData": "Hapana huduma data inapatikana."
+            "noServiceData": "Hapana huduma data inapatikana.",
+            "bookingsCount": "Bookings ({{count}})"
           },
           "packages/sales": {
             "title": "Package sales",
@@ -29562,7 +29693,9 @@
             "topClients": "Top clients by package uhifadhi",
             "topClientsHint": "Up to 20 — counts package-included bookings per customer.",
             "bookingsCount_one": "{{count}} uhifadhi",
-            "bookingsCount_other": "{{count}} uhifadhi"
+            "bookingsCount_other": "{{count}} uhifadhi",
+            "bookingsCount": "Bookings ({{count}})",
+            "uses": "Uses"
           },
           "gift-cards/sales": {
             "title": "Gift cards · Summary",
@@ -29588,7 +29721,8 @@
             "pctOfRows": "{{pct}}% of redemption rows",
             "rowsCount_one": "{{count}} row",
             "rowsCount_other": "{{count}} rows",
-            "totalAmount": "{{amount}} jumla"
+            "totalAmount": "{{amount}} jumla",
+            "rowsCount": "Rows Count"
           },
           "end-of-day": {
             "title": "End of siku",
@@ -29696,7 +29830,8 @@
             "noRows": "Hapana rows",
             "noRowsDesc": "Hapana trend rows.",
             "visits_one": "{{count}} visit",
-            "visits_other": "{{count}} visits"
+            "visits_other": "{{count}} visits",
+            "visits": "Visits"
           },
           "packages": {
             "title": "Packages overview",
@@ -29727,7 +29862,8 @@
             "bundle": "Bundle",
             "items_one": "Kipengee {{count}}",
             "items_other": "Vipengee {{count}}",
-            "currency": "Currency: {{code}}."
+            "currency": "Currency: {{code}}.",
+            "items": "Items: {{amount}}"
           }
         },
         "export": {
@@ -30207,7 +30343,9 @@
           "bookingOptionsA11y": "Wateja choose from {{count}} uhifadhi options",
           "optionsToChooseFrom_one": "{{count}} option to choose from",
           "optionsToChooseFrom_other": "{{count}} options to choose from",
-          "serviceTitleSuffix": " · {{title}}"
+          "serviceTitleSuffix": " · {{title}}",
+          "optionsToChooseFrom": "Options To Choose From",
+          "tiersSynced": "Tiers Synced"
         },
         "productDialog": {
           "brandNameRequired": "Brand jina is inahitajika",
@@ -30707,7 +30845,8 @@
         "noServiceTypes": "Hapana huduma types set",
         "distanceA11y": "You accept at-home bookings within {{km}} km. Open distance settings to change.",
         "within": "Within",
-        "withinKm": "Ndani ya km {{km}}"
+        "withinKm": "Ndani ya km {{km}}",
+        "review": "review"
       },
       "dataTableShell": {
         "searchPlaceholder": "Tafuta...",
@@ -31002,7 +31141,8 @@
         "alsoAddToPortfolioHint": "Inaonyesha picha hii pia kwenye galeria yako ya mtoa huduma.",
         "saveChanges": "Hifadhi mabadiliko",
         "share": "Shiriki",
-        "cancel": "Ghairi"
+        "cancel": "Ghairi",
+        "remainingSlots": "Remaining Slots"
       },
       "calendarMobile": {
         "timeOff": "Muda off",
@@ -31333,7 +31473,8 @@
         "submitRating": "Wasilisha rating",
         "thanks": "Thanks!",
         "ratingSavedBody": "Your rating was imehifadhiwa.",
-        "freshCaption": "Fresh {{service}} ✨"
+        "freshCaption": "Fresh {{service}} ✨",
+        "starA11y": "Star A11y"
       },
       "qrCodeDisplay": {
         "defaultTitle": "Verification QR Code",
@@ -31493,7 +31634,9 @@
         "viewChecklistMore": "Angalia orodha kamili · +{{count}} zaidi",
         "viewChecklist": "Angalia full checklist",
         "allFeatures": "Vipengele vyote",
-        "signOut": "Toka"
+        "signOut": "Toka",
+        "allRequiredDone": "All Required Done",
+        "requiredTasksLeft": "Required Tasks Left"
       },
       "limitError": {
         "title": "Limit Reached",
@@ -31573,7 +31716,8 @@
         "noAppointments": "Hapana miadi",
         "durationMin": "{{minutes}}min",
         "notePrefix": "Kumbuka: {{notes}}",
-        "print": "Chapisha"
+        "print": "Chapisha",
+        "appointmentCount": "Appointment Count"
       },
       "verificationHub": {
         "completeIdentityFirst": "Kamilisha identity first",
@@ -31718,7 +31862,9 @@
         "failedOpenConversation": "Imeshindwa fungua conversation.",
         "serviceLabel": "HUDUMA",
         "productsLabel": "BIDHAA",
-        "serviceAndProductsLabel": "HUDUMA & BIDHAA"
+        "serviceAndProductsLabel": "HUDUMA & BIDHAA",
+        "appointmentCount": "Appointment Count",
+        "needsConfirm": "Needs Confirm"
       },
       "teamMemberDialog": {
         "serviceFallback": "Huduma",
@@ -31900,7 +32046,9 @@
         "previewQr": "Preview QR for this short code",
         "shortCodeCol": "Short Code",
         "services": "Huduma",
-        "expiresCol": "Inaisha"
+        "expiresCol": "Inaisha",
+        "clicks": "Clicks",
+        "itemsSelected": "Items Selected"
       },
       "calendarPage": {
         "serviceFallback": "Huduma",
@@ -32096,7 +32244,8 @@
           "total": "Jumla",
           "paid": "Imelipwa",
           "product": "Bidhaa"
-        }
+        },
+        "visits": "Visits"
       },
       "routesPage": {
         "title": "Route Optimizer",
@@ -32149,7 +32298,10 @@
         "comments_other": "{{count}} comments",
         "views_one": "{{count}} view",
         "views_other": "{{count}} views",
-        "viewComments": "Angalia & comments"
+        "viewComments": "Angalia & comments",
+        "comments": "{{count}} comments",
+        "likes": "{{count}} likes",
+        "views": "{{count}} views"
       },
       "formsPage": {
         "failedToLoad": "Imeshindwa load forms",
@@ -32181,7 +32333,8 @@
         "titleLabel": "Kichwa",
         "titlePlaceholder": "e.g. Client intake",
         "descriptionLabel": "Description (si lazima)",
-        "descriptionPlaceholder": "Brief description of this form"
+        "descriptionPlaceholder": "Brief description of this form",
+        "fieldsCount": "Fields Count"
       },
       "getStartedPage": {
         "title": "Get Started",
@@ -32210,7 +32363,8 @@
         "requiredToGoLive": "Inahitajika to go live",
         "boostProfile": "Boost your wasifu",
         "completeLater": "Kamilisha later",
-        "setUp": "Sanidi"
+        "setUp": "Sanidi",
+        "stepsToGo": "Steps To Go"
       },
       "shiftsPage": {
         "failedToLoad": "Imeshindwa load shifts",
@@ -32289,7 +32443,9 @@
         "completeSale": "Kamilisha Sale — {{amount}}",
         "chooseVariant": "Choose a variant to add to the sale:",
         "outOfStock": "Haipatikani stokini",
-        "inCart": "{{count}} in cart"
+        "inCart": "{{count}} in cart",
+        "itemCount": "Item Count",
+        "options": "Options"
       },
       "customerProfilePage": {
         "failedToLoad": "Imeshindwa load mteja wasifu",
@@ -32316,7 +32472,8 @@
         "interests": "Mapendeleo",
         "bookingHistory": "Uhifadhi History ({{count}})",
         "reviewsLeft": "Tathmini Left ({{count}})",
-        "bookingNumber": "Uhifadhi #{{number}}"
+        "bookingNumber": "Uhifadhi #{{number}}",
+        "reviewCount": "Review Count"
       },
       "resourcesPage": {
         "loadFailed": "Imeshindwa load resources",
@@ -32360,7 +32517,8 @@
         "noResourcesAvailable": "Hapana resources inapatikana",
         "resourceWithType": "{{name}} ({{type}})",
         "addResource": "Ongeza Resource",
-        "capacityCol": "Uwezo"
+        "capacityCol": "Uwezo",
+        "resourcesCount": "Resources Count"
       },
       "catalogueProducts": {
         "loadFailed": "Imeshindwa load bidhaa",
@@ -32475,7 +32633,8 @@
         "cancelDescription": "This cancels the uhifadhi wa kikundi and any linked participant bookings. This action cannot be undone.",
         "keepBooking": "Keep uhifadhi",
         "cancelGroupBooking": "Ghairi uhifadhi wa kikundi",
-        "completed": "Imekamilika"
+        "completed": "Imekamilika",
+        "participantCount": "Participant Count"
       },
       "timeBlocksPage": {
         "loadFailed": "Imeshindwa load muda blocks",
@@ -32597,7 +32756,8 @@
         "statusScheduled": "Scheduled",
         "statusSending": "Sending",
         "statusSent": "Imetumwa",
-        "statusCancelled": "Imeghairiwa"
+        "statusCancelled": "Imeghairiwa",
+        "forRecipients": "For Recipients"
       },
       "advancedPricing": {
         "completeRequired": "Please complete all required fields for enabled rules",
@@ -33340,7 +33500,8 @@
       "syncedSecondsAgo": "Synced {{count}}s ago",
       "syncedMinutesAgo": "Synced {{count}}m ago",
       "syncedHoursAgo": "Synced {{count}}h ago",
-      "syncedAt": "Synced {{time}}"
+      "syncedAt": "Synced {{time}}",
+      "stepsRemaining": "Steps Remaining"
     },
     "messaging": {
       "whatsappChat": {

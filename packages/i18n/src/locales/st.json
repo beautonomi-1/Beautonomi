@@ -21696,7 +21696,12 @@
           "noAddons": "No litlaleho e teng for this tšebeletso",
           "groupSession": "Sehlopha Seshene",
           "serviceFallback": "Tšebeletso",
-          "productFallback": "sehlahiswa"
+          "productFallback": "sehlahiswa",
+          "headerSummary": "Header Summary",
+          "reviewSpotsStill": "Review Spots Still",
+          "spotsAvailable": "Spots Available",
+          "subtotalParticipants": "Subtotal Participants",
+          "subtotalProducts": "Subtotal Products"
         },
         "newSaleDialog": {
           "variantFallback": "Variant",
@@ -21838,7 +21843,8 @@
           "serviceNameAndPriceRequired": "tšebeletso lebitso and theko are hoa hlokahala",
           "validPriceRequired": "Ka kopo enter a e nepahetse theko",
           "validDurationRequired": "Ka kopo enter a e nepahetse nako",
-          "customServiceAdded": "Ea khethehileng tšebeletso added to Kariki"
+          "customServiceAdded": "Ea khethehileng tšebeletso added to Kariki",
+          "cartItem": "Cart Item"
         },
         "addClientDialog": {
           "close": "Koala",
@@ -22260,7 +22266,8 @@
           "close": "Koala",
           "cancel": "Hlakola",
           "processing": "e a sebetsa...",
-          "processPayment": "Process tefo"
+          "processPayment": "Process tefo",
+          "txnCount": "Txn Count"
         },
         "qrScanner": {
           "invalidOrExpired": "or e feletswe ke nako QR khoutu e fosahetseng"
@@ -22757,7 +22764,8 @@
           "closeOutQueueCount": "koala-out queue ({{count}})",
           "bookingsCount": "dibuking ({{count}})",
           "closeOutEmptyNow": "No likopano need koala-out right hona joale.",
-          "noMatchFilter": "No dibuking match this sefa."
+          "noMatchFilter": "No dibuking match this sefa.",
+          "needCloseOut": "Need Close Out"
         },
         "bulkActions": {
           "selectAll": "Khetha tsohle",
@@ -23150,7 +23158,77 @@
             "saleSavedBookingFailed": "The sale was saved, but updating the booking failed: {{error}}",
             "journeyStartedEta": "Journey qalaed. ETA {{minutes}} min.",
             "chargeMarkedPaidNote": "Marked as e lefuoe by mofani via {{method}}",
-            "yocoChargeBookingNote": "buking {{number}}"
+            "yocoChargeBookingNote": "buking {{number}}",
+            "bookingChanged": "This booking changed, reload",
+            "cancelFailed": "Failed to cancel booking",
+            "cancellationNoticeFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSendFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSent": "Cancellation notice sent",
+            "cancelled": "Booking cancelled",
+            "cannotCharge": "Cannot charge this booking",
+            "cardPaymentFailed": "Card payment failed",
+            "chargeMarkedPaid": "Charge marked as paid",
+            "chargeSendFailed": "Failed to send charge",
+            "chargeSent": "Charge sent to client",
+            "codeSent": "Verification code sent",
+            "confirmationResent": "Confirmation resent",
+            "documentUploaded": "Document uploaded",
+            "emailRequired": "Email is required",
+            "enterDescription": "Enter a description",
+            "enterRefundReason": "Enter a refund reason",
+            "enterValidAmount": "Enter a valid amount",
+            "etaFailed": "Failed to update ETA",
+            "etaRange": "Enter ETA between 1 and 180 minutes",
+            "etaUpdated": "ETA updated to {{minutes}} minutes",
+            "journeyFailed": "Failed to start journey",
+            "journeyStarted": "Journey started",
+            "markArrivedFailed": "Failed to mark as arrived",
+            "markPaidFailed": "Failed to mark as paid",
+            "markedArrived": "Marked as arrived",
+            "markedNoShow": "Booking marked as no-show",
+            "markedPaid": "Marked as paid",
+            "missingReference": "Missing payment reference",
+            "missingSaleRecord": "Missing sale record",
+            "noBalance": "There is no remaining balance on this booking.",
+            "noBalanceCollect": "No balance to collect",
+            "noBalanceOverpaid": "This booking is overpaid",
+            "noPaystackTerminal": "No Paystack terminal configured",
+            "noPermission": "You do not have permission for this action",
+            "noReasonProvided": "No reason provided",
+            "noShowFailed": "Failed to mark as no-show",
+            "notesSaveFailed": "Failed to save notes",
+            "notesSaved": "Notes saved",
+            "notificationFailed": "Notification failed",
+            "notificationSendFailed": "Failed to send notification",
+            "overrideFailed": "Failed to override",
+            "overridePrompt": "Override verification?",
+            "overrideSuccess": "Override applied",
+            "paymentRecorded": "Booking payment recorded",
+            "paystackPrepareFailed": "Could not prepare Paystack payment",
+            "permissionToCollect": "You do not have permission to collect payment",
+            "phoneRequired": "Phone number is required",
+            "refundCash": "Refund issued (cash)",
+            "refundExceeds": "Refund cannot exceed {{amount}}",
+            "refundFailed": "Refund failed",
+            "refundWallet": "Refund issued (wallet)",
+            "reminderFailed": "Failed to send reminder",
+            "reminderSent": "Reminder sent",
+            "reminderSentCustomer": "Reminder sent to customer",
+            "rescheduleFailed": "Failed to reschedule booking",
+            "rescheduled": "Booking rescheduled",
+            "resendFailed": "Failed to resend",
+            "selectDateTime": "Select a date and time",
+            "serviceCompleted": "Service completed",
+            "serviceStarted": "Service started",
+            "startBeforeCard": "Start or complete the service before collecting card payment.",
+            "statusUpdateFailed": "Failed to update booking status",
+            "statusUpdated": "Booking status updated",
+            "terminalFinalizeFailed": "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
+            "uploadFailed": "Upload failed",
+            "verifiedCanStart": "Customer verified – you can start the service.",
+            "verifyFailed": "Payment verification failed",
+            "verifyQrFailed": "Failed to verify QR",
+            "verifyQrHint": "Enter an 8-character code or paste the QR JSON from the customer."
           },
           "resources": {
             "fallback": "Resource",
@@ -23190,7 +23268,9 @@
             "emailFailed": "Ha e a khona ho imeile rasiti",
             "emailReceipt": "imeile rasiti",
             "downloadPdf": "Jarolla PDF",
-            "sendsTo": "Romelas to {{email}}"
+            "sendsTo": "Romelas to {{email}}",
+            "titleEmailFailed": "Failed to email receipt",
+            "titleEmailed": "Receipt emailed"
           },
           "productFulfillment": {
             "title": "sehlahiswa Ho nka",
@@ -23540,7 +23620,8 @@
         "refunds": "Puseletsos",
         "tips": "lithepa",
         "cancellationFees": "Hlakolalation litefo",
-        "additionalCharges": "Litefo tse eketsehileng"
+        "additionalCharges": "Litefo tse eketsehileng",
+        "request": "Request"
       },
       "onboarding": {
         "steps": {
@@ -23752,7 +23833,8 @@
           "showcaseBody": "Upload photos of your completed work, before/after transformations, or examples of your services. This is your portfolio that helps clients see the quality of your work. You can add up to 10 images. Minimum 3 recommended for best results.",
           "photosUploaded_one": "{{count}} foto jaraed",
           "photosUploaded_other": "{{count}} lifoto jaraed",
-          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app."
+          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app.",
+          "photosUploaded": "Photos Uploaded"
         },
         "languages": {
           "en": "Senyesemane",
@@ -23939,7 +24021,10 @@
           "postalCodeType": "khoutu ya poso",
           "cityType": "Toropo",
           "zonesSelectedTravel_one": "{{count}} zone selected — set travel fees anytime after signup.",
-          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup."
+          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup.",
+          "autoSelectedZones": "Auto Selected Zones",
+          "foundZones": "Found Zones",
+          "zonesSelectedTravel": "Zones Selected Travel"
         },
         "categories": {
           "loadFailed": "E hlolehile ho jaefa lihlopha",
@@ -24022,7 +24107,10 @@
           "loadingPlans": "E jaefa Merero…",
           "serviceReviewLine": "{{title}} — {{minutes}} min — {{currency}} {{price}}",
           "addonReviewLine": "+ {{name}} — {{currency}} {{price}}",
-          "draftServicesLabel": "tlhophiso litšebeletso:"
+          "draftServicesLabel": "tlhophiso litšebeletso:",
+          "attachZones": "Attach Zones",
+          "categorySelected": "Category Selected",
+          "zonesSelected": "Selected all {{count}} zones"
         },
         "plan": {
           "activatesInstantly": "Bulas instantly",
@@ -24229,7 +24317,9 @@
           "recentActivity": "Recent activity",
           "truncatedBoth": "Some booking and ledger totals may be incomplete for very high-volume accounts.",
           "truncatedBookings": "Booking status counts may be incomplete for very high-volume accounts.",
-          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts."
+          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
+          "bookingsCount": "Bookings ({{count}})",
+          "saleCount": "Sale ({{count}})"
         }
       },
       "settings": {
@@ -24811,7 +24901,9 @@
             "notNow": "Eseng hona joale",
             "openingSecureCheckout": "Opening secure ho lefa…",
             "paySecurely": "Pay securely",
-            "unknownDays": "?"
+            "unknownDays": "?",
+            "dayCount": "Day Count",
+            "targetingCategory": "Targeting Category"
           },
           "ai": {
             "aiStudio": "AI studio",
@@ -25248,7 +25340,9 @@
             "invoiceNumber": "invose #",
             "period": "Period",
             "receipt": "Rasiti",
-            "setAsDefault": "Set as ea kamehla"
+            "setAsDefault": "Set as ea kamehla",
+            "invoiceCount": "Invoice Count",
+            "paymentMethodCount": "Payment Method Count"
           },
           "business-description": {
             "businessDescription": "Khoebo tlhaloso",
@@ -25494,7 +25588,9 @@
             "bookings_other": "{{count}} dibuking",
             "combinedRating_one": "{{rating}} combined ({{count}} rating)",
             "combinedRating_other": "{{rating}} combined ({{count}} ratings)",
-            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})"
+            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})",
+            "bookings": "Bookings",
+            "combinedRating": "Combined Rating"
           },
           "clients/referrals": {
             "referralSources": "phetisetso Sources",
@@ -25661,7 +25757,8 @@
             "captionOptional": "Mongolo (boikhethelo)",
             "editPhotoDetails": "Lokisa foto dintlha",
             "providerIdNotFound": "mofani ID ha e fumanehe",
-            "uploadTimeoutNamed": "jara nakoout for {{name}}"
+            "uploadTimeoutNamed": "jara nakoout for {{name}}",
+            "imagesUploaded": "Images Uploaded"
           },
           "integrations/email": {
             "emailMarketingIntegration": "imeile Marketing Integration",
@@ -25876,7 +25973,8 @@
             "email": "imeile",
             "activeVisible": "E a sebetsa (visible to bareki)",
             "polygon": "Polygon",
-            "radius": "Radius"
+            "radius": "Radius",
+            "zonesMatching": "Zones Matching"
           },
           "marketing-integrations": {
             "marketingIntegrations": "Marketing Integrations",
@@ -26144,7 +26242,8 @@
             "matchBankStatement": "Make sure the account name matches exactly as it appears on your bank statement.",
             "verificationOptionalSuffix": " Account verification is optional — if it's unavailable for your bank, enter the name manually.",
             "adding": "Adding...",
-            "addAccount": "Kenya Akhaonto"
+            "addAccount": "Kenya Akhaonto",
+            "bankAccountCount": "Bank Account Count"
           },
           "sales/card-machines": {
             "cardMachines": "Mechini ya dikarete",
@@ -26286,7 +26385,11 @@
             "cardMachine": "Mochine wa karete",
             "setupGuideCheckoutRest": "— customer taps, inserts, swipes, or scans QR.",
             "setupGuideRefunds": "Refunds are done on the physical machine, then recorded in Beautonomi.",
-            "cardMachinePayoutsNote": "Card machine payments stay in your merchant account — not Beautonomi online payouts."
+            "cardMachinePayoutsNote": "Card machine payments stay in your merchant account — not Beautonomi online payouts.",
+            "activeMachineCount": "Active Machine Count",
+            "amountMismatch": "Amount Mismatch",
+            "paymentsCount": "Payments ({{count}})",
+            "paymentsWaitingOnMachine": "Payments Waiting On Machine"
           },
           "sales/gift-cards": {
             "giftCards": "likarete tsa mpho",
@@ -26689,7 +26792,8 @@
             "checkoutSteps": "ho lefa steps",
             "delivery": "Ho tlisoe",
             "review": "maikutlo",
-            "beautonomiCardMachines": "Beautonomi mechini ya dikarete"
+            "beautonomiCardMachines": "Beautonomi mechini ya dikarete",
+            "devicesActive": "Devices Active"
           },
           "sales/tips": {
             "tips": "lithepa",
@@ -26952,7 +27056,8 @@
             "completed": "e felile",
             "completionRate": "Completion Rate",
             "cancelledCount_one": "{{count}} e hlakotsoe buking",
-            "cancelledCount_other": "{{count}} e hlakotsoe dibuking"
+            "cancelledCount_other": "{{count}} e hlakotsoe dibuking",
+            "cancelledCount": "{{count}} cancelled"
           },
           "service-zones": {
             "serviceZones": "tšebeletso Zones",
@@ -27050,7 +27155,8 @@
             "planName": "Morero lebitso *",
             "monthlyPrice": "Khoeli le khoeli theko *",
             "discountPercentage": "theolelo Percentage",
-            "discountHint": "theolelo percentage (0-100) applied to litšebeletso"
+            "discountHint": "theolelo percentage (0-100) applied to litšebeletso",
+            "extendedBy": "Extended By"
           },
           "services/menu": {
             "servicesMenu": "litšebeletso Menu",
@@ -27159,7 +27265,9 @@
             "hoursBefore_other": "{{count}} lihora before",
             "minutesBefore_one": "{{count}} motsotso before",
             "minutesBefore_other": "{{count}} metsotso before",
-            "chooseWhenToSend": "Khetha when to romela kopano reminders"
+            "chooseWhenToSend": "Khetha when to romela kopano reminders",
+            "hoursBefore": "{{hours}}h before",
+            "minutesBefore": "{{minutes}}m before"
           },
           "team/permissions": {
             "permissions": "Permissions",
@@ -27234,7 +27342,8 @@
             "sendMessages": "Romela Melaetsa",
             "sendMessagesDesc": "karabo to moreki conversations",
             "createExplorePosts": "Theha Hlahla Posos",
-            "createExplorePostsDesc": "Theha and manage mofani Hlahla posts"
+            "createExplorePostsDesc": "Theha and manage mofani Hlahla posts",
+            "permissionCount": "Permission Count"
           },
           "team/roles": {
             "roles": "Karolos",
@@ -27294,7 +27403,8 @@
               "send_messages": "Romela Melaetsa",
               "create_explore_posts": "Theha Hlahla Posos"
             },
-            "catEngagement": "Engagement"
+            "catEngagement": "Engagement",
+            "permissionCount": "Permission Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "nako Off Mofutas",
@@ -27832,7 +27942,8 @@
           "personal": "Personal",
           "publicHoliday": "Public holiday",
           "orTypeYourOwn": "Or Mofuta your own…",
-          "savingEllipsis": "E a boloka…"
+          "savingEllipsis": "E a boloka…",
+          "overlappingBookings": "Overlapping Bookings"
         },
         "ecommerce/shipping": {
           "failedToSave": "E hlolehile ho boloka shipping configuration. ka kopo leka hape.",
@@ -28374,7 +28485,9 @@
           "nextSteps": "e latelang Steps:",
           "nextStepsBody": "Remit {{amount}} to SARS by {{date}}.",
           "submitEfiling": "romela via SARS eFiling →",
-          "markAsRemitted": "Mark as Remitted to SARS"
+          "markAsRemitted": "Mark as Remitted to SARS",
+          "daysRemaining": "{{count}} days remaining",
+          "transaction": "Transaction"
         },
         "marketing/segment-builder": {
           "bookingCriteria": "buking Criteria",
@@ -28879,7 +28992,11 @@
             "avgLineItems_other": "Avg {{amount}} · {{count}} line items",
             "dateRange": "{{from}} → {{to}}",
             "amountSuffix": " · {{amount}}",
-            "listSeparator": " · "
+            "listSeparator": " · ",
+            "gatewayRows": "Gateway rows",
+            "lineItems": "Line items",
+            "tillLogs": "Till Logs",
+            "walletAdj": "Wallet Adj"
           },
           "staff/commission": {
             "title": "Commission litlaleho",
@@ -28953,7 +29070,10 @@
             "noServiceRevenue": "No tšebeletso resebaka Datha e teng for the E khethiloe period.",
             "revenueByStaff": "Resebaka by basebetsi",
             "revenueByStaffHint": "Allocated from each booking’s ledger net by share of line items assigned to staff (retail not included).",
-            "noStaffRevenue": "No basebetsi resebaka Datha e teng for the E khethiloe period."
+            "noStaffRevenue": "No basebetsi resebaka Datha e teng for the E khethiloe period.",
+            "appointmentsCount": "Appointments Count",
+            "ordersCount": "Orders Count",
+            "scheduledAppointmentsCount": "Scheduled Appointments Count"
           },
           "payments/summary": {
             "title": "tefo Kakaretso",
@@ -28994,7 +29114,9 @@
             "transactionsCount_other": "Litšebelisano tse {{count}}",
             "noPaymentMethodData": "No mokhoa oa tefo Datha e teng for the E khethiloe period.",
             "paymentsByStatus": "ditefo by boemo",
-            "noPaymentStatusData": "No tefo boemo Datha e teng for the E khethiloe period."
+            "noPaymentStatusData": "No tefo boemo Datha e teng for the E khethiloe period.",
+            "cashStyle": "Cash Style",
+            "transactionsCount": "{{count}} transactions"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -29032,7 +29154,8 @@
             "bookingSync": "buking sync",
             "booking": "Buking",
             "sale": "Thekiso",
-            "missingBookingPayment": "Missing buking tefo"
+            "missingBookingPayment": "Missing buking tefo",
+            "gap": "Gap"
           },
           "payments/paystack-terminal-reconciliation": {
             "unavailableTitle": "Paystack theminale ha e fumanehe",
@@ -29172,7 +29295,8 @@
             "noCategories": "No lihlopha",
             "noCategoriesDesc": "No sehlahiswa lihlopha e teng.",
             "productsCount_one": "{{count}} sehlahiswa",
-            "productsCount_other": "{{count}} lihlahisoa"
+            "productsCount_other": "{{count}} lihlahisoa",
+            "productsCount": "Products ({{count}})"
           },
           "products/sales": {
             "title": "sehlahiswa Thekisos",
@@ -29235,7 +29359,10 @@
             "offering_one": "{{count}} offering",
             "offering_other": "{{count}} offerings",
             "visit_one": "{{count}} visit",
-            "visit_other": "{{count}} visits"
+            "visit_other": "{{count}} visits",
+            "offering": "Offering",
+            "visit": "Visit",
+            "visitsAvg": "Visits Avg"
           },
           "payments/payouts": {
             "title": "Payout earnings",
@@ -29277,7 +29404,8 @@
             "settled": "Settled {{when}}",
             "bookedFees": "E bukiloe {{booked}} · litefo {{fees}}",
             "refundsAmount": " · Puseletsos {{amount}}",
-            "netEarnings": "net earnings"
+            "netEarnings": "net earnings",
+            "rowsWithEarnings": "Rows with earnings"
           },
           "payments/refunds": {
             "title": "Puseletsos",
@@ -29321,7 +29449,8 @@
             "methodCard": "Karete",
             "methodWallet": "Sepache",
             "methodBankTransfer": "Phetiso ea banka",
-            "methodOther": "Tse ding"
+            "methodOther": "Tse ding",
+            "rowsCount": "Rows Count"
           },
           "occupancy": {
             "title": "Occupancy",
@@ -29358,7 +29487,8 @@
             "occupancy": "Occupancy",
             "noActiveStaff": "No E a sebetsa basebetsi match this sefa.",
             "noDaysInRange": "No matsatsi in range.",
-            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range."
+            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range.",
+            "daysCount": "Days Count"
           },
           "business/comparison": {
             "monthVsPrior": "Month vs prior khoeli",
@@ -29518,7 +29648,8 @@
             "bookingsCount_other": "{{count}} dibuking",
             "topServices": "Top litšebeletso",
             "noServicesFound": "No litšebeletso found",
-            "noServiceData": "No tšebeletso Datha e teng."
+            "noServiceData": "No tšebeletso Datha e teng.",
+            "bookingsCount": "Bookings ({{count}})"
           },
           "packages/sales": {
             "title": "sephuthelo sales",
@@ -29562,7 +29693,9 @@
             "topClients": "Top bareki by sephuthelo dibuking",
             "topClientsHint": "Up to 20 — counts sephuthelo-included dibuking per moreki.",
             "bookingsCount_one": "{{count}} buking",
-            "bookingsCount_other": "{{count}} dibuking"
+            "bookingsCount_other": "{{count}} dibuking",
+            "bookingsCount": "Bookings ({{count}})",
+            "uses": "Uses"
           },
           "gift-cards/sales": {
             "title": "likarete tsa mpho · Kakaretso",
@@ -29588,7 +29721,8 @@
             "pctOfRows": "{{pct}}% of redemption rows",
             "rowsCount_one": "{{count}} row",
             "rowsCount_other": "{{count}} rows",
-            "totalAmount": "{{amount}} kakaretso"
+            "totalAmount": "{{amount}} kakaretso",
+            "rowsCount": "Rows Count"
           },
           "end-of-day": {
             "title": "qetello ea letsatsi",
@@ -29696,7 +29830,8 @@
             "noRows": "No rows",
             "noRowsDesc": "No trend rows.",
             "visits_one": "{{count}} visit",
-            "visits_other": "{{count}} visits"
+            "visits_other": "{{count}} visits",
+            "visits": "Visits"
           },
           "packages": {
             "title": "liphuthelo oversheba",
@@ -29727,7 +29862,8 @@
             "bundle": "Bundle",
             "items_one": "Ntho e {{count}}",
             "items_other": "Lintho tse {{count}}",
-            "currency": "Chelete: {{code}}."
+            "currency": "Chelete: {{code}}.",
+            "items": "Items: {{amount}}"
           }
         },
         "export": {
@@ -30207,7 +30343,9 @@
           "bookingOptionsA11y": "bareki khetha from {{count}} buking Dikhetho",
           "optionsToChooseFrom_one": "{{count}} Khetho to khetha from",
           "optionsToChooseFrom_other": "{{count}} Dikhetho to khetha from",
-          "serviceTitleSuffix": " · {{title}}"
+          "serviceTitleSuffix": " · {{title}}",
+          "optionsToChooseFrom": "Options To Choose From",
+          "tiersSynced": "Tiers Synced"
         },
         "productDialog": {
           "brandNameRequired": "Lebitso la sehlahiswa lea hlokahala.",
@@ -30707,7 +30845,8 @@
         "noServiceTypes": "No tšebeletso types set",
         "distanceA11y": "You accept at-lehae dibuking within {{km}} km. bula Sebaka litlhophiso to fetola.",
         "within": "Within",
-        "withinKm": "Within {{km}} km"
+        "withinKm": "Within {{km}} km",
+        "review": "review"
       },
       "dataTableShell": {
         "searchPlaceholder": "Batla...",
@@ -31002,7 +31141,8 @@
         "alsoAddToPortfolioHint": "Shows this photo in your provider gallery too.",
         "saveChanges": "Boloka liphetoho",
         "share": "Arolelana",
-        "cancel": "Hlakola"
+        "cancel": "Hlakola",
+        "remainingSlots": "Remaining Slots"
       },
       "calendarMobile": {
         "timeOff": "nako off",
@@ -31333,7 +31473,8 @@
         "submitRating": "romela tekanyo",
         "thanks": "Thanks!",
         "ratingSavedBody": "tekanyo was bolokad. ya hau.",
-        "freshCaption": "Fresh {{service}} ✨"
+        "freshCaption": "Fresh {{service}} ✨",
+        "starA11y": "Star A11y"
       },
       "qrCodeDisplay": {
         "defaultTitle": "Verification QR khoutu",
@@ -31493,7 +31634,9 @@
         "viewChecklistMore": "Sheba e tletse checklist · +{{count}} tse ding",
         "viewChecklist": "Sheba e tletse checklist",
         "allFeatures": "All features",
-        "signOut": "Tsoa"
+        "signOut": "Tsoa",
+        "allRequiredDone": "All Required Done",
+        "requiredTasksLeft": "Required Tasks Left"
       },
       "limitError": {
         "title": "Limit Ho fihlellaed",
@@ -31573,7 +31716,8 @@
         "noAppointments": "No likopano",
         "durationMin": "{{minutes}}min",
         "notePrefix": "Note: {{notes}}",
-        "print": "Printa"
+        "print": "Printa",
+        "appointmentCount": "Appointment Count"
       },
       "verificationHub": {
         "completeIdentityFirst": "qeta Boitsebiso first",
@@ -31718,7 +31862,9 @@
         "failedOpenConversation": "E hlolehile ho bula conversation.",
         "serviceLabel": "Tšebeletso",
         "productsLabel": "Lihlahisoa",
-        "serviceAndProductsLabel": "tšebeletso & lihlahisoa"
+        "serviceAndProductsLabel": "tšebeletso & lihlahisoa",
+        "appointmentCount": "Appointment Count",
+        "needsConfirm": "Needs Confirm"
       },
       "teamMemberDialog": {
         "serviceFallback": "Tšebeletso",
@@ -31900,7 +32046,9 @@
         "previewQr": "Pmaikutlo QR for this short khoutu",
         "shortCodeCol": "Short khoutu",
         "services": "Litšebeletso",
-        "expiresCol": "E fela"
+        "expiresCol": "E fela",
+        "clicks": "Clicks",
+        "itemsSelected": "Items Selected"
       },
       "calendarPage": {
         "serviceFallback": "Tšebeletso",
@@ -32096,7 +32244,8 @@
           "total": "Kakaretso",
           "paid": "e lefuoe",
           "product": "sehlahiswa"
-        }
+        },
+        "visits": "Visits"
       },
       "routesPage": {
         "title": "Route Optimizer",
@@ -32149,7 +32298,10 @@
         "comments_other": "{{count}} maikutlos",
         "views_one": "{{count}} sheba",
         "views_other": "{{count}} shebas",
-        "viewComments": "Sheba & maikutlos"
+        "viewComments": "Sheba & maikutlos",
+        "comments": "{{count}} comments",
+        "likes": "{{count}} likes",
+        "views": "{{count}} views"
       },
       "formsPage": {
         "failedToLoad": "E hlolehile ho jaefa forms",
@@ -32181,7 +32333,8 @@
         "titleLabel": "Sehlooho",
         "titlePlaceholder": "e.g. moreki intake",
         "descriptionLabel": "tlhaloso (boikhethelo)",
-        "descriptionPlaceholder": "Tlhaloso e khutšoane of this form"
+        "descriptionPlaceholder": "Tlhaloso e khutšoane of this form",
+        "fieldsCount": "Fields Count"
       },
       "getStartedPage": {
         "title": "Get Started",
@@ -32210,7 +32363,8 @@
         "requiredToGoLive": "hoa hlokahala to go Ea nnete",
         "boostProfile": "Boost your profaele",
         "completeLater": "qeta hamorao",
-        "setUp": "Beha"
+        "setUp": "Beha",
+        "stepsToGo": "Steps To Go"
       },
       "shiftsPage": {
         "failedToLoad": "E hlolehile ho jaefa lishift",
@@ -32289,7 +32443,9 @@
         "completeSale": "Qeta thekiso — {{amount}}",
         "chooseVariant": "Khetha a variant to kenya to the Thekiso:",
         "outOfStock": "Ha ho stock",
-        "inCart": "{{count}} in Kariki"
+        "inCart": "{{count}} in Kariki",
+        "itemCount": "Item Count",
+        "options": "Options"
       },
       "customerProfilePage": {
         "failedToLoad": "E hlolehile ho jaefa moreki profaele",
@@ -32316,7 +32472,8 @@
         "interests": "Interests",
         "bookingHistory": "buking Nalane ({{count}})",
         "reviewsLeft": "maikutlo Left ({{count}})",
-        "bookingNumber": "buking #{{number}}"
+        "bookingNumber": "buking #{{number}}",
+        "reviewCount": "Review Count"
       },
       "resourcesPage": {
         "loadFailed": "E hlolehile ho jaefa resources",
@@ -32360,7 +32517,8 @@
         "noResourcesAvailable": "No resources e teng",
         "resourceWithType": "{{name}} ({{type}})",
         "addResource": "Kenya Resource",
-        "capacityCol": "Capatoropo"
+        "capacityCol": "Capatoropo",
+        "resourcesCount": "Resources Count"
       },
       "catalogueProducts": {
         "loadFailed": "E hlolehile ho jaefa lihlahisoa",
@@ -32475,7 +32633,8 @@
         "cancelDescription": "This cancels the group booking and any linked participant bookings. This action cannot be undone.",
         "keepBooking": "Boloka buking",
         "cancelGroupBooking": "Hlakola buking ya sehlopha",
-        "completed": "e felile"
+        "completed": "e felile",
+        "participantCount": "Participant Count"
       },
       "timeBlocksPage": {
         "loadFailed": "E hlolehile ho jaefa nako blocks",
@@ -32597,7 +32756,8 @@
         "statusScheduled": "e hlophisitsoe",
         "statusSending": "Romelaing",
         "statusSent": "E rometsoe",
-        "statusCancelled": "E hlakotsoe"
+        "statusCancelled": "E hlakotsoe",
+        "forRecipients": "For Recipients"
       },
       "advancedPricing": {
         "completeRequired": "Ka kopo qeta all sebaka se hlokahalangs for e bulehile rules",
@@ -33340,7 +33500,8 @@
       "syncedSecondsAgo": "Synced {{count}}s ago",
       "syncedMinutesAgo": "Synced {{count}}m ago",
       "syncedHoursAgo": "Synced {{count}}h ago",
-      "syncedAt": "Synced {{time}}"
+      "syncedAt": "Synced {{time}}",
+      "stepsRemaining": "Steps Remaining"
     },
     "messaging": {
       "whatsappChat": {

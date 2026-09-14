@@ -21696,7 +21696,12 @@
           "noAddons": "No okongezelelweyo iyafumaneka for this inkonzo",
           "groupSession": "Iqela Iseshoni",
           "serviceFallback": "Inkonzo",
-          "productFallback": "imveliso"
+          "productFallback": "imveliso",
+          "headerSummary": "Header Summary",
+          "reviewSpotsStill": "Review Spots Still",
+          "spotsAvailable": "Spots Available",
+          "subtotalParticipants": "Subtotal Participants",
+          "subtotalProducts": "Subtotal Products"
         },
         "newSaleDialog": {
           "variantFallback": "Variant",
@@ -21838,7 +21843,8 @@
           "serviceNameAndPriceRequired": "inkonzo igama and ixabiso are kuyafuneka",
           "validPriceRequired": "Nceda enter a kusemthethweni ixabiso",
           "validDurationRequired": "Nceda enter a kusemthethweni ubude",
-          "customServiceAdded": "Okwezifiso inkonzo added to Inqwelo"
+          "customServiceAdded": "Okwezifiso inkonzo added to Inqwelo",
+          "cartItem": "Cart Item"
         },
         "addClientDialog": {
           "close": "Vala",
@@ -22260,7 +22266,8 @@
           "close": "Vala",
           "cancel": "Rhoxisa",
           "processing": "iyaqhuba...",
-          "processPayment": "Process intlawulo"
+          "processPayment": "Process intlawulo",
+          "txnCount": "Txn Count"
         },
         "qrScanner": {
           "invalidOrExpired": "or kuphelelwe QR ikhowudi engasebenziyo"
@@ -22757,7 +22764,8 @@
           "closeOutQueueCount": "vala-out queue ({{count}})",
           "bookingsCount": "iibhukisho ({{count}})",
           "closeOutEmptyNow": "No amadinga need vala-out right ngoku.",
-          "noMatchFilter": "No iibhukisho match this hluza."
+          "noMatchFilter": "No iibhukisho match this hluza.",
+          "needCloseOut": "Need Close Out"
         },
         "bulkActions": {
           "selectAll": "Khetha konke",
@@ -23150,7 +23158,77 @@
             "saleSavedBookingFailed": "The sale was saved, but updating the booking failed: {{error}}",
             "journeyStartedEta": "Journey qalaed. ETA {{minutes}} min.",
             "chargeMarkedPaidNote": "Marked as kuhlawulwe by umboneleli via {{method}}",
-            "yocoChargeBookingNote": "ukubhukisha {{number}}"
+            "yocoChargeBookingNote": "ukubhukisha {{number}}",
+            "bookingChanged": "This booking changed, reload",
+            "cancelFailed": "Failed to cancel booking",
+            "cancellationNoticeFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSendFailed": "Failed to send cancellation notice",
+            "cancellationNoticeSent": "Cancellation notice sent",
+            "cancelled": "Booking cancelled",
+            "cannotCharge": "Cannot charge this booking",
+            "cardPaymentFailed": "Card payment failed",
+            "chargeMarkedPaid": "Charge marked as paid",
+            "chargeSendFailed": "Failed to send charge",
+            "chargeSent": "Charge sent to client",
+            "codeSent": "Verification code sent",
+            "confirmationResent": "Confirmation resent",
+            "documentUploaded": "Document uploaded",
+            "emailRequired": "Email is required",
+            "enterDescription": "Enter a description",
+            "enterRefundReason": "Enter a refund reason",
+            "enterValidAmount": "Enter a valid amount",
+            "etaFailed": "Failed to update ETA",
+            "etaRange": "Enter ETA between 1 and 180 minutes",
+            "etaUpdated": "ETA updated to {{minutes}} minutes",
+            "journeyFailed": "Failed to start journey",
+            "journeyStarted": "Journey started",
+            "markArrivedFailed": "Failed to mark as arrived",
+            "markPaidFailed": "Failed to mark as paid",
+            "markedArrived": "Marked as arrived",
+            "markedNoShow": "Booking marked as no-show",
+            "markedPaid": "Marked as paid",
+            "missingReference": "Missing payment reference",
+            "missingSaleRecord": "Missing sale record",
+            "noBalance": "There is no remaining balance on this booking.",
+            "noBalanceCollect": "No balance to collect",
+            "noBalanceOverpaid": "This booking is overpaid",
+            "noPaystackTerminal": "No Paystack terminal configured",
+            "noPermission": "You do not have permission for this action",
+            "noReasonProvided": "No reason provided",
+            "noShowFailed": "Failed to mark as no-show",
+            "notesSaveFailed": "Failed to save notes",
+            "notesSaved": "Notes saved",
+            "notificationFailed": "Notification failed",
+            "notificationSendFailed": "Failed to send notification",
+            "overrideFailed": "Failed to override",
+            "overridePrompt": "Override verification?",
+            "overrideSuccess": "Override applied",
+            "paymentRecorded": "Booking payment recorded",
+            "paystackPrepareFailed": "Could not prepare Paystack payment",
+            "permissionToCollect": "You do not have permission to collect payment",
+            "phoneRequired": "Phone number is required",
+            "refundCash": "Refund issued (cash)",
+            "refundExceeds": "Refund cannot exceed {{amount}}",
+            "refundFailed": "Refund failed",
+            "refundWallet": "Refund issued (wallet)",
+            "reminderFailed": "Failed to send reminder",
+            "reminderSent": "Reminder sent",
+            "reminderSentCustomer": "Reminder sent to customer",
+            "rescheduleFailed": "Failed to reschedule booking",
+            "rescheduled": "Booking rescheduled",
+            "resendFailed": "Failed to resend",
+            "selectDateTime": "Select a date and time",
+            "serviceCompleted": "Service completed",
+            "serviceStarted": "Service started",
+            "startBeforeCard": "Start or complete the service before collecting card payment.",
+            "statusUpdateFailed": "Failed to update booking status",
+            "statusUpdated": "Booking status updated",
+            "terminalFinalizeFailed": "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
+            "uploadFailed": "Upload failed",
+            "verifiedCanStart": "Customer verified – you can start the service.",
+            "verifyFailed": "Payment verification failed",
+            "verifyQrFailed": "Failed to verify QR",
+            "verifyQrHint": "Enter an 8-character code or paste the QR JSON from the customer."
           },
           "resources": {
             "fallback": "Resource",
@@ -23190,7 +23268,9 @@
             "emailFailed": "Ayikwazanga uku-i-imeyile irisithi",
             "emailReceipt": "i-imeyile irisithi",
             "downloadPdf": "Khuphela i-PDF",
-            "sendsTo": "Thumelas to {{email}}"
+            "sendsTo": "Thumelas to {{email}}",
+            "titleEmailFailed": "Failed to email receipt",
+            "titleEmailed": "Receipt emailed"
           },
           "productFulfillment": {
             "title": "imveliso Ukuthatha",
@@ -23540,7 +23620,8 @@
         "refunds": "Buyisela imalis",
         "tips": "iithiphu",
         "cancellationFees": "Rhoxisalation iintlawulo",
-        "additionalCharges": "Iintlawulo ezongezelelweyo"
+        "additionalCharges": "Iintlawulo ezongezelelweyo",
+        "request": "Request"
       },
       "onboarding": {
         "steps": {
@@ -23752,7 +23833,8 @@
           "showcaseBody": "Upload photos of your completed work, before/after transformations, or examples of your services. This is your portfolio that helps clients see the quality of your work. You can add up to 10 images. Minimum 3 recommended for best results.",
           "photosUploaded_one": "{{count}} ifoto layishaed",
           "photosUploaded_other": "{{count}} iifoto layishaed",
-          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app."
+          "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app.",
+          "photosUploaded": "Photos Uploaded"
         },
         "languages": {
           "en": "IsiNgesi",
@@ -23939,7 +24021,10 @@
           "postalCodeType": "ikhowudi yeposi",
           "cityType": "Isixeko",
           "zonesSelectedTravel_one": "{{count}} zone selected — set travel fees anytime after signup.",
-          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup."
+          "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup.",
+          "autoSelectedZones": "Auto Selected Zones",
+          "foundZones": "Found Zones",
+          "zonesSelectedTravel": "Zones Selected Travel"
         },
         "categories": {
           "loadFailed": "Kusilele uku-ulayisha iindidi",
@@ -24022,7 +24107,10 @@
           "loadingPlans": "Iyalayisha Izicwangciso…",
           "serviceReviewLine": "{{title}} — {{minutes}} min — {{currency}} {{price}}",
           "addonReviewLine": "+ {{name}} — {{currency}} {{price}}",
-          "draftServicesLabel": "uyilo iinkonzo:"
+          "draftServicesLabel": "uyilo iinkonzo:",
+          "attachZones": "Attach Zones",
+          "categorySelected": "Category Selected",
+          "zonesSelected": "Selected all {{count}} zones"
         },
         "plan": {
           "activatesInstantly": "Vulas instantly",
@@ -24229,7 +24317,9 @@
           "recentActivity": "Recent activity",
           "truncatedBoth": "Some booking and ledger totals may be incomplete for very high-volume accounts.",
           "truncatedBookings": "Booking status counts may be incomplete for very high-volume accounts.",
-          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts."
+          "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
+          "bookingsCount": "Bookings ({{count}})",
+          "saleCount": "Sale ({{count}})"
         }
       },
       "settings": {
@@ -24811,7 +24901,9 @@
             "notNow": "Hayi ngoku",
             "openingSecureCheckout": "Opening secure ukuhlawula…",
             "paySecurely": "Pay securely",
-            "unknownDays": "?"
+            "unknownDays": "?",
+            "dayCount": "Day Count",
+            "targetingCategory": "Targeting Category"
           },
           "ai": {
             "aiStudio": "AI studio",
@@ -25248,7 +25340,9 @@
             "invoiceNumber": "i-invoyisi #",
             "period": "Period",
             "receipt": "Irisithi",
-            "setAsDefault": "Set as okumisiweyo"
+            "setAsDefault": "Set as okumisiweyo",
+            "invoiceCount": "Invoice Count",
+            "paymentMethodCount": "Payment Method Count"
           },
           "business-description": {
             "businessDescription": "Ishishini inkcazo",
@@ -25494,7 +25588,9 @@
             "bookings_other": "{{count}} iibhukisho",
             "combinedRating_one": "{{rating}} combined ({{count}} rating)",
             "combinedRating_other": "{{rating}} combined ({{count}} ratings)",
-            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})"
+            "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})",
+            "bookings": "Bookings",
+            "combinedRating": "Combined Rating"
           },
           "clients/referrals": {
             "referralSources": "ukudlulisela Sources",
@@ -25661,7 +25757,8 @@
             "captionOptional": "Umbhalo (okukhethiweyo)",
             "editPhotoDetails": "Hlela ifoto iinkcukacha",
             "providerIdNotFound": "umboneleli ID ayifunyanwa",
-            "uploadTimeoutNamed": "layisha ixeshaout for {{name}}"
+            "uploadTimeoutNamed": "layisha ixeshaout for {{name}}",
+            "imagesUploaded": "Images Uploaded"
           },
           "integrations/email": {
             "emailMarketingIntegration": "i-imeyile Marketing Integration",
@@ -25876,7 +25973,8 @@
             "email": "i-imeyile",
             "activeVisible": "Iyasebenza (visible to abathengi)",
             "polygon": "Polygon",
-            "radius": "Radius"
+            "radius": "Radius",
+            "zonesMatching": "Zones Matching"
           },
           "marketing-integrations": {
             "marketingIntegrations": "Marketing Integrations",
@@ -26144,7 +26242,8 @@
             "matchBankStatement": "Make sure the account name matches exactly as it appears on your bank statement.",
             "verificationOptionalSuffix": " Account verification is optional — if it's unavailable for your bank, enter the name manually.",
             "adding": "Adding...",
-            "addAccount": "Yongeza Iakhawunti"
+            "addAccount": "Yongeza Iakhawunti",
+            "bankAccountCount": "Bank Account Count"
           },
           "sales/card-machines": {
             "cardMachines": "Oomatshini bamakhadi",
@@ -26286,7 +26385,11 @@
             "cardMachine": "Umatshini wekhadi",
             "setupGuideCheckoutRest": "— customer taps, inserts, swipes, or scans QR.",
             "setupGuideRefunds": "Refunds are done on the physical machine, then recorded in Beautonomi.",
-            "cardMachinePayoutsNote": "Card machine payments stay in your merchant account — not Beautonomi online payouts."
+            "cardMachinePayoutsNote": "Card machine payments stay in your merchant account — not Beautonomi online payouts.",
+            "activeMachineCount": "Active Machine Count",
+            "amountMismatch": "Amount Mismatch",
+            "paymentsCount": "Payments ({{count}})",
+            "paymentsWaitingOnMachine": "Payments Waiting On Machine"
           },
           "sales/gift-cards": {
             "giftCards": "amakhadi ezipho",
@@ -26689,7 +26792,8 @@
             "checkoutSteps": "ukuhlawula steps",
             "delivery": "Ukuhanjiswa",
             "review": "uluvo",
-            "beautonomiCardMachines": "Beautonomi oomatshini bamakhadi"
+            "beautonomiCardMachines": "Beautonomi oomatshini bamakhadi",
+            "devicesActive": "Devices Active"
           },
           "sales/tips": {
             "tips": "iithiphu",
@@ -26952,7 +27056,8 @@
             "completed": "kugqityiwe",
             "completionRate": "Completion Rate",
             "cancelledCount_one": "{{count}} kurhoxisiwe ukubhukisha",
-            "cancelledCount_other": "{{count}} kurhoxisiwe iibhukisho"
+            "cancelledCount_other": "{{count}} kurhoxisiwe iibhukisho",
+            "cancelledCount": "{{count}} cancelled"
           },
           "service-zones": {
             "serviceZones": "inkonzo Zones",
@@ -27050,7 +27155,8 @@
             "planName": "Isicwangciso igama *",
             "monthlyPrice": "Ngenyanga ixabiso *",
             "discountPercentage": "isaphulelo Percentage",
-            "discountHint": "isaphulelo percentage (0-100) applied to iinkonzo"
+            "discountHint": "isaphulelo percentage (0-100) applied to iinkonzo",
+            "extendedBy": "Extended By"
           },
           "services/menu": {
             "servicesMenu": "iinkonzo Menu",
@@ -27159,7 +27265,9 @@
             "hoursBefore_other": "{{count}} iiyure before",
             "minutesBefore_one": "{{count}} umzuzu before",
             "minutesBefore_other": "{{count}} imizuzu before",
-            "chooseWhenToSend": "Khetha when to thumela idinga reminders"
+            "chooseWhenToSend": "Khetha when to thumela idinga reminders",
+            "hoursBefore": "{{hours}}h before",
+            "minutesBefore": "{{minutes}}m before"
           },
           "team/permissions": {
             "permissions": "Permissions",
@@ -27234,7 +27342,8 @@
             "sendMessages": "Thumela Imiyalezo",
             "sendMessagesDesc": "impendulo to umxhasi conversations",
             "createExplorePosts": "Yila Hlola Isihlokos",
-            "createExplorePostsDesc": "Yila and manage umboneleli Hlola posts"
+            "createExplorePostsDesc": "Yila and manage umboneleli Hlola posts",
+            "permissionCount": "Permission Count"
           },
           "team/roles": {
             "roles": "Indimas",
@@ -27294,7 +27403,8 @@
               "send_messages": "Thumela Imiyalezo",
               "create_explore_posts": "Yila Hlola Isihlokos"
             },
-            "catEngagement": "Engagement"
+            "catEngagement": "Engagement",
+            "permissionCount": "Permission Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "ixesha Off Uhlobos",
@@ -27832,7 +27942,8 @@
           "personal": "Personal",
           "publicHoliday": "Public holiday",
           "orTypeYourOwn": "Or Uhlobo your own…",
-          "savingEllipsis": "Ivagcina…"
+          "savingEllipsis": "Ivagcina…",
+          "overlappingBookings": "Overlapping Bookings"
         },
         "ecommerce/shipping": {
           "failedToSave": "Kusilele uku-gcina shipping configuration. nceda uzame kwakhona.",
@@ -28374,7 +28485,9 @@
           "nextSteps": "okulandelayo Steps:",
           "nextStepsBody": "Remit {{amount}} to SARS by {{date}}.",
           "submitEfiling": "ngenisa via SARS eFiling →",
-          "markAsRemitted": "Mark as Remitted to SARS"
+          "markAsRemitted": "Mark as Remitted to SARS",
+          "daysRemaining": "{{count}} days remaining",
+          "transaction": "Transaction"
         },
         "marketing/segment-builder": {
           "bookingCriteria": "ukubhukisha Criteria",
@@ -28879,7 +28992,11 @@
             "avgLineItems_other": "Avg {{amount}} · {{count}} line items",
             "dateRange": "{{from}} → {{to}}",
             "amountSuffix": " · {{amount}}",
-            "listSeparator": " · "
+            "listSeparator": " · ",
+            "gatewayRows": "Gateway rows",
+            "lineItems": "Line items",
+            "tillLogs": "Till Logs",
+            "walletAdj": "Wallet Adj"
           },
           "staff/commission": {
             "title": "Commission iingxelo",
@@ -28953,7 +29070,10 @@
             "noServiceRevenue": "No inkonzo reindawo Idatha iyafumaneka for the Kukhethiwe period.",
             "revenueByStaff": "Reindawo by abasebenzi",
             "revenueByStaffHint": "Allocated from each booking’s ledger net by share of line items assigned to staff (retail not included).",
-            "noStaffRevenue": "No abasebenzi reindawo Idatha iyafumaneka for the Kukhethiwe period."
+            "noStaffRevenue": "No abasebenzi reindawo Idatha iyafumaneka for the Kukhethiwe period.",
+            "appointmentsCount": "Appointments Count",
+            "ordersCount": "Orders Count",
+            "scheduledAppointmentsCount": "Scheduled Appointments Count"
           },
           "payments/summary": {
             "title": "intlawulo Isishwankathelo",
@@ -28994,7 +29114,9 @@
             "transactionsCount_other": "Iintengiselwano ezingu-{{count}}",
             "noPaymentMethodData": "No indlela yokuhlawula Idatha iyafumaneka for the Kukhethiwe period.",
             "paymentsByStatus": "iintlawulo by imo",
-            "noPaymentStatusData": "No intlawulo imo Idatha iyafumaneka for the Kukhethiwe period."
+            "noPaymentStatusData": "No intlawulo imo Idatha iyafumaneka for the Kukhethiwe period.",
+            "cashStyle": "Cash Style",
+            "transactionsCount": "{{count}} transactions"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -29032,7 +29154,8 @@
             "bookingSync": "ukubhukisha sync",
             "booking": "Ukubhukisha",
             "sale": "Intengiso",
-            "missingBookingPayment": "Missing ukubhukisha intlawulo"
+            "missingBookingPayment": "Missing ukubhukisha intlawulo",
+            "gap": "Gap"
           },
           "payments/paystack-terminal-reconciliation": {
             "unavailableTitle": "Paystack itheminali ayifumaneki",
@@ -29172,7 +29295,8 @@
             "noCategories": "No iindidi",
             "noCategoriesDesc": "No imveliso iindidi iyafumaneka.",
             "productsCount_one": "{{count}} imveliso",
-            "productsCount_other": "{{count}} iimveliso"
+            "productsCount_other": "{{count}} iimveliso",
+            "productsCount": "Products ({{count}})"
           },
           "products/sales": {
             "title": "imveliso Intengisos",
@@ -29235,7 +29359,10 @@
             "offering_one": "{{count}} offering",
             "offering_other": "{{count}} offerings",
             "visit_one": "{{count}} visit",
-            "visit_other": "{{count}} visits"
+            "visit_other": "{{count}} visits",
+            "offering": "Offering",
+            "visit": "Visit",
+            "visitsAvg": "Visits Avg"
           },
           "payments/payouts": {
             "title": "Payout earnings",
@@ -29277,7 +29404,8 @@
             "settled": "Settled {{when}}",
             "bookedFees": "Kubhukishiwe {{booked}} · iintlawulo {{fees}}",
             "refundsAmount": " · Buyisela imalis {{amount}}",
-            "netEarnings": "net earnings"
+            "netEarnings": "net earnings",
+            "rowsWithEarnings": "Rows with earnings"
           },
           "payments/refunds": {
             "title": "Buyisela imalis",
@@ -29321,7 +29449,8 @@
             "methodCard": "Ikhadi",
             "methodWallet": "Isipaji",
             "methodBankTransfer": "Ukudlulisela kwebhanki",
-            "methodOther": "Okunye"
+            "methodOther": "Okunye",
+            "rowsCount": "Rows Count"
           },
           "occupancy": {
             "title": "Occupancy",
@@ -29358,7 +29487,8 @@
             "occupancy": "Occupancy",
             "noActiveStaff": "No Iyasebenza abasebenzi match this hluza.",
             "noDaysInRange": "No iintsuku in range.",
-            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range."
+            "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range.",
+            "daysCount": "Days Count"
           },
           "business/comparison": {
             "monthVsPrior": "Month vs prior inyanga",
@@ -29518,7 +29648,8 @@
             "bookingsCount_other": "{{count}} iibhukisho",
             "topServices": "Top iinkonzo",
             "noServicesFound": "No iinkonzo found",
-            "noServiceData": "No inkonzo Idatha iyafumaneka."
+            "noServiceData": "No inkonzo Idatha iyafumaneka.",
+            "bookingsCount": "Bookings ({{count}})"
           },
           "packages/sales": {
             "title": "ipakethi sales",
@@ -29562,7 +29693,9 @@
             "topClients": "Top abaxhasi by ipakethi iibhukisho",
             "topClientsHint": "Up to 20 — counts ipakethi-included iibhukisho per umthengi.",
             "bookingsCount_one": "{{count}} ukubhukisha",
-            "bookingsCount_other": "{{count}} iibhukisho"
+            "bookingsCount_other": "{{count}} iibhukisho",
+            "bookingsCount": "Bookings ({{count}})",
+            "uses": "Uses"
           },
           "gift-cards/sales": {
             "title": "amakhadi ezipho · Isishwankathelo",
@@ -29588,7 +29721,8 @@
             "pctOfRows": "{{pct}}% of redemption rows",
             "rowsCount_one": "{{count}} row",
             "rowsCount_other": "{{count}} rows",
-            "totalAmount": "{{amount}} iyonke"
+            "totalAmount": "{{amount}} iyonke",
+            "rowsCount": "Rows Count"
           },
           "end-of-day": {
             "title": "ukuphela kosuku",
@@ -29696,7 +29830,8 @@
             "noRows": "No rows",
             "noRowsDesc": "No trend rows.",
             "visits_one": "{{count}} visit",
-            "visits_other": "{{count}} visits"
+            "visits_other": "{{count}} visits",
+            "visits": "Visits"
           },
           "packages": {
             "title": "iipakethi overjonga",
@@ -29727,7 +29862,8 @@
             "bundle": "Bundle",
             "items_one": "Into engu-{{count}}",
             "items_other": "Izinto ezingu-{{count}}",
-            "currency": "Imali: {{code}}."
+            "currency": "Imali: {{code}}.",
+            "items": "Items: {{amount}}"
           }
         },
         "export": {
@@ -30207,7 +30343,9 @@
           "bookingOptionsA11y": "abathengi khetha from {{count}} ukubhukisha Iinketho",
           "optionsToChooseFrom_one": "{{count}} Inketho to khetha from",
           "optionsToChooseFrom_other": "{{count}} Iinketho to khetha from",
-          "serviceTitleSuffix": " · {{title}}"
+          "serviceTitleSuffix": " · {{title}}",
+          "optionsToChooseFrom": "Options To Choose From",
+          "tiersSynced": "Tiers Synced"
         },
         "productDialog": {
           "brandNameRequired": "Igama lophawu liyafuneka.",
@@ -30707,7 +30845,8 @@
         "noServiceTypes": "No inkonzo types set",
         "distanceA11y": "You accept at-ikhaya iibhukisho within {{km}} km. vula Umgama iisetingi to tshintsha.",
         "within": "Within",
-        "withinKm": "Within {{km}} km"
+        "withinKm": "Within {{km}} km",
+        "review": "review"
       },
       "dataTableShell": {
         "searchPlaceholder": "Khangela...",
@@ -31002,7 +31141,8 @@
         "alsoAddToPortfolioHint": "Shows this photo in your provider gallery too.",
         "saveChanges": "Gcina utshintsho",
         "share": "Yabelana",
-        "cancel": "Rhoxisa"
+        "cancel": "Rhoxisa",
+        "remainingSlots": "Remaining Slots"
       },
       "calendarMobile": {
         "timeOff": "ixesha off",
@@ -31333,7 +31473,8 @@
         "submitRating": "ngenisa inqanaba",
         "thanks": "Thanks!",
         "ratingSavedBody": "inqanaba was gcinad. yakho.",
-        "freshCaption": "Fresh {{service}} ✨"
+        "freshCaption": "Fresh {{service}} ✨",
+        "starA11y": "Star A11y"
       },
       "qrCodeDisplay": {
         "defaultTitle": "Verification QR ikhowudi",
@@ -31493,7 +31634,9 @@
         "viewChecklistMore": "Jonga kugcwele checklist · +{{count}} okungakumbi",
         "viewChecklist": "Jonga kugcwele checklist",
         "allFeatures": "All features",
-        "signOut": "Phuma"
+        "signOut": "Phuma",
+        "allRequiredDone": "All Required Done",
+        "requiredTasksLeft": "Required Tasks Left"
       },
       "limitError": {
         "title": "Limit Ukufikelelaed",
@@ -31573,7 +31716,8 @@
         "noAppointments": "No amadinga",
         "durationMin": "{{minutes}}min",
         "notePrefix": "Note: {{notes}}",
-        "print": "Shicilela"
+        "print": "Shicilela",
+        "appointmentCount": "Appointment Count"
       },
       "verificationHub": {
         "completeIdentityFirst": "gqiba Ubuntu first",
@@ -31718,7 +31862,9 @@
         "failedOpenConversation": "Kusilele uku-vula conversation.",
         "serviceLabel": "Inkonzo",
         "productsLabel": "Iimveliso",
-        "serviceAndProductsLabel": "inkonzo & iimveliso"
+        "serviceAndProductsLabel": "inkonzo & iimveliso",
+        "appointmentCount": "Appointment Count",
+        "needsConfirm": "Needs Confirm"
       },
       "teamMemberDialog": {
         "serviceFallback": "Inkonzo",
@@ -31900,7 +32046,9 @@
         "previewQr": "Puluvo QR for this short ikhowudi",
         "shortCodeCol": "Short ikhowudi",
         "services": "Iinkonzo",
-        "expiresCol": "Kuphela"
+        "expiresCol": "Kuphela",
+        "clicks": "Clicks",
+        "itemsSelected": "Items Selected"
       },
       "calendarPage": {
         "serviceFallback": "Inkonzo",
@@ -32096,7 +32244,8 @@
           "total": "Iyonke",
           "paid": "kuhlawulwe",
           "product": "imveliso"
-        }
+        },
+        "visits": "Visits"
       },
       "routesPage": {
         "title": "Route Optimizer",
@@ -32149,7 +32298,10 @@
         "comments_other": "{{count}} izimvos",
         "views_one": "{{count}} jonga",
         "views_other": "{{count}} jongas",
-        "viewComments": "Jonga & izimvos"
+        "viewComments": "Jonga & izimvos",
+        "comments": "{{count}} comments",
+        "likes": "{{count}} likes",
+        "views": "{{count}} views"
       },
       "formsPage": {
         "failedToLoad": "Kusilele uku-ulayisha forms",
@@ -32181,7 +32333,8 @@
         "titleLabel": "Isihloko",
         "titlePlaceholder": "e.g. umxhasi intake",
         "descriptionLabel": "inkcazo (okukhethiweyo)",
-        "descriptionPlaceholder": "Inkcazo emfutshane of this form"
+        "descriptionPlaceholder": "Inkcazo emfutshane of this form",
+        "fieldsCount": "Fields Count"
       },
       "getStartedPage": {
         "title": "Get Started",
@@ -32210,7 +32363,8 @@
         "requiredToGoLive": "kuyafuneka to go Bukhoma",
         "boostProfile": "Boost your iprofayile",
         "completeLater": "gqiba emva kwexesha",
-        "setUp": "Seta"
+        "setUp": "Seta",
+        "stepsToGo": "Steps To Go"
       },
       "shiftsPage": {
         "failedToLoad": "Kusilele uku-ulayisha iishifu",
@@ -32289,7 +32443,9 @@
         "completeSale": "Gqiba intengiso — {{amount}}",
         "chooseVariant": "Khetha a variant to yongeza to the Intengiso:",
         "outOfStock": "Akukho esitokini",
-        "inCart": "{{count}} in Inqwelo"
+        "inCart": "{{count}} in Inqwelo",
+        "itemCount": "Item Count",
+        "options": "Options"
       },
       "customerProfilePage": {
         "failedToLoad": "Kusilele uku-ulayisha umthengi iprofayile",
@@ -32316,7 +32472,8 @@
         "interests": "Interests",
         "bookingHistory": "ukubhukisha Imbali ({{count}})",
         "reviewsLeft": "izimvo Left ({{count}})",
-        "bookingNumber": "ukubhukisha #{{number}}"
+        "bookingNumber": "ukubhukisha #{{number}}",
+        "reviewCount": "Review Count"
       },
       "resourcesPage": {
         "loadFailed": "Kusilele uku-ulayisha resources",
@@ -32360,7 +32517,8 @@
         "noResourcesAvailable": "No resources iyafumaneka",
         "resourceWithType": "{{name}} ({{type}})",
         "addResource": "Yongeza Resource",
-        "capacityCol": "Capaisixeko"
+        "capacityCol": "Capaisixeko",
+        "resourcesCount": "Resources Count"
       },
       "catalogueProducts": {
         "loadFailed": "Kusilele uku-ulayisha iimveliso",
@@ -32475,7 +32633,8 @@
         "cancelDescription": "This cancels the group booking and any linked participant bookings. This action cannot be undone.",
         "keepBooking": "Gcina ukubhukisha",
         "cancelGroupBooking": "Rhoxisa ukubhukisha kweqela",
-        "completed": "kugqityiwe"
+        "completed": "kugqityiwe",
+        "participantCount": "Participant Count"
       },
       "timeBlocksPage": {
         "loadFailed": "Kusilele uku-ulayisha ixesha blocks",
@@ -32597,7 +32756,8 @@
         "statusScheduled": "kucwangcisiwe",
         "statusSending": "Thumelaing",
         "statusSent": "Kuthunyelwe",
-        "statusCancelled": "Kurhoxisiwe"
+        "statusCancelled": "Kurhoxisiwe",
+        "forRecipients": "For Recipients"
       },
       "advancedPricing": {
         "completeRequired": "Nceda gqiba all ibala elifunekayos for kuvuliwe rules",
@@ -33340,7 +33500,8 @@
       "syncedSecondsAgo": "Synced {{count}}s ago",
       "syncedMinutesAgo": "Synced {{count}}m ago",
       "syncedHoursAgo": "Synced {{count}}h ago",
-      "syncedAt": "Synced {{time}}"
+      "syncedAt": "Synced {{time}}",
+      "stepsRemaining": "Steps Remaining"
     },
     "messaging": {
       "whatsappChat": {
