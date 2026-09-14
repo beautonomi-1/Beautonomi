@@ -11,8 +11,16 @@ const EXPORT_NS = "web.provider.reports.export";
 
 function exportT(key: string, params?: Record<string, string | number>): string {
   const full = `${EXPORT_NS}.${key}`;
-  const result = i18n.t(full, params as Record<string, string>);
-  return result === full ? key : result;
+  let result: unknown;
+  try {
+    result = i18n.t(full, params as Record<string, string>);
+  } catch {
+    result = undefined;
+  }
+  if (typeof result !== "string" || result.length === 0 || result === full) {
+    return key;
+  }
+  return result;
 }
 
 function exportMetric(label: string, params?: Record<string, string | number>): string {
@@ -43,7 +51,10 @@ function exportColumnHeaderFromKey(key: string): string {
     amount_match_status: "amount_match_status",
     payout_eligibility_status: "payout_eligibility_status",
   } as Record<string, string>)[key];
-  if (headerSlug) return exportT(`headers.${headerSlug}`);
+  if (headerSlug) {
+    const translated = exportT(`headers.${headerSlug}`);
+    if (translated !== `headers.${headerSlug}`) return translated;
+  }
   return key
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
