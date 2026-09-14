@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { initI18n } from "@beautonomi/i18n";
 import { escapeCsvCell, humanizeExportHeader } from "./export";
+
+beforeAll(() => {
+  initI18n("en");
+});
 
 describe("export helpers", () => {
   it("quotes CSV cells with commas or quotes", () => {
