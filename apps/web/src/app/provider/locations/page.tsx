@@ -225,8 +225,8 @@ function ZoneSuggestionsModal({
                   <h3 className="font-semibold text-lg mb-1">{zone.name}</h3>
                   <p className="text-sm text-blue-700 mb-2">{zone.match_reason}</p>
                   <p className="text-xs text-gray-600">
-Type: {zone.zone_type === "postal_code" ? t("web.provider.onboarding.leftover2.postalCodeType") :
-                           zone.zone_type === "city" ? t("web.provider.onboarding.leftover2.cityType") :
+Type: {zone.zone_type === "postal_code" ? t("web.provider.onboarding.zones.postalCodeType") :
+                           zone.zone_type === "city" ? t("web.provider.onboarding.zones.cityType") :
                            zone.zone_type === "radius" ? t("web.provider.onboarding.zones.radius") : t("web.provider.settings.pages.locations.polygon")}
                   </p>
                 </div>

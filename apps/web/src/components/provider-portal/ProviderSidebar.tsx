@@ -92,7 +92,7 @@ export function ProviderSidebar() {
   return (
     <div
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-white border-e border-gray-200 transition-all duration-300 hidden md:block",
+        "fixed start-0 top-0 z-40 h-screen bg-white border-e border-gray-200 transition-all duration-300 hidden md:block",
         sidebarCollapsed ? "w-16" : "w-64"
       )}
     >

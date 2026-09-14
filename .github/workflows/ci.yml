@@ -78,6 +78,12 @@ jobs:
       - name: i18n locale parity
         run: pnpm i18n:check
 
+      - name: i18n provider web scan
+        run: pnpm i18n:scan:provider
+
+      - name: i18n leftover namespace guard
+        run: pnpm i18n:check:leftover-ns
+
       - name: i18n registry tests
         run: pnpm --filter @beautonomi/i18n test
 

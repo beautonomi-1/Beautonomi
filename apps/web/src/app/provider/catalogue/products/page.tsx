@@ -617,7 +617,7 @@ label: t("web.provider.common.add"),
         
         {/* Search Suggestions Dropdown */}
         {showSuggestions && searchSuggestions.length > 0 && (
-          <div className="absolute z-50 top-16 left-0 w-full md:max-w-md bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          <div className="absolute z-50 top-16 start-0 w-full md:max-w-md bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {searchSuggestions.map((suggestion, index) => (
               <button
                 key={index}

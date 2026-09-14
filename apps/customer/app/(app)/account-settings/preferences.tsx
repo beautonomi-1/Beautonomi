@@ -43,6 +43,7 @@ import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import {
+  getLanguageMeta,
   mergeLanguagePickerOptions,
   normalizeLanguageCode,
   resolveLanguage,
@@ -156,7 +157,11 @@ function displayLabel(
   fallback: string,
 ): string {
   if (!value) return fallback;
-  return options.find((o) => o.value === value)?.label ?? value;
+  const normalized = normalizeLanguageCode(value);
+  const match = options.find((o) => o.value === normalized || o.value === value);
+  if (match) return match.label;
+  const meta = getLanguageMeta(normalized);
+  return `${meta.nativeName} (${meta.name})`;
 }
 
 function normalizeHost(value: string | null | undefined): string {

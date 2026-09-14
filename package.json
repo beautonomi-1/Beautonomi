@@ -97,6 +97,8 @@
     "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run i18n:check && pnpm run test && pnpm run build",
     "i18n:check": "pnpm --filter @beautonomi/i18n run i18n:check",
     "i18n:scan": "pnpm --filter @beautonomi/i18n run i18n:scan",
+    "i18n:scan:provider": "pnpm --filter @beautonomi/i18n run i18n:scan:provider",
+    "i18n:check:leftover-ns": "pnpm --filter @beautonomi/i18n run i18n:check:leftover-ns",
     "i18n:translate-wave-a": "node packages/i18n/scripts/apply-wave-a-translations.mjs",
     "i18n:merge": "pnpm --filter @beautonomi/i18n run i18n:merge",
     "release:check": "pnpm run typecheck && pnpm run lint && pnpm run i18n:check && pnpm run test",

@@ -117,7 +117,7 @@ export default function ProviderWaitlistPage() {
     };
     return (
       <Badge variant={variants[status] || "default"}>
-{t(`web.provider.waitlistPage.status.${status}`, { defaultValue: status })}
+{t(`web.provider.waitlistPage.status.${status}`)}
       </Badge>
     );
   };

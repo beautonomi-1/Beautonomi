@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Breadcrumb, { BreadcrumbItem } from "@/components/ui/breadcrumb";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface SettingsDetailLayoutProps {
   title?: string;
@@ -27,21 +28,21 @@ export function SettingsDetailLayout({
   description,
   children,
   onSave,
-  saveLabel = "Save Changes",
+  saveLabel,
   saveDisabled = false,
   isSaving = false, // For backward compatibility
   backHref = "/provider/settings",
   breadcrumbs,
   showCloseButton = true,
 }: SettingsDetailLayoutProps) {
+  const { t } = useTranslation();
   const effectiveSubtitle = subtitle ?? description;
-  // Use isSaving if provided, otherwise use saveDisabled
   const disabled = isSaving || saveDisabled;
-  const label = isSaving ? "Saving..." : saveLabel;
+  const effectiveSaveLabel = saveLabel ?? t("web.provider.common.saveChanges");
+  const label = isSaving ? t("web.provider.common.saving") : effectiveSaveLabel;
   const searchParams = useSearchParams();
   const [returnUrl, setReturnUrl] = useState<string | null>(null);
 
-  // Check for returnTo query parameter
   useEffect(() => {
     const returnTo = searchParams.get("returnTo");
     if (returnTo) {
@@ -54,19 +55,16 @@ export function SettingsDetailLayout({
     }
   }, [searchParams]);
 
-  // Use returnUrl if available, otherwise use backHref
   const finalBackHref = returnUrl || backHref;
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">
-      {/* Breadcrumbs */}
       {breadcrumbs && (
         <div className="w-full overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <Breadcrumb items={breadcrumbs} />
         </div>
       )}
-      
-      {/* Header */}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full">
         <div className="flex-1 w-full min-w-0">
           <div className="flex items-center gap-2 sm:gap-4 mb-2 min-w-0">
@@ -95,10 +93,8 @@ export function SettingsDetailLayout({
         )}
       </div>
 
-      {/* Content */}
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">{children}</div>
 
-      {/* Mobile sticky save bar — fixed at viewport bottom on small screens */}
       {onSave && (
         <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t p-3 md:hidden safe-area-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.08)]">
           <Button

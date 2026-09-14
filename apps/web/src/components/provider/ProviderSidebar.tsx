@@ -56,12 +56,13 @@ import PlatformLogo from "@/components/platform/PlatformLogo";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 import { useTranslation } from "@beautonomi/i18n";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 
 type NavItemConfig = {
   icon: React.ElementType;
   labelKey: string;
   href: string;
-  badge?: string;
+  badge?: boolean;
   permission?: keyof StaffPermissions;
   featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal" | "payment_paycloud" | typeof FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS;
 };
@@ -72,7 +73,7 @@ const navigationSections: { titleKey: string; items: NavItemConfig[] }[] = [
     titleKey: "web.provider.sidebar.sections.main",
     items: [
       { icon: LayoutDashboard, labelKey: "web.provider.sidebar.items.dashboard", href: "/provider/dashboard", permission: undefined },
-      { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar", badge: true, permission: "view_calendar" as keyof StaffPermissions },
       { icon: CalendarCheck, labelKey: "web.provider.sidebar.items.bookings", href: "/provider/bookings", permission: "view_calendar" as keyof StaffPermissions },
     ],
   },
@@ -285,6 +286,8 @@ const isActiveRoute = (pathname: string, href: string) => {
 
 export function ProviderSidebar() {
   const { t } = useTranslation();
+  const { dir } = useLocale();
+  const tooltipSide = dir === "rtl" ? "left" : "right";
   const pathname = usePathname();
   const { isExpanded, setIsExpanded } = useProviderSidebar();
   const { signOut, user: _user, role } = useAuth();
@@ -432,7 +435,7 @@ export function ProviderSidebar() {
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          "fixed left-0 top-0 z-40 h-screen flex flex-col py-3 hidden md:flex transition-all duration-300 ease-in-out",
+          "fixed start-0 top-0 z-40 h-screen flex flex-col py-3 hidden md:flex transition-all duration-300 ease-in-out",
           "overflow-x-hidden overflow-y-auto box-border",
           isExpanded ? "w-64" : "w-[72px]"
         )}
@@ -529,7 +532,7 @@ export function ProviderSidebar() {
                         isActive && "scale-110"
                       )} />
                       {!isExpanded && countLabel && (
-                        <span className="absolute right-1.5 top-1.5 min-w-4 h-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white/20 pointer-events-none">
+                        <span className="absolute end-1.5 top-1.5 min-w-4 h-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white/20 pointer-events-none">
                           {countLabel}
                         </span>
                       )}
@@ -569,7 +572,7 @@ export function ProviderSidebar() {
                         <TooltipTrigger asChild>
                           {linkContent}
                         </TooltipTrigger>
-                        <TooltipContent side="right" className="font-medium">
+                        <TooltipContent side={tooltipSide} className="font-medium">
                           {t(item.labelKey)}
                         </TooltipContent>
                       </Tooltip>
@@ -613,7 +616,7 @@ export function ProviderSidebar() {
                   <TooltipTrigger asChild>
                     {linkContent}
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="font-medium">
+                  <TooltipContent side={tooltipSide} className="font-medium">
                     {t(item.labelKey)}
                   </TooltipContent>
                 </Tooltip>
@@ -650,7 +653,7 @@ export function ProviderSidebar() {
                   <LogOut className="w-5 h-5 pointer-events-none" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="font-medium">
+              <TooltipContent side={tooltipSide} className="font-medium">
                 {t("web.provider.sidebar.items.signOut")}
               </TooltipContent>
             </Tooltip>

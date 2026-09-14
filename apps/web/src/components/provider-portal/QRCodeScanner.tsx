@@ -2,6 +2,7 @@
 
 import { ArrivalQrScanDialog } from "@/components/provider/ArrivalQrScanDialog";
 import { parseQRCodeData, validateQRCodeData, type QRCodeData } from "@/lib/qr/generator";
+import { useTranslation } from "@beautonomi/i18n";
 import { toast } from "sonner";
 
 interface QRCodeScannerProps {
@@ -20,6 +21,8 @@ export function QRCodeScanner({
   onClose,
   bookingId,
 }: QRCodeScannerProps) {
+  const { t } = useTranslation();
+
   return (
     <ArrivalQrScanDialog
       open
@@ -29,7 +32,7 @@ export function QRCodeScanner({
       onValidScan={(jsonPayload) => {
         const data = parseQRCodeData(jsonPayload);
         if (!data || !validateQRCodeData(data, bookingId)) {
-          toast.error("Invalid or expired QR code");
+          toast.error(t("web.provider.portal.qrScanner.invalidOrExpired"));
           return false;
         }
         onScan(data);

@@ -214,7 +214,7 @@ t("web.provider.settings.pages.billing.completeAddressRequired")
           title={t("web.provider.settings.pages.billing.failedToLoadBillingInformation")}
           description={error}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadBillingData,
           }}
         />

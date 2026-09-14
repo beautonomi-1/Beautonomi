@@ -49,18 +49,18 @@ export function AuditLogSheet({ open, onOpenChange, bookingId }: AuditLogSheetPr
   }, [open, bookingId]);
 
   return (
-    <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="view" title={t("web.provider.bookings.detail.leftoverCopy.auditLog")}>
+    <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="view" title={t("web.provider.bookings.detail.audit.title")}>
       {loading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-gray-500 py-4">{t("web.provider.bookings.detail.leftoverCopy.noAuditEntries")}</p>
+        <p className="text-sm text-gray-500 py-4">{t("web.provider.bookings.detail.audit.empty")}</p>
       ) : (
         <div className="space-y-3 pb-4">
           {entries.map((entry) => (
             <BookingSectionCard key={entry.id} padding="sm">
-              <BookingSectionLabel className="mb-1">{entry.event_type?.replace(/_/g, " ") ?? t("web.provider.bookings.detail.leftoverCopy.updateFallback")}</BookingSectionLabel>
+              <BookingSectionLabel className="mb-1">{entry.event_type?.replace(/_/g, " ") ?? t("web.provider.bookings.detail.audit.updateFallback")}</BookingSectionLabel>
               <p className="text-xs text-gray-500">
                 {entry.created_at
                   ? format(new Date(entry.created_at), "MMM d, yyyy · h:mm a")

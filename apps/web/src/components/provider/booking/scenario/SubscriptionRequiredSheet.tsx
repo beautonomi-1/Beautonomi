@@ -21,7 +21,7 @@ export function SubscriptionRequiredSheet({
 }: SubscriptionRequiredSheetProps) {
   const { t } = useTranslation();
   const resolvedTitle = title ?? t("web.provider.portal.appointmentDialog.subscriptionRequired");
-  const resolvedDescription = description ?? t("web.provider.bookings.detail.leftoverCopy.subscriptionRequiredBody");
+  const resolvedDescription = description ?? t("web.provider.bookings.detail.subscription.requiredBody");
   const footer = (
     <div className="flex flex-col gap-2 sm:flex-row">
       <BookingActionButton variant="outline" onClick={() => onOpenChange(false)}>

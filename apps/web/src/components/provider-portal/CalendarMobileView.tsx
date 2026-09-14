@@ -47,6 +47,7 @@ import {
 } from "date-fns";
 import { mapStatus, extractIconFlags, isMangomintModeEnabled, AppointmentStatus } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors, getActiveIcons } from "@/lib/scheduling/visualMapping";
+import { formatTime12hI18n, getCalendarStatusLabel } from "@/components/provider-portal/calendar/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { nowInTz, isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
@@ -157,57 +158,6 @@ const SERVICE_COLORS: Record<string, { bg: string; text: string; border: string 
 };
 
 // Status configuration - matches desktop view
-const STATUS_CONFIG: Record<string, { 
-  color: string; 
-  bgColor: string; 
-  borderColor: string;
-  textColor: string;
-  label: string 
-}> = {
-  booked: { 
-    color: "bg-blue-500", 
-    bgColor: "bg-blue-50",
-    borderColor: "border-blue-200",
-    textColor: "text-blue-700",
-    label: "Confirmed" 
-  },
-  pending: { 
-    color: "bg-amber-400", 
-    bgColor: "bg-amber-50",
-    borderColor: "border-amber-200",
-    textColor: "text-amber-700",
-    label: "Unconfirmed" 
-  },
-  started: { 
-    color: "bg-pink-500", 
-    bgColor: "bg-pink-50",
-    borderColor: "border-pink-200",
-    textColor: "text-pink-700",
-    label: "In Service" 
-  },
-  completed: { 
-    color: "bg-gray-400", 
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
-    textColor: "text-gray-700",
-    label: "Completed" 
-  },
-  cancelled: { 
-    color: "bg-red-500", 
-    bgColor: "bg-red-50",
-    borderColor: "border-red-200",
-    textColor: "text-red-700",
-    label: "Cancelled" 
-  },
-  no_show: { 
-    color: "bg-orange-500", 
-    bgColor: "bg-orange-50",
-    borderColor: "border-orange-200",
-    textColor: "text-orange-700",
-    label: "No Show" 
-  },
-};
-
 // Show NEW badge only when: created within 24 hours AND status is still active (not completed/cancelled/no_show)
 const isNewBooking = (createdDate: string, status?: string) => {
   const completedStatuses = ["completed", "cancelled", "no_show"];
@@ -342,14 +292,6 @@ const isSlotInAvailabilityBlock = (
   });
 };
 
-// Format time for display (12-hour format)
-const formatTime12h = (time: string) => {
-  const { hour, minute: min } = parseTimeParts(time);
-  const period = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-  return `${displayHour}:${min.toString().padStart(2, "0")} ${period}`;
-};
-
 export function CalendarMobileView({
   appointments,
   teamMembers,
@@ -380,25 +322,17 @@ export function CalendarMobileView({
 }: CalendarMobileViewProps) {
   const { t } = useTranslation();
   const cm = "web.provider.calendarMobile";
-  const calendarStatusLabel = (status: AppointmentStatus) => {
-    switch (status) {
-      case AppointmentStatus.UNCONFIRMED:
-        return t(`${cm}.statusUnconfirmed`);
-      case AppointmentStatus.CONFIRMED:
-        return t(`${cm}.statusBooked`);
-      case AppointmentStatus.WAITING:
-        return t(`${cm}.statusWaiting`);
-      case AppointmentStatus.IN_SERVICE:
-        return t(`${cm}.statusInService`);
-      case AppointmentStatus.COMPLETED:
-        return t(`${cm}.statusCompleted`);
-      case AppointmentStatus.CANCELED:
-        return t(`${cm}.statusCanceled`);
-      case AppointmentStatus.NO_SHOW:
-        return t(`${cm}.statusNoShow`);
-      default:
-        return t(`${cm}.statusBooked`);
-    }
+  const calendarStatusLabel = (status: AppointmentStatus) => getCalendarStatusLabel(t, status);
+  const formatTime12h = (time: string) => formatTime12hI18n(time, t);
+  const weekdayLabelKeys = ["weekdaySun", "weekdayMon", "weekdayTue", "weekdayWed", "weekdayThu", "weekdayFri", "weekdaySat"] as const;
+  const dayLabels = useMemo(
+    () => weekdayLabelKeys.map((key) => t(`${cm}.${key}`)),
+    [t],
+  );
+  const formatHourLabel = (hour: number) => {
+    const period = hour >= 12 ? t(`${cm}.pm`) : t(`${cm}.am`);
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return { displayHour, period };
   };
   const { format: formatMoney } = useProviderMoneyFormat();
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
@@ -532,8 +466,6 @@ export function CalendarMobileView({
     view === "week" || view === "3-days"
       ? visibleDays
       : Array.from({ length: 14 }, (_, i) => addDays(selectedDate, i - 4));
-  
-  const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
 
   // Handle swipe navigation for date selector
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -862,7 +794,7 @@ export function CalendarMobileView({
             </button>
             
             {onViewChange && (
-              <div className="flex items-center border border-white/20 rounded-lg overflow-hidden ml-1 shrink-0">
+              <div className="flex items-center border border-white/20 rounded-lg overflow-hidden ms-1 shrink-0">
                 <button
                   type="button"
                   onClick={() => onViewChange("day")}
@@ -881,7 +813,7 @@ export function CalendarMobileView({
                   onClick={() => onViewChange("3-days")}
                   aria-pressed={view === "3-days"}
                   className={cn(
-                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-l border-white/15",
+                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-s border-white/15",
                     view === "3-days"
                       ? "bg-white/20 text-white"
                       : "text-white/70 hover:bg-white/10",
@@ -894,7 +826,7 @@ export function CalendarMobileView({
                   onClick={() => onViewChange("week")}
                   aria-pressed={view === "week"}
                   className={cn(
-                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-l border-white/15",
+                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-s border-white/15",
                     view === "week"
                       ? "bg-white/20 text-white"
                       : "text-white/70 hover:bg-white/10",
@@ -1095,14 +1027,13 @@ export function CalendarMobileView({
           onTouchEnd={handleTouchEnd}
         >
           <div className="flex w-full min-w-min">
-            <div className="w-[52px] flex-shrink-0 bg-white border-r-2 border-gray-400">
+            <div className="w-[52px] flex-shrink-0 bg-white border-e-2 border-gray-400">
               <div className="h-[48px] sticky top-0 z-50 bg-gray-100 border-b-2 border-gray-400 flex items-center justify-center">
                 <Clock className="w-3.5 h-3.5 text-gray-500" />
               </div>
               {timeSlots.map((time, idx) => {
                 const { hour } = parseTimeParts(time);
-                const period = hour >= 12 ? "PM" : "AM";
-                const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                const { displayHour, period } = formatHourLabel(hour);
                 return (
                   <div
                     key={time}
@@ -1130,7 +1061,7 @@ export function CalendarMobileView({
               const colW = view === "week" ? "min-w-[92px] w-[13.5vw] max-w-[140px]" : "min-w-[108px] w-[30vw] max-w-[160px]";
 
               return (
-                <div key={dateStr} className={cn("flex-shrink-0 border-r-2 border-gray-300 last:border-r-0 relative bg-white", colW)}>
+                <div key={dateStr} className={cn("flex-shrink-0 border-e-2 border-gray-300 last:border-e-0 relative bg-white", colW)}>
                   <button
                     type="button"
                     onClick={() => onDateChange(day)}
@@ -1146,7 +1077,7 @@ export function CalendarMobileView({
                       {format(day, "d MMM")}
                     </span>
                     <span className={cn("text-[8px] font-medium", isTodayCol ? "text-gray-600" : "text-[#4fd1c5]")}>
-                      {dayApts.length} appt{dayApts.length !== 1 ? "s" : ""}
+                      {t(`${cm}.apptCount`, { count: dayApts.length })}
                     </span>
                   </button>
 
@@ -1192,7 +1123,7 @@ export function CalendarMobileView({
                             className="absolute left-0 right-0 z-[60] pointer-events-none flex items-center"
                             style={{ top: `${top}px` }}
                           >
-                            <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-lg" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ms-1 ring-2 ring-white shadow-lg" />
                             <div className="h-[2px] w-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
                           </div>
                         );
@@ -1228,7 +1159,7 @@ export function CalendarMobileView({
                         slotIdx % 2 === 1 && !isOutside ? "bg-gray-100/60" : !isOutside ? "bg-white" : null,
                         isOutside
                           ? cn(
-                              "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                              "cursor-not-allowed border-s-[5px] border-s-amber-500",
                               !highContrast &&
                                 "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                               highContrast && "bg-gray-900/25",
@@ -1310,7 +1241,7 @@ export function CalendarMobileView({
                                 }}
                                 className={cn(
                                   "absolute left-0.5 right-0.5 z-[20] rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
-                                  "transition-all shadow-sm active:scale-[0.98] hover:shadow-md border-l-[3px]",
+                                  "transition-all shadow-sm active:scale-[0.98] hover:shadow-md border-s-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
                                 )}
                                 style={{
@@ -1345,7 +1276,7 @@ export function CalendarMobileView({
                                     {formatTime12h(apt.scheduled_time)}
                                     {preferences.showPrices &&
                                       (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
-                                        <span className="ml-0.5 font-semibold">
+                                        <span className="ms-0.5 font-semibold">
                                           · {formatMoney(
                                             (apt as { total_amount?: number }).total_amount ??
                                             apt.price ??
@@ -1358,7 +1289,7 @@ export function CalendarMobileView({
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "absolute top-0.5 right-0.5 text-[6px] px-0.5 py-0 bg-white/90 border-0 font-semibold",
+                                    "absolute top-0.5 end-0.5 text-[6px] px-0.5 py-0 bg-white/90 border-0 font-semibold",
                                     statusColors.badgeClasses,
                                   )}
                                 >
@@ -1370,7 +1301,7 @@ export function CalendarMobileView({
                                   return (
                                     <div
                                       key={idx}
-                                      className="absolute bottom-0.5 left-0.5 w-2 h-2 rounded-full bg-white/90 flex items-center justify-center"
+                                      className="absolute bottom-0.5 start-0.5 w-2 h-2 rounded-full bg-white/90 flex items-center justify-center"
                                     >
                                       <IconComponent className="w-1 h-1" />
                                     </div>
@@ -1386,7 +1317,7 @@ export function CalendarMobileView({
                                         e.stopPropagation();
                                         onCheckout(apt);
                                       }}
-                                      className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
+                                      className="absolute bottom-0.5 end-0.5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
                                       title={t(`${cm}.checkout`)}
                                     >
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
@@ -1400,7 +1331,7 @@ export function CalendarMobileView({
                                       e.stopPropagation();
                                       onStatusChange(apt, "started");
                                     }}
-                                    className="absolute bottom-0.5 right-5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
+                                    className="absolute bottom-0.5 end-5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
                                     title={t(`${cm}.start`)}
                                   >
                                     <Check className="w-2.5 h-2.5 text-gray-700" />
@@ -1412,7 +1343,7 @@ export function CalendarMobileView({
                               <DraggableAppointment
                                 key={apt.id}
                                 appointment={apt}
-                                className="absolute left-0.5 right-0.5 z-10 rounded-md border-l-[3px] overflow-hidden"
+                                className="absolute left-0.5 right-0.5 z-10 rounded-md border-s-[3px] overflow-hidden"
                                 style={{
                                   ...colorStyle,
                                   height: `${height - 2}px`,
@@ -1464,15 +1395,14 @@ export function CalendarMobileView({
         >
           <div className="flex min-w-max">
             {/* Time column — stays visible while scrolling staff (sticky left) */}
-            <div className="sticky left-0 z-[45] w-[52px] flex-shrink-0 bg-white border-r-2 border-gray-400 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+            <div className="sticky left-0 z-[45] w-[52px] flex-shrink-0 bg-white border-e-2 border-gray-400 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
               <div className="h-[48px] sticky top-0 z-50 bg-gray-100 border-b-2 border-gray-400 flex items-center justify-center">
                 <Clock className="w-3.5 h-3.5 text-gray-500" />
               </div>
               {/* Time labels */}
               {timeSlots.map((time, idx) => {
                 const { hour } = parseTimeParts(time);
-                const period = hour >= 12 ? "PM" : "AM";
-                const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                const { displayHour, period } = formatHourLabel(hour);
                 return (
                   <div key={time} className={cn("h-[60px] border-b-2 border-gray-300 flex items-start justify-center pt-1", idx % 2 === 1 ? "bg-gray-100/60" : "bg-white")}>
                     <span className="text-[10px] font-bold text-gray-700 whitespace-nowrap leading-tight">
@@ -1495,7 +1425,7 @@ export function CalendarMobileView({
                   key={member.id}
                   className={cn(
                     STAFF_DAY_COLUMN_LAYOUT,
-                    "border-r-2 border-gray-300 last:border-r-0 relative bg-white",
+                    "border-e-2 border-gray-300 last:border-e-0 relative bg-white",
                   )}
                 >
                   {/* Staff Header - Sticky on top */}
@@ -1587,7 +1517,7 @@ export function CalendarMobileView({
                           top: `${MOBILE_COLUMN_HEADER_PX + ((currentHour - startHour) * MOBILE_HOUR_PX_COLUMNS) + (currentMinute / 60) * MOBILE_HOUR_PX_COLUMNS}px`,
                         }}
                       >
-                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-lg" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ms-1 ring-2 ring-white shadow-lg" />
                         <div className="h-[2px] w-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
                       </div>
                     )}
@@ -1620,13 +1550,13 @@ export function CalendarMobileView({
                         slotIdx % 2 === 1 && !isNonWorking && !staffOff ? "bg-gray-100/60" : !isNonWorking && !staffOff ? "bg-white" : null,
                         isNonWorking
                           ? cn(
-                              "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                              "cursor-not-allowed border-s-[5px] border-s-amber-500",
                               !highContrast &&
                                 "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                               highContrast && "bg-gray-900/25",
                             )
                           : staffOff
-                            ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                            ? "cursor-pointer border-s-[3px] border-s-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
                             : "cursor-pointer hover:bg-blue-50/30"
                       );
                       const slotContent = (
@@ -1697,7 +1627,7 @@ export function CalendarMobileView({
                                 className={cn(
                                   "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
-                                  "border-l-[3px]",
+                                  "border-s-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
                                 )}
                                 style={{
@@ -1735,7 +1665,7 @@ export function CalendarMobileView({
                                       {formatTime12h(apt.scheduled_time)}
                                       {preferences.showPrices &&
                                         (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
-                                          <span className="ml-0.5 font-semibold">
+                                          <span className="ms-0.5 font-semibold">
                                             · {formatMoney(
                                               (apt as { total_amount?: number }).total_amount ??
                                               apt.price ??
@@ -1750,7 +1680,7 @@ export function CalendarMobileView({
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "absolute top-1 right-1 text-[7px] px-1 py-0",
+                                    "absolute top-1 end-1 text-[7px] px-1 py-0",
                                     "bg-white/90 backdrop-blur-sm border-0 font-semibold",
                                     statusColors.badgeClasses,
                                   )}
@@ -1765,7 +1695,7 @@ export function CalendarMobileView({
                                     <div
                                       key={idx}
                                       className={cn(
-                                        "absolute bottom-1 left-1",
+                                        "absolute bottom-1 start-1",
                                         "w-2.5 h-2.5 rounded-full bg-white/90 backdrop-blur-sm",
                                         "flex items-center justify-center",
                                         icon.colorClass,
@@ -1787,7 +1717,7 @@ export function CalendarMobileView({
                                         e.stopPropagation();
                                         onCheckout(apt);
                                       }}
-                                      className="absolute bottom-1 right-1 w-4 h-4 rounded bg-white/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                                      className="absolute bottom-1 end-1 w-4 h-4 rounded bg-white/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
                                       title={t(`${cm}.checkout`)}
                                     >
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
@@ -1802,7 +1732,7 @@ export function CalendarMobileView({
                                 className={cn(
                                   "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
-                                  "border-l-[3px]",
+                                  "border-s-[3px]",
                                 )}
                                 style={{
                                   ...colorStyle,
@@ -1965,13 +1895,13 @@ export function CalendarMobileView({
                   preferences.compactMode ? "min-h-[56px] sm:min-h-[72px]" : "min-h-[64px] sm:min-h-[80px]",
                   isNonWorking
                     ? cn(
-                        "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                        "cursor-not-allowed border-s-[5px] border-s-amber-500",
                         !highContrast &&
                           "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                         highContrast && "bg-gray-900/20",
                       )
                     : staffOff
-                      ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                      ? "cursor-pointer border-s-[3px] border-s-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
                       : "cursor-pointer hover:bg-gray-50",
                 );
                 const rowContent = (
@@ -1991,7 +1921,7 @@ export function CalendarMobileView({
                       </div>
                     )}
                     {/* Time Label */}
-                    <div className="w-14 sm:w-16 flex-shrink-0 pt-2 sm:pt-2.5 pr-2 sm:pr-3 text-right border-r-2 border-gray-200">
+                    <div className="w-14 sm:w-16 flex-shrink-0 pt-2 sm:pt-2.5 pe-2 sm:pe-3 text-end border-e-2 border-gray-200">
                       <span className="text-xs sm:text-sm font-semibold text-gray-700">
                         {displayHour}{period}
                       </span>
@@ -2002,7 +1932,7 @@ export function CalendarMobileView({
                       role="button"
                       tabIndex={isNonWorking ? -1 : 0}
                       className={cn(
-                        "flex-1 relative py-1.5 sm:py-2 pl-1.5 sm:pl-2 pr-0 min-w-0",
+                        "flex-1 relative py-1.5 sm:py-2 ps-1.5 sm:ps-2 pe-0 min-w-0",
                         preferences.compactMode ? "min-h-[56px] sm:min-h-[72px]" : "min-h-[64px] sm:min-h-[80px]",
                         !isNonWorking && "cursor-pointer",
                       )}
@@ -2064,7 +1994,7 @@ export function CalendarMobileView({
                             className={cn(
                               "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
-                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
+                              "border-s-[3px] sm:border-s-4 active:scale-[0.98]",
                               apt.status === "cancelled" && useMangomintMode && "opacity-50",
                             )}
                             style={{
@@ -2099,7 +2029,7 @@ export function CalendarMobileView({
                                 {formatTime12h(apt.scheduled_time)} – {formatTime12h(endTimeStr)}
                                 {preferences.showPrices &&
                                   (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
-                                    <span className="ml-1 font-semibold">
+                                    <span className="ms-1 font-semibold">
                                       · {formatMoney(
                                         (apt as { total_amount?: number }).total_amount ??
                                         apt.price ??
@@ -2144,7 +2074,7 @@ export function CalendarMobileView({
                             <Badge
                               variant="outline"
                               className={cn(
-                                "absolute top-1.5 sm:top-2 right-1.5 sm:right-2 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0.5",
+                                "absolute top-1.5 sm:top-2 end-1.5 sm:end-2 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0.5",
                                 "bg-white/90 backdrop-blur-sm border-0 font-semibold",
                                 statusColors.badgeClasses,
                               )}
@@ -2159,7 +2089,7 @@ export function CalendarMobileView({
                                 <div
                                   key={idx}
                                   className={cn(
-                                    "absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2",
+                                    "absolute bottom-1.5 sm:bottom-2 start-1.5 sm:start-2",
                                     "w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-white/90 backdrop-blur-sm",
                                     "flex items-center justify-center",
                                     icon.colorClass,
@@ -2179,7 +2109,7 @@ export function CalendarMobileView({
                             className={cn(
                               "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
-                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
+                              "border-s-[3px] sm:border-s-4 active:scale-[0.98]",
                             )}
                             style={{
                               ...colorStyle,

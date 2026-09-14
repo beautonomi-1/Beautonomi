@@ -8,6 +8,10 @@ export type PayoutBalanceCardView = {
   color: "blue" | "orange";
 };
 
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+
+const PB = "web.provider.dashboard.payoutBalance";
+
 /**
  * Dashboard copy for platform-held payout balance — aligned with
  * `getAvailablePayoutBalance` / GET /api/provider/finance `earnings.available_balance`.
@@ -15,31 +19,32 @@ export type PayoutBalanceCardView = {
 export function buildPayoutBalanceCardView(
   stats: ProviderDashboardStats,
   formatMoney: (amount: number) => string,
+  t: TranslateFn,
   options?: { locationFiltered?: boolean },
 ): PayoutBalanceCardView {
   const pendingQueue = Math.max(0, stats.pending_payout_queue ?? 0);
   const holdDays = Math.max(0, stats.payout_hold_days ?? 0);
-  const locationNote = options?.locationFiltered ? "All locations · " : "";
+  const locationNote = options?.locationFiltered ? t(`${PB}.allLocationsPrefix`) : "";
 
   if (stats.has_negative_payout_balance) {
     return {
-      title: "Balance owed",
+      title: t(`${PB}.balanceOwed`),
       value: Math.max(0, stats.balance_owed_to_platform ?? 0),
-      subtitle: `${locationNote}Owed to platform — review in Finance`,
+      subtitle: t(`${PB}.owedToPlatformReview`, { prefix: locationNote }),
       href: "/provider/finance",
       color: "orange",
     };
   }
 
-  let subtitle = `${locationNote}Platform-held · ready to request payout`;
+  let subtitle = t(`${PB}.platformHeldReady`, { prefix: locationNote });
   if (pendingQueue > 0.009) {
-    subtitle = `${locationNote}${formatMoney(pendingQueue)} in payout queue`;
+    subtitle = t(`${PB}.payoutQueue`, { prefix: locationNote, amount: formatMoney(pendingQueue) });
   } else if (holdDays > 0) {
-    subtitle = `${locationNote}${holdDays}-day hold on new earnings`;
+    subtitle = t(`${PB}.holdOnEarnings`, { prefix: locationNote, days: holdDays });
   }
 
   return {
-    title: "Available to withdraw",
+    title: t(`${PB}.availableToWithdraw`),
     value: Math.max(0, stats.available_balance ?? 0),
     subtitle,
     href: "/provider/finance",

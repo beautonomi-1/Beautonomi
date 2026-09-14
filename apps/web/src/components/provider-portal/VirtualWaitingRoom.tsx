@@ -205,7 +205,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
 
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             placeholder={t("web.provider.portal.waitingRoom.searchPlaceholder")}
             value={searchQuery}

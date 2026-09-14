@@ -247,7 +247,7 @@ export default function TimeOffTypesSettings() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-<Label htmlFor="name">{t("web.provider.onboarding.leftover2.nameRequired")}</Label>
+<Label htmlFor="name">{t("web.provider.common.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}

@@ -62,7 +62,7 @@ interface NavItem {
   icon: React.ElementType;
   labelKey: string;
   href: string;
-  badge?: string;
+  badge?: boolean;
   permission?: keyof StaffPermissions;
   featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal" | typeof FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS;
 }
@@ -84,7 +84,7 @@ const navigationSections: NavSection[] = [
     titleKey: "web.provider.sidebar.sections.main",
     items: [
       { icon: LayoutDashboard, labelKey: "web.provider.sidebar.items.dashboard", href: "/provider/dashboard" },
-      { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" },
+      { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar", badge: true, permission: "view_calendar" },
       { icon: CalendarCheck, labelKey: "web.provider.sidebar.items.bookings", href: "/provider/bookings", permission: "view_calendar" },
     ],
   },

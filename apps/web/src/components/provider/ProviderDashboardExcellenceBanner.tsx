@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, X } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   PROVIDER_EXCELLENCE_DASHBOARD_BODY,
   PROVIDER_EXCELLENCE_DASHBOARD_COOLDOWN_MS,
@@ -24,6 +25,7 @@ function readDismissedAt(): number | null {
 }
 
 export function ProviderDashboardExcellenceBanner() {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function ProviderDashboardExcellenceBanner() {
               type="button"
               onClick={dismiss}
               className="shrink-0 rounded-md p-1 text-amber-800/70 hover:bg-amber-100/80 hover:text-amber-950"
-              aria-label="Dismiss tip"
+              aria-label={t("web.provider.dashboard.excellenceBanner.dismissA11y")}
             >
               <X className="h-4 w-4" />
             </button>

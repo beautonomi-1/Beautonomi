@@ -593,7 +593,7 @@ t("web.provider.settings.pages.sales/yoco-integration.yocoAccount")}
                       <button
                         type="button"
                         onClick={() => setShowSecretKey((v) => !v)}
-                        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
+                        className="absolute inset-y-0 end-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
 aria-label={showSecretKey ? t("web.provider.settings.pages.sales/yoco-integration.hideSecretKey") : t("web.provider.settings.pages.sales/yoco-integration.showSecretKey")}
                       >
                         {showSecretKey ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 
 interface BookingConflictBannerProps {
@@ -15,11 +16,15 @@ interface BookingConflictBannerProps {
 export function BookingConflictBanner({
   message,
   onAction,
-  actionLabel = "Choose another time",
+  actionLabel,
   onSecondaryAction,
-  secondaryActionLabel = "Proceed anyway",
+  secondaryActionLabel,
   className,
 }: BookingConflictBannerProps) {
+  const { t } = useTranslation();
+  const primaryLabel = actionLabel ?? t("web.provider.bookings.conflictBanner.chooseAnotherTime");
+  const secondaryLabel = secondaryActionLabel ?? t("web.provider.bookings.conflictBanner.proceedAnyway");
+
   return (
     <div
       className={cn(
@@ -40,7 +45,7 @@ export function BookingConflictBanner({
               onClick={onAction}
               className="text-sm font-semibold text-amber-800 underline underline-offset-2 shrink-0"
             >
-              {actionLabel}
+              {primaryLabel}
             </button>
           ) : null}
           {onSecondaryAction ? (
@@ -49,7 +54,7 @@ export function BookingConflictBanner({
               onClick={onSecondaryAction}
               className="text-sm font-semibold text-amber-900 underline underline-offset-2 shrink-0"
             >
-              {secondaryActionLabel}
+              {secondaryLabel}
             </button>
           ) : null}
         </div>

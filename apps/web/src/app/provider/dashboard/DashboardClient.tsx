@@ -352,9 +352,10 @@ export function DashboardClient({
     return buildPayoutBalanceCardView(
       stats,
       (amount) => formatCurrency(amount, tenantCurrency),
+      t,
       { locationFiltered: Boolean(selectedLocationId) },
     );
-  }, [stats, tenantCurrency, selectedLocationId]);
+  }, [stats, tenantCurrency, selectedLocationId, t]);
 
   // Show loading if provider is still loading or dashboard is loading
   // BUT: Don't show loading if we have cached stats (prevents flash of loading screen)

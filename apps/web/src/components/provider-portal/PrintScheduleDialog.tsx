@@ -210,18 +210,18 @@ export function PrintScheduleDialog({
             .appointment { 
               display: flex; 
               padding: 6px 8px; 
-              border-left: 3px solid #4fd1c5; 
+              border-inline-start: 3px solid #4fd1c5; 
               background: #fafafa;
               margin-bottom: 4px;
               border-radius: 0 4px 4px 0;
             }
             .appointment.cancelled { 
-              border-left-color: #ef4444; 
+              border-inline-start-color: #ef4444; 
               opacity: 0.7;
               text-decoration: line-through;
             }
             .appointment.completed { 
-              border-left-color: #9ca3af; 
+              border-inline-start-color: #9ca3af; 
             }
             .time { 
               min-width: 65px; 
@@ -244,7 +244,7 @@ export function PrintScheduleDialog({
               font-size: 10px; 
             }
             .price { 
-              text-align: right; 
+              text-align: end; 
               min-width: 60px;
               font-weight: 600;
               color: #FF0077;
@@ -254,7 +254,7 @@ export function PrintScheduleDialog({
               color: #666; 
               font-style: italic;
               margin-top: 2px;
-              padding-left: 65px;
+              padding-inline-start: 65px;
             }
             .no-appointments { 
               color: #999; 
@@ -357,17 +357,17 @@ export function PrintScheduleDialog({
               [data-print-preview] .date-header { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 6px; }
               [data-print-preview] .staff-section { margin-bottom: 12px; }
               [data-print-preview] .staff-header { border-bottom: 1px solid #f3f4f6; padding-bottom: 6px; margin-bottom: 6px; }
-              [data-print-preview] .appointment { display: flex; padding: 6px 8px; border-left: 3px solid #4fd1c5; background: #fafafa; margin-bottom: 4px; border-radius: 0 4px 4px 0; }
-              [data-print-preview] .appointment.cancelled { border-left-color: #ef4444; opacity: 0.7; text-decoration: line-through; }
-              [data-print-preview] .appointment.completed { border-left-color: #9ca3af; }
+              [data-print-preview] .appointment { display: flex; padding: 6px 8px; border-inline-start: 3px solid #4fd1c5; background: #fafafa; margin-bottom: 4px; border-radius: 0 4px 4px 0; }
+              [data-print-preview] .appointment.cancelled { border-inline-start-color: #ef4444; opacity: 0.7; text-decoration: line-through; }
+              [data-print-preview] .appointment.completed { border-inline-start-color: #9ca3af; }
               [data-print-preview] .time { min-width: 50px; font-weight: 600; color: #1a1f3c; font-size: 11px; }
               [data-print-preview] .time .duration { color: #6b7280; font-weight: 400; font-size: 10px; }
               [data-print-preview] .details { flex: 1; min-width: 0; font-size: 11px; }
               [data-print-preview] .client-name { font-weight: 600; }
               [data-print-preview] .service-name { color: #666; font-size: 10px; }
               [data-print-preview] .client-contact { color: #888; font-size: 10px; }
-              [data-print-preview] .price { text-align: right; min-width: 45px; font-weight: 600; color: #FF0077; font-size: 11px; }
-              [data-print-preview] .notes { font-size: 10px; color: #666; font-style: italic; margin-top: 2px; padding-left: 50px; }
+              [data-print-preview] .price { text-align: end; min-width: 45px; font-weight: 600; color: #FF0077; font-size: 11px; }
+              [data-print-preview] .notes { font-size: 10px; color: #666; font-style: italic; margin-top: 2px; padding-inline-start: 50px; }
               [data-print-preview] .no-appointments { color: #9ca3af; font-style: italic; font-size: 11px; padding: 8px 0; }
             `}</style>
             <div ref={printRef} data-print-preview className="min-h-full bg-white rounded-lg border border-gray-200 p-3 shadow-sm text-xs">
@@ -377,7 +377,10 @@ export function PrintScheduleDialog({
                 {view === "day"
                   ? t("web.provider.printSchedule.scheduleFor", { date: format(selectedDate, "EEEE, MMM d, yyyy") })
                   : view === "3-days"
-                    ? `${format(dates[0], "MMM d")} – ${format(dates[dates.length - 1], "MMM d, yyyy")}`
+                    ? t("web.provider.printSchedule.threeDaysRange", {
+                        start: format(dates[0], "MMM d"),
+                        end: format(dates[dates.length - 1], "MMM d, yyyy"),
+                      })
                     : t("web.provider.printSchedule.weekRange", { start: format(dates[0], "MMM d"), end: format(dates[6], "MMM d, yyyy") })}
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">

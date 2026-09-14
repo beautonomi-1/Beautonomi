@@ -353,7 +353,7 @@ export function ProviderNotificationsDropdown() {
           {totalUnread > 0 && (
             <Badge
               variant="destructive"
-              className="absolute -top-1 -right-1 h-5 min-w-5 px-1.5 flex items-center justify-center text-xs"
+              className="absolute -top-1 -end-1 h-5 min-w-5 px-1.5 flex items-center justify-center text-xs"
             >
               {totalUnread > 99 ? '99+' : totalUnread}
             </Badge>

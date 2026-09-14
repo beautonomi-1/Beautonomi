@@ -20,6 +20,7 @@ import type {
 import { CalendarDesktopWithDnd } from "@/components/provider-portal/CalendarDesktopWithDnd";
 import { CalendarMobileWithDnd } from "@/components/provider-portal/CalendarMobileWithDnd";
 import { useMediaQueryMatch, TW_MD_MIN_QUERY } from "@/hooks/useMediaQueryMatch";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface ProviderSchedulerProps {
   appointments: Appointment[];
@@ -95,6 +96,7 @@ export function ProviderScheduler({
   onMobileViewChange,
   className,
 }: ProviderSchedulerProps) {
+  const { t } = useTranslation();
   const schedulerViewportMd = useMediaQueryMatch(TW_MD_MIN_QUERY);
   const noopReschedule = useCallback(async () => {}, []);
   const handleReschedule = onReschedule ?? noopReschedule;
@@ -215,7 +217,7 @@ export function ProviderScheduler({
         <div
           className="flex flex-1 min-h-[240px] items-center justify-center"
           aria-busy="true"
-          aria-label="Loading scheduler"
+          aria-label={t("web.provider.scheduler.loadingAria")}
         >
           <RefreshCw className="h-8 w-8 animate-spin text-primary/40" />
         </div>

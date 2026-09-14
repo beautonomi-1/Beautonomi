@@ -107,7 +107,7 @@ export function CommandBar({
           </PopoverContent>
         </Popover>
         <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#0F172A]/40" />
+          <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#0F172A]/40" />
           <Input
             placeholder={t("web.provider.frontDesk.searchPlaceholder")}
             value={searchQuery}

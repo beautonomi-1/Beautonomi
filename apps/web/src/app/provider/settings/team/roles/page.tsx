@@ -34,33 +34,33 @@ interface Role {
 }
 
 const permissionCategories = [
-  { id: "view_calendar", name: "View Calendar", category: "calendar" },
-  { id: "create_appointments", name: "Create Appointments", category: "calendar" },
-  { id: "edit_appointments", name: "Edit Appointments", category: "calendar" },
-  { id: "cancel_appointments", name: "Cancel Appointments", category: "calendar" },
-  { id: "delete_appointments", name: "Delete Appointments", category: "calendar" },
-  { id: "view_sales", name: "View Sales", category: "sales" },
-  { id: "create_sales", name: "Create Sales", category: "sales" },
-  { id: "process_payments", name: "Process Payments", category: "sales" },
-  { id: "view_reports", name: "View Reports", category: "sales" },
-  { id: "view_services", name: "View Services", category: "catalogue" },
-  { id: "edit_services", name: "Edit Services", category: "catalogue" },
-  { id: "view_products", name: "View Products", category: "catalogue" },
-  { id: "edit_products", name: "Edit Products", category: "catalogue" },
-  { id: "view_team", name: "View Team", category: "team" },
-  { id: "manage_team", name: "Manage Team", category: "team" },
-  { id: "view_settings", name: "View Settings", category: "settings" },
-  { id: "edit_settings", name: "Edit Settings", category: "settings" },
-  { id: "view_clients", name: "View Clients", category: "clients" },
-  { id: "edit_clients", name: "Edit Clients", category: "clients" },
-  { id: "view_reviews", name: "View Reviews", category: "engagement" },
-  { id: "edit_reviews", name: "Edit Reviews", category: "engagement" },
-  { id: "view_client_ratings", name: "View Client Ratings", category: "engagement" },
-  { id: "rate_clients", name: "Rate Clients", category: "engagement" },
-  { id: "view_messages", name: "View Messages", category: "engagement" },
-  { id: "send_messages", name: "Send Messages", category: "engagement" },
-  { id: "create_explore_posts", name: "Create Explore Posts", category: "engagement" },
-];
+  { id: "view_calendar", category: "calendar" },
+  { id: "create_appointments", category: "calendar" },
+  { id: "edit_appointments", category: "calendar" },
+  { id: "cancel_appointments", category: "calendar" },
+  { id: "delete_appointments", category: "calendar" },
+  { id: "view_sales", category: "sales" },
+  { id: "create_sales", category: "sales" },
+  { id: "process_payments", category: "sales" },
+  { id: "view_reports", category: "sales" },
+  { id: "view_services", category: "catalogue" },
+  { id: "edit_services", category: "catalogue" },
+  { id: "view_products", category: "catalogue" },
+  { id: "edit_products", category: "catalogue" },
+  { id: "view_team", category: "team" },
+  { id: "manage_team", category: "team" },
+  { id: "view_settings", category: "settings" },
+  { id: "edit_settings", category: "settings" },
+  { id: "view_clients", category: "clients" },
+  { id: "edit_clients", category: "clients" },
+  { id: "view_reviews", category: "engagement" },
+  { id: "edit_reviews", category: "engagement" },
+  { id: "view_client_ratings", category: "engagement" },
+  { id: "rate_clients", category: "engagement" },
+  { id: "view_messages", category: "engagement" },
+  { id: "send_messages", category: "engagement" },
+  { id: "create_explore_posts", category: "engagement" },
+] as const;
 
 export default function RolesSettings() {
   const { t } = useTranslation();
@@ -186,13 +186,17 @@ export default function RolesSettings() {
     });
   };
 
-  const groupedPermissions = permissionCategories.reduce((acc, perm) => {
-    if (!acc[perm.category]) {
-      acc[perm.category] = [];
-    }
-    acc[perm.category].push(perm);
-    return acc;
-  }, {} as Record<string, typeof permissionCategories>);
+  type Permission = (typeof permissionCategories)[number];
+  const groupedPermissions = permissionCategories.reduce(
+    (acc, perm) => {
+      if (!acc[perm.category]) {
+        acc[perm.category] = [];
+      }
+      acc[perm.category].push(perm);
+      return acc;
+    },
+    {} as Record<string, Permission[]>,
+  );
 
   const categoryLabels: Record<string, string> = {
     calendar: t("web.provider.settings.pages.team/roles.catCalendar"),
@@ -203,34 +207,7 @@ export default function RolesSettings() {
     clients: t("web.provider.settings.pages.team/roles.catClients"),
     engagement: t("web.provider.settings.pages.team/roles.catEngagement"),
   };
-  const permName = (id: string) => t(`web.provider.settings.pages.team/roles.perm.${({
-    view_calendar: "viewCalendar",
-    create_appointments: "createAppointments",
-    edit_appointments: "editAppointments",
-    cancel_appointments: "cancelAppointments",
-    delete_appointments: "deleteAppointments",
-    view_sales: "viewSales",
-    create_sales: "createSales",
-    process_payments: "processPayments",
-    view_reports: "viewReports",
-    view_services: "viewServices",
-    edit_services: "editServices",
-    view_products: "viewProducts",
-    edit_products: "editProducts",
-    view_team: "viewTeam",
-    manage_team: "manageTeam",
-    view_settings: "viewSettings",
-    edit_settings: "editSettings",
-    view_clients: "viewClients",
-    edit_clients: "editClients",
-    view_reviews: "viewReviews",
-    edit_reviews: "editReviews",
-    view_client_ratings: "viewClientRatings",
-    rate_clients: "rateClients",
-    view_messages: "viewMessages",
-    send_messages: "sendMessages",
-    create_explore_posts: "createExplorePosts",
-  } as Record<string, string>)[id] ?? id}`);
+  const permName = (id: string) => t(`web.provider.settings.pages.team/roles.perm.${id}`);
 
   const breadcrumbs = [
     { label: t("web.provider.common.breadcrumbHome"), href: "/" },
@@ -353,7 +330,7 @@ export default function RolesSettings() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-<Label htmlFor="name">{t("web.provider.onboarding.leftover2.nameRequired")}</Label>
+<Label htmlFor="name">{t("web.provider.common.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}

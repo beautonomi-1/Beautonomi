@@ -97,9 +97,9 @@ function GestureLayerComponent({
             className={cn(
               "border-b border-gray-200 transition-colors relative group/slot",
               isNonWorking
-                ? "cursor-not-allowed border-l-[5px] border-l-amber-500/90 bg-amber-50/40"
+                ? "cursor-not-allowed border-s-[5px] border-s-amber-500/90 bg-amber-50/40"
                 : staffOff
-                  ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-gray-50/60"
+                  ? "cursor-pointer border-s-[3px] border-s-gray-300 bg-gray-50/60"
                   : "cursor-pointer hover:bg-gray-50/70",
             )}
           >

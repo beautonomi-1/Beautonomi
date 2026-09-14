@@ -399,7 +399,7 @@ export function ExplorePostForm({
           )}
 
           {/* Top bar: back, switch camera, photo/video toggle */}
-          <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">
+          <div className="absolute top-0 start-0 end-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">
             <button
               type="button"
               onClick={() => {
@@ -443,7 +443,7 @@ export function ExplorePostForm({
           </div>
 
           {/* Capture button */}
-          <div className="absolute bottom-6 left-0 right-0 flex justify-center">
+          <div className="absolute bottom-6 start-0 end-0 flex justify-center">
             <button
               type="button"
               disabled={isUploading || !!cameraError}
@@ -523,12 +523,12 @@ export function ExplorePostForm({
                     <button
                       type="button"
                       onClick={() => removeMedia(i)}
-                      className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors backdrop-blur-sm"
+                      className="absolute top-2 end-2 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors backdrop-blur-sm"
                     >
                       <X className="w-4 h-4" />
                     </button>
                     {mediaPaths.length > 1 && (
-                      <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/50 rounded-full text-white text-xs backdrop-blur-sm">
+                      <span className="absolute top-2 start-2 px-2 py-0.5 bg-black/50 rounded-full text-white text-xs backdrop-blur-sm">
                         {i + 1} / {mediaPaths.length}
                       </span>
                     )}
@@ -538,7 +538,7 @@ export function ExplorePostForm({
             </div>
 
             {mediaPaths.length > 1 && (
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+              <div className="absolute bottom-3 start-0 end-0 flex justify-center gap-1.5">
                 {mediaPaths.map((_, i) => (
                   <button
                     key={i}
@@ -557,7 +557,7 @@ export function ExplorePostForm({
                 <button
                   type="button"
                   onClick={() => scrollToSlide(Math.max(0, activeSlide - 1))}
-                  className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+                  className="hidden sm:flex absolute start-2 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
@@ -566,7 +566,7 @@ export function ExplorePostForm({
                   onClick={() =>
                     scrollToSlide(Math.min(mediaPaths.length - 1, activeSlide + 1))
                   }
-                  className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+                  className="hidden sm:flex absolute end-2 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>

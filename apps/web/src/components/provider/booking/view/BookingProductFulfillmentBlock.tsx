@@ -46,10 +46,10 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
     <BookingSectionCard className="border-amber-200 bg-amber-50">
       <BookingSectionLabel className="mb-1 flex items-center gap-1.5 text-amber-900">
         <Package className="h-4 w-4" />
-        {t("web.provider.bookings.detail.leftoverCopy.productPickup")}
+        {t("web.provider.bookings.detail.productFulfillment.title")}
       </BookingSectionLabel>
       <p className="text-sm text-amber-950">
-        {status ? t("web.provider.bookings.detail.leftoverCopy.linkedProductOrderStatus", { status: status.replace(/_/g, " ") }) : t("web.provider.bookings.detail.leftoverCopy.linkedProductOrder")}
+        {status ? t("web.provider.bookings.detail.productFulfillment.linkedOrderStatus", { status: status.replace(/_/g, " ") }) : t("web.provider.bookings.detail.productFulfillment.linkedOrder")}
       </p>
       {mobileShell ? (
         <BookingActionButton
@@ -59,14 +59,14 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
           variant="outline"
           onClick={() => openProductOrderView(orderId)}
         >
-          {t("web.provider.bookings.detail.leftoverCopy.fulfillOrder")}
+          {t("web.provider.bookings.detail.productFulfillment.fulfillOrder")}
         </BookingActionButton>
       ) : (
         <a
           href={`/provider/ecommerce/orders?order=${orderId}`}
           className="text-xs font-semibold text-amber-900 underline mt-2 inline-block"
         >
-          {t("web.provider.bookings.detail.leftoverCopy.fulfillOrder")}
+          {t("web.provider.bookings.detail.productFulfillment.fulfillOrder")}
         </a>
       )}
     </BookingSectionCard>

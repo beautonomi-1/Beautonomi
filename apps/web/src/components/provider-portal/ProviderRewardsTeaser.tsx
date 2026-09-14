@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetcher } from "@/lib/http/fetcher";
 
 interface TeaserData {
@@ -13,6 +14,7 @@ interface TeaserData {
 }
 
 export function ProviderRewardsTeaser() {
+  const { t } = useTranslation();
   const [data, setData] = useState<TeaserData | null>(null);
 
   useEffect(() => {
@@ -39,29 +41,35 @@ export function ProviderRewardsTeaser() {
 
   if (badge?.name) {
     return (
-      <span className="text-xs font-medium text-primary truncate" title={`Current badge: ${badge.name}`}>
+      <span
+        className="text-xs font-medium text-primary truncate"
+        title={t("web.provider.rewardsCard.currentBadge", { name: badge.name })}
+      >
         {badge.name}
       </span>
     );
   }
   if (next && next.points_needed > 0) {
     return (
-      <span className="text-xs font-medium text-gray-500 truncate" title={`Next: ${next.badge.name}`}>
-        {next.points_needed} pts to {next.badge.name}
+      <span
+        className="text-xs font-medium text-gray-500 truncate"
+        title={t("web.provider.rewardsCard.nextBadge", { name: next.badge.name })}
+      >
+        {t("web.provider.rewardsCard.ptsToBadge", { count: next.points_needed, name: next.badge.name })}
       </span>
     );
   }
   if (next?.badge?.name) {
     return (
       <span className="text-xs font-medium text-primary truncate">
-        Next: {next.badge.name}
+        {t("web.provider.rewardsCard.nextBadge", { name: next.badge.name })}
       </span>
     );
   }
   const total = (data as { points?: { total?: number } }).points?.total ?? 0;
   return (
     <span className="text-xs text-gray-500 truncate">
-      {total} pts
+      {t("web.provider.rewardsCard.pointsTotal", { count: total })}
     </span>
   );
 }

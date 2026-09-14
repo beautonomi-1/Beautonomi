@@ -466,7 +466,7 @@ export default function OnlineBookingSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 h-7 w-7"
+                        className="absolute top-2 end-2 h-7 w-7"
                         onClick={() => {
                           navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).iframe);
                           setCopiedField("iframe");
@@ -496,7 +496,7 @@ export default function OnlineBookingSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 h-7 w-7"
+                        className="absolute top-2 end-2 h-7 w-7"
                         onClick={() => {
                           navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).scriptIframe);
                           setCopiedField("script_iframe");
@@ -526,7 +526,7 @@ export default function OnlineBookingSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 h-7 w-7"
+                        className="absolute top-2 end-2 h-7 w-7"
                         onClick={() => {
                           navigator.clipboard.writeText(bookingEmbedSnippets(bookingLink).scriptButton);
                           setCopiedField("script");

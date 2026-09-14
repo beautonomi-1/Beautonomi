@@ -197,7 +197,7 @@ export function BookingsDayHub({
                   {count > 0 ? (
                     <span
                       className={cn(
-                        "absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center",
+                        "absolute -top-1 -end-1 h-4 min-w-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center",
                         selected ? "bg-white text-gray-900" : "bg-primary text-white",
                       )}
                     >
@@ -265,8 +265,14 @@ export function BookingsDayHub({
                 {format(selectedDate, "EEEE, MMMM d")}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                {dayBookings.length} appointment{dayBookings.length === 1 ? "" : "s"}
-                {dayBlocks.length > 0 ? ` · ${dayBlocks.length} block${dayBlocks.length === 1 ? "" : "s"}` : ""}
+                {dayBlocks.length > 0
+                  ? t("web.provider.bookings.dayHub.appointmentsSummary", {
+                      appointments: t("web.provider.bookings.dayHub.appointmentsOnly", {
+                        count: dayBookings.length,
+                      }),
+                      blocks: t("web.provider.bookings.dayHub.blocksOnly", { count: dayBlocks.length }),
+                    })
+                  : t("web.provider.bookings.dayHub.appointmentsOnly", { count: dayBookings.length })}
               </p>
             </BookingSectionCard>
 

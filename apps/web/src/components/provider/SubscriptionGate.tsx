@@ -24,7 +24,7 @@ export function SubscriptionGate({
   className = "",
 }: SubscriptionGateProps) {
   const { t } = useTranslation();
-  const title = feature?.trim() || t("web.provider.bookings.detail.leftoverCopy.notIncludedInPlan");
+  const title = feature?.trim() || t("web.provider.bookings.detail.subscription.notIncludedInPlan");
   const body = upgradeMessage?.trim() || message;
   return (
     <Alert className={`border-yellow-200 bg-yellow-50 ${className}`}>

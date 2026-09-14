@@ -723,7 +723,7 @@ export default function SubscriptionPage() {
       <div className="mx-auto max-w-5xl">
         <div className="relative mb-8 overflow-hidden rounded-2xl border border-pink-100/80 bg-gradient-to-br from-pink-50/90 via-white to-violet-50/70 px-5 py-8 md:px-8 md:py-10">
           <div
-            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+            className="pointer-events-none absolute -end-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
             aria-hidden
           />
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1038,12 +1038,12 @@ export default function SubscriptionPage() {
                             } ${isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : ""}`}
                           >
                             {plan.is_popular ? (
-                              <span className="absolute -top-3 left-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-white shadow">
+                              <span className="absolute -top-3 start-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-white shadow">
                                 {tx("popular")}
                               </span>
                             ) : null}
                             {isCurrent ? (
-                              <Badge className="absolute -top-3 right-6 border-0 bg-gray-900 text-white hover:bg-gray-900">
+                              <Badge className="absolute -top-3 end-6 border-0 bg-gray-900 text-white hover:bg-gray-900">
                                 {tx("current")}
                               </Badge>
                             ) : null}
@@ -1132,7 +1132,7 @@ export default function SubscriptionPage() {
                         }`}
                       >
                         {isCurrent ? (
-                          <Badge className="absolute right-4 top-4 border-0 bg-gray-900 text-white">
+                          <Badge className="absolute end-4 top-4 border-0 bg-gray-900 text-white">
                             {tx("current")}
                           </Badge>
                         ) : null}

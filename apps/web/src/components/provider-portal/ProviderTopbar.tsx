@@ -64,7 +64,7 @@ export function ProviderTopbar() {
               : t("web.provider.topbar.salon")}
           </Badge>
         )}
-        {/* Setup Progress - Desktop - Added margin-left for better separation */}
+        {/* Setup Progress - Desktop - Added margin-inline-start for better separation */}
         {setupCompletion < 100 && (
           <Link href="/provider/get-started" className="hidden md:flex items-center gap-2 ms-2">
             <CircularProgress 
@@ -82,10 +82,10 @@ export function ProviderTopbar() {
           </Link>
         )}
 
-        {/* Notifications - Added margin-left for better separation from progress */}
+        {/* Notifications - Added margin-inline-start for better separation from progress */}
         <Button variant="ghost" size="icon" className="relative ms-1">
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
+          <span className="absolute top-1 end-1 w-2 h-2 bg-primary rounded-full"></span>
         </Button>
 
         {/* User Menu */}

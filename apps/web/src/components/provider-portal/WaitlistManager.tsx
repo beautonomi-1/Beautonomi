@@ -349,7 +349,7 @@ export function AddToWaitlistDialog({
         <SheetHeader className="px-6 sm:px-8 pb-4 border-b border-gray-100 relative">
           <button
             onClick={onClose}
-            className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
+            className="absolute end-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
             aria-label={t("web.provider.portal.waitlistManager.close")}
           >
             <X className="w-5 h-5 text-gray-600" />
@@ -618,7 +618,7 @@ export function WaitlistManager({
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

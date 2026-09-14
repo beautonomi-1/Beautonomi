@@ -373,7 +373,7 @@ export default function CommissionsSettings() {
                               className="min-h-[44px] touch-manipulation pe-10"
                               placeholder={t("web.provider.settings.pages.team/commissions.n00")}
                             />
-                            <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <Percent className="absolute end-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           </div>
                           <p className="text-xs text-gray-500 mt-1.5">
                             {t("web.provider.settings.pages.team/commissions.serviceCommissionRateHint")}
@@ -403,7 +403,7 @@ export default function CommissionsSettings() {
                               className="min-h-[44px] touch-manipulation pe-10"
                               placeholder={t("web.provider.settings.pages.team/commissions.n00")}
                             />
-                            <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <Percent className="absolute end-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           </div>
                           <p className="text-xs text-gray-500 mt-1.5">
                             {t("web.provider.settings.pages.team/commissions.productCommissionRateHint")}
@@ -517,7 +517,7 @@ export default function CommissionsSettings() {
                           className="min-h-[44px] touch-manipulation ps-8"
                           placeholder={t("web.provider.settings.pages.team/commissions.n000")}
                         />
-                        <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <DollarSign className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       </div>
                       <p className="text-xs text-gray-500 mt-1.5">
                         {t("web.provider.settings.pages.team/commissions.hourlyRateHint")}
@@ -565,7 +565,7 @@ export default function CommissionsSettings() {
                           className="min-h-[44px] touch-manipulation ps-8"
                           placeholder={t("web.provider.settings.pages.team/commissions.n000")}
                         />
-                        <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <DollarSign className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       </div>
                       <p className="text-xs text-gray-500 mt-1.5">
                         {t("web.provider.settings.pages.team/commissions.monthlySalaryHint")}

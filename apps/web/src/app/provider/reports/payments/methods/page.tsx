@@ -162,7 +162,9 @@ export default function PaymentMethodsReport() {
   const totalLineItems = data.totalLineItems ?? data.totalPayments ?? 0;
   const tz = data.timezone ?? "";
   const rangeLabel =
-    data.fromYmd && data.toYmd ? `${data.fromYmd} → ${data.toYmd}` : "";
+    data.fromYmd && data.toYmd
+      ? t("web.provider.reports.pages.payments/methods.dateRange", { from: data.fromYmd, to: data.toYmd })
+      : "";
   const failedTotal = data.diagnostics?.failedCaptureAttemptsInRange ?? 0;
   const failedAttrib = data.diagnostics?.failedCaptureAttemptsAttributed ?? 0;
 
@@ -280,6 +282,10 @@ export default function PaymentMethodsReport() {
                   const ptN = method.paymentTransactionCount ?? 0;
                   const bpN = method.bookingPaymentCount ?? 0;
                   const wN = method.walletBookingAdjustmentCount ?? 0;
+                  const amountSuffix = (amount?: number | null) =>
+                    amount != null && amount > 0
+                      ? t("web.provider.reports.pages.payments/methods.amountSuffix", { amount: fmt(amount) })
+                      : "";
                   return (
                     <div
                       key={method.method}
@@ -297,27 +303,25 @@ export default function PaymentMethodsReport() {
                             {ptN > 0 ? (
                               <span>
                                 {t("web.provider.reports.pages.payments/methods.gatewayRows", { count: ptN })}
-                                {method.paymentTransactionAmount != null && method.paymentTransactionAmount > 0
-                                  ? ` · ${fmt(method.paymentTransactionAmount)}`
-                                  : ""}
+                                {amountSuffix(method.paymentTransactionAmount)}
                               </span>
                             ) : null}
-                            {ptN > 0 && (bpN > 0 || wN > 0) ? <span> · </span> : null}
+                            {ptN > 0 && (bpN > 0 || wN > 0) ? (
+                              <span>{t("web.provider.reports.common.listSeparator")}</span>
+                            ) : null}
                             {bpN > 0 ? (
                               <span>
                                 {t("web.provider.reports.pages.payments/methods.tillLogs", { count: bpN })}
-                                {method.bookingPaymentAmount != null && method.bookingPaymentAmount > 0
-                                  ? ` · ${fmt(method.bookingPaymentAmount)}`
-                                  : ""}
+                                {amountSuffix(method.bookingPaymentAmount)}
                               </span>
                             ) : null}
-                            {(ptN > 0 || bpN > 0) && wN > 0 ? <span> · </span> : null}
+                            {(ptN > 0 || bpN > 0) && wN > 0 ? (
+                              <span>{t("web.provider.reports.common.listSeparator")}</span>
+                            ) : null}
                             {wN > 0 ? (
                               <span>
                                 {t("web.provider.reports.pages.payments/methods.walletAdj", { count: wN })}
-                                {method.walletBookingAdjustmentAmount != null && method.walletBookingAdjustmentAmount > 0
-                                  ? ` · ${fmt(method.walletBookingAdjustmentAmount)}`
-                                  : ""}
+                                {amountSuffix(method.walletBookingAdjustmentAmount)}
                               </span>
                             ) : null}
                             {ptN === 0 && bpN === 0 && wN === 0 ? (

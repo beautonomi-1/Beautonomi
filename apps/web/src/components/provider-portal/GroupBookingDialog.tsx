@@ -261,7 +261,7 @@ export function GroupBookingDialog({
     clientSearchTimers.current[idx] = setTimeout(async () => {
       try {
         const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`);
-        if (!res.ok) throw new Error("search failed");
+        if (!res.ok) throw new Error(t("web.provider.portal.groupBookingDialog.searchFailed"));
         const json = await res.json();
         const rows: ClientSearchResult[] = (json.data || []).map((c: any) => ({
           id: c.id,
@@ -275,7 +275,7 @@ export function GroupBookingDialog({
         setParticipantClientSearchState(idx, { results: [], loading: false });
       }
     }, 280);
-  }, [setParticipantClientSearchState]);
+  }, [setParticipantClientSearchState, t]);
 
   // ─── Group-level products ──────────────────────────────────────────────
   const [groupProducts, setGroupProducts] = useState<AppointmentProduct[]>([]);
@@ -1295,7 +1295,7 @@ export function GroupBookingDialog({
                 <div>
                   <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.prefillService")}</Label>
                   <div className="relative mt-1">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
+                    <Search className="absolute start-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
                     <Select
                       value={formData.service_id}
                       onValueChange={v => {
@@ -1536,7 +1536,7 @@ export function GroupBookingDialog({
                         {!participant.customer_id ? (
                           <div className="relative">
                             <div className="relative">
-                              <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                              <Search className="absolute start-2 top-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                               <Input
                                 placeholder={t("web.provider.portal.groupBookingDialog.searchExistingClients")}
                                 value={clientSearch.query}
@@ -1546,10 +1546,10 @@ export function GroupBookingDialog({
                                 className="ps-7 h-8 text-xs bg-white"
                                 autoComplete="off"
                               />
-                              {clientSearch.loading && <Loader2 className="absolute right-2 top-2 w-3.5 h-3.5 text-gray-400 animate-spin" />}
+                              {clientSearch.loading && <Loader2 className="absolute end-2 top-2 w-3.5 h-3.5 text-gray-400 animate-spin" />}
                             </div>
                             {clientSearch.open && clientSearch.results.length > 0 && (
-                              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                              <div className="absolute top-full start-0 end-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
                                 {clientSearch.results.map(c => (
                                   <button
                                     key={c.id}
@@ -1879,7 +1879,7 @@ export function GroupBookingDialog({
               {/* Product picker */}
               <div className="space-y-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                  <Search className="absolute start-2 top-2.5 h-4 w-4 text-gray-400" />
                   <Input placeholder={t("web.provider.portal.groupBookingDialog.searchProducts")} value={productSearchQuery}
                     onChange={e => {
                       setProductSearchQuery(e.target.value);

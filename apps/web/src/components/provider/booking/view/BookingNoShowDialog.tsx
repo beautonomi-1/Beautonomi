@@ -127,29 +127,29 @@ export function BookingNoShowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-amber-800">{t("web.provider.bookings.detail.leftoverCopy.markAsNoShow")}</DialogTitle>
+          <DialogTitle className="text-amber-800">{t("web.provider.bookings.detail.noShow.markAsNoShow")}</DialogTitle>
           <DialogDescription>
-            {t("web.provider.bookings.detail.leftoverCopy.markClientNoShow", { name: appointment.client_name ?? t("web.provider.bookings.detail.leftoverCopy.thisClient") })}
+            {t("web.provider.bookings.detail.noShow.markClientNoShow", { name: appointment.client_name ?? t("web.provider.bookings.detail.noShow.thisClient") })}
           </DialogDescription>
         </DialogHeader>
 
         {runningLateAt ? (
           <p className="text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-xl p-3">
-            {t("web.provider.bookings.detail.leftoverCopy.customerRunningLate")}
-            {runningLateMinutes > 0 ? t("web.provider.bookings.detail.leftoverCopy.lateMinutes", { minutes: runningLateMinutes }) : ""}{t("web.provider.bookings.detail.leftoverCopy.reportedAt", { time: new Date(runningLateAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}
-            {suppressNoShow ? t("web.provider.bookings.detail.leftoverCopy.waitLateWindow") : ""}
+            {t("web.provider.bookings.detail.noShow.customerRunningLate")}
+            {runningLateMinutes > 0 ? t("web.provider.bookings.detail.noShow.lateMinutes", { minutes: runningLateMinutes }) : ""}{t("web.provider.bookings.detail.noShow.reportedAt", { time: new Date(runningLateAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}
+            {suppressNoShow ? t("web.provider.bookings.detail.noShow.waitLateWindow") : ""}
           </p>
         ) : null}
 
         {noShowFeeEnabled && previewFee > 0 ? (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-3">
-            {t("web.provider.bookings.detail.leftoverCopy.noShowFeeRetain", { amount: formatMoney(previewFee) })}
+            {t("web.provider.bookings.detail.noShow.feeRetain", { amount: formatMoney(previewFee) })}
           </p>
         ) : (
           <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded-xl p-3">
             {noShowFeeEnabled
-              ? t("web.provider.bookings.detail.leftoverCopy.noCollectedPayment")
-              : t("web.provider.bookings.detail.leftoverCopy.noNoShowFeeConfigured")}
+              ? t("web.provider.bookings.detail.noShow.noCollectedPayment")
+              : t("web.provider.bookings.detail.noShow.noFeeConfigured")}
           </p>
         )}
 
@@ -158,7 +158,7 @@ export function BookingNoShowDialog({
             {saving ? (
               <>
                 <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                {t("web.provider.bookings.detail.leftoverCopy.saving")}
+                {t("web.provider.bookings.detail.noShow.saving")}
               </>
             ) : (
               t("web.provider.bookings.detail.dialogs.confirmNoShow")

@@ -152,7 +152,7 @@ export function ServiceCreateEditDialog({
     variantName: "",  // Short name for variant (e.g., "Short Hair")
     variantSortOrder: 0,
 
-    // {t("web.provider.bookings.detail.leftoverCopy.resourceRequirements")} (rooms, equipment) for this service
+    // {t("web.provider.bookings.detail.resources.title")} (rooms, equipment) for this service
     offeringResources: [] as Array<{ resource_id: string; required: boolean }>,
   });
 
@@ -1076,7 +1076,7 @@ export function ServiceCreateEditDialog({
                 <Separator />
                 <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.bookings.detail.leftoverCopy.resourceRequirements")}</h3>
+                    <h3 className="text-base sm:text-lg font-semibold mb-1">{t("web.provider.bookings.detail.resources.title")}</h3>
                     <p className="text-xs sm:text-sm text-gray-500">{t("web.provider.catalogue.serviceDialog.resourceHint")}</p>
                   </div>
                   {isLoadingResources ? (
@@ -1359,7 +1359,7 @@ export function ServiceCreateEditDialog({
                   <div>
 <Label className="text-sm sm:text-base">{t("web.provider.catalogue.serviceDialog.priceRequired")}</Label>
                     <div className="relative mt-1.5">
-                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
+                      <span className="absolute start-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                       <Input 
                         type="number" 
                         step="0.01"
@@ -1561,10 +1561,10 @@ placeholder={t("web.provider.portal.newSaleDialog.pricePlaceholder")}
                       className="pe-8"
                       placeholder="0"
                     />
-                    <span className="absolute right-3 top-2.5 text-gray-500">%</span>
+                    <span className="absolute end-3 top-2.5 text-gray-500">%</span>
                   </div>
                   <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-500">{currencyCode}</span>
+                    <span className="absolute start-3 top-2.5 text-gray-500">{currencyCode}</span>
                     <Input 
                       type="number" 
                       readOnly

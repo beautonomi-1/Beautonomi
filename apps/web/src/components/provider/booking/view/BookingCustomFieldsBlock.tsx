@@ -14,7 +14,7 @@ export function BookingCustomFieldsBlock({ values }: BookingCustomFieldsBlockPro
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.customFields")}</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.customFields.title")}</BookingSectionLabel>
       {Object.entries(values).map(([name, value]) => (
         <BookingSummaryRow
           key={name}

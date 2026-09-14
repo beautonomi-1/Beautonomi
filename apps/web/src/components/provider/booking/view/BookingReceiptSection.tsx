@@ -17,19 +17,19 @@ export function BookingReceiptSection({ bookingId, clientEmail }: BookingReceipt
   const emailReceipt = async () => {
     try {
       await providerApi.sendReceiptEmail(bookingId);
-      toast.success(t("web.provider.bookings.detail.leftoverCopy.receiptEmailed"));
+      toast.success(t("web.provider.bookings.detail.receipt.titleEmailed"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("web.provider.bookings.detail.leftoverCopy.receiptEmailFailed"));
+      toast.error(error instanceof Error ? error.message : t("web.provider.bookings.detail.receipt.titleEmailFailed"));
     }
   };
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.receipt")}</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.receipt.title")}</BookingSectionLabel>
       <div className="flex flex-wrap gap-2">
         <ShareReceiptButton kind="provider-booking" subjectId={bookingId} />
         <BookingActionButton size="sm" fullWidth={false} variant="outline" onClick={() => void emailReceipt()}>
-          {t("web.provider.bookings.detail.leftoverCopy.emailReceipt")}
+          {t("web.provider.bookings.detail.receipt.emailReceipt")}
         </BookingActionButton>
         <a
           href={`/api/provider/bookings/${bookingId}/receipt/pdf`}
@@ -37,11 +37,11 @@ export function BookingReceiptSection({ bookingId, clientEmail }: BookingReceipt
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center rounded-xl border px-3 min-h-[44px] text-sm font-semibold"
         >
-          {t("web.provider.bookings.detail.leftoverCopy.downloadPdf")}
+          {t("web.provider.bookings.detail.receipt.downloadPdf")}
         </a>
       </div>
       {clientEmail ? (
-<p className="text-xs text-gray-500 mt-2">{t("web.provider.bookings.detail.leftoverCopy.sendsTo", { email: clientEmail })}</p>
+<p className="text-xs text-gray-500 mt-2">{t("web.provider.bookings.detail.receipt.sendsTo", { email: clientEmail })}</p>
       ) : null}
     </BookingSectionCard>
   );

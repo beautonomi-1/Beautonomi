@@ -12,6 +12,7 @@ import {
   Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { usePermissions } from "@/hooks/usePermissions";
 import { openCreateMode, openGroupSheet, openWalkInSaleSheet } from "@/stores/appointment-sidebar-store";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -32,6 +33,7 @@ export function BookingsQuickActions({
   onWalkIn,
   onWaitlistQuickBook,
 }: BookingsQuickActionsProps) {
+  const { t } = useTranslation();
   const unifiedPos = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const mobileShell = useProviderBookingMobileShell();
   const { hasPermission, isOwner } = usePermissions();
@@ -47,8 +49,8 @@ export function BookingsQuickActions({
   const actions = [
     {
       id: "new",
-      label: "New",
-      sub: "Booking",
+      label: t("web.provider.bookings.hubQuickActions.new"),
+      sub: t("web.provider.bookings.hubQuickActions.booking"),
       icon: Plus,
       requiresCreate: true,
       onClick: () =>
@@ -58,8 +60,8 @@ export function BookingsQuickActions({
     },
     {
       id: "walk-in",
-      label: "Walk-in",
-      sub: "Quick book",
+      label: t("web.provider.bookings.hubQuickActions.walkIn"),
+      sub: t("web.provider.bookings.hubQuickActions.quickBook"),
       icon: UserRound,
       requiresCreate: true,
       onClick: () => {
@@ -79,16 +81,16 @@ export function BookingsQuickActions({
     },
     {
       id: "group",
-      label: "Group",
-      sub: "Session",
+      label: t("web.provider.bookings.hubQuickActions.group"),
+      sub: t("web.provider.bookings.hubQuickActions.session"),
       icon: Users,
       requiresCreate: true,
       onClick: () => guardCreate(() => openGroupSheet()),
     },
     {
       id: "house-call",
-      label: "House",
-      sub: "Call",
+      label: t("web.provider.bookings.hubQuickActions.house"),
+      sub: t("web.provider.bookings.hubQuickActions.call"),
       icon: Home,
       requiresCreate: true,
       onClick: () =>
@@ -103,15 +105,15 @@ export function BookingsQuickActions({
     },
     {
       id: "block",
-      label: "Block",
-      sub: "Time",
+      label: t("web.provider.bookings.hubQuickActions.block"),
+      sub: t("web.provider.bookings.hubQuickActions.time"),
       icon: Clock,
       href: "/provider/time-blocks",
     },
     {
       id: "sell",
-      label: unifiedPos ? "POS" : "Sell",
-      sub: "Products",
+      label: unifiedPos ? t("web.provider.bookings.hubQuickActions.pos") : t("web.provider.bookings.hubQuickActions.sell"),
+      sub: t("web.provider.bookings.hubQuickActions.products"),
       icon: ShoppingBag,
       href: mobileShell ? undefined : unifiedPos ? "/provider/sales" : "/provider/ecommerce/walk-in",
       onClick: mobileShell
@@ -120,8 +122,8 @@ export function BookingsQuickActions({
     },
     {
       id: "waitlist",
-      label: "Waitlist",
-      sub: "Quick book",
+      label: t("web.provider.bookings.hubQuickActions.waitlist"),
+      sub: t("web.provider.bookings.hubQuickActions.quickBook"),
       icon: ListOrdered,
       onClick: () => {
         if (onWaitlistQuickBook) {
@@ -133,8 +135,11 @@ export function BookingsQuickActions({
     },
     {
       id: "front-desk",
-      label: "Front desk",
-      sub: waitingRoomCount > 0 ? `${waitingRoomCount} waiting` : "Today",
+      label: t("web.provider.bookings.hubQuickActions.frontDesk"),
+      sub:
+        waitingRoomCount > 0
+          ? t("web.provider.bookings.hubQuickActions.waitingCount", { count: waitingRoomCount })
+          : t("web.provider.common.dateRange.today"),
       icon: DoorOpen,
       href: "/provider/front-desk",
     },
