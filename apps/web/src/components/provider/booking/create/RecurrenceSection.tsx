@@ -40,7 +40,7 @@ export function RecurrenceSection({
   isWalkIn,
 }: RecurrenceSectionProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.recurrenceSection";
+  const prefix = "web.provider.recurrenceSection";
   const disabled = isWalkIn || !hasSavedClient;
 
   return (

@@ -81,6 +81,9 @@ jobs:
       - name: i18n provider web scan
         run: pnpm i18n:scan:provider
 
+      - name: i18n provider key parity
+        run: pnpm i18n:scan:provider-keys
+
       - name: i18n leftover namespace guard
         run: pnpm i18n:check:leftover-ns
 

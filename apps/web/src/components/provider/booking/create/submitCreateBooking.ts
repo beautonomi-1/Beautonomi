@@ -169,9 +169,9 @@ export async function submitCreateBooking(
     } catch (recErr) {
       const reason = formatApiErrorMessage(
         recErr,
-        input.t("web.provider.bookings.appointmentCreate.couldNotCreateRecurring"),
+        input.t("web.provider.portal.appointmentCreate.couldNotCreateRecurring"),
       );
-      throw new Error(input.t("web.provider.bookings.appointmentCreate.recurringFailedTrySingle", { reason }));
+      throw new Error(input.t("web.provider.portal.appointmentCreate.recurringFailedTrySingle", { reason }));
     }
   } else {
     created = await providerApi.createAppointment(appointmentData as Appointment);
