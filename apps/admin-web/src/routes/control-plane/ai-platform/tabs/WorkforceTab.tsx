@@ -4,7 +4,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpField } from "../../cpShared";
 import { ModelCatalogPicker } from "../ModelCatalogPicker";
 import { agentConsoleDeepLink } from "../agentConsoleDeepLink";
-import { TASK_DEFAULTS } from "../constants";
+import { CHEAP_GLOBAL_ROUTING_POLICY, TASK_DEFAULTS } from "../constants";
 import type { AiPlatformPayload, SelectableModel } from "../types";
 
 export function WorkforceTab(props: {
@@ -73,11 +73,16 @@ export function WorkforceTab(props: {
               className="min-h-[4rem] w-full rounded-lg border font-mono text-xs"
               value={props.routingPolicyJson}
               onChange={(e) => props.setRoutingPolicyJson(e.target.value)}
-              placeholder='{"taskTier":{"classification":"lite"},"taskModel":{"copilot":"openai/gpt-5-mini"}}'
+              placeholder={CHEAP_GLOBAL_ROUTING_POLICY}
             />
           </CpField>
         </div>
-        <p className="text-xs text-gray-500">Save routing policy and spend cap from the sticky save bar (Gateway/Budgets tabs share it).</p>
+        <p className="text-xs text-gray-500">
+          <strong>Default routing</strong> on agents uses the enabled catalog + this policy (cheapest tier per task).
+          Leave preferred/fallback empty unless pinning a model. Content Moderator uses{" "}
+          <code className="rounded bg-gray-100 px-1">openai/gpt-oss-safeguard</code> when enabled in catalog.
+          Save routing policy and spend cap from the sticky save bar.
+        </p>
       </AdminPanel>
 
       <AdminPanel className="space-y-3 overflow-x-auto">

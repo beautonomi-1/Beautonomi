@@ -62,6 +62,19 @@ export function AiPlatformHub() {
         </Link>
       </div>
 
+      <AdminPanel className="border-blue-100 bg-blue-50/60">
+        <p className="text-sm text-blue-950">
+          <span className="font-medium">Global platform config.</span> Runtime, catalog, and presets save to the{" "}
+          <code className="rounded bg-white/80 px-1">tenant_id IS NULL</code> row — shared by all agents and tenants.
+          {s.data?.config_scope?.scope === "tenant" ? (
+            <span className="mt-1 block text-amber-800">
+              Warning: loaded tenant-scoped override ({s.data.config_scope.tenant_id ?? "unknown"}). Use global scope
+              for platform AI.
+            </span>
+          ) : null}
+        </p>
+      </AdminPanel>
+
       {s.msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{s.msg}</p>

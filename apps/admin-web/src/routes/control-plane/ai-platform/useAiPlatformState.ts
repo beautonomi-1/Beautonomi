@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/lib/adminClient";
 import { HARM_CATEGORIES } from "./constants";
+import { aiPlatformQuery, withAiPlatformScope } from "./platformScope";
 import type { AiPlatformPayload, DirectGeminiModel, LiveModelRow } from "./types";
 
 export function useAiPlatformState(allowed: boolean) {
@@ -71,9 +72,7 @@ export function useAiPlatformState(allowed: boolean) {
     setLoading(true);
     setMsg(null);
     try {
-      const d = await adminApi.getJson<AiPlatformPayload>(
-        `/api/admin/control-plane/integrations/ai?environment=${encodeURIComponent(env)}`,
-      );
+      const d = await adminApi.getJson<AiPlatformPayload>(aiPlatformQuery(env));
       setData(d);
       applyPayloadToForm(d);
     } catch (e) {
@@ -130,28 +129,31 @@ export function useAiPlatformState(allowed: boolean) {
           safety_settings[cat] = { threshold: safety[cat] ?? "BLOCK_MEDIUM_AND_ABOVE" };
         }
       }
-      await adminApi.putJson("/api/admin/control-plane/integrations/ai", {
-        environment: env,
-        enabled: runtimeEnabled,
-        runtime,
-        default_model_id: defaultModelId,
-        failover_enabled: failoverEnabled,
-        ...patch,
-        ...(gatewayKey ? { gateway_api_key_secret: gatewayKey } : {}),
-        ...(openaiKey ? { openai_api_key_secret: openaiKey } : {}),
-        ...(anthropicKey ? { anthropic_api_key_secret: anthropicKey } : {}),
-        gemini: {
-          api_key_secret: geminiKey || undefined,
-          enabled: data?.gemini?.enabled ?? true,
-          default_model: defaultModelId.replace(/^google\//, "") || defaultModelId,
-          safety_settings,
-        },
-        module: {
-          daily_budget_credits: dailyBudgetCredits,
-          monthly_budget_usd: monthlyBudgetUsd === "" ? null : Number(monthlyBudgetUsd),
-          alert_threshold_pct: alertThresholdPct,
-        },
-      });
+      await adminApi.putJson(
+        "/api/admin/control-plane/integrations/ai",
+        withAiPlatformScope({
+          environment: env,
+          enabled: runtimeEnabled,
+          runtime,
+          default_model_id: defaultModelId,
+          failover_enabled: failoverEnabled,
+          ...patch,
+          ...(gatewayKey ? { gateway_api_key_secret: gatewayKey } : {}),
+          ...(openaiKey ? { openai_api_key_secret: openaiKey } : {}),
+          ...(anthropicKey ? { anthropic_api_key_secret: anthropicKey } : {}),
+          gemini: {
+            api_key_secret: geminiKey || undefined,
+            enabled: data?.gemini?.enabled ?? true,
+            default_model: defaultModelId.replace(/^google\//, "") || defaultModelId,
+            safety_settings,
+          },
+          module: {
+            daily_budget_credits: dailyBudgetCredits,
+            monthly_budget_usd: monthlyBudgetUsd === "" ? null : Number(monthlyBudgetUsd),
+            alert_threshold_pct: alertThresholdPct,
+          },
+        }),
+      );
       if (agentDailyCapUsd !== "" || routingPolicyJson !== (data?.workforce?.module?.default_routing_policy_id ?? "")) {
         await adminApi.putJson("/api/admin/control-plane/modules/agents", {
           environment: env,
@@ -178,7 +180,7 @@ export function useAiPlatformState(allowed: boolean) {
     try {
       const res = await adminApi.putJson<{ catalog_skipped_eval?: string[] }>(
         "/api/admin/control-plane/integrations/ai",
-        { environment: env, preset },
+        withAiPlatformScope({ environment: env, preset }),
       );
       if (res.catalog_skipped_eval?.length) {
         setMsg(`Preset applied. Skipped in production (eval required): ${res.catalog_skipped_eval.join(", ")}`);
@@ -196,10 +198,10 @@ export function useAiPlatformState(allowed: boolean) {
   const toggleCatalog = async (row: LiveModelRow, enabled: boolean, tier?: string) => {
     const res = await adminApi.putJson<{ catalog_errors?: string[]; catalog_error_reason?: string }>(
       "/api/admin/control-plane/integrations/ai",
-      {
+      withAiPlatformScope({
         environment: env,
         catalog: [{ id: row.db_id ?? undefined, enabled, model_id: row.id, eval_passed_at: row.eval_passed_at, tier: tier ?? row.tier }],
-      },
+      }),
     );
     if (res?.catalog_errors?.length) {
       setMsg(`Enable blocked in production until evals pass (${res.catalog_error_reason})`);
@@ -208,24 +210,33 @@ export function useAiPlatformState(allowed: boolean) {
   };
 
   const markEvalPassed = async (row: LiveModelRow) => {
-    await adminApi.putJson("/api/admin/control-plane/integrations/ai", {
-      environment: env,
-      catalog: [{ id: row.db_id ?? undefined, model_id: row.id, enabled: row.enabled, tier: row.tier, eval_passed_at: new Date().toISOString() }],
-    });
+    await adminApi.putJson(
+      "/api/admin/control-plane/integrations/ai",
+      withAiPlatformScope({
+        environment: env,
+        catalog: [{ id: row.db_id ?? undefined, model_id: row.id, enabled: row.enabled, tier: row.tier, eval_passed_at: new Date().toISOString() }],
+      }),
+    );
     setMsg(`Eval marked passed for ${row.id}`);
     await load();
   };
 
   const toggleDirectGemini = async (model: DirectGeminiModel, enabled: boolean) => {
-    await adminApi.putJson("/api/admin/control-plane/integrations/ai", {
-      environment: env,
-      catalog: [{ model_id: model.id, enabled, tier: model.tier }],
-    });
+    await adminApi.putJson(
+      "/api/admin/control-plane/integrations/ai",
+      withAiPlatformScope({
+        environment: env,
+        catalog: [{ model_id: model.id, enabled, tier: model.tier }],
+      }),
+    );
     await load();
   };
 
   const refreshCatalog = async () => {
-    await adminApi.putJson("/api/admin/control-plane/integrations/ai", { environment: env, refresh_catalog: true });
+    await adminApi.putJson(
+      "/api/admin/control-plane/integrations/ai",
+      withAiPlatformScope({ environment: env, refresh_catalog: true }),
+    );
     setMsg("Gateway catalog refreshed from Vercel.");
     await load();
   };
@@ -235,10 +246,10 @@ export function useAiPlatformState(allowed: boolean) {
     setSaving(true);
     setMsg(null);
     try {
-      await adminApi.putJson("/api/admin/control-plane/integrations/ai", {
-        environment: env,
-        gateway_api_key_secret: gatewayKey,
-      });
+      await adminApi.putJson(
+        "/api/admin/control-plane/integrations/ai",
+        withAiPlatformScope({ environment: env, gateway_api_key_secret: gatewayKey }),
+      );
       setGatewayKey("");
       setMsg("Gateway key saved.");
       await load();
@@ -254,12 +265,15 @@ export function useAiPlatformState(allowed: boolean) {
     setSaving(true);
     setMsg(null);
     try {
-      await adminApi.putJson("/api/admin/control-plane/integrations/ai", {
-        environment: env,
-        module: {
-          monthly_budget_usd: monthlyBudgetUsd === "" ? null : Number(monthlyBudgetUsd),
-        },
-      });
+      await adminApi.putJson(
+        "/api/admin/control-plane/integrations/ai",
+        withAiPlatformScope({
+          environment: env,
+          module: {
+            monthly_budget_usd: monthlyBudgetUsd === "" ? null : Number(monthlyBudgetUsd),
+          },
+        }),
+      );
       setMsg("Monthly budget saved.");
       await load();
     } catch (e) {
@@ -307,10 +321,10 @@ export function useAiPlatformState(allowed: boolean) {
   const testCall = async (credential?: "gemini" | "gateway" | "openai" | "anthropic"): Promise<boolean> => {
     setMsg(null);
     try {
-      const r = await adminApi.postJson<Record<string, unknown>>("/api/admin/control-plane/integrations/ai/test", {
-        environment: env,
-        credential,
-      });
+      const r = await adminApi.postJson<Record<string, unknown>>(
+        "/api/admin/control-plane/integrations/ai/test",
+        withAiPlatformScope({ environment: env, credential }),
+      );
       const ok = Boolean(r.success);
       setMsg(
         ok

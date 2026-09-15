@@ -35,6 +35,9 @@ function isDuplicate(err: unknown): boolean {
 }
 
 async function resolveSafeguardModel(environment: string): Promise<string> {
+  const runtime = await resolveAiRuntime(environment, null);
+  const enabledSafeguard = runtime.catalog.find((c) => c.enabled && /gpt-oss-safeguard/i.test(c.id));
+  if (enabledSafeguard) return enabledSafeguard.id;
   try {
     const live = await fetchLiveGatewayModels();
     const safeguard = pickLatestGatewayModel(live, "openai", (m) => /gpt-oss-safeguard/i.test(m.id));
@@ -42,7 +45,6 @@ async function resolveSafeguardModel(environment: string): Promise<string> {
   } catch {
     // fall through
   }
-  const runtime = await resolveAiRuntime(environment, null);
   return runtime.config.defaultModelId;
 }
 

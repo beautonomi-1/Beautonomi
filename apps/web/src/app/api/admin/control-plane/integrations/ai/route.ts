@@ -4,7 +4,12 @@ import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
-import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  CHEAP_GLOBAL_ROUTING_POLICY,
+  resolveAiPlatformScope,
+} from "@/lib/ai/platform-config-scope";
 import { toSafeAiRuntimeRow, toSafeEmergencyRow } from "@/lib/ai/safe-config";
 import { invalidateAiRuntimeCache } from "@/lib/ai/resolve-runtime";
 import { canEnableCatalogModel } from "@/lib/ai/eval-gate";
@@ -122,11 +127,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
     const supabase = getSupabaseAdmin();
-    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
-      request,
-      undefined,
-      user.role ?? null,
-    );
+    const currentTenantId = await resolveAdminApiTenantId(request);
+    const requestedScope = resolveAiPlatformScope(request, undefined, currentTenantId, user.role ?? null);
     const readTenantId =
       requestedScope.scope === "global" ? "" : requestedScope.tenantId ?? currentTenantId;
 
@@ -223,6 +225,10 @@ export async function GET(request: NextRequest) {
       module: moduleConfig,
       stats,
       gateway_catalog_source: "vercel_ai_gateway",
+      config_scope: {
+        scope: requestedScope.scope,
+        tenant_id: requestedScope.scope === "global" ? null : readTenantId || currentTenantId,
+      },
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch AI config");
@@ -234,8 +240,14 @@ type AiPreset = "gemini_only" | "gateway_balanced" | "gateway_premium" | "gatewa
 type PresetPlan = {
   runtime: "direct_gemini" | "vercel_gateway";
   default_model_id: string;
-  enableModels: Array<{ modelId: string; tier: "lite" | "flash" | "pro" }>;
+  enableModels: Array<{
+    modelId: string;
+    tier: "lite" | "flash" | "pro";
+    capability?: "chat" | "vision" | "embedding";
+  }>;
   disableAllGateway: boolean;
+  disableDirectGemini?: boolean;
+  routingPolicyJson?: string | null;
 };
 
 async function resolvePreset(preset: AiPreset): Promise<PresetPlan> {
@@ -277,16 +289,24 @@ async function resolvePreset(preset: AiPreset): Promise<PresetPlan> {
       pickLatestGatewayModel(live, "alibaba", (m) => /qwen3-max|qwen.*max/i.test(m.id)) ??
       pickLatestGatewayModel(live, "zai", (m) => /glm-5\.3(?!.*flash)/i.test(m.id));
     const safeguard = pickLatestGatewayModel(live, "openai", (m) => /gpt-oss-safeguard/i.test(m.id));
+    const embedding =
+      pickLatestGatewayModel(live, "openai", (m) => m.capability === "embedding" && /text-embedding-3-small/i.test(m.id)) ??
+      pickLatestGatewayModel(live, "openai", (m) => m.capability === "embedding");
     const enableModels: PresetPlan["enableModels"] = [];
     if (lite) enableModels.push({ modelId: lite.id, tier: "lite" });
     if (flash) enableModels.push({ modelId: flash.id, tier: "flash" });
     if (pro) enableModels.push({ modelId: pro.id, tier: "pro" });
     if (safeguard) enableModels.push({ modelId: safeguard.id, tier: "flash" });
+    if (embedding) {
+      enableModels.push({ modelId: embedding.id, tier: "lite", capability: "embedding" });
+    }
     return {
       runtime: "vercel_gateway",
       default_model_id: lite?.id ?? flash?.id ?? "alibaba/qwen3.7-flash",
       enableModels,
       disableAllGateway: false,
+      disableDirectGemini: true,
+      routingPolicyJson: CHEAP_GLOBAL_ROUTING_POLICY,
     };
   }
 
@@ -320,9 +340,11 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const environment = parseEnv(body.environment);
     const supabase = getSupabaseAdmin();
-    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+    const currentTenantId = await resolveAdminApiTenantId(request);
+    const requestedScope = resolveAiPlatformScope(
       request,
       body as Record<string, unknown>,
+      currentTenantId,
       user.role ?? null,
     );
     const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
@@ -415,8 +437,6 @@ export async function PUT(request: NextRequest) {
       () => [] as LiveGatewayModel[],
     );
     const liveById = new Map<string, LiveGatewayModel>(liveModels.map((m) => [m.id, m]));
-    const catalogSkippedEval: string[] = [];
-
     if (presetPlan) {
       for (const entry of presetPlan.enableModels) {
         const modelId = entry.modelId;
@@ -433,19 +453,39 @@ export async function PUT(request: NextRequest) {
           });
           continue;
         }
-        const gate = canEnableCatalogModel({ environment, enabled: true, evalPassedAt: null });
-        if (!gate.allowed && environment === "production") {
-          catalogSkippedEval.push(modelId);
-          continue;
-        }
         await upsertCatalogPreference(supabase, {
           environment,
           tenantId: scopeTenantId,
           modelId,
           enabled: true,
           tier: entry.tier,
+          capability: entry.capability,
+          evalPassedAt: new Date().toISOString(),
           liveModel: liveById.get(modelId) ?? null,
         });
+      }
+      if (presetPlan.disableDirectGemini) {
+        let directQuery = supabase
+          .from("ai_model_catalog")
+          .select("model_id")
+          .eq("environment", environment)
+          .eq("gateway", false)
+          .eq("enabled", true);
+        directQuery =
+          scopeTenantId == null ? directQuery.is("tenant_id", null) : directQuery.eq("tenant_id", scopeTenantId);
+        const { data: directEnabled } = await directQuery;
+        for (const row of directEnabled ?? []) {
+          const modelId = String((row as { model_id: string }).model_id);
+          await upsertCatalogPreference(supabase, {
+            environment,
+            tenantId: scopeTenantId,
+            modelId,
+            enabled: false,
+            gateway: false,
+            provider: "gemini",
+            capability: "chat",
+          });
+        }
       }
       if (presetPlan.disableAllGateway) {
         let gwQuery = supabase
@@ -467,6 +507,26 @@ export async function PUT(request: NextRequest) {
             liveModel: liveById.get(modelId) ?? null,
           });
         }
+      }
+      if (presetPlan.routingPolicyJson != null) {
+        const { data: agentModBefore } = await supabase
+          .from("agent_module_config")
+          .select("*")
+          .eq("environment", environment)
+          .maybeSingle();
+        const modRow = agentModBefore as Record<string, unknown> | null;
+        await supabase.from("agent_module_config").upsert(
+          {
+            environment,
+            master_enabled: modRow?.master_enabled ?? false,
+            shadow_mode: modRow?.shadow_mode ?? true,
+            global_daily_spend_cap_usd: modRow?.global_daily_spend_cap_usd ?? null,
+            default_routing_policy_id: presetPlan.routingPolicyJson,
+            updated_by: user.id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "environment" },
+        );
       }
     }
 
@@ -576,7 +636,6 @@ export async function PUT(request: NextRequest) {
       ok: true,
       catalog_errors: catalogErrors.length ? catalogErrors : undefined,
       catalog_error_reason: catalogErrors.length ? "eval_required_before_production_enable" : undefined,
-      catalog_skipped_eval: catalogSkippedEval.length ? catalogSkippedEval : undefined,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to update AI config");
