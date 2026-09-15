@@ -25,7 +25,7 @@ export async function slackNotifyFxRatesStale(params: {
   ].filter(Boolean) as string[];
 
   await tryNotifySlackEvent({
-    tenantId: "platform",
+    tenantId: null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_FX_STALE,
     dedupeKey: `finance:fx:stale:${dayKey()}`,

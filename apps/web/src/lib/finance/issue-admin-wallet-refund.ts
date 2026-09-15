@@ -378,7 +378,7 @@ export async function issueAdminWalletRefund(
       booking.customer_id,
       {
         title: "Refund added to wallet",
-        message: `A refund of ${currency} ${walletCreditAmount.toFixed(2)} for booking ${booking.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+        message: `A refund of ${currency} ${walletCreditAmount.toFixed(2)} for booking ${booking.booking_number} has been added to your wallet. Use it for your next booking.`,
         data: {
           type: "refund_processed",
           booking_id: bookingId,

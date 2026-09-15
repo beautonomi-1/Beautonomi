@@ -286,6 +286,29 @@ export async function GET(
 
     const recurringSeriesId = bookingData.recurring_series_id ?? null;
 
+    let pendingCashRefunds: Array<{
+      id: string;
+      amount: number;
+      reason: string | null;
+      confirmation_deadline_at: string | null;
+    }> = [];
+    if (isCustomer) {
+      const { data: pendingRefundRows } = await supabase
+        .from("booking_refunds")
+        .select("id, amount, reason, confirmation_deadline_at")
+        .eq("booking_id", id)
+        .eq("status", "pending")
+        .eq("customer_confirmation_required", true);
+      pendingCashRefunds = (pendingRefundRows ?? []).map((row) => ({
+        id: String((row as { id: string }).id),
+        amount: Number((row as { amount?: number }).amount ?? 0),
+        reason: ((row as { reason?: string | null }).reason ?? null) as string | null,
+        confirmation_deadline_at:
+          ((row as { confirmation_deadline_at?: string | null }).confirmation_deadline_at ??
+            null) as string | null,
+      }));
+    }
+
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -581,6 +604,7 @@ export async function GET(
         qr_code_data: bookingData.qr_code_data as Record<string, unknown>,
         qr_code_expires_at: bookingData.qr_code_expires_at ?? undefined,
       }),
+      pending_cash_refunds: pendingCashRefunds,
     };
 
     return NextResponse.json({

@@ -163,14 +163,19 @@ export default function ReportsPage() {
     } catch (err) {
       console.error("Error loading quick stats:", err);
       try {
-        type FinanceData = { earnings?: { total_earnings?: number; growth_percentage?: number } };
+        type FinanceData = {
+          earnings?: {
+            recognized_revenue_total?: number;
+            growth_percentage?: number;
+          };
+        };
         const financeResponse = await fetcher.get<{ data?: FinanceData }>(
           "/api/provider/finance?range=month",
           { timeoutMs: 120_000 },
         );
         const financeData = financeResponse.data?.earnings;
         setQuickStats({
-          totalRevenue: financeData?.total_earnings || 0,
+          totalRevenue: financeData?.recognized_revenue_total || 0,
           totalBookings: 0, // Not available in finance API
           activeClients: 0,
           growthRate: financeData?.growth_percentage || 0,

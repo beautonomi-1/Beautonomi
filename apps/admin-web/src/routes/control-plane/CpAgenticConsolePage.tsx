@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -125,6 +127,7 @@ type GateStatusResponse = {
 
 export function CpAgenticConsolePage() {
   const { allowed, denied } = useSuperadminPage("Agentic console is superadmin-only.");
+  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const agentFilter = searchParams.get("agent_id") ?? "";
   const panelParam = searchParams.get("panel");
@@ -152,8 +155,8 @@ export function CpAgenticConsolePage() {
     modelUsed?: string;
   } | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setMsg(null);
     try {
       const actionsQs = new URLSearchParams();
@@ -180,9 +183,9 @@ export function CpAgenticConsolePage() {
       setRuns(runList ?? []);
       setGateStatus(gates);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Load failed");
+      if (!opts?.silent) setMsg(e instanceof Error ? e.message : "Load failed");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   };
 
@@ -220,6 +223,7 @@ export function CpAgenticConsolePage() {
       }
       setRejectComment("");
       await load();
+      invalidateAdminShellCounts(qc);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Decision failed");
     } finally {
@@ -275,6 +279,14 @@ export function CpAgenticConsolePage() {
   useEffect(() => {
     if (!allowed) return;
     void load();
+  }, [allowed, env, statusFilter, agentFilter]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    const timer = window.setInterval(() => {
+      void load({ silent: true });
+    }, 30_000);
+    return () => window.clearInterval(timer);
   }, [allowed, env, statusFilter, agentFilter]);
 
   useEffect(() => {
@@ -739,9 +751,22 @@ export function CpAgenticConsolePage() {
             </ul>
           </AdminPanel>
           <AdminPanel id="agent-console-runs">
-            <h2 className="mb-3 text-sm font-semibold text-gray-900">Live runs</h2>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Live runs</h2>
+              <p className="text-xs text-gray-500">
+                Run status has no DB CHECK — failures appear as{" "}
+                <code className="rounded bg-gray-100 px-1">retryable_failure</code> or{" "}
+                <code className="rounded bg-gray-100 px-1">permanent_failure</code>, not{" "}
+                <code className="rounded bg-gray-100 px-1">failed</code>.
+              </p>
+            </div>
             <ul className="text-sm space-y-2 max-h-64 overflow-auto">
-              {runs.slice(0, 25).map((r) => (
+              {runs.slice(0, 25).map((r) => {
+                const isFailure =
+                  r.status === "retryable_failure" ||
+                  r.status === "permanent_failure" ||
+                  r.status === "failed";
+                return (
                 <li key={r.id} className="rounded-lg border border-gray-100 p-2">
                   <button
                     type="button"
@@ -753,7 +778,7 @@ export function CpAgenticConsolePage() {
                       className={`rounded px-1.5 py-0.5 text-xs ${
                         r.status === "completed"
                           ? "bg-emerald-100 text-emerald-800"
-                          : r.status === "failed"
+                          : isFailure
                             ? "bg-red-100 text-red-800"
                             : "bg-gray-100 text-gray-700"
                       }`}
@@ -807,7 +832,8 @@ export function CpAgenticConsolePage() {
                     </div>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
               {runs.length === 0 ? <li className="text-gray-500">No runs yet</li> : null}
             </ul>
           </AdminPanel>

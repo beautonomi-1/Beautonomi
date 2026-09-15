@@ -86,4 +86,22 @@ export async function handleStripeChargeDisputeCreated(
     },
     supabase,
   );
+
+  if (reference && subjects.bookingId) {
+    const { processBookingChargeback } = await import(
+      "@/lib/bookings/process-booking-chargeback"
+    );
+    const amountMajor =
+      dispute.amount != null && Number.isFinite(Number(dispute.amount))
+        ? Math.round(Number(dispute.amount)) / 100
+        : undefined;
+    await processBookingChargeback({
+      supabase,
+      paymentProvider: "stripe",
+      reference,
+      disputeId,
+      eventType: "charge.dispute.created",
+      amountMajor,
+    });
+  }
 }

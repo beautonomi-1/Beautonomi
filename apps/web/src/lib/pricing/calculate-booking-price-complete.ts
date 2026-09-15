@@ -299,51 +299,49 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
   const manual_discount_amount = Math.min(manualDiscount?.amount || 0, subtotal_after_promo);
   const taxable_amount = subtractMoney(subtotal_after_promo, manual_discount_amount);
 
-  // STEP 6: Calculate Tax
+  // STEP 6: Calculate Travel Fee (before tax — aligned with validate-booking.ts public checkout)
+  let travel_fee_amount = 0;
+  let standard_travel_fee = 0;
+  let travel_savings = 0;
+
+  if (travelFee && travelFee.distance_km > 0) {
+    const base_fee = travelFee.base_fee || 20;
+    const per_km_rate = travelFee.per_km_rate || 5;
+    const free_radius = travelFee.free_radius_km || 5;
+
+    if (travelFee.distance_km > free_radius) {
+      const chargeable_distance = travelFee.distance_km - free_radius;
+      standard_travel_fee = base_fee + chargeable_distance * per_km_rate;
+    }
+
+    if (travelFee.method === "route_chained" && !travelFee.is_first_in_route) {
+      if (travelFee.distance_km > free_radius) {
+        travel_fee_amount = (travelFee.distance_km - free_radius) * per_km_rate;
+      }
+    } else {
+      travel_fee_amount = standard_travel_fee;
+    }
+
+    travel_savings = standard_travel_fee - travel_fee_amount;
+  }
+
+  // STEP 7: Calculate Tax (travel is in the tax base, matching public checkout)
   let total_tax_rate = 0;
   let taxable_items_count = 0;
-  
+
   [...services, ...products, ...addons].forEach((item: any) => {
     if (item.tax_rate && item.tax_rate > 0) {
       total_tax_rate += item.tax_rate;
       taxable_items_count++;
     }
   });
-  
-  const effective_tax_rate = taxable_items_count > 0 ? total_tax_rate / taxable_items_count : 0;
-  const tax_amount = percentOf(taxable_amount, effective_tax_rate);
-  const subtotal_with_tax = sumMoney(taxable_amount, tax_amount);
 
-  // STEP 7: Calculate Travel Fee
-  let travel_fee_amount = 0;
-  let standard_travel_fee = 0;
-  let travel_savings = 0;
-  
-  if (travelFee && travelFee.distance_km > 0) {
-    const base_fee = travelFee.base_fee || 20;
-    const per_km_rate = travelFee.per_km_rate || 5;
-    const free_radius = travelFee.free_radius_km || 5;
-    
-    // Calculate standard fee (from salon)
-    if (travelFee.distance_km > free_radius) {
-      const chargeable_distance = travelFee.distance_km - free_radius;
-      standard_travel_fee = base_fee + (chargeable_distance * per_km_rate);
-    }
-    
-    // Calculate actual fee based on method
-    if (travelFee.method === 'route_chained' && !travelFee.is_first_in_route) {
-      // Chained: only charge per-km rate (no base fee)
-      if (travelFee.distance_km > free_radius) {
-        travel_fee_amount = (travelFee.distance_km - free_radius) * per_km_rate;
-      }
-    } else {
-      // Standard or first in route: full fee
-      travel_fee_amount = standard_travel_fee;
-    }
-    
-    travel_savings = standard_travel_fee - travel_fee_amount;
-  }
-  const subtotal_with_travel = sumMoney(subtotal_with_tax, travel_fee_amount);
+  const effective_tax_rate =
+    taxable_items_count > 0 ? total_tax_rate / taxable_items_count : 0;
+  const tax_base = sumMoney(taxable_amount, travel_fee_amount);
+  const tax_amount = percentOf(tax_base, effective_tax_rate);
+  const subtotal_with_tax = sumMoney(tax_base, tax_amount);
+  const subtotal_with_travel = subtotal_with_tax;
 
   // STEP 8: Calculate Platform Fee
   let platform_fee_amount = 0;

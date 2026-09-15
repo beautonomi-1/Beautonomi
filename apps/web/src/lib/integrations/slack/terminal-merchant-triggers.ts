@@ -115,3 +115,27 @@ export async function slackNotifyTerminalMerchantStalled(
     provider,
   );
 }
+
+/** Cron / operational-alerts path (no HTTP request for tenant resolution). */
+export async function slackNotifyTerminalMerchantStalledForTenant(
+  tenantId: string,
+  application: ApplicationRow,
+  dayKey: string,
+) {
+  await tryNotifySlackEvent({
+    tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.TERMINAL_MERCHANT_APPLICATION_STALLED,
+    dedupeKey: `tmo:${application.id}:stalled:${dayKey}`,
+    entityType: "terminal_merchant_applications",
+    entityId: application.id,
+    title: "Terminal merchant application stalled",
+    detailLines: [
+      application.application_no,
+      application.trading_name ?? "—",
+      `Status: ${application.status}`,
+      "Unassigned >24h",
+    ],
+    actionUrl: `/admin/commercial/terminal-onboarding/${application.id}`,
+  });
+}

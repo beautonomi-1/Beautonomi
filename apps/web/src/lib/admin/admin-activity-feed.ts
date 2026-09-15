@@ -12,6 +12,7 @@ export const ACTIONABLE_ACTIVITY_TYPES = new Set([
   "ops_new_lead",
   "ops_stalled_onboarding",
   "safety_event",
+  "support_ticket",
 ]);
 
 export type AdminActivityItem = {
@@ -38,6 +39,7 @@ export function computeActivityTotalUnreadFromCounts(counts: {
   ops_new_leads?: number;
   ops_stalled?: number;
   safety_in_feed?: number;
+  support_tickets?: number;
 }): number {
   return (
     (counts.pending_payouts ?? 0) +
@@ -51,7 +53,8 @@ export function computeActivityTotalUnreadFromCounts(counts: {
     (counts.pending_user_reports ?? 0) +
     (counts.ops_new_leads ?? 0) +
     (counts.ops_stalled ?? 0) +
-    (counts.safety_in_feed ?? 0)
+    (counts.safety_in_feed ?? 0) +
+    (counts.support_tickets ?? 0)
   );
 }
 
@@ -75,6 +78,7 @@ export const ADMIN_ACTIVITY_LINKS = {
   opsTrackerStalled: "/admin/provider-ops/tracker?status=stalled",
   userReportsPending: "/admin/user-reports?status=pending",
   safetyLogs: "/admin/control-plane/safety-logs",
+  supportTicketsAwaiting: "/admin/support-tickets?filter=needs_response",
   users: "/admin/users",
   providers: "/admin/providers",
 } as const;

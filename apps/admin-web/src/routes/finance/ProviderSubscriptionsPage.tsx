@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -91,7 +92,7 @@ export function ProviderSubscriptionsPage() {
       adminToast.success("Subscription updated");
       setPendingAction(null);
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update subscription"),
   });

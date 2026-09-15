@@ -6,7 +6,9 @@
  */
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -52,6 +54,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function VerificationSessionsPage() {
   const { allowed, denied } = useSuperadminPage("Identity & Trust is superadmin-only.");
+  const qc = useQueryClient();
   const [searchParams] = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "";
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -114,6 +117,7 @@ export function VerificationSessionsPage() {
     try {
       await adminApi.postJson(`/api/admin/identity-verification/sessions/${sessionId}/${action}`, body ?? {});
       setMsg(`Action '${action}' completed`);
+      invalidateAdminShellCounts(qc);
       void load();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : `Action '${action}' failed`);

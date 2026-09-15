@@ -80,4 +80,36 @@ describe("model router", () => {
     const r = routeModel({ ...baseReq, catalog });
     expect(r.modelId).toBe("alibaba/qwen3.7-flash");
   });
+
+  it("never auto-routes embedding or safeguard models for chat", () => {
+    const catalog: ModelCatalogEntry[] = [
+      {
+        id: "openai/text-embedding-3-small",
+        provider: "openai",
+        tier: "lite",
+        gateway: true,
+        enabled: true,
+        capability: "embedding",
+        inputUsdPer1k: 0.00002,
+      },
+      {
+        id: "openai/gpt-oss-safeguard-20b",
+        provider: "openai",
+        tier: "flash",
+        gateway: true,
+        enabled: true,
+        inputUsdPer1k: 0.00007,
+      },
+      {
+        id: "alibaba/qwen3.7-flash",
+        provider: "alibaba",
+        tier: "lite",
+        gateway: true,
+        enabled: true,
+        inputUsdPer1k: 0.00003,
+      },
+    ];
+    expect(routeModel({ ...baseReq, catalog }).modelId).toBe("alibaba/qwen3.7-flash");
+    expect(routeModel({ ...baseReq, catalog, task: "copilot" }).modelId).toBe("alibaba/qwen3.7-flash");
+  });
 });

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { cn } from "@/lib/cn";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -585,6 +586,7 @@ export function ProviderOpsLeadsPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Stage updated");
     },
     onError: (e: Error) => {
@@ -617,6 +619,7 @@ export function ProviderOpsLeadsPage() {
       adminToast.success(`Assigned ${ids.length} lead(s)`);
       setSelectedIds(new Set());
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
     },
     [selectedIds, rows, qc],
   );
@@ -635,6 +638,7 @@ export function ProviderOpsLeadsPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Assignment updated");
     },
     onError: (e: Error) => {
@@ -651,6 +655,7 @@ export function ProviderOpsLeadsPage() {
     onSuccess: () => {
       setSelectedLeadId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead moved to trash");
     },
     onError: (e: Error) => adminToast.error(`Delete failed: ${e.message}`),
@@ -662,6 +667,7 @@ export function ProviderOpsLeadsPage() {
     onSuccess: () => {
       setSelectedLeadId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead restored");
     },
     onError: (e: Error) => adminToast.error(`Restore failed: ${e.message}`),
@@ -675,6 +681,7 @@ export function ProviderOpsLeadsPage() {
       ),
     onSuccess: (data, idsRequested) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       setSelectedIds(new Set());
       setSelectedLeadId((cur) => {
         if (!cur || !idsRequested.includes(cur)) return cur;
@@ -793,6 +800,7 @@ export function ProviderOpsLeadsPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(selectedLeadId!) });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead updated");
     },
     onError: (e: Error) => {
@@ -896,6 +904,7 @@ export function ProviderOpsLeadsPage() {
       if (data.error) toastParts.push("import partially completed");
       adminToast.success(toastParts.join(" · "));
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2189,6 +2198,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, noteI
       setTaskDueAt("");
       void tasksQ.refetch();
       if (leadId) void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(leadId) });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create task"),
   });
@@ -2199,6 +2209,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, noteI
     onSuccess: () => {
       void tasksQ.refetch();
       if (leadId) void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(leadId) });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to complete task"),
   });

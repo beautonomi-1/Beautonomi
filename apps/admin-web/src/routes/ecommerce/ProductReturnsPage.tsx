@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -86,7 +87,7 @@ export function ProductReturnsPage() {
     onSuccess: (_result, vars) => {
       setResolveId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productReturns(qk) });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       const resolution = String(vars.data.resolution ?? "");
       adminToast.success(
         resolution === "full_refund" || resolution === "partial_refund" || resolution === "store_credit"

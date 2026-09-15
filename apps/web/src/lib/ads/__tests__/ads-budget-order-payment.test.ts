@@ -136,6 +136,30 @@ describe("recordAdsBudgetOrderPayment", () => {
     expect(finance[0].metadata.ads_budget_order_id).toBe("order-1");
   });
 
+  it("activates campaign but skips payment + deferred ledger when funded by marketing credit", async () => {
+    const db = makeDb({
+      ads_budget_orders: [{ ...baseOrder }],
+      ads_campaigns: [{ ...baseCampaign }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    const result = await recordAdsBudgetOrderPayment({
+      supabase: db.supabase,
+      orderId: "order-1",
+      reference: "ref-mc-1",
+      amountMajor: 500,
+      feesMajor: 0,
+      paymentProvider: "marketing_credit",
+    });
+
+    expect(result.finalized).toBe(true);
+    expect(db.tables.ads_budget_orders[0].status).toBe("paid");
+    expect(db.tables.ads_campaigns[0].status).toBe("active");
+    expect(db.inserts.payment_transactions).toBeUndefined();
+    expect(db.inserts.finance_transactions).toBeUndefined();
+  });
+
   it("is idempotent — a second finalize does not double-post", async () => {
     const db = makeDb({
       ads_budget_orders: [{ ...baseOrder }],

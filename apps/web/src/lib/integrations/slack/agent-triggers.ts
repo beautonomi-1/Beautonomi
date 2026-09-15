@@ -1,5 +1,6 @@
 import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
+import { notifyAdminOps } from "@/lib/notifications/notify-admin-ops";
 
 function eventEnv(): "production" | "staging" | "development" {
   const e = process.env.BEAUTONOMI_SLACK_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV;
@@ -63,6 +64,15 @@ export function slackNotifyAgentRunFailed(params: {
   }).catch((err) => {
     console.error("[slack] agent run failed notify error", err);
   });
+
+  void notifyAdminOps({
+    roles: ["superadmin", "admin_platform_config"],
+    type: "admin_ops_alert",
+    title: "Agent run failed",
+    message: `${params.workflowType}: ${params.error.slice(0, 180)}`,
+    link: "/admin/control-plane/modules/agents",
+    data: { run_id: params.runId, workflow_type: params.workflowType },
+  });
 }
 
 /** Emergency kill switch toggled — highest-signal alert for the ops team. */
@@ -77,7 +87,7 @@ export function slackNotifyAgentEmergencyActivated(params: {
     .filter(([, v]) => v)
     .map(([k]) => k.replace(/_/g, " "));
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.AGENT_EMERGENCY_ACTIVATED,
     dedupeKey: `agent_emergency:${params.environment}:${active.join(",") || "cleared"}`,

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -127,6 +128,7 @@ function WebhookFailuresTab({ allowed }: { allowed: boolean }) {
         adminToast.warning("Retry queued — the endpoint returned a non-2xx response. Check failures again shortly.");
       }
       void qc.invalidateQueries({ queryKey: ["admin", "webhook-failures"] });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Retry failed"),
   });
@@ -288,8 +290,10 @@ export function WebhooksEndpointsPage() {
 
   const rows = q.data?.endpoints ?? [];
 
-  const invalidate = () =>
+  const invalidate = () => {
     void qc.invalidateQueries({ queryKey: adminQueryKeys.webhooks() });
+    invalidateAdminShellCounts(qc);
+  };
 
   const createMut = useMutation({
     mutationFn: (body: Record<string, unknown>) =>

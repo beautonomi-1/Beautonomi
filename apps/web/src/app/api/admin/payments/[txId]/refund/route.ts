@@ -39,7 +39,7 @@ type BookingRow = {
  * POST /api/admin/payments/[txId]/refund
  *
  * Process a refund for a payment transaction. Refunds always credit the
- * customer's wallet (use for next booking or request payout); we do not call
+ * customer's wallet (use for next booking); we do not call
  * Paystack so the same flow works for Paystack, wallet, or other payment methods.
  */
 export async function POST(
@@ -258,7 +258,7 @@ export async function POST(
         bookingData.customer_id,
         {
           title: "Refund added to wallet",
-          message: `A refund of ${bookingData.currency || lastResortCurrency} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          message: `A refund of ${bookingData.currency || lastResortCurrency} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking.`,
           data: {
             type: "refund_processed",
             booking_id: txData.booking_id,

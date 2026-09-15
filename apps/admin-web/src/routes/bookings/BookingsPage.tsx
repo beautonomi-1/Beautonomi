@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -97,6 +98,7 @@ export function BookingsPage() {
     },
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
+      invalidateAdminShellCounts(qc);
       setSelectedIds(new Set());
       const count = vars.booking_ids.length;
       const label = vars.action === "cancel" ? "cancelled" : "completed";

@@ -24,6 +24,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 
 interface TimelineEvent {
   type: string;
@@ -191,7 +192,7 @@ export function ProviderOpsLifecyclePage() {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(providerId) });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update verification"),
   });

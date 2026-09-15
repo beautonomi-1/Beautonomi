@@ -129,7 +129,8 @@ function unpaidChargeRows(booking: { additional_charges?: AdditionalChargeRow[] 
   );
 }
 
-function paymentSuffixRank(providerPaymentId: string): number {
+/** Exported for reversal-order unit tests (base → tip → cashback). */
+export function paymentSuffixRank(providerPaymentId: string): number {
   const id = String(providerPaymentId ?? "");
   if (id.endsWith(":cashback")) return 2;
   if (id.endsWith(":tip")) return 1;

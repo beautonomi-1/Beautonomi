@@ -18,6 +18,14 @@
  *   pnpm seed:ai-platform
  */
 import { createClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const AGENT_ROSTER_SEED = JSON.parse(
+  readFileSync(join(__dirname, "agent-roster-seed.json"), "utf8"),
+);
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -76,6 +84,7 @@ async function fetchLiveGatewayModels() {
 
 function resolveCheapPresetModels(live) {
   const lite =
+    pickLatest(live, "alibaba", (m) => /qwen3\.7.*flash/i.test(m.id)) ??
     pickLatest(live, "alibaba", (m) => modelHasVision(m) && /qwen.*flash/i.test(m.id)) ??
     pickLatest(live, "alibaba", (m) => modelHasVision(m)) ??
     pickLatest(live, "alibaba", (m) => /qwen.*flash/i.test(m.id));
@@ -190,7 +199,9 @@ async function seedEnvironment(environment, plan) {
 
   for (const row of catalogRows ?? []) {
     const isDirectGemini = !row.gateway && String(row.model_id).startsWith("gemini-");
-    if (isDirectGemini || legacyDisable.has(row.model_id)) {
+    const isExtraQwen =
+      String(row.model_id).startsWith("alibaba/qwen") && !enabledIds.has(row.model_id);
+    if (isDirectGemini || legacyDisable.has(row.model_id) || isExtraQwen) {
       await supabase
         .from("ai_model_catalog")
         .update({ enabled: false, updated_at: new Date().toISOString() })
@@ -231,32 +242,20 @@ async function seedEnvironment(environment, plan) {
     { onConflict: "environment" },
   );
 
-  const taskDefaultByKey = {
-    "ops-sentinel": "classification",
-    "support-triage": "classification",
-    "support-lead": "drafting",
-    "payout-review": "classification",
-    "reconciliation-investigator": "classification",
-    "refund-specialist": "classification",
-    "provider-success": "drafting",
-    "membership-shepherd": "drafting",
-    "trust-monitor": "classification",
-    "content-moderator": "classification",
-    "admin-copilot": "copilot",
-  };
+  const rosterByKey = new Map(AGENT_ROSTER_SEED.map((r) => [r.key, r]));
 
   const { data: agents } = await supabase.from("agent_definitions").select("id, key");
   for (const agent of agents ?? []) {
-    const taskDefault = taskDefaultByKey[agent.key];
-    if (taskDefault) {
+    const roster = rosterByKey.get(agent.key);
+    if (roster) {
       await supabase
         .from("agent_definitions")
         .update({
           preferred_model_id: null,
           fallback_model_id: null,
           max_cost_usd_per_run: 0.25,
-          task_default: taskDefault,
-          vision_enabled: agent.key === "content-moderator",
+          task_default: roster.task_default,
+          vision_enabled: roster.vision_enabled,
         })
         .eq("id", agent.id);
     }

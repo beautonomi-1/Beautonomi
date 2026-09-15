@@ -7,6 +7,8 @@ import {
 } from "@beautonomi/agent-policy";
 import { loadAgentEmergencyControls } from "../config-loader";
 import { slackNotifyAgentActionProposed } from "@/lib/integrations/slack/agent-triggers";
+import { getAgentApprovalPolicy } from "@/lib/agents/actions/approval-policy";
+import { notifyAdminOps } from "@/lib/notifications/notify-admin-ops";
 import { isWorkflowFamilyEnabled } from "@/workflows/config";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 
@@ -52,6 +54,12 @@ export function defaultApprovalTtlMinutes(riskLevel: number): number {
 }
 
 export async function proposeAgentAction(input: ProposeActionInput) {
+  const emergency = await loadAgentEmergencyControls();
+  if (emergency.freezePendingProposals) {
+    console.warn("[proposeAgentAction] skipped: freeze_pending_proposals is active");
+    return null;
+  }
+
   const supabase = getSupabaseAdmin();
   const payloadHash = hashPayload(input.proposedPayload);
   const { data, error } = await supabase
@@ -92,6 +100,23 @@ export async function proposeAgentAction(input: ProposeActionInput) {
     riskLevel: input.riskLevel,
     reasoningSummary: input.reasoningSummary,
   });
+
+  const policy = getAgentApprovalPolicy(input.actionType);
+  if (policy) {
+    void notifyAdminOps({
+      roles: policy.approverRoles,
+      type: "agent_proposal",
+      title: "Agent action awaiting approval",
+      message: `${input.actionType} on ${input.targetType} (risk ${input.riskLevel})`,
+      link: `/admin/control-plane/modules/agents?action=${encodeURIComponent(data.id)}`,
+      data: {
+        action_id: data.id,
+        action_type: input.actionType,
+        target_type: input.targetType,
+        target_id: input.targetId,
+      },
+    });
+  }
 
   emitAgentEvent(
     AMPLITUDE_AGENT_ACTION_PROPOSED,

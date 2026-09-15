@@ -31,7 +31,7 @@ FROM (VALUES ('production'), ('staging'), ('development')) AS e(env)
 CROSS JOIN (
   VALUES
     ('alibaba/qwen3.7-flash', 'alibaba', 'lite', 'chat'),
-    ('alibaba/qwen3.8-flash', 'alibaba', 'lite', 'chat'),
+    ('deepseek/deepseek-chat', 'deepseek', 'flash', 'chat'),
     ('openai/text-embedding-3-small', 'openai', 'lite', 'embedding'),
     ('openai/gpt-oss-safeguard-20b', 'openai', 'flash', 'chat')
 ) AS m(model_id, provider, tier, capability)
@@ -110,32 +110,31 @@ SET
   reason = NULL
 WHERE environment IN ('production', 'staging', 'development');
 
--- ── 5. Agent brains: default routing (null preferred/fallback), task defaults ─
-UPDATE public.agent_definitions
+-- ── 5. Agent brains (see apps/web/src/lib/agents/default-roster-seed.ts) ─────
+-- Default routing: preferred_model_id + fallback_model_id NULL.
+-- Vision enabled on all agents (cheap Qwen stack supports vision when images are sent).
+UPDATE public.agent_definitions d
 SET
   preferred_model_id = NULL,
   fallback_model_id = NULL,
-  max_cost_usd_per_run = COALESCE(max_cost_usd_per_run, 0.25),
-  task_default = CASE key
-    WHEN 'ops-sentinel' THEN 'classification'
-    WHEN 'support-triage' THEN 'classification'
-    WHEN 'support-lead' THEN 'drafting'
-    WHEN 'payout-review' THEN 'classification'
-    WHEN 'reconciliation-investigator' THEN 'classification'
-    WHEN 'refund-specialist' THEN 'classification'
-    WHEN 'provider-success' THEN 'drafting'
-    WHEN 'membership-shepherd' THEN 'drafting'
-    WHEN 'trust-monitor' THEN 'classification'
-    WHEN 'content-moderator' THEN 'classification'
-    WHEN 'admin-copilot' THEN 'copilot'
-    ELSE task_default
-  END,
-  vision_enabled = CASE WHEN key = 'content-moderator' THEN true ELSE COALESCE(vision_enabled, false) END
-WHERE key IN (
-  'ops-sentinel', 'support-triage', 'support-lead', 'payout-review',
-  'reconciliation-investigator', 'refund-specialist', 'provider-success',
-  'membership-shepherd', 'trust-monitor', 'content-moderator', 'admin-copilot'
-);
+  max_cost_usd_per_run = 0.25,
+  task_default = v.task_default,
+  vision_enabled = v.vision_enabled
+FROM (
+  VALUES
+    ('ops-sentinel', 'classification', true),
+    ('support-triage', 'classification', true),
+    ('support-lead', 'drafting', true),
+    ('payout-review', 'classification', true),
+    ('reconciliation-investigator', 'classification', true),
+    ('refund-specialist', 'classification', true),
+    ('provider-success', 'drafting', true),
+    ('membership-shepherd', 'drafting', true),
+    ('trust-monitor', 'classification', true),
+    ('content-moderator', 'classification', true),
+    ('admin-copilot', 'copilot', true)
+) AS v(key, task_default, vision_enabled)
+WHERE d.key = v.key;
 
 -- ── 6. Activate full workforce roster (crons + copilot) ───────────────────────
 UPDATE public.agent_operational_state aos

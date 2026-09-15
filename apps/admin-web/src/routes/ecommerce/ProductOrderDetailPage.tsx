@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -63,6 +64,7 @@ export function ProductOrderDetailPage() {
       adminApi.patchJson(`/api/admin/product-orders/${encodeURIComponent(id)}`, updates),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productOrderDetail(id) });
+      invalidateAdminShellCounts(qc);
       if ("status" in vars) {
         adminToast.success(`Order status updated to "${String(vars.status)}"`);
       } else if ("tracking_number" in vars) {

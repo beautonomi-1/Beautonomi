@@ -203,6 +203,7 @@ export default function App() {
           <Route path="gamification/point-rules" element={<P.GamificationPointRulesPage />} />
           <Route path="gamification/badges" element={<P.GamificationBadgesPage />} />
           <Route path="gamification/operations" element={<P.GamificationOperationsPage />} />
+          <Route path="notifications/inbox" element={<P.NotificationsInboxPage />} />
           <Route path="notifications" element={<P.NotificationsConfigPage />} />
           <Route path="broadcast/history" element={<P.BroadcastHistoryPage />} />
           <Route path="broadcast/compose" element={<P.BroadcastComposePage />} />

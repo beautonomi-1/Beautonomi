@@ -15,6 +15,12 @@ vi.mock("@/lib/fraud/resolve-payment-fraud-subjects", () => ({
   }),
 }));
 
+const processBookingChargebackMock = vi.fn().mockResolvedValue({ processed: true });
+
+vi.mock("@/lib/bookings/process-booking-chargeback", () => ({
+  processBookingChargeback: (...args: unknown[]) => processBookingChargebackMock(...args),
+}));
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn().mockReturnValue({ from: vi.fn() }),
 }));
@@ -50,6 +56,13 @@ describe("handleStripeChargeDisputeCreated", () => {
         idempotencyKey: "stripe:dispute:dp_test123",
       }),
       expect.anything(),
+    );
+    expect(processBookingChargebackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentProvider: "stripe",
+        reference: "pi_test",
+        disputeId: "dp_test123",
+      }),
     );
   });
 

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { cn } from "@/lib/cn";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -205,6 +206,7 @@ export function ProviderOpsLeadDetailPage() {
       setTaskDueAt("");
       void tasksQ.refetch();
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create task"),
   });
@@ -215,6 +217,7 @@ export function ProviderOpsLeadDetailPage() {
     onSuccess: () => {
       void tasksQ.refetch();
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to complete task"),
   });
@@ -232,6 +235,7 @@ export function ProviderOpsLeadDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(`Stage updated to "${getLeadStageLabel(stage)}"`);
     },
     onError: (e: Error) => {
@@ -322,6 +326,7 @@ export function ProviderOpsLeadDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead assigned");
     },
     onError: (e: Error) => {
@@ -337,6 +342,7 @@ export function ProviderOpsLeadDetailPage() {
   const deleteLead = useMutation({
     mutationFn: () => adminApi.deleteJson(`/api/admin/provider-ops/leads/${id}`),
     onSuccess: () => {
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead moved to trash");
       navigate(adminSpaTo("/admin/provider-ops/leads"));
     },
@@ -348,6 +354,7 @@ export function ProviderOpsLeadDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead restored");
     },
     onError: (e: Error) => adminToast.error(`Restore failed: ${e.message}`),
@@ -362,6 +369,7 @@ export function ProviderOpsLeadDetailPage() {
     onSuccess: (res, mode) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      invalidateAdminShellCounts(qc);
       setShowConvertModal(false);
       if (mode === "assisted") {
         adminToast.success("Lead converted — provider account created");
@@ -395,6 +403,7 @@ export function ProviderOpsLeadDetailPage() {
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      invalidateAdminShellCounts(qc);
       const data = res?.data;
       if (data?.invite_link) {
         setInviteResult({
@@ -428,6 +437,7 @@ export function ProviderOpsLeadDetailPage() {
       setIsEditing(false);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Lead updated");
     },
     onError: (e: Error) => {

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminToast } from "@/lib/adminToast";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
@@ -161,7 +162,7 @@ async function invalidatePaystackTerminalQueries(
   qc: ReturnType<typeof useQueryClient>,
 ) {
   await qc.invalidateQueries({ queryKey: QK });
-  void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+  invalidateAdminShellCounts(qc);
 }
 
 function money(amount: number | string | null | undefined, currency = "ZAR") {

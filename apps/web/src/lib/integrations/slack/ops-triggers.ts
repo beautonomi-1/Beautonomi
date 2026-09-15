@@ -254,7 +254,7 @@ export function slackNotifyCustomOfferFinalizeFailed(params: {
   bookingId?: string | null;
 }) {
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.CUSTOM_OFFER_FINALIZE_FAILED,
     dedupeKey: `custom_offer:${params.offerId}:finalize_failed`,
@@ -290,7 +290,7 @@ export function slackNotifyProductOrderPaymentNotRecorded(params: {
   currency?: string | null;
 }) {
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.PRODUCT_ORDER_PAYMENT_NOT_RECORDED,
     dedupeKey: `product_order:${params.productOrderId}:payment_not_recorded:${params.reference ?? "unknown"}`,
@@ -323,7 +323,7 @@ export function slackNotifyPaystackTerminalAssetRequested(params: {
   autoRequested?: boolean;
 }) {
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_PAYSTACK_TERMINAL_ASSET_REQUESTED,
     dedupeKey: `paystack_terminal:${params.terminalId}:asset_requested`,
@@ -356,7 +356,7 @@ export function slackNotifyPaystackTerminalSetupRequested(params: {
   destinationTarget?: string | null;
 }) {
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_PAYSTACK_TERMINAL_SETUP_REQUESTED,
     dedupeKey: params.requestId
@@ -465,7 +465,7 @@ export function slackNotifyWebhookSignatureRejected(params: {
   attemptCount?: number;
 }) {
   void tryNotifySlackEvent({
-    tenantId: "platform",
+    tenantId: null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.PAYMENTS_WEBHOOK_SIGNATURE_REJECTED,
     dedupeKey: `webhook-sig:${params.source}:${params.eventId}`,
@@ -498,7 +498,7 @@ export function slackNotifyWorkflowFailed(params: {
 }) {
   const hourKey = new Date().toISOString().slice(0, 13);
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.OPS_WORKFLOW_FAILED,
     dedupeKey: `workflow:${params.workflow}:failed:${params.runId ?? params.domainId ?? hourKey}`,
@@ -526,7 +526,7 @@ export function slackNotifyCronJobFailed(params: {
 }) {
   const hourKey = new Date().toISOString().slice(0, 13);
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.OPS_CRON_FAILED,
     dedupeKey: `cron:${params.cronJob}:failed:${hourKey}`,
@@ -567,7 +567,7 @@ export function slackNotifyPaymentFailed(params: {
 }) {
   const entityId = params.reference ?? params.bookingId ?? params.orderId ?? "unknown";
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_PAYMENT_FAILED,
     dedupeKey: `payment:${params.source}:${entityId}:failed`,
@@ -654,7 +654,7 @@ export async function slackNotifyHighValueRefund(params: {
     return { notified: false, thresholdMajor };
   }
   await tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_HIGH_VALUE,
     dedupeKey: `refund:${params.refundId}:high_value:${params.stage}`,
@@ -693,7 +693,7 @@ export function slackNotifySubscriptionChurned(params: {
   currency?: string | null;
 }) {
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.SUBSCRIPTION_CHURNED,
     dedupeKey: `subscription:${params.subscriptionId}:churned:${params.reason}`,
@@ -736,7 +736,7 @@ export function slackNotifyUnrecognizedPayments(params: {
   if (params.count <= 0) return;
   const dayKey = new Date().toISOString().slice(0, 10);
   void tryNotifySlackEvent({
-    tenantId: params.tenantId ?? "platform",
+    tenantId: params.tenantId ?? null,
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_UNRECOGNIZED_PAYMENTS,
     dedupeKey: `unrecognized_payments:${params.tenantId ?? "platform"}:${dayKey}`,

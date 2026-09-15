@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -307,6 +308,7 @@ export function SupportTicketsPage() {
       setNewContextType("booking");
       setNewContextLabel("");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create ticket"),
   });
@@ -322,6 +324,7 @@ export function SupportTicketsPage() {
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
         void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+        invalidateAdminShellCounts(qc);
       }, 600);
     };
     const channel = sb
@@ -488,6 +491,7 @@ export function SupportTicketsPage() {
       setBulkAssignee("");
       setBulkStatus("");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+      invalidateAdminShellCounts(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Bulk update failed"),
   });
