@@ -86,6 +86,13 @@ const VALID_TYPES_685 = new Set<string>([
   "identity_verification_rejected",
 ]);
 
+// Values added by migration 912 (admin ops inbox).
+const VALID_TYPES_912 = new Set<string>([
+  "admin_ops_alert",
+  "agent_proposal",
+  "support_queue",
+]);
+
 /**
  * Closest 413-valid enum value for any new type. Used when migration 570
  * has not yet run on the target DB so the row is preserved (with slightly
@@ -125,6 +132,9 @@ const TYPE_FALLBACK: Record<string, string> = {
   product_order_refunded: "product_order_update",
   identity_verification_approved: "account_verification",
   identity_verification_rejected: "account_verification",
+  admin_ops_alert: "system",
+  agent_proposal: "system",
+  support_queue: "system",
 };
 
 function normaliseType(raw: string): string {
@@ -132,6 +142,7 @@ function normaliseType(raw: string): string {
   if (VALID_TYPES_570.has(raw)) return raw;
   if (VALID_TYPES_612.has(raw)) return raw;
   if (VALID_TYPES_685.has(raw)) return raw;
+  if (VALID_TYPES_912.has(raw)) return raw;
   return TYPE_FALLBACK[raw] ?? "system";
 }
 

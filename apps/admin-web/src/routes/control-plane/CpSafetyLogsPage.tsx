@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminToast } from "@/lib/adminToast";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -109,8 +110,7 @@ export function CpSafetyLogsPage() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "safety-logs"] });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.activity() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Marked resolved");
     },
     onError: (e: Error) => adminToast.error(e.message || "Could not update event"),

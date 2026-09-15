@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/event-keys";
 import { slackChatPostMessage } from "@/lib/integrations/slack/slack-api";
 import { sendResendEmail } from "@/lib/integrations/resend";
+import { normalizeSlackTenantId, slackTenantFallbackKey } from "@/lib/integrations/slack/normalize-tenant-id";
 
 /**
  * Secondary alert channel: after N consecutive Slack delivery failures for the same
@@ -21,8 +22,38 @@ export function __resetSlackFallbackStateForTests(): void {
   lastFallbackEmailAt.clear();
 }
 
-function fallbackKey(p: { tenantId: string; eventKey: string; dedupeKey: string }): string {
-  return `${p.tenantId}:${p.eventKey}:${p.dedupeKey}`;
+function fallbackKey(p: { tenantId: string | null; eventKey: string; dedupeKey: string }): string {
+  return `${slackTenantFallbackKey(p.tenantId)}:${p.eventKey}:${p.dedupeKey}`;
+}
+
+function applyTenantFilter<T extends { eq: (col: string, val: string) => T; is: (col: string, val: null) => T }>(
+  query: T,
+  tenantId: string | null,
+): T {
+  if (tenantId === null) return query.is("tenant_id", null);
+  return query.eq("tenant_id", tenantId);
+}
+
+function isTransientSlackError(error: string | undefined): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return (
+    e.includes("rate_limited") ||
+    e.includes("timeout") ||
+    e.includes("internal_error") ||
+    e.includes("service_unavailable")
+  );
+}
+
+async function postSlackWithRetry(params: {
+  token: string;
+  channel: string;
+  text: string;
+}): Promise<{ ok: boolean; error?: string; ts?: string }> {
+  const first = await slackChatPostMessage(params);
+  if (first.ok || !isTransientSlackError(first.error)) return first;
+  await new Promise((r) => setTimeout(r, 1200));
+  return slackChatPostMessage(params);
 }
 
 function opsAlertRecipients(): string[] {
@@ -34,18 +65,19 @@ function opsAlertRecipients(): string[] {
 
 async function countConsecutiveDbFailures(
   supabase: ReturnType<typeof getSupabaseAdmin>,
-  p: { tenantId: string; eventKey: string; dedupeKey: string },
+  p: { tenantId: string | null; eventKey: string; dedupeKey: string },
 ): Promise<number> {
   try {
-    const { data } = await supabase
+    let q = supabase
       .from("slack_delivery_logs")
       .select("status")
-      .eq("tenant_id", p.tenantId)
       .eq("event_key", p.eventKey)
       .eq("dedupe_key", p.dedupeKey)
       .in("status", ["sent", "failed"])
       .order("created_at", { ascending: false })
       .limit(SLACK_EMAIL_FALLBACK_AFTER_FAILURES);
+    q = applyTenantFilter(q, p.tenantId);
+    const { data } = await q;
     let n = 0;
     for (const row of (data ?? []) as Array<{ status: string }>) {
       if (row.status !== "failed") break;
@@ -60,7 +92,7 @@ async function countConsecutiveDbFailures(
 export async function maybeSendSlackFallbackEmail(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   p: {
-    tenantId: string;
+    tenantId: string | null;
     environment: string;
     eventKey: string;
     dedupeKey: string;
@@ -109,7 +141,7 @@ export async function maybeSendSlackFallbackEmail(
     try {
       await sendResendEmail({
         supabase,
-        tenantId: p.tenantId === "platform" ? null : p.tenantId,
+        tenantId: p.tenantId,
         to,
         subject: `[Beautonomi ops] Slack alert undelivered: ${p.title}`,
         html,
@@ -199,7 +231,7 @@ export function buildAdminDeepLink(pathOrUrl: string): string {
  * (logs `failed` and returns).
  */
 export async function tryNotifySlackEvent(params: {
-  tenantId: string;
+  tenantId: string | null;
   environment: "production" | "staging" | "development";
   eventKey: SlackEventKey;
   /** Stable key for dedupe, e.g. `ticket:uuid:overdue` */
@@ -211,8 +243,9 @@ export async function tryNotifySlackEvent(params: {
   actionUrl: string;
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const tenantId = normalizeSlackTenantId(params.tenantId);
 
-  const { row, error } = await loadSlackConfigForTenant(supabase, params.tenantId, params.environment);
+  const { row, error } = await loadSlackConfigForTenant(supabase, tenantId, params.environment);
 
   if (error) {
     console.error("[slack] config load error", error);
@@ -223,7 +256,7 @@ export async function tryNotifySlackEvent(params: {
   }
   if (!row.enabled || !row.bot_token_secret) {
     await logDelivery(supabase, {
-      tenantId: params.tenantId,
+      tenantId,
       environment: params.environment,
       eventKey: params.eventKey,
       entityType: params.entityType,
@@ -241,7 +274,7 @@ export async function tryNotifySlackEvent(params: {
   const rule = resolveSlackRouteRule(routing, params.eventKey);
   if (!rule?.enabled || !rule.channel_id) {
     await logDelivery(supabase, {
-      tenantId: params.tenantId,
+      tenantId,
       environment: params.environment,
       eventKey: params.eventKey,
       entityType: params.entityType,
@@ -261,20 +294,20 @@ export async function tryNotifySlackEvent(params: {
   );
   const since = new Date(Date.now() - windowSec * 1000).toISOString();
 
-  const { data: recent } = await supabase
+  let recentQuery = supabase
     .from("slack_delivery_logs")
     .select("id")
-    .eq("tenant_id", params.tenantId)
     .eq("event_key", params.eventKey)
     .eq("dedupe_key", params.dedupeKey)
     .eq("status", "sent")
     .gte("created_at", since)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  recentQuery = applyTenantFilter(recentQuery, tenantId);
+  const { data: recent } = await recentQuery.maybeSingle();
 
   if (recent) {
     await logDelivery(supabase, {
-      tenantId: params.tenantId,
+      tenantId,
       environment: params.environment,
       eventKey: params.eventKey,
       entityType: params.entityType,
@@ -291,7 +324,7 @@ export async function tryNotifySlackEvent(params: {
   const url = buildAdminDeepLink(params.actionUrl);
   const text = `*${params.title}*\n${params.detailLines.filter(Boolean).map((l) => `• ${l}`).join("\n")}\n<${url}|Open in admin>`;
 
-  const post = await slackChatPostMessage({
+  const post = await postSlackWithRetry({
     token: row.bot_token_secret,
     channel: rule.channel_id,
     text,
@@ -300,7 +333,7 @@ export async function tryNotifySlackEvent(params: {
   if (!post.ok) {
     const slackError = post.error || "chat.postMessage failed";
     await logDelivery(supabase, {
-      tenantId: params.tenantId,
+      tenantId,
       environment: params.environment,
       eventKey: params.eventKey,
       entityType: params.entityType,
@@ -312,7 +345,7 @@ export async function tryNotifySlackEvent(params: {
       errorMessage: slackError,
     });
     await maybeSendSlackFallbackEmail(supabase, {
-      tenantId: params.tenantId,
+      tenantId,
       environment: params.environment,
       eventKey: params.eventKey,
       dedupeKey: params.dedupeKey,
@@ -324,9 +357,9 @@ export async function tryNotifySlackEvent(params: {
     return;
   }
 
-  consecutiveFailures.delete(fallbackKey(params));
+  consecutiveFailures.delete(fallbackKey({ tenantId, eventKey: params.eventKey, dedupeKey: params.dedupeKey }));
   await logDelivery(supabase, {
-    tenantId: params.tenantId,
+    tenantId,
     environment: params.environment,
     eventKey: params.eventKey,
     entityType: params.entityType,
@@ -341,18 +374,20 @@ export async function tryNotifySlackEvent(params: {
 
 async function loadSlackConfigForTenant(
   supabase: ReturnType<typeof getSupabaseAdmin>,
-  tenantId: string,
+  tenantId: string | null,
   environment: string
 ) {
-  const tenantResult = await supabase
-    .from("slack_integration_config")
-    .select("id, enabled, bot_token_secret, routing, environment, tenant_id")
-    .eq("tenant_id", tenantId)
-    .eq("environment", environment)
-    .maybeSingle();
+  if (tenantId !== null) {
+    const tenantResult = await supabase
+      .from("slack_integration_config")
+      .select("id, enabled, bot_token_secret, routing, environment, tenant_id")
+      .eq("tenant_id", tenantId)
+      .eq("environment", environment)
+      .maybeSingle();
 
-  if (tenantResult.error || tenantResult.data) {
-    return { row: tenantResult.data, error: tenantResult.error };
+    if (tenantResult.error || tenantResult.data) {
+      return { row: tenantResult.data, error: tenantResult.error };
+    }
   }
 
   const globalResult = await supabase
@@ -368,7 +403,7 @@ async function loadSlackConfigForTenant(
 async function logDelivery(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   p: {
-    tenantId: string;
+    tenantId: string | null;
     environment: string;
     eventKey: string;
     entityType: string;

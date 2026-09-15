@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -106,7 +107,7 @@ export function ProvidersListPage() {
       adminApi.patchJson(`/api/admin/providers/${id}/status`, { status: newStatus }),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(`Provider status updated to ${vars.newStatus}`);
     },
     onError: (e: Error) => adminToast.error(`Status change failed: ${e.message}`),
@@ -118,7 +119,7 @@ export function ProvidersListPage() {
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(vars.verified ? "Provider verified" : "Verification removed");
     },
     onError: (e: Error) => adminToast.error(`Verification update failed: ${e.message}`),

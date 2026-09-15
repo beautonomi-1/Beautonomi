@@ -18,6 +18,8 @@ import {
   countRefundsNeedingReview,
   fetchRefundableActivitySample,
 } from "@/lib/admin/count-refunds-needing-review";
+import { countSupportTicketsForNav } from "@/lib/support/support-ticket-nav-count";
+import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 
 /**
  * GET /api/admin/activity
@@ -31,8 +33,10 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const tenantId = await resolveAdminApiTenantId(request);
-    const tenantProviderIds = isSuperadmin ? await fetchAllProviderIdsForTenant(supabase, tenantId) : [];
+    const tenantProviderIds = await fetchAllProviderIdsForTenant(supabase, tenantId);
     const safetyGlobalView = isSuperadmin && new URL(request.url).searchParams.get("scope") === "global";
+    const userRole = String(user?.role ?? "").toLowerCase();
+    const isSupportStaff = (SUPPORT_TICKET_STAFF_ROLES as readonly string[]).includes(userRole);
 
     const now = new Date();
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -56,6 +60,7 @@ export async function GET(request: NextRequest) {
       opsNewLeads,
       opsStalledOnboarding,
       pendingUserReports,
+      supportTicketsAwaiting,
     ] = await Promise.allSettled([
       // Pending payouts
       supabase
@@ -267,6 +272,32 @@ export async function GET(request: NextRequest) {
         .gte('created_at', last7Days.toISOString())
         .order('created_at', { ascending: false })
         .limit(10),
+
+      // Support tickets awaiting agent response (support staff)
+      (async () => {
+        if (!isSupportStaff) return { data: [] as unknown[], error: null };
+        try {
+          let query = supabase
+            .from("support_tickets")
+            .select("id, subject, ticket_number, priority, updated_at, created_at")
+            .eq("needs_agent_response", true)
+            .order("updated_at", { ascending: false })
+            .limit(10);
+          const result = await query;
+          if (result.error && (result.error as { code?: string }).code === "42703") {
+            query = supabase
+              .from("support_tickets")
+              .select("id, subject, ticket_number, priority, updated_at, created_at")
+              .eq("status", "open")
+              .order("updated_at", { ascending: false })
+              .limit(10);
+            return query;
+          }
+          return result;
+        } catch {
+          return { data: [] as unknown[], error: null };
+        }
+      })(),
     ]);
 
     type ActivityItem = { id: string; type: string; title: string; message: string; timestamp: string; link: string; priority: string };
@@ -608,6 +639,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (supportTicketsAwaiting.status === "fulfilled" && supportTicketsAwaiting.value.data) {
+      type SupportTicketRow = {
+        id: string;
+        subject?: string | null;
+        ticket_number?: string | null;
+        priority?: string | null;
+        updated_at?: string | null;
+        created_at?: string | null;
+      };
+      const { data: tickets } = supportTicketsAwaiting.value;
+      if (tickets && tickets.length > 0) {
+        (tickets as SupportTicketRow[]).forEach((ticket) => {
+          activities.push({
+            id: `support-ticket-${ticket.id}`,
+            type: "support_ticket",
+            title: "Support ticket",
+            message: ticket.subject || `Ticket #${ticket.ticket_number ?? ticket.id.slice(0, 8)}`,
+            timestamp: ticket.updated_at || ticket.created_at || new Date().toISOString(),
+            link: `/admin/support-tickets/${ticket.id}`,
+            priority: ticket.priority === "urgent" ? "critical" : "high",
+          });
+        });
+      }
+    }
+
     // Process pending user reports
     if (pendingUserReports.status === 'fulfilled' && pendingUserReports.value.data) {
       type ReportRow = { id: string; report_type?: string; created_at?: string };
@@ -668,59 +724,98 @@ export async function GET(request: NextRequest) {
 
     const returnedActivities = activities.slice(0, 20);
 
-    // Per-bucket counts for diagnostics (informational types omitted from badge)
-    const counts = {
-      pending_payouts: pendingPayouts.status === 'fulfilled' && pendingPayouts.value.data
-        ? pendingPayouts.value.data.length
-        : 0,
-      pending_verifications:
-        (pendingVerifications.status === "fulfilled" && pendingVerifications.value.data
-          ? pendingVerifications.value.data.length
-          : 0) +
-        (isSuperadmin &&
-        pendingDiditSessions.status === "fulfilled" &&
-        pendingDiditSessions.value.data
-          ? pendingDiditSessions.value.data.length
-          : 0),
-      pending_provider_approvals: pendingProviderApprovals.status === 'fulfilled' && pendingProviderApprovals.value.data
-        ? pendingProviderApprovals.value.data.length
-        : 0,
-      webhook_failures: webhookFailures.status === 'fulfilled' && webhookFailures.value.data
-        ? webhookFailures.value.data.length
-        : 0,
-      payment_failures: failedPayments.status === 'fulfilled' && failedPayments.value.data
+    const opsStalledCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    const [
+      payoutHeadCount,
+      verificationHeadCount,
+      diditHeadCount,
+      providerApprovalHeadCount,
+      webhookFailureHeadCount,
+      disputeHeadCount,
+      userReportHeadCount,
+      opsLeadHeadCount,
+      opsStalledHeadCount,
+      supportTicketNavCounts,
+      refundsNeedingReview,
+    ] = await Promise.all([
+      supabase
+        .from("payouts")
+        .select("id, providers!inner(tenant_id)", { count: "exact", head: true })
+        .eq("providers.tenant_id", tenantId)
+        .eq("status", "pending"),
+      supabase
+        .from("user_verifications")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .in("status", [...USER_VERIFICATION_QUEUE_STATUSES]),
+      isSuperadmin
+        ? supabase
+            .from("identity_verification_sessions")
+            .select("id", { count: "exact", head: true })
+            .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+            .eq("status", "pending_review")
+        : Promise.resolve({ count: 0, error: null }),
+      supabase
+        .from("providers")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("status", "pending_approval"),
+      supabase
+        .from("webhook_events")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed")
+        .gte("created_at", last24Hours.toISOString()),
+      supabase
+        .from("booking_disputes")
+        .select("id, bookings!inner(tenant_id)", { count: "exact", head: true })
+        .eq("bookings.tenant_id", tenantId)
+        .eq("status", "open"),
+      supabase
+        .from("user_reports")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("status", "pending"),
+      supabase
+        .from("provider_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
+        .eq("commercial_stage", "new"),
+      supabase
+        .from("provider_onboarding_tracking")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .in("wizard_status", ["in_progress", "stalled"])
+        .lt("last_progress_at", opsStalledCutoff),
+      countSupportTicketsForNav(supabase, { role: user.role, tenantProviderIds }),
+      countRefundsNeedingReview(supabase, tenantId),
+    ]);
+
+    const paymentFailureHeadCount =
+      failedPayments.status === "fulfilled" && failedPayments.value.data
         ? failedPayments.value.data.length
-        : 0,
-      refundable_payments:
-        refundablePayments.status === 'fulfilled' &&
-        typeof refundablePayments.value.count === 'number'
-          ? refundablePayments.value.count
-          : refundablePayments.status === 'fulfilled' && refundablePayments.value.data
-            ? refundablePayments.value.data.length
-            : 0,
-      /** @deprecated use refundable_payments */
-      refund_requests:
-        refundablePayments.status === 'fulfilled' &&
-        typeof refundablePayments.value.count === 'number'
-          ? refundablePayments.value.count
-          : refundablePayments.status === 'fulfilled' && refundablePayments.value.data
-            ? refundablePayments.value.data.length
-            : 0,
-      disputes: disputes.status === 'fulfilled' && disputes.value.data
-        ? disputes.value.data.length
-        : 0,
-      provider_violations: providerViolations.status === 'fulfilled' && providerViolations.value.data
+        : 0;
+    const providerViolationHeadCount =
+      providerViolations.status === "fulfilled" && providerViolations.value.data
         ? providerViolations.value.data.length
-        : 0,
-      pending_user_reports: pendingUserReports.status === 'fulfilled' && pendingUserReports.value.data
-        ? pendingUserReports.value.data.length
-        : 0,
-      ops_new_leads: opsNewLeads.status === 'fulfilled' && opsNewLeads.value.data
-        ? opsNewLeads.value.data.length
-        : 0,
-      ops_stalled: opsStalledOnboarding.status === 'fulfilled' && opsStalledOnboarding.value.data
-        ? opsStalledOnboarding.value.data.length
-        : 0,
+        : 0;
+
+    // Per-bucket head counts (feed samples are capped; totals match nav-count helpers where shared)
+    const counts = {
+      pending_payouts: payoutHeadCount.count ?? 0,
+      pending_verifications: (verificationHeadCount.count ?? 0) + (diditHeadCount.count ?? 0),
+      pending_provider_approvals: providerApprovalHeadCount.count ?? 0,
+      webhook_failures: webhookFailureHeadCount.count ?? 0,
+      payment_failures: paymentFailureHeadCount,
+      refundable_payments: refundsNeedingReview,
+      /** @deprecated use refundable_payments */
+      refund_requests: refundsNeedingReview,
+      disputes: disputeHeadCount.count ?? 0,
+      provider_violations: providerViolationHeadCount,
+      pending_user_reports: userReportHeadCount.count ?? 0,
+      ops_new_leads: opsLeadHeadCount.count ?? 0,
+      ops_stalled: opsStalledHeadCount.count ?? 0,
+      support_tickets: isSupportStaff ? supportTicketNavCounts.awaiting_response : 0,
       safety_in_feed: safetyRowsInFeed,
     };
 

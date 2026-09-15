@@ -531,7 +531,7 @@ export async function POST(
         ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been returned to you in person.`
         : refundMethod === "original"
           ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} is on its way back to your card. It may take a few days to appear on your statement.`
-          : `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking or request a payout.`;
+          : `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking.`;
     const notifyUrl =
       refundMethod === "cash"
         ? `/account-settings/bookings/${bookingId}`

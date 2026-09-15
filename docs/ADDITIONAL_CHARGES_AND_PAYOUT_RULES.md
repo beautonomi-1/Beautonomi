@@ -68,7 +68,7 @@ The resolver is implemented in `apps/web/src/lib/bookings/resolve-additional-cha
 
 ## 5. Payout balance
 
-- **Available balance** = sum of `provider_earnings` (net) where the platform held the money, minus completed payouts and pending payout requests.
+- **Available balance** = sum of platform-held `provider_earnings`, `membership_provider_earnings`, `tip`, `travel_fee`, and `cancellation_fee` (net), plus refund clawbacks, minus completed payouts and pending payout requests (see `getAvailablePayoutBalance`).
 - Walk-in earnings (cash/Yoco/PayCloud) and `walk_in_additional_charge` are **excluded** from payout balance because the platform never held those funds.
 
 ---
@@ -77,7 +77,7 @@ The resolver is implemented in `apps/web/src/lib/bookings/resolve-additional-cha
 
 - **Mark-paid (additional charge):** Inserts into `booking_payments`, updates `additional_charges.status` and `bookings.total_amount`, and inserts one `finance_transactions` row with `transaction_type = 'walk_in_additional_charge'`.
 - **Card-on-file / Terminal settlement:** Both call `settleAdditionalChargePlatformHeld` which inserts `additional_charge_payment` + `provider_earnings` into `finance_transactions` and is idempotent on the `payment_transactions(provider, reference)` unique constraint.
-- **getAvailablePayoutBalance:** Only sums `provider_earnings` and `payout`; no change needed for `walk_in_additional_charge`.
+- **getAvailablePayoutBalance:** Nets platform-held earnings types (see §5) and subtracts payouts; `walk_in_additional_charge` is excluded.
 - **Provider finance API:** Returns `provider_earnings`-based totals for payoutable earnings and `walk_in_additional_charges_total` / `walk_in_additional_charges_this_period` for full revenue visibility; both appear in the transaction list.
 
 ---

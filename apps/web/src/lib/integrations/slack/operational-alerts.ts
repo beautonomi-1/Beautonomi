@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/event-keys";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
+import { slackNotifyTerminalMerchantStalledForTenant } from "@/lib/integrations/slack/terminal-merchant-triggers";
 import { getNegativeBalanceProvidersForTenant } from "@/lib/admin/negative-provider-payout-balances";
 
 export type SlackOperationalAlertSummary = {
@@ -719,21 +720,18 @@ async function runTerminalMerchantOnboardingAlerts(
     .limit(10);
 
   for (const row of stalled ?? []) {
-    await emit(summary, {
+    summary.attempted += 1;
+    summary.by_event[SLACK_EVENT_KEYS.TERMINAL_MERCHANT_APPLICATION_STALLED] =
+      (summary.by_event[SLACK_EVENT_KEYS.TERMINAL_MERCHANT_APPLICATION_STALLED] ?? 0) + 1;
+    await slackNotifyTerminalMerchantStalledForTenant(
       tenantId,
-      environment: eventEnv(),
-      eventKey: SLACK_EVENT_KEYS.TERMINAL_MERCHANT_APPLICATION_STALLED,
-      dedupeKey: `tmo:${row.id}:stalled:${dayKey(now)}`,
-      entityType: "terminal_merchant_applications",
-      entityId: row.id,
-      title: "Terminal merchant application stalled",
-      detailLines: [
-        row.application_no,
-        row.trading_name ?? "—",
-        `Status: ${row.status}`,
-        "Unassigned >24h",
-      ],
-      actionUrl: `/admin/commercial/terminal-onboarding/${row.id}`,
-    });
+      {
+        id: row.id,
+        application_no: row.application_no,
+        status: row.status,
+        trading_name: row.trading_name,
+      },
+      dayKey(now),
+    );
   }
 }

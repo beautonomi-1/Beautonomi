@@ -10,6 +10,7 @@ import {
 } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -103,7 +104,7 @@ export function ProviderDetailPage() {
     onSuccess: (_data, newStatus) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(`Provider status updated to ${newStatus}`);
     },
     onError: (e: Error) => adminToast.error(`Failed to update status: ${e.message}`),
@@ -119,7 +120,7 @@ export function ProviderDetailPage() {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(verified ? "Provider verified" : "Verification removed");
     },
     onError: (e: Error) => adminToast.error(`Failed to update verification: ${e.message}`),

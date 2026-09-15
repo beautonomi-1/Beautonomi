@@ -13,6 +13,8 @@ export type ModelProvider = "gemini" | "openai" | "anthropic" | "xai" | "mistral
 
 export type ModelTier = "lite" | "flash" | "pro";
 
+export type ModelCatalogCapability = "chat" | "vision" | "embedding";
+
 export type ModelCatalogEntry = {
   /** Plain provider model ID (e.g. "gemini-2.5-flash") or Vercel AI Gateway ID (e.g. "openai/gpt-5"). */
   id: string;
@@ -27,7 +29,17 @@ export type ModelCatalogEntry = {
   outputUsdPer1k?: number;
   /** Gateway tag: implicit-caching / explicit-caching (optional). */
   supportsCaching?: boolean;
+  /** chat (default) | vision | embedding — embedding rows are never auto-routed for LLM chat. */
+  capability?: ModelCatalogCapability;
 };
+
+/** Models invoked only via explicit modelId (moderation safeguard, embeddings, etc.). */
+export function isChatRoutableModel(entry: ModelCatalogEntry): boolean {
+  if (entry.capability === "embedding") return false;
+  if (/\/text-embedding|embedding-3/i.test(entry.id)) return false;
+  if (/gpt-oss-safeguard/i.test(entry.id)) return false;
+  return true;
+}
 
 /** Current Gemini model IDs — verify against Google model list at deploy time. */
 export const GEMINI_MODELS = {
@@ -116,7 +128,7 @@ function inputPrice(entry: ModelCatalogEntry): number {
 
 /** Cheapest enabled model in tier; degrades to lower tiers, never upgrades cost. */
 function pickModel(catalog: ModelCatalogEntry[], tier: ModelTier): ModelCatalogEntry {
-  const enabled = catalog.filter((m) => m.enabled);
+  const enabled = catalog.filter((m) => m.enabled && isChatRoutableModel(m));
   const pickCheapest = (list: ModelCatalogEntry[]) =>
     list.slice().sort((a, b) => inputPrice(a) - inputPrice(b))[0];
 
@@ -140,7 +152,9 @@ export function pickFailoverModel(
   primary: ModelCatalogEntry,
   fallbackModelId?: string | null,
 ): ModelCatalogEntry | null {
-  const enabled = catalog.filter((m) => m.enabled && m.id !== primary.id);
+  const enabled = catalog.filter(
+    (m) => m.enabled && m.id !== primary.id && isChatRoutableModel(m),
+  );
   if (fallbackModelId) {
     const named = enabled.find((m) => m.id === fallbackModelId);
     if (named) return named;

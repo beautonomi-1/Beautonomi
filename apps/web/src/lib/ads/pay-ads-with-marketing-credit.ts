@@ -71,7 +71,7 @@ export async function payAdsBudgetOrderWithMarketingCredit(params: {
     feesMajor: 0,
     providerIdHint: providerId,
     campaignIdHint: order.campaign_id ?? null,
-    paymentProvider: "paystack",
+    paymentProvider: "marketing_credit",
   });
 
   if (!result.finalized && !result.alreadyPaid) {

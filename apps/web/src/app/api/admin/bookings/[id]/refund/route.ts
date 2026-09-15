@@ -15,7 +15,7 @@ import { enforcePeriodLock } from "@/lib/finance/period-lock";
  * POST /api/admin/bookings/[id]/refund
  *
  * Process a refund for a booking. Refunds always credit the customer's wallet
- * (use for next booking or request payout). Uses booking_refunds so
+ * (use for next booking). Uses booking_refunds so
  * update_booking_payment_status trigger keeps totals in sync.
  */
 export async function POST(
@@ -189,7 +189,7 @@ export async function POST(
         b.customer_id,
         {
           title: "Refund added to wallet",
-          message: `A refund of ${b.currency || lastResortCurrency} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          message: `A refund of ${b.currency || lastResortCurrency} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking.`,
           data: { type: "refund_processed", booking_id: id, refund_id: (refund as { id: string }).id },
           url: "/account-settings/wallet",
         },

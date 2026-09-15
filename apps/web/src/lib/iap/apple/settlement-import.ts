@@ -247,6 +247,20 @@ export function parseAppleFinancialReport(reportText: string): ParseAppleFinanci
   };
 }
 
+/** Phase 11 deferred rows store proceeds in amount/fees with net=0. Exported for unit tests. */
+export function appleLedgerRowProceeds(row: {
+  amount?: number | string | null;
+  fees?: number | string | null;
+  net?: number | string | null;
+}): number {
+  const amount = Number(row.amount ?? 0);
+  const fees = Number(row.fees ?? 0);
+  const net = Number(row.net ?? 0);
+  const proceeds =
+    net !== 0 ? net : Math.max(0, amount - (Number.isFinite(fees) ? fees : 0));
+  return Number.isFinite(proceeds) ? proceeds : 0;
+}
+
 async function resolveExpectedProceeds(params: {
   supabase: SupabaseClient;
   periodStart: string;
@@ -260,18 +274,23 @@ async function resolveExpectedProceeds(params: {
 
   const { data } = await supabase
     .from("finance_transactions")
-    .select("net, metadata, created_at")
+    .select("amount, fees, net, metadata, created_at")
     .in("transaction_type", ["provider_subscription_payment", "provider_ads_payment"])
     .gte("created_at", startIso)
     .lte("created_at", endIso);
 
   let total = 0;
-  for (const row of (data ?? []) as Array<{ net?: number | string | null; metadata?: Record<string, unknown> | null }>) {
+  for (const row of (data ?? []) as Array<{
+    amount?: number | string | null;
+    fees?: number | string | null;
+    net?: number | string | null;
+    metadata?: Record<string, unknown> | null;
+  }>) {
     const provider = String(row.metadata?.payment_provider ?? "").toLowerCase();
     if (provider !== "apple") continue;
-    const net = Number(row.net ?? 0);
-    if (!Number.isFinite(net)) continue;
-    total += net;
+    const proceeds = appleLedgerRowProceeds(row);
+    if (proceeds <= 0) continue;
+    total += proceeds;
   }
 
   if (currency !== "ZAR" && fxRate != null) {

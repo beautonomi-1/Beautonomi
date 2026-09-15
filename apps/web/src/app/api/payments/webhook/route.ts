@@ -445,6 +445,29 @@ export async function POST(request: Request) {
                 subscriptionCode: (disputedMeta.subscription_code as string) ?? null,
                 providerIdHint: (disputedMeta.provider_id as string) ?? null,
               });
+            } else {
+              const {
+                shouldProcessPaystackDisputeChargeback,
+                processBookingChargeback,
+              } = await import("@/lib/bookings/process-booking-chargeback");
+              if (shouldProcessPaystackDisputeChargeback(eventType, disputeData ?? undefined)) {
+                const disputeId = String(
+                  disputeData?.id ?? disputeData?.dispute_id ?? `${disputeRef}:${eventType}`,
+                );
+                const disputeAmountRaw =
+                  (disputeData?.amount ?? disputeTx?.amount) as number | undefined;
+                await processBookingChargeback({
+                  supabase: supabase as never,
+                  paymentProvider: "paystack",
+                  reference: String(disputeRef),
+                  disputeId,
+                  eventType,
+                  amountSmallestUnit:
+                    disputeAmountRaw != null && Number.isFinite(Number(disputeAmountRaw))
+                      ? Number(disputeAmountRaw)
+                      : undefined,
+                });
+              }
             }
           } catch (disputeReversalError) {
             console.error("[webhook] dispute reversal failed:", disputeReversalError);

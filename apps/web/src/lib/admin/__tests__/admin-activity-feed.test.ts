@@ -57,8 +57,9 @@ describe("admin-activity-feed", () => {
         refundable_payments: 10,
         safety_in_feed: 4,
         ops_new_leads: 2,
+        support_tickets: 6,
       }),
-    ).toBe(24);
+    ).toBe(30);
     expect(
       computeActivityTotalUnreadFromCounts({
         pending_payouts: 0,
@@ -70,6 +71,13 @@ describe("admin-activity-feed", () => {
   it("treats refundable_payment as actionable (not legacy refund_request)", () => {
     expect(ACTIONABLE_ACTIVITY_TYPES.has("refundable_payment")).toBe(true);
     expect(ACTIONABLE_ACTIVITY_TYPES.has("refund_request")).toBe(false);
+  });
+
+  it("treats support_ticket as actionable", () => {
+    expect(ACTIONABLE_ACTIVITY_TYPES.has("support_ticket")).toBe(true);
+    expect(ADMIN_ACTIVITY_LINKS.supportTicketsAwaiting).toBe(
+      "/admin/support-tickets?filter=needs_response",
+    );
   });
 
   it("excludes informational types from actionable set", () => {

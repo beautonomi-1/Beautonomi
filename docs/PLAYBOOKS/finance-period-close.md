@@ -16,27 +16,28 @@
   - `/api/cron/expire-cancelled-subscriptions` — subscriptions posted.
   - `/api/cron/provider-stall-check` — no stuck provider payouts.
 - Nightly finance audit (`scripts/prod/audit-finance-ledger.mjs`) exited
-  clean for the period.
-- `v_ledger_reconciliation` (F14 shadow-writer) shows no rows where
-  `journal_entry_id IS NULL` for transactions inside the period.
+  clean for the period (script **requires** migration `724` RPC; exits non-zero if missing).
+- Ledger Health (`/admin/ledger-health`) or `ledger_reconciliation_summary` RPC
+  shows no open drift for the tenant. Do **not** rely on raw `v_ledger_reconciliation`
+  alone — `provider_earnings` rows intentionally have no journal entry.
 
 ## Procedure
 
 1. Run audit locally against prod credentials (read-only):
 
    ```bash
-   SUPABASE_SERVICE_ROLE_KEY=<secret> \
+   SUPABASE_URL=<url> SUPABASE_SERVICE_ROLE_KEY=<secret> \
      node scripts/prod/audit-finance-ledger.mjs 2026-03-01 2026-03-31
    ```
 
-   Abort if the script reports any discrepancies.
+   Abort if the script reports any discrepancies or exits `2` (RPC missing).
 
 2. Close the period in the admin UI (`/admin/period-locks`) OR via
    SQL:
 
    ```sql
    INSERT INTO public.financial_period_locks
-     (tenant_id, period_start, period_end, closed_by, closed_at, note)
+     (tenant_id, period_start, period_end, locked_by, locked_at, notes)
    VALUES
      ('<tenant-uuid>', '2026-03-01', '2026-03-31', '<admin-uuid>', now(),
       'Monthly close');
@@ -54,14 +55,15 @@
 
 ## Reopening a period (emergencies only)
 
-Reopening unlocks writes for the period. Only do this after written approval
-from the CFO.
+Reopening **deletes** the lock row (there is no `reopened_at` column). Only do
+this after written approval from the CFO.
 
 ```sql
-UPDATE public.financial_period_locks
-SET reopened_at = now(), reopened_by = '<admin>', reopen_reason = '<reason>'
-WHERE tenant_id = '<tenant>' AND period_start = '2026-03-01';
+DELETE FROM public.financial_period_locks
+WHERE tenant_id = '<tenant>' AND period_start = '2026-03-01' AND period_end = '2026-03-31';
 ```
+
+Or use the admin UI unlock action on `/admin/period-locks`.
 
 After reopening:
 - Notify finance + audit stakeholders.

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_COMMERCIAL } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -82,7 +83,7 @@ export function TerminalOnboardingDetailPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: adminQueryKeys.commercialTerminalOnboardingDetail(id) });
     qc.invalidateQueries({ queryKey: adminQueryKeys.commercialTerminalOnboarding });
-    qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+    invalidateAdminShellCounts(qc);
   };
 
   const { data, isLoading, isError, refetch } = useQuery({

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -161,7 +162,10 @@ export function PayoutsPage() {
   const pendingRows = rows.filter((r) => String(r.status ?? "") === "pending" && r.id);
   const selectedPendingIds = pendingRows.map((r) => String(r.id)).filter((id) => selectedIds.has(id));
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.payouts.all() });
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: adminQueryKeys.payouts.all() });
+    invalidateAdminShellCounts(qc);
+  };
 
   const handlePayoutMutationError = (e: Error) => {
     if (e instanceof AdminApiError && (e.status === 409 || e.code === "STATE_CONFLICT")) {

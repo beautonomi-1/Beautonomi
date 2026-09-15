@@ -5,6 +5,7 @@ import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
@@ -221,8 +222,7 @@ export function RefundsListPage() {
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.refunds(filters) });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.activity() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Refund credited to customer wallet");
       const warning =
         data && "provider_balance_warning" in data ? data.provider_balance_warning : null;
@@ -387,7 +387,7 @@ export function RefundsListPage() {
           </li>
           <li>
             <strong>Credit wallet</strong> — manual support credit only. This never reverses a card
-            or bank payment; the customer can spend the balance or request a payout.
+            or bank payment; the customer can spend the balance on their next booking.
           </li>
           <li>
             <strong>Non-booking payments</strong> (gift cards, memberships, subscriptions, ads) must
@@ -915,7 +915,7 @@ export function RefundsListPage() {
 
             <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
               The customer&apos;s wallet will be credited immediately. This does not refund their
-              card or bank. They can use the balance on their next booking or request a payout from
+              card or bank. They can use the balance on their next booking from
               their wallet.
             </p>
 

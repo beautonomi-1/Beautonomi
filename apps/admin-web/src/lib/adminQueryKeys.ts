@@ -11,6 +11,8 @@ export const adminQueryKeys = {
   navCounts: () => [...adminQueryKeys.root, "nav-counts"] as const,
   tenants: () => [...adminQueryKeys.root, "tenants"] as const,
   activity: () => [...adminQueryKeys.root, "activity"] as const,
+  adminNotifications: (signature = "inbox") =>
+    [...adminQueryKeys.root, "admin-notifications", signature] as const,
 
   /** Superadmin safety incidents list (GET /api/admin/safety/logs). */
   safetyLogs: (signature: string) => [...adminQueryKeys.root, "safety-logs", signature] as const,

@@ -17,16 +17,17 @@ Provider payoutable balance is computed by `getAvailablePayoutBalance` from `fin
 Included transaction types:
 
 - `provider_earnings`
+- `membership_provider_earnings`
 - `tip`
 - `travel_fee`
-- `service_fee`
 - `cancellation_fee`
 - `refund`
 - `payout`
 
 Rules:
 
-- `provider_earnings`, `tip`, `travel_fee`, and `service_fee` are added when the platform holds the money.
+- `provider_earnings`, `membership_provider_earnings`, `tip`, `travel_fee`, and `cancellation_fee` are added when the platform holds the money.
+- `service_fee` (legacy name for customer-paid platform fees) is **platform revenue**, not provider payoutable balance — skipped in `getAvailablePayoutBalance`.
 - `refund` rows are clawbacks and reduce the balance through their negative `net` or `amount`.
 - `payout` rows are completed payout deductions and are subtracted by amount.
 - Pending and processing rows in `payouts` are reserved and subtracted.

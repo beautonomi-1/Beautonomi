@@ -279,6 +279,7 @@ async function resolvePreset(preset: AiPreset): Promise<PresetPlan> {
 
   if (preset === "gateway_cheap_global") {
     const lite =
+      pickLatestGatewayModel(live, "alibaba", (m) => /qwen3\.7.*flash/i.test(m.id)) ??
       pickLatestGatewayModel(live, "alibaba", (m) => modelHasVision(m) && /qwen.*flash/i.test(m.id)) ??
       pickLatestGatewayModel(live, "alibaba", (m) => modelHasVision(m));
     const flash =

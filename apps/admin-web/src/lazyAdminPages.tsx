@@ -34,6 +34,9 @@ export const DisputesPage = lazy(() =>
 export const SupportTicketsPage = lazy(() =>
   import("@/routes/SupportTicketsPage").then((m) => ({ default: m.SupportTicketsPage }))
 );
+export const NotificationsInboxPage = lazy(() =>
+  import("@/routes/NotificationsInboxPage").then((m) => ({ default: m.NotificationsInboxPage }))
+);
 export const ProviderDistanceSettingsPage = lazy(() =>
   import("@/routes/ProviderDistanceSettingsPage").then((m) => ({ default: m.ProviderDistanceSettingsPage }))
 );

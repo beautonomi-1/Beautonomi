@@ -10,7 +10,8 @@ import {
 } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, type NavLinkRenderProps } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
+import { Menu, LogOut, Search, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
+import { ADMIN_SECTION_SUPPORT, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import {
   ADMIN_SCOPE_STORAGE_KEY,
@@ -27,6 +28,9 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminBreadcrumbs } from "@/components/ui/AdminBreadcrumbs";
 import { AdminBreadcrumbProvider } from "@/providers/AdminBreadcrumbProvider";
+import { AdminNotificationBell } from "@/components/layout/AdminNotificationBell";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 
 export function AdminChrome() {
   const qc = useQueryClient();
@@ -87,6 +91,7 @@ export function AdminChrome() {
       }
     },
     staleTime: 60_000,
+    refetchInterval: 30_000,
   });
 
   const tenantsQuery = useQuery({
@@ -94,42 +99,6 @@ export function AdminChrome() {
     queryFn: () => adminApi.getJson<Array<{ id: string; name?: string; slug?: string | null }>>("/api/admin/tenants"),
     enabled: bootstrap?.isSuperadmin === true,
     staleTime: 5 * 60_000,
-  });
-
-  const activityQuery = useQuery({
-    queryKey: adminQueryKeys.activity(),
-    queryFn: async () => {
-      try {
-        return await adminApi.getJson<{
-          activities?: Array<{
-            id: string;
-            title?: string;
-            message?: string;
-            timestamp?: string;
-            link?: string;
-            priority?: string;
-          }>;
-          total_unread?: number;
-        }>("/api/admin/activity");
-      } catch (e) {
-        if (e instanceof AdminApiError && (e.status === 401 || e.status === 403 || e.status >= 500)) {
-          return {
-            activities: [] as Array<{
-              id: string;
-              title?: string;
-              message?: string;
-              timestamp?: string;
-              link?: string;
-              priority?: string;
-            }>,
-            total_unread: 0,
-          };
-        }
-        throw e;
-      }
-    },
-    staleTime: 60_000,
-    retry: false,
   });
 
   const [scopeMode, setScopeMode] = useState<"tenant" | "global">("tenant");
@@ -318,12 +287,73 @@ export function AdminChrome() {
 
   const navCounts = navCountsQuery.data ?? {};
 
-  const activityData = activityQuery.data;
-  const activityItems = activityData?.activities ?? [];
-  const activityUnread = activityData?.total_unread ?? 0;
+  const canAccessSupport = canAccess(ADMIN_SECTION_SUPPORT);
+  const canAccessUsersTrust = canAccess(ADMIN_SECTION_USERS_TRUST);
+  const isSuperadminShell = bootstrap?.isSuperadmin === true;
 
-  /** `/admin/foo/bar?x=1` → root-absolute path under the admin basename (leading `/`). */
-  const activityLinkTo = (href: string) => adminSpaTo(href);
+  // Realtime: refresh shell badges when queues or personal notifications change.
+  useEffect(() => {
+    const sb = getSupabaseBrowserClient();
+    if (!sb) return;
+    const userId = bootstrap?.userId;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = null;
+        invalidateAdminShellCounts(qc);
+      }, 500);
+    };
+
+    const channels: ReturnType<typeof sb.channel>[] = [];
+    if (userId) {
+      channels.push(
+        sb
+          .channel(`admin-notifications:${userId}`)
+          .on(
+            "postgres_changes" as never,
+            { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+            schedule,
+          )
+          .subscribe(),
+      );
+    }
+    if (canAccessSupport) {
+      channels.push(
+        sb
+          .channel("admin-shell-support-tickets")
+          .on("postgres_changes" as never, { event: "*", schema: "public", table: "support_tickets" }, schedule)
+          .subscribe(),
+      );
+    }
+    if (isSuperadminShell) {
+      channels.push(
+        sb
+          .channel("admin-shell-agent-actions")
+          .on("postgres_changes" as never, { event: "*", schema: "public", table: "agent_actions" }, schedule)
+          .subscribe(),
+      );
+    }
+    if (canAccessUsersTrust) {
+      channels.push(
+        sb
+          .channel("admin-shell-user-blocks")
+          .on("postgres_changes" as never, { event: "*", schema: "public", table: "user_blocks" }, schedule)
+          .subscribe(),
+      );
+    }
+
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      for (const ch of channels) {
+        try {
+          sb.removeChannel(ch);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [bootstrap?.userId, canAccessSupport, canAccessUsersTrust, isSuperadminShell, qc]);
 
   useEffect(() => {
     const hash = location.hash.replace(/^#/, "").trim();
@@ -686,56 +716,7 @@ export function AdminChrome() {
             </div>
           ) : null}
 
-          <details className="relative">
-            <summary
-              className="relative flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-1 rounded-xl p-2 hover:bg-gray-100 touch-manipulation"
-              aria-label={
-                activityUnread > 0
-                  ? `Notifications, ${activityUnread} items needing attention`
-                  : "Notifications"
-              }
-            >
-              <Bell className="h-5 w-5 text-gray-600" aria-hidden />
-              {activityUnread > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-white">
-                  {activityUnread > 99 ? "99+" : activityUnread}
-                </span>
-              ) : null}
-              <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" aria-hidden />
-            </summary>
-            <div className="absolute right-0 z-30 mt-1 w-80 max-h-[min(24rem,70vh)] overflow-auto rounded-lg border border-gray-200 bg-white p-2 text-xs shadow-lg">
-              {activityQuery.isLoading ? (
-                <p className="text-gray-500">Loading…</p>
-              ) : activityQuery.isError ? (
-                <p className="text-gray-500">Activity unavailable</p>
-              ) : activityItems.length === 0 ? (
-                <p className="text-gray-500">No items needing attention in the feed.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {activityItems.map((a) => {
-                    const to = a.link ? activityLinkTo(a.link) : "/dashboard";
-                    const primary = a.title ?? "Update";
-                    const body = a.message ?? a.id;
-                    return (
-                      <li key={a.id}>
-                        <Link
-                          to={to}
-                          className="block rounded-lg px-2 py-2 text-left text-gray-800 hover:bg-primary/5"
-                          onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
-                            const details = (e.currentTarget.closest("details") as HTMLDetailsElement | null);
-                            if (details) details.open = false;
-                          }}
-                        >
-                          <span className="font-medium text-gray-900">{primary}</span>
-                          <span className="mt-0.5 block text-gray-600">{body}</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </details>
+          <AdminNotificationBell />
 
           <div className="flex items-center gap-2 border-l border-gray-200 pl-3">
             <div className="hidden text-right text-xs sm:block">

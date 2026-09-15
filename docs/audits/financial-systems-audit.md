@@ -486,13 +486,13 @@ All 4 critical and all 8 high-priority financial fixes have been implemented and
 - Admin visibility of post-payout negative provider balances
 
 ### Remaining Medium/Low items (non-blocking)
-- Staff tip double-count in pay runs (#13)
-- Travel fee in tax base clarification (#14)
+- ~~Staff tip double-count in pay runs (#13)~~ **Closed in code** (2026 finance audit)
+- Travel fee in tax base clarification (#14) — **partially closed**: public checkout and `calculate-booking-price-complete` both tax travel; document if product/legal differs
 - End-of-day vs ledger alignment (#16)
 - Ad spend date filtering (#17)
 - Revenue report time basis consistency (#18)
 - Gift card refund restoration (#19)
-- Dual loyalty system consolidation (#20)
+- ~~Dual loyalty system consolidation (#20)~~ **Closed in code** (migration 586)
 
 ---
 

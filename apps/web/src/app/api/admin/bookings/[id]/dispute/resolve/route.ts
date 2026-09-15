@@ -277,7 +277,7 @@ export async function POST(
 
       const resolutionMessage =
         resolution === "refund_full"
-          ? "Your dispute has been resolved with a full refund. The amount has been added to your wallet—use it for your next booking or request a payout."
+          ? "Your dispute has been resolved with a full refund. The amount has been added to your wallet—use it for your next booking."
           : resolution === "refund_partial"
           ? `Your dispute has been resolved with a partial refund of ${bookingData.currency || lastResortCurrency} ${refund_amount ?? 0}. The amount has been added to your wallet.`
           : "Your dispute has been reviewed and the decision is in favor of the provider.";

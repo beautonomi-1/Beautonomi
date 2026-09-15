@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -170,7 +171,7 @@ export function DisputesPage() {
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.disputes.all() });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       setResolveId(null);
       setNotes("");
       setRefundAmount("");
@@ -191,7 +192,7 @@ export function DisputesPage() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.disputes.all() });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       setCloseId(null);
       adminToast.success("Dispute closed");
     },
@@ -520,7 +521,7 @@ export function DisputesPage() {
           {(resolution === "refund_full" || resolution === "refund_partial") && (
             <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
               The customer&apos;s wallet will be credited immediately. They can
-              apply the balance to their next booking or request a payout.
+              apply the balance to their next booking.
             </p>
           )}
 

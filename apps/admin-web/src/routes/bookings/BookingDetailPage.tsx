@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -295,6 +296,7 @@ export function BookingDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
+      invalidateAdminShellCounts(qc);
       setIsEditing(false);
       adminToast.success("Booking updated");
     },
@@ -307,6 +309,7 @@ export function BookingDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
+      invalidateAdminShellCounts(qc);
       setShowCancel(false);
       setCancelReason("");
       adminToast.success("Booking cancelled");
@@ -320,6 +323,7 @@ export function BookingDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
+      invalidateAdminShellCounts(qc);
       setShowRefund(false);
       setRefundReasonPreset("");
       setRefundReasonOther("");
@@ -1132,7 +1136,7 @@ export function BookingDetailPage() {
 
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
             The customer&apos;s wallet will be credited immediately. This does not refund their card
-            or bank. They can use the balance on their next booking or request a payout from their
+            or bank. They can use the balance on their next booking from their
             wallet.
           </p>
 

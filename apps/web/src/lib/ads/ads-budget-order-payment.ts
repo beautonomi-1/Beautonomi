@@ -93,10 +93,11 @@ export async function recordAdsBudgetOrderPayment(params: {
   feesMajor: number;
   providerIdHint?: string | null;
   campaignIdHint?: string | null;
-  paymentProvider?: "paystack" | "apple";
+  paymentProvider?: "paystack" | "apple" | "marketing_credit";
 }): Promise<RecordAdsBudgetOrderPaymentResult> {
   const { supabase, orderId, reference, amountMajor, feesMajor, paymentProvider = "paystack" } =
     params;
+  const fundedByMarketingCredit = paymentProvider === "marketing_credit";
   if (!orderId) {
     console.error("[ads_budget_order] recordAdsBudgetOrderPayment: missing orderId");
     return { finalized: false, alreadyPaid: false, campaignId: null };
@@ -218,53 +219,56 @@ export async function recordAdsBudgetOrderPayment(params: {
     .eq("id", campaignId)
     .eq("provider_id", providerId);
 
-  // 3) Revenue ledger: payment_transactions + finance_transactions.
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
-    reference,
-    amount: amountMajor,
-    fees: feesMajor,
-    net_amount: netAmount,
-    status: "success",
-    provider: paymentProvider,
-    transaction_type: "charge",
-    metadata: {
-      kind: "ads_budget_order",
-      ads_budget_order_id: orderId,
-      provider_id: providerId,
-      campaign_id: campaignId,
-      payment_provider: paymentProvider,
-    },
-    created_at: nowIso,
-  });
-
   const billingLabel =
     campaignRow?.billing_model === "time_based"
       ? `Ads time-based boost (${campaignRow?.duration_days ?? "N"} days)`
       : "Ads campaign budget (pre-pay)";
 
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: financeTenantId,
-    transaction_type: "provider_ads_payment",
-    amount: amountMajor,
-    fees: feesMajor,
-    commission: 0,
-    net: 0,
-    currency: resolvedCurrency,
-    description: billingLabel,
-    metadata: {
-      kind: "ads_budget_order",
-      ads_budget_order_id: orderId,
-      campaign_id: campaignId,
-      payment_provider: paymentProvider,
-      recognition_basis: campaignRow?.billing_model === "time_based" ? "term" : "consumption",
-      term_start: termStart,
-      ...(termEnd ? { term_end: termEnd } : {}),
-    },
-    created_at: nowIso,
-  });
+  // Marketing-credit-funded orders: recognition happens via marketing_credit_recognition
+  // when credits are debited — do not post a deferred provider_ads_payment with no cash.
+  if (!fundedByMarketingCredit) {
+    await supabase.from("payment_transactions").insert({
+      booking_id: null,
+      reference,
+      amount: amountMajor,
+      fees: feesMajor,
+      net_amount: netAmount,
+      status: "success",
+      provider: paymentProvider,
+      transaction_type: "charge",
+      metadata: {
+        kind: "ads_budget_order",
+        ads_budget_order_id: orderId,
+        provider_id: providerId,
+        campaign_id: campaignId,
+        payment_provider: paymentProvider,
+      },
+      created_at: nowIso,
+    });
+
+    await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: providerId,
+      tenant_id: financeTenantId,
+      transaction_type: "provider_ads_payment",
+      amount: amountMajor,
+      fees: feesMajor,
+      commission: 0,
+      net: 0,
+      currency: resolvedCurrency,
+      description: billingLabel,
+      metadata: {
+        kind: "ads_budget_order",
+        ads_budget_order_id: orderId,
+        campaign_id: campaignId,
+        payment_provider: paymentProvider,
+        recognition_basis: campaignRow?.billing_model === "time_based" ? "term" : "consumption",
+        term_start: termStart,
+        ...(termEnd ? { term_end: termEnd } : {}),
+      },
+      created_at: nowIso,
+    });
+  }
 
   await notifyProviderSafe(providerId, {
     type: needsReview ? "ads_pending_review" : "ads_payment_confirmed",

@@ -63,6 +63,7 @@ import {
   Columns3,
   Plug,
   Sparkles,
+  Bot,
   ScrollText,
   BookOpen,
   Lock,
@@ -125,6 +126,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, section: ADMIN_SECTION_OVERVIEW },
+      { title: "Notifications", href: "/admin/notifications/inbox", icon: Bell, section: ADMIN_SECTION_OVERVIEW },
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3, section: ADMIN_SECTION_OVERVIEW, superadminOnly: true },
       { title: "Geo & Devices", href: "/admin/analytics/geo", icon: Globe2, section: ADMIN_SECTION_OVERVIEW, superadminOnly: true },
       { title: "Reports", href: "/admin/reports", icon: FileText, section: ADMIN_SECTION_OVERVIEW },
@@ -305,6 +307,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "AI Platform", href: "/admin/control-plane/integrations/ai", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Agentic Console", href: "/admin/control-plane/modules/agents", icon: Bot, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Aura (trust & safety)", href: "/admin/control-plane/integrations/aura", icon: Zap, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
     ],
   },

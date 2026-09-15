@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -147,7 +148,7 @@ export function ProviderOpsTrackerDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerDetail(userId!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Onboarding submitted for activation review");
     },
     onError: (e: Error) => adminToast.error(`Submit failed: ${e.message}`),

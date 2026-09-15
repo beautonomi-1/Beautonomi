@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
@@ -87,6 +88,7 @@ export function VerificationDetailPage() {
       await qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      invalidateAdminShellCounts(qc);
       adminToast.success(vars.status === "approved" ? "Verification approved" : "Verification rejected");
     },
     onError: (e: Error) => adminToast.error(`Review failed: ${e.message}`),
@@ -102,6 +104,7 @@ export function VerificationDetailPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.verificationDetail(id) });
       await qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
+      invalidateAdminShellCounts(qc);
       adminToast.success("Customer can submit identity verification again.");
     },
     onError: (e: Error) => adminToast.error(`Reset failed: ${e.message}`),

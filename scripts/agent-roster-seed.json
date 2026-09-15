@@ -1,0 +1,13 @@
+[
+  { "key": "ops-sentinel", "task_default": "classification", "vision_enabled": true },
+  { "key": "support-triage", "task_default": "classification", "vision_enabled": true },
+  { "key": "support-lead", "task_default": "drafting", "vision_enabled": true },
+  { "key": "payout-review", "task_default": "classification", "vision_enabled": true },
+  { "key": "reconciliation-investigator", "task_default": "classification", "vision_enabled": true },
+  { "key": "refund-specialist", "task_default": "classification", "vision_enabled": true },
+  { "key": "provider-success", "task_default": "drafting", "vision_enabled": true },
+  { "key": "membership-shepherd", "task_default": "drafting", "vision_enabled": true },
+  { "key": "trust-monitor", "task_default": "classification", "vision_enabled": true },
+  { "key": "content-moderator", "task_default": "classification", "vision_enabled": true },
+  { "key": "admin-copilot", "task_default": "copilot", "vision_enabled": true }
+]

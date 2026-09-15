@@ -5,6 +5,7 @@ import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -234,6 +235,7 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
   const invalidateTicket = useCallback(() => {
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTicketDetail(id) });
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+    invalidateAdminShellCounts(qc);
   }, [qc, id]);
 
   // Stamp last_staff_view_at when the ticket loads so agent-unread clears.

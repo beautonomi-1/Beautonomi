@@ -45,7 +45,7 @@ The `/admin/refunds` nav badge counts **bookings needing review** (`countRefunds
 
 All customer refunds credit the **Beautonomi wallet** instead of reversing the original card/bank payment.
 
-- **Customers** spend the balance on their next booking or request a payout.
+- **Customers** spend the balance on their next booking (wallet cash-out is not yet available).
 - **Providers** are clawed back via ledger triggers when refunds complete; admin may see a provider balance warning if payout already happened.
 
 ### Write paths and sync

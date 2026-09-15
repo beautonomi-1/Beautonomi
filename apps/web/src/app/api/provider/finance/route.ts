@@ -652,7 +652,8 @@ export async function GET(request: NextRequest) {
           period_provider_earnings:
             "provider_earnings net for the selected range — same value as this_month field",
           product_sales_earnings_total: "platform-held ecommerce provider earnings",
-          walk_in_additional_charges_total: "cash register/end-of-day collection",
+          walk_in_additional_charges_total:
+            "walk-in add-on ledger (audit/reporting only — not in payout balance or EOD till)",
           gift_card_sales_this_period:
             "liability movement — do not add to total_earnings (gift card cash is not provider service income)",
           membership_sales_this_period:

@@ -8,6 +8,8 @@ import { countRefundsNeedingReview } from "@/lib/admin/count-refunds-needing-rev
 import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
+import { countSupportTicketsForNav } from "@/lib/support/support-ticket-nav-count";
+import { countAgentProposalsForNav } from "@/lib/ai/agent-proposal-nav-count";
 
 /**
  * GET /api/admin/nav-counts
@@ -64,46 +66,12 @@ export async function GET(request: NextRequest) {
         .in("status", ["pending", "processing"])
         .eq("providers.tenant_id", tenantId),
       (async () => {
-        // Count only actionable tickets (needs_agent_response = true) rather than all
-        // open+in_progress — this is the "badge you must clear" number that
-        // tells agents how much work is waiting for them.
-        if (isSuperadmin || user.role === "support_agent") {
-          const [actionableResult, slaBreachedResult] = await Promise.all([
-            supabase
-              .from("support_tickets")
-              .select("id", { count: "exact", head: true })
-              .eq("needs_agent_response", true),
-            supabase
-              .from("support_tickets")
-              .select("id", { count: "exact", head: true })
-              .lt("sla_resolution_due_at", new Date().toISOString())
-              .not("status", "in", '("resolved","closed")'),
-          ]);
-          return {
-            count: actionableResult.count ?? 0,
-            sla_breached: slaBreachedResult.count ?? 0,
-          };
-        }
-        if (tenantProviderIds.length > 0) {
-          const [actionableResult, slaBreachedResult] = await Promise.all([
-            supabase
-              .from("support_tickets")
-              .select("id", { count: "exact", head: true })
-              .eq("needs_agent_response", true)
-              .in("provider_id", tenantProviderIds),
-            supabase
-              .from("support_tickets")
-              .select("id", { count: "exact", head: true })
-              .lt("sla_resolution_due_at", new Date().toISOString())
-              .not("status", "in", '("resolved","closed")')
-              .in("provider_id", tenantProviderIds),
-          ]);
-          return {
-            count: actionableResult.count ?? 0,
-            sla_breached: slaBreachedResult.count ?? 0,
-          };
-        }
-        return { count: 0, sla_breached: 0 };
+        // Human support staff queue depth (needs_agent_response when migration 726 applied).
+        const { awaiting_response, sla_breached } = await countSupportTicketsForNav(supabase, {
+          role: user.role,
+          tenantProviderIds,
+        });
+        return { count: awaiting_response, sla_breached };
       })(),
       (async () => {
         const count = await countRefundsNeedingReview(supabase, tenantId);
@@ -285,6 +253,10 @@ export async function GET(request: NextRequest) {
       })(),
     ]);
 
+    const agentProposalsPending = isSuperadmin
+      ? await countAgentProposalsForNav(supabase, { tenantId })
+      : 0;
+
     const counts: Record<string, number> = {
       "/admin/verifications": verificationsResult.count ?? 0,
       "/admin/payouts": payoutsResult.count ?? 0,
@@ -311,6 +283,8 @@ export async function GET(request: NextRequest) {
       "/admin/paystack-terminal": paystackTerminalSetupResult.count ?? 0,
       "/admin/identity-trust/sessions": diditSessionsResult.count ?? 0,
       "/admin/commercial/terminal-onboarding": terminalMerchantOnboardingResult.count ?? 0,
+      "/admin/control-plane/modules/agents": agentProposalsPending,
+      "/admin/control-plane/integrations/ai": agentProposalsPending,
     };
 
     return successResponse(counts);

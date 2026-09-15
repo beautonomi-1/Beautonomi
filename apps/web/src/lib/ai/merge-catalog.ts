@@ -118,8 +118,11 @@ export async function buildMergedCatalog(params: {
   const liveModels = mergeLiveModels(live, dbByModelId);
   const runtimeLive: ModelCatalogEntry[] = liveModels.map((m) => {
     const entry = liveModelToCatalogEntry(m, m.enabled, m.tier);
+    const capability =
+      m.capability === "embedding" ? "embedding" : m.capability === "vision" ? "vision" : "chat";
     return {
       ...entry,
+      capability,
       inputUsdPer1k: m.input_usd_per_1k,
       outputUsdPer1k: m.output_usd_per_1k,
       supportsCaching: modelSupportsCaching(m),

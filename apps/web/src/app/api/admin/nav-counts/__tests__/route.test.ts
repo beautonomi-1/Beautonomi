@@ -6,6 +6,8 @@ const mockResolveAdminApiTenantId = vi.fn();
 const mockFetchAllProviderIdsForTenant = vi.fn();
 const mockCountRefundable = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
+const mockCountSupportTicketsForNav = vi.fn();
+const mockCountAgentProposalsForNav = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -25,6 +27,14 @@ vi.mock("@/lib/tenant/admin-tenant-scope", () => ({
 
 vi.mock("@/lib/admin/count-refunds-needing-review", () => ({
   countRefundsNeedingReview: (...args: unknown[]) => mockCountRefundable(...args),
+}));
+
+vi.mock("@/lib/support/support-ticket-nav-count", () => ({
+  countSupportTicketsForNav: (...args: unknown[]) => mockCountSupportTicketsForNav(...args),
+}));
+
+vi.mock("@/lib/ai/agent-proposal-nav-count", () => ({
+  countAgentProposalsForNav: (...args: unknown[]) => mockCountAgentProposalsForNav(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -85,6 +95,8 @@ describe("GET /api/admin/nav-counts refunds badge", () => {
     mockResolveAdminApiTenantId.mockResolvedValue("tenant-1");
     mockFetchAllProviderIdsForTenant.mockResolvedValue([]);
     mockGetSupabaseAdmin.mockReturnValue(makeSupabase());
+    mockCountSupportTicketsForNav.mockResolvedValue({ awaiting_response: 0, sla_breached: 0 });
+    mockCountAgentProposalsForNav.mockResolvedValue(0);
   });
 
   it("uses needs-review refund count for /admin/refunds", async () => {
@@ -106,5 +118,40 @@ describe("GET /api/admin/nav-counts refunds badge", () => {
     const body = await res.json();
 
     expect(body.data["/admin/user-blocks"]).toBe(12);
+  });
+
+  it("uses global support ticket count for admin_support", async () => {
+    mockRequireRoleInApi.mockResolvedValue({ user: { role: "admin_support" } });
+    mockCountSupportTicketsForNav.mockResolvedValue({ awaiting_response: 11, sla_breached: 3 });
+    mockCountRefundable.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/admin/nav-counts"));
+    const body = await res.json();
+
+    expect(mockCountSupportTicketsForNav).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ role: "admin_support" }),
+    );
+    expect(body.data["/admin/support-tickets"]).toBe(11);
+    expect(body.data["/admin/support-tickets/sla-breached"]).toBe(3);
+  });
+
+  it("includes agent proposal nav keys for superadmin only", async () => {
+    mockCountAgentProposalsForNav.mockResolvedValue(4);
+    mockCountRefundable.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const superRes = await GET(new NextRequest("http://localhost/api/admin/nav-counts"));
+    const superBody = await superRes.json();
+    expect(superBody.data["/admin/control-plane/modules/agents"]).toBe(4);
+    expect(superBody.data["/admin/control-plane/integrations/ai"]).toBe(4);
+
+    mockRequireRoleInApi.mockResolvedValue({ user: { role: "finance_admin" } });
+    const { GET: GET2 } = await import("../route");
+    const res = await GET2(new NextRequest("http://localhost/api/admin/nav-counts"));
+    const body = await res.json();
+    expect(body.data["/admin/control-plane/modules/agents"]).toBe(0);
+    expect(body.data["/admin/control-plane/integrations/ai"]).toBe(0);
   });
 });
