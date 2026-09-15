@@ -515,6 +515,56 @@ export async function executeApprovedAgentAction(
     return { ok: true, result: { membershipId: targetId, action: "dunning_sent" } };
   }
 
+  if (actionType === "moderation.hide") {
+    const contentTargetType = String(proposedPayload.content_target_type ?? targetType);
+    const contentTargetId = String(proposedPayload.content_target_id ?? targetId);
+    const reportId = String(proposedPayload.report_id ?? targetId);
+    const notes = String(proposedPayload.reason ?? proposedPayload.rationale ?? "Hidden via agent moderation approval");
+
+    const { applyContentModerationTakedown } = await import("@/lib/safety/moderation-actions");
+    const takedown = await applyContentModerationTakedown(supabase, {
+      targetType: contentTargetType as import("@/lib/safety/moderation-actions").ContentReportTargetType,
+      targetId: contentTargetId,
+      adminUserId: actorUserId,
+      action: "hide",
+      notes,
+    });
+    if (!takedown.applied) {
+      return { ok: false, reason: takedown.message ?? "moderation_hide_failed" };
+    }
+
+    await supabase
+      .from("content_reports")
+      .update({
+        status: "resolved",
+        resolution_notes: notes,
+        resolved_by: actorUserId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", reportId);
+
+    return { ok: true, result: { reportId, contentTargetId, action: "hidden" } };
+  }
+
+  if (actionType === "moderation.briefing") {
+    const reportId = String(proposedPayload.report_id ?? targetId);
+    const recommendation = String(proposedPayload.recommendation ?? "needs_human");
+    const notes = String(proposedPayload.reason ?? proposedPayload.rationale ?? "Agent moderation briefing");
+    const status = recommendation === "escalate_legal" ? "legal_hold" : "escalated";
+
+    await supabase
+      .from("content_reports")
+      .update({
+        status,
+        resolution_notes: notes,
+        resolved_by: actorUserId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", reportId);
+
+    return { ok: true, result: { reportId, status, action: "briefing_recorded" } };
+  }
+
   if (actionType === "trust.open_case" && targetType === "provider") {
     const signals = (proposedPayload.signals ?? {}) as Record<string, unknown>;
     const { data: provider } = await supabase

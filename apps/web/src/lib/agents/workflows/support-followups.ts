@@ -16,6 +16,8 @@ import { loadAgentDefinition, loadAgentModuleConfig, loadAgentOperationalState }
 import { assertAgentReadAllowed } from "../safety-gate";
 import { proposeAgentAction } from "../actions/action-service";
 import { resolveSupportTicketTenantId } from "../support-ticket-tenant";
+import { buildLocalizedCsatRecovery, buildLocalizedSupportNudge } from "../i18n-drafts";
+import { resolveUserPreferredLanguage } from "../locale";
 
 const PER_KIND_LIMIT = 15;
 const NUDGE_AFTER_MS = 48 * 3600_000;
@@ -35,29 +37,20 @@ function isDuplicate(err: unknown): boolean {
   return code === "23505" || /duplicate|unique/i.test(message);
 }
 
-export function buildNudgeDraft(params: { ticketNumber: string; daysSinceReply: number }): string {
-  return [
-    "Hi there,",
-    "",
-    `Just checking in on ticket ${params.ticketNumber} — we replied ${params.daysSinceReply} day(s) ago and want to make sure you saw it.`,
-    "If our answer solved the problem, no action is needed and we'll close the ticket shortly. If you still need help, just reply here and we'll pick it right back up.",
-    "",
-    "Warm regards,",
-    "Beautonomi Support",
-  ].join("\n");
+export function buildNudgeDraft(params: {
+  ticketNumber: string;
+  daysSinceReply: number;
+  locale?: string | null;
+}): string {
+  return buildLocalizedSupportNudge(params);
 }
 
-export function buildCsatRecoveryDraft(params: { ticketNumber: string; customerName: string | null }): string {
-  const greeting = params.customerName ? `Hi ${params.customerName},` : "Hi there,";
-  return [
-    greeting,
-    "",
-    `Thank you for your honest feedback on ticket ${params.ticketNumber}. I'm sorry the experience fell short of what you deserve.`,
-    "A senior member of our support team is personally reviewing what happened, and we'd genuinely like to make this right. If there's anything specific we missed, please tell us here — it goes straight to the person handling your case.",
-    "",
-    "Warm regards,",
-    "Beautonomi Support",
-  ].join("\n");
+export function buildCsatRecoveryDraft(params: {
+  ticketNumber: string;
+  customerName: string | null;
+  locale?: string | null;
+}): string {
+  return buildLocalizedCsatRecovery(params);
 }
 
 export async function runSupportFollowUpSweep(environment?: string): Promise<
@@ -67,9 +60,9 @@ export async function runSupportFollowUpSweep(environment?: string): Promise<
   const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
-  const def = await loadAgentDefinition("support-triage");
-  if (!def) return { skipped: true, reason: "support_triage_not_configured" };
-  const op = await loadAgentOperationalState("support-triage");
+  const def = await loadAgentDefinition("support-lead");
+  if (!def) return { skipped: true, reason: "support_lead_not_configured" };
+  const op = await loadAgentOperationalState("support-lead");
   if (op.state !== "active") return { skipped: true, reason: "agent_not_active" };
 
   const supabase = getSupabaseAdmin();
@@ -116,7 +109,7 @@ export async function runSupportFollowUpSweep(environment?: string): Promise<
   // ── 1. Stale waiting_customer: nudge, then propose resolution ───────────
   const { data: stale } = await supabase
     .from("support_tickets")
-    .select("id, ticket_number, provider_id, last_message_at, last_message_from")
+    .select("id, ticket_number, provider_id, user_id, last_message_at, last_message_from")
     .eq("status", "waiting_customer")
     .eq("last_message_from", "staff")
     .lt("last_message_at", new Date(now - NUDGE_AFTER_MS).toISOString())
@@ -137,12 +130,17 @@ export async function runSupportFollowUpSweep(environment?: string): Promise<
         counterKey: "resolveProposals",
       });
     } else {
+      const locale = await resolveUserPreferredLanguage((t as { user_id?: string | null }).user_id ?? null);
       await propose({
         ticket: t,
         actionType: "support.reply",
         payload: {
           ticketId: t.id,
-          draftReply: buildNudgeDraft({ ticketNumber, daysSinceReply: Math.max(days, 2) }),
+          draftReply: buildNudgeDraft({
+            ticketNumber,
+            daysSinceReply: Math.max(days, 2),
+            locale,
+          }),
           followUpKind: "stale_waiting_customer",
         },
         reasoning: `Waiting on the customer for ${days} day(s) — approve to send a friendly check-in.`,
@@ -216,11 +214,12 @@ export async function runSupportFollowUpSweep(environment?: string): Promise<
   for (const t of lowCsat ?? []) {
     const { data: customer } = await supabase
       .from("users")
-      .select("full_name")
+      .select("full_name, preferred_language")
       .eq("id", t.user_id)
       .maybeSingle();
     const firstName =
       (customer as { full_name?: string | null } | null)?.full_name?.trim().split(/\s+/)[0] ?? null;
+    const locale = (customer as { preferred_language?: string | null } | null)?.preferred_language ?? null;
     await propose({
       ticket: t,
       actionType: "support.reply",
@@ -229,6 +228,7 @@ export async function runSupportFollowUpSweep(environment?: string): Promise<
         draftReply: buildCsatRecoveryDraft({
           ticketNumber: String(t.ticket_number ?? t.id),
           customerName: firstName,
+          locale,
         }),
         followUpKind: "csat_recovery",
         needsHuman: true,

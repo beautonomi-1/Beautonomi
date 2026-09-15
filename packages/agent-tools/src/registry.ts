@@ -148,12 +148,98 @@ export const trustReadFraudCaseTool: AgentToolDefinition<
   },
 };
 
+export const financeReadRefundTool: AgentToolDefinition<
+  { refundId: string },
+  { id: string; amount: number; currency: string; status: string; bookingId: string | null }
+> = {
+  name: "finance.readRefund",
+  version: "1",
+  description: "Read pending refund summary (no banking details)",
+  requiredSection: ADMIN_SECTION_FINANCE,
+  mode: "read",
+  baseRiskTier: 2,
+  inputSchema: z.object({ refundId: z.string().uuid() }),
+  outputSchema: z.object({
+    id: z.string().uuid(),
+    amount: z.number(),
+    currency: z.string(),
+    status: z.string(),
+    bookingId: z.string().uuid().nullable(),
+  }),
+  maxRows: 1,
+  maxOutputBytes: 4096,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 60,
+  retentionClass: "A",
+  execute: async () => {
+    throw new Error("finance.readRefund wired in apps/web");
+  },
+};
+
+export const providerReadHealthSnapshotTool: AgentToolDefinition<
+  { providerId: string },
+  { providerId: string; completedBookings30d: number; completedBookingsPrior30d: number; status: string }
+> = {
+  name: "provider.readHealthSnapshot",
+  version: "1",
+  description: "Read provider booking health snapshot",
+  requiredSection: ADMIN_SECTION_OPERATIONS,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ providerId: z.string().uuid() }),
+  outputSchema: z.object({
+    providerId: z.string().uuid(),
+    completedBookings30d: z.number(),
+    completedBookingsPrior30d: z.number(),
+    status: z.string(),
+  }),
+  maxRows: 1,
+  maxOutputBytes: 8192,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("provider.readHealthSnapshot wired in apps/web");
+  },
+};
+
+export const safetyReadContentReportTool: AgentToolDefinition<
+  { reportId: string },
+  { id: string; targetType: string; targetId: string; reason: string; status: string }
+> = {
+  name: "safety.readContentReport",
+  version: "1",
+  description: "Read content report summary (UGC targets only)",
+  requiredSection: ADMIN_SECTION_USERS_TRUST,
+  mode: "read",
+  baseRiskTier: 2,
+  inputSchema: z.object({ reportId: z.string().uuid() }),
+  outputSchema: z.object({
+    id: z.string().uuid(),
+    targetType: z.string(),
+    targetId: z.string().uuid(),
+    reason: z.string(),
+    status: z.string(),
+  }),
+  maxRows: 1,
+  maxOutputBytes: 8192,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 30,
+  retentionClass: "A",
+  execute: async () => {
+    throw new Error("safety.readContentReport wired in apps/web");
+  },
+};
+
 export const TOOL_REGISTRY = [
   supportReadTicketTool,
   supportClassifyTicketTool,
   opsReadSystemHealthTool,
   financeReadPayoutTool,
+  financeReadRefundTool,
+  providerReadHealthSnapshotTool,
   trustReadFraudCaseTool,
+  safetyReadContentReportTool,
 ] as const;
 
 export function getTool(name: string, version = "1") {

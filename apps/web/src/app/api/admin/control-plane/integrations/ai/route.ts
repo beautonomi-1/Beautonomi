@@ -18,6 +18,7 @@ import {
   fetchLiveGatewayModels,
   pickLatestGatewayModel,
   invalidateGatewayModelsCache,
+  modelHasVision,
   type LiveGatewayModel,
 } from "@/lib/ai/gateway-models";
 import { upsertCatalogPreference } from "@/lib/ai/catalog-prefs";
@@ -185,7 +186,11 @@ export async function GET(request: NextRequest) {
         eval_passed_at: (r.eval_passed_at as string | null | undefined) ?? null,
       };
     });
-    const merged = await buildMergedCatalog({ dbRows: dbCatalogRows });
+    const merged = await buildMergedCatalog({
+      dbRows: dbCatalogRows,
+      runtime: (safeRuntime.runtime as "direct_gemini" | "vercel_gateway" | "direct_openai" | "direct_anthropic") ??
+        "vercel_gateway",
+    });
     const selectable = selectableChatCatalogEntries(merged);
 
     return successResponse({
@@ -216,9 +221,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-type AiPreset = "gemini_only" | "gateway_balanced" | "gateway_premium";
+type AiPreset = "gemini_only" | "gateway_balanced" | "gateway_premium" | "gateway_cheap_global";
 
-async function resolvePreset(preset: AiPreset) {
+type PresetPlan = {
+  runtime: "direct_gemini" | "vercel_gateway";
+  default_model_id: string;
+  enableModels: Array<{ modelId: string; tier: "lite" | "flash" | "pro" }>;
+  disableAllGateway: boolean;
+};
+
+async function resolvePreset(preset: AiPreset): Promise<PresetPlan> {
   const live = await fetchLiveGatewayModels();
   const googleLite =
     pickLatestGatewayModel(live, "google", (m) => m.capability === "chat" && /lite|flash-lite/i.test(m.id)) ??
@@ -236,12 +248,44 @@ async function resolvePreset(preset: AiPreset) {
     return {
       runtime: "direct_gemini",
       default_model_id: GEMINI_MODELS.flashLite,
-      enableModels: [GEMINI_MODELS.flashLite, GEMINI_MODELS.flash, GEMINI_MODELS.pro],
+      enableModels: [
+        { modelId: GEMINI_MODELS.flashLite, tier: "lite" },
+        { modelId: GEMINI_MODELS.flash, tier: "flash" },
+        { modelId: GEMINI_MODELS.pro, tier: "pro" },
+      ],
       disableAllGateway: true,
     };
   }
+
+  if (preset === "gateway_cheap_global") {
+    const lite =
+      pickLatestGatewayModel(live, "alibaba", (m) => modelHasVision(m) && /qwen.*flash/i.test(m.id)) ??
+      pickLatestGatewayModel(live, "alibaba", (m) => modelHasVision(m));
+    const flash =
+      pickLatestGatewayModel(live, "deepseek", (m) => /v4.*flash/i.test(m.id)) ??
+      pickLatestGatewayModel(live, "zai", (m) => /glm-5\.3-flash/i.test(m.id)) ??
+      pickLatestGatewayModel(live, "deepseek", (m) => m.capability === "chat");
+    const pro =
+      pickLatestGatewayModel(live, "alibaba", (m) => /qwen3-max|qwen.*max/i.test(m.id)) ??
+      pickLatestGatewayModel(live, "zai", (m) => /glm-5\.3(?!.*flash)/i.test(m.id));
+    const safeguard = pickLatestGatewayModel(live, "openai", (m) => /gpt-oss-safeguard/i.test(m.id));
+    const enableModels: PresetPlan["enableModels"] = [];
+    if (lite) enableModels.push({ modelId: lite.id, tier: "lite" });
+    if (flash) enableModels.push({ modelId: flash.id, tier: "flash" });
+    if (pro) enableModels.push({ modelId: pro.id, tier: "pro" });
+    if (safeguard) enableModels.push({ modelId: safeguard.id, tier: "flash" });
+    return {
+      runtime: "vercel_gateway",
+      default_model_id: lite?.id ?? flash?.id ?? "alibaba/qwen3.7-flash",
+      enableModels,
+      disableAllGateway: false,
+    };
+  }
+
   if (preset === "gateway_balanced") {
-    const enableModels = [googleLite, googleFlash, openaiMini].filter(Boolean).map((m) => m!.id);
+    const enableModels = [googleLite, googleFlash, openaiMini]
+      .filter(Boolean)
+      .map((m, i) => ({ modelId: m!.id, tier: (i === 0 ? "lite" : "flash") as "lite" | "flash" }));
     return {
       runtime: "vercel_gateway",
       default_model_id: googleLite?.id ?? "google/gemini-2.5-flash-lite",
@@ -249,7 +293,10 @@ async function resolvePreset(preset: AiPreset) {
       disableAllGateway: false,
     };
   }
-  const enableModels = [googleLite, openaiMini, anthropicSonnet].filter(Boolean).map((m) => m!.id);
+  const enableModels: PresetPlan["enableModels"] = [];
+  if (googleLite) enableModels.push({ modelId: googleLite.id, tier: "lite" });
+  if (openaiMini) enableModels.push({ modelId: openaiMini.id, tier: "flash" });
+  if (anthropicSonnet) enableModels.push({ modelId: anthropicSonnet.id, tier: "pro" });
   return {
     runtime: "vercel_gateway",
     default_model_id: anthropicSonnet?.id ?? openaiMini?.id ?? googleLite?.id ?? "anthropic/claude-sonnet-4.5",
@@ -362,7 +409,8 @@ export async function PUT(request: NextRequest) {
     const liveById = new Map<string, LiveGatewayModel>(liveModels.map((m) => [m.id, m]));
 
     if (presetPlan) {
-      for (const modelId of presetPlan.enableModels) {
+      for (const entry of presetPlan.enableModels) {
+        const modelId = entry.modelId;
         if (presetPlan.disableAllGateway) {
           await upsertCatalogPreference(supabase, {
             environment,
@@ -372,6 +420,7 @@ export async function PUT(request: NextRequest) {
             gateway: false,
             provider: "gemini",
             capability: "chat",
+            tier: entry.tier,
           });
           continue;
         }
@@ -382,6 +431,7 @@ export async function PUT(request: NextRequest) {
           tenantId: scopeTenantId,
           modelId,
           enabled: true,
+          tier: entry.tier,
           liveModel: liveById.get(modelId) ?? null,
         });
       }

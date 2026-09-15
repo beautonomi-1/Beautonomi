@@ -73,6 +73,103 @@ export async function readPayoutSummary(principal: AgentPrincipal, payoutId: str
   };
 }
 
+export async function classifySupportTicket(
+  principal: AgentPrincipal,
+  input: { ticketId: string; subject: string; bodyPreview: string },
+) {
+  const ticket = await readSupportTicket(principal, input.ticketId);
+  const text = `${input.subject} ${input.bodyPreview}`.toLowerCase();
+  const urgency = /urgent|emergency|legal|fraud|chargeback/.test(text)
+    ? "critical"
+    : /refund|payment|booking/.test(text)
+      ? "medium"
+      : "low";
+  const sentiment = /angry|terrible|awful|scam/.test(text) ? "negative" : /thanks|great|love/.test(text) ? "positive" : "neutral";
+  return {
+    urgency: urgency as "low" | "medium" | "high" | "critical",
+    category: ticket.category ?? "general",
+    sentiment,
+  } as const;
+}
+
+export async function readRefundSummary(principal: AgentPrincipal, refundId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("booking_refunds")
+    .select("id, amount, currency, status, booking_id, bookings!inner(tenant_id)")
+    .eq("id", refundId)
+    .eq("bookings.tenant_id", principal.tenantId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("refund_not_found");
+  return {
+    id: data.id,
+    amount: Number(data.amount),
+    currency: data.currency,
+    status: data.status,
+    bookingId: (data as { booking_id?: string | null }).booking_id ?? null,
+  };
+}
+
+export async function readProviderHealthSnapshot(principal: AgentPrincipal, providerId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data: provider, error } = await supabase
+    .from("providers")
+    .select("id, tenant_id, status")
+    .eq("id", providerId)
+    .eq("tenant_id", principal.tenantId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!provider) throw new Error("provider_not_found");
+
+  const now = Date.now();
+  const d30 = new Date(now - 30 * 24 * 3600_000).toISOString();
+  const d60 = new Date(now - 60 * 24 * 3600_000).toISOString();
+
+  const [{ count: recent }, { count: prior }] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .gte("completed_at", d30),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .gte("completed_at", d60)
+      .lt("completed_at", d30),
+  ]);
+
+  return {
+    providerId,
+    completedBookings30d: recent ?? 0,
+    completedBookingsPrior30d: prior ?? 0,
+    status: String((provider as { status?: string }).status ?? "unknown"),
+  };
+}
+
+export async function readContentReportSummary(principal: AgentPrincipal, reportId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("content_reports")
+    .select("id, target_type, target_id, reason, status, tenant_id")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("report_not_found");
+  const tenantId = (data as { tenant_id?: string | null }).tenant_id ?? principal.tenantId;
+  if (tenantId !== principal.tenantId) throw new Error("report_not_found");
+  return {
+    id: data.id,
+    targetType: String((data as { target_type: string }).target_type),
+    targetId: String((data as { target_id: string }).target_id),
+    reason: String((data as { reason: string }).reason),
+    status: String((data as { status: string }).status),
+  };
+}
+
 export async function readFraudCaseBriefing(principal: AgentPrincipal, caseId: string) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

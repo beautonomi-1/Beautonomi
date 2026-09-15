@@ -78,6 +78,7 @@ type AgentModuleResponse = {
     master_enabled: boolean;
     shadow_mode: boolean;
     global_daily_spend_cap_usd: number | null;
+    default_routing_policy_id: string | null;
   } | null;
   agents: Array<{
     id: string;
@@ -85,6 +86,12 @@ type AgentModuleResponse = {
     display_name: string;
     admin_role: string;
     risk_ceiling: number;
+    preferred_model_id?: string | null;
+    fallback_model_id?: string | null;
+    task_default?: string | null;
+    max_cost_usd_per_run?: number | null;
+    vision_enabled?: boolean;
+    reply_locale_mode?: string;
     agent_operational_state?: { state: string } | null;
   }>;
   emergency: {
@@ -253,6 +260,23 @@ export function CpAgenticConsolePage() {
     void load();
   }, [allowed, env, statusFilter]);
 
+  const saveRoutingPolicy = async (policyJson: string) => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await adminApi.putJson("/api/admin/control-plane/modules/agents", {
+        environment: env,
+        default_routing_policy_id: policyJson.trim() || null,
+      });
+      setMsg("Routing policy updated.");
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveModule = async (patch: Partial<{ master_enabled: boolean; shadow_mode: boolean }>) => {
     if (!data?.module) return;
     setSaving(true);
@@ -264,6 +288,32 @@ export function CpAgenticConsolePage() {
         shadow_mode: patch.shadow_mode ?? data.module.shadow_mode,
       });
       setMsg("Saved.");
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAgentBrain = async (
+    agentId: string,
+    patch: Partial<{
+      preferred_model_id: string;
+      fallback_model_id: string;
+      task_default: string;
+      max_cost_usd_per_run: number | null;
+      vision_enabled: boolean;
+    }>,
+  ) => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await adminApi.putJson("/api/admin/control-plane/modules/agents", {
+        environment: env,
+        agent_brain: { agent_id: agentId, ...patch },
+      });
+      setMsg("Agent brain updated.");
       await load();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -408,27 +458,97 @@ export function CpAgenticConsolePage() {
                 Shadow mode (no side effects)
               </label>
             </div>
+            <div className="mt-3 space-y-1">
+              <label className="block text-xs font-medium text-gray-700" htmlFor="routing-policy">
+                Default routing policy (JSON)
+              </label>
+              <textarea
+                id="routing-policy"
+                className="w-full min-h-[5rem] rounded-lg border border-gray-200 px-2 py-1 font-mono text-xs"
+                placeholder='{"taskTier":{"classification":"lite"},"taskModel":{"copilot":"openai/gpt-5-mini"}}'
+                defaultValue={data?.module?.default_routing_policy_id ?? ""}
+                disabled={saving}
+                onBlur={(e) => {
+                  const v = e.target.value;
+                  if (v !== (data?.module?.default_routing_policy_id ?? "")) {
+                    void saveRoutingPolicy(v);
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500">
+                Optional tier/model overrides applied before routeModel for all agent LLM calls.
+              </p>
+            </div>
           </AdminPanel>
           <AdminPanel>
             <h2 className="mb-3 text-sm font-semibold text-gray-900">Agents</h2>
             <ul className="text-sm space-y-2">
               {(data?.agents ?? []).map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3 border-b border-gray-100 pb-2">
-                  <span>
-                    {a.display_name} <span className="text-gray-400">({a.key})</span>
-                    <span className="ml-2 text-gray-500">role {a.admin_role} · risk ceiling {a.risk_ceiling}</span>
-                  </span>
-                  <select
-                    className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
-                    value={a.agent_operational_state?.state ?? "disabled"}
-                    disabled={saving}
-                    onChange={(e) => void saveAgentState(a.id, e.target.value)}
-                  >
-                    <option value="active">active</option>
-                    <option value="paused">paused</option>
-                    <option value="draining">draining</option>
-                    <option value="disabled">disabled</option>
-                  </select>
+                <li key={a.id} className="border-b border-gray-100 pb-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>
+                      {a.display_name} <span className="text-gray-400">({a.key})</span>
+                      <span className="ml-2 text-gray-500">role {a.admin_role} · risk ceiling {a.risk_ceiling}</span>
+                    </span>
+                    <select
+                      className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                      value={a.agent_operational_state?.state ?? "disabled"}
+                      disabled={saving}
+                      onChange={(e) => void saveAgentState(a.id, e.target.value)}
+                    >
+                      <option value="active">active</option>
+                      <option value="paused">paused</option>
+                      <option value="draining">draining</option>
+                      <option value="disabled">disabled</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center text-xs">
+                    <input
+                      className="rounded border border-gray-200 px-2 py-1 min-w-[12rem]"
+                      placeholder="preferred model id"
+                      defaultValue={a.preferred_model_id ?? ""}
+                      disabled={saving}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v !== (a.preferred_model_id ?? "")) {
+                          void saveAgentBrain(a.id, { preferred_model_id: v });
+                        }
+                      }}
+                    />
+                    <input
+                      className="rounded border border-gray-200 px-2 py-1 min-w-[12rem]"
+                      placeholder="fallback model id"
+                      defaultValue={a.fallback_model_id ?? ""}
+                      disabled={saving}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v !== (a.fallback_model_id ?? "")) {
+                          void saveAgentBrain(a.id, { fallback_model_id: v });
+                        }
+                      }}
+                    />
+                    <select
+                      className="rounded border border-gray-200 px-2 py-1"
+                      defaultValue={a.task_default ?? "classification"}
+                      disabled={saving}
+                      onChange={(e) => void saveAgentBrain(a.id, { task_default: e.target.value })}
+                    >
+                      <option value="classification">classification</option>
+                      <option value="drafting">drafting</option>
+                      <option value="summarization">summarization</option>
+                      <option value="complex_reasoning">complex_reasoning</option>
+                      <option value="copilot">copilot</option>
+                    </select>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        defaultChecked={Boolean(a.vision_enabled)}
+                        disabled={saving}
+                        onChange={(e) => void saveAgentBrain(a.id, { vision_enabled: e.target.checked })}
+                      />
+                      vision
+                    </label>
+                  </div>
                 </li>
               ))}
             </ul>

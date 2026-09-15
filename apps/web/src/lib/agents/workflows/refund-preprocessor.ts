@@ -193,9 +193,9 @@ export async function runRefundBriefingSweepForTenant(params: {
   const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
-  const def = await loadAgentDefinition("reconciliation-investigator");
+  const def = await loadAgentDefinition("refund-specialist");
   if (!def) return { skipped: true, reason: "agent_not_configured" };
-  const op = await loadAgentOperationalState("reconciliation-investigator");
+  const op = await loadAgentOperationalState("refund-specialist");
   if (op.state !== "active") return { skipped: true, reason: "agent_not_active" };
 
   const supabase = getSupabaseAdmin();

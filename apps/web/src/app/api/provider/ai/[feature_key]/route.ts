@@ -13,6 +13,8 @@ import { FEATURE_TEMPLATES, isKnownAiFeature } from "@/lib/ai/feature-templates"
 import { buildFeatureFallback } from "@/lib/ai/feature-fallbacks";
 import { loadPromptTemplate } from "@/lib/ai/prompt-templates";
 import { estimateCostUsd } from "@/lib/ai/pricing";
+import { getImageSafetyScanner } from "@/lib/safety/image-safety-scanner";
+import { AI_FEATURE_CONTENT_STUDIO, AI_FEATURE_LOOK_DESCRIBE } from "@/lib/ai/feature-templates";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 
 const ENV = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
@@ -223,9 +225,40 @@ export async function POST(
 
     const bodyImages = (body as { image_url?: string }).image_url;
     const images =
-      feature_key === "ai.provider.look_describe" && typeof bodyImages === "string"
+      (feature_key === AI_FEATURE_LOOK_DESCRIBE || feature_key === AI_FEATURE_CONTENT_STUDIO) &&
+      typeof bodyImages === "string"
         ? [{ url: bodyImages }]
         : undefined;
+
+    if (images?.length) {
+      const scan = await getImageSafetyScanner().scanImageUrls({
+        urls: images.map((i) => i.url).filter(Boolean) as string[],
+        environment: ENVIRONMENT,
+        tenantId,
+        sensitiveMedicalContext: feature_key === AI_FEATURE_LOOK_DESCRIBE,
+      });
+      if (scan.verdict === "likely_violation") {
+        return errorResponse(
+          "Image did not pass safety review. Please choose a different photo or contact support.",
+          "IMAGE_SAFETY_BLOCKED",
+          422,
+        );
+      }
+      if (scan.verdict === "needs_human") {
+        const fallback = buildFeatureFallback({
+          featureKey: feature_key,
+          capsule,
+          input: userInput,
+          reason: "image_safety_needs_human",
+        });
+        return successResponse({
+          advisory_only: true,
+          safety_review_required: true,
+          safety_rationale: scan.rationale,
+          ...(fallback ?? {}),
+        });
+      }
+    }
 
     const startedAt = Date.now();
     const result = await callLlm({
@@ -239,7 +272,10 @@ export async function POST(
       environment: ENVIRONMENT,
       featureKey: feature_key,
       modelId: model,
-      task: "drafting",
+      task: (() => {
+        const t = entitlementTierToRouterTier(entitlementCheck.entitlement?.model_tier);
+        return t === "pro" ? "complex_reasoning" : t === "flash" ? "drafting" : "classification";
+      })(),
       riskTier: (() => {
         const t = entitlementTierToRouterTier(entitlementCheck.entitlement?.model_tier);
         if (t === "pro") return 2;

@@ -18,6 +18,7 @@ import { proposeAgentAction } from "../actions/action-service";
 import { resolveSupportTicketTenantId } from "../support-ticket-tenant";
 import { fetchSupportTicketContext, type SupportTicketContextFacts } from "../support-context";
 import { callAgentLlm, parseLlmJson } from "../llm";
+import { buildLocalizedFallbackReply } from "../i18n-drafts";
 import { redactPromptObject, redactPromptText } from "@/lib/ai/redact-prompt-pii";
 import { hashPayload } from "@beautonomi/agent-policy";
 
@@ -69,22 +70,9 @@ export function buildFallbackReplyDraft(params: {
   ticketNumber: string;
   subject: string;
   needsHuman: boolean;
+  locale?: string | null;
 }): string {
-  const greeting = params.customerName ? `Hi ${params.customerName},` : "Hi there,";
-  const escalationLine = params.needsHuman
-    ? "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly."
-    : "Our support team is looking into this and will get back to you as soon as possible.";
-  return [
-    greeting,
-    "",
-    `Thank you for contacting Beautonomi support about "${params.subject}" (ticket ${params.ticketNumber}).`,
-    escalationLine,
-    "",
-    "If you have any additional details or screenshots that could help, just reply to this ticket.",
-    "",
-    "Warm regards,",
-    "Beautonomi Support",
-  ].join("\n");
+  return buildLocalizedFallbackReply(params);
 }
 
 type LlmTriageOutput = {
@@ -119,6 +107,11 @@ async function classifyAndDraftWithLlm(ticket: {
   context?: SupportTicketContextFacts | null;
   /** agent_runs.id — lets callAgentLlm write agent_steps + roll tokens/cost onto the run. */
   agentRunId?: string;
+  agentId?: string;
+  tenantId?: string;
+  recipientUserId?: string | null;
+  locale?: string | null;
+  task?: string;
 }): Promise<{ classification: SupportTriageClassification; replyDraft: string } | null> {
   // Prompt-level PII redaction: emails, phone numbers, card/ID numbers in the ticket
   // text and the verified-context capsule never reach the model. Heuristic
@@ -152,6 +145,12 @@ async function classifyAndDraftWithLlm(ticket: {
     runId: ticket.agentRunId,
     promptVersion: "support-triage:v1",
     featureKey: "agent.support-triage",
+    agentId: ticket.agentId,
+    tenantId: ticket.tenantId ?? null,
+    recipientUserId: ticket.recipientUserId ?? undefined,
+    locale: ticket.locale ?? undefined,
+    task: (ticket.task as "classification" | undefined) ?? "classification",
+    riskTier: 1,
   });
 
   if (!llm.configured || llm.success !== true) return null;
@@ -257,11 +256,13 @@ export async function classifyAndProposeForTicket(params: {
 
   const { data: customer } = await supabase
     .from("users")
-    .select("full_name")
+    .select("full_name, preferred_language")
     .eq("id", ticket.user_id)
     .maybeSingle();
   const customerName =
     (customer as { full_name?: string | null } | null)?.full_name?.trim().split(/\s+/)[0] ?? null;
+  const customerLocale =
+    (customer as { preferred_language?: string | null } | null)?.preferred_language ?? null;
 
   await supabase.from("agent_runs").insert({
     id: agentRunId,
@@ -289,7 +290,14 @@ export async function classifyAndProposeForTicket(params: {
 
   let classification: SupportTriageClassification;
   let replyDraft: string;
-  const llmResult = await classifyAndDraftWithLlm({ ...ticketInput, agentRunId }).catch(() => null);
+  const llmResult = await classifyAndDraftWithLlm({
+    ...ticketInput,
+    agentRunId,
+    agentId: params.agentId,
+    tenantId: params.tenantId,
+    recipientUserId: ticket.user_id as string | null,
+    locale: customerLocale,
+  }).catch(() => null);
   if (llmResult) {
     classification = llmResult.classification;
     replyDraft = llmResult.replyDraft;
@@ -300,6 +308,7 @@ export async function classifyAndProposeForTicket(params: {
       ticketNumber: ticketInput.ticketNumber,
       subject: ticketInput.subject,
       needsHuman: classification.needsHuman,
+      locale: customerLocale,
     });
   }
 

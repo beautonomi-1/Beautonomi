@@ -61,4 +61,23 @@ describe("model router", () => {
     expect(r.stopReason).toBe("cost_cap");
     expect(r.tier).toBe("lite");
   });
+
+  it("honors tierOverride before task heuristics", () => {
+    const catalog: ModelCatalogEntry[] = [
+      catalogEntryFromGatewayId("openai/gpt-5-mini", "lite"),
+      catalogEntryFromGatewayId("openai/gpt-5", "pro"),
+    ];
+    const r = routeModel({ ...baseReq, catalog, riskTier: 3, tierOverride: "lite" });
+    expect(r.tier).toBe("lite");
+    expect(r.modelId).toBe("openai/gpt-5-mini");
+  });
+
+  it("picks the cheapest enabled model in tier when prices differ", () => {
+    const catalog: ModelCatalogEntry[] = [
+      { id: "openai/gpt-5-mini", provider: "openai", tier: "lite", gateway: true, enabled: true, inputUsdPer1k: 0.00005 },
+      { id: "alibaba/qwen3.7-flash", provider: "alibaba", tier: "lite", gateway: true, enabled: true, inputUsdPer1k: 0.00003 },
+    ];
+    const r = routeModel({ ...baseReq, catalog });
+    expect(r.modelId).toBe("alibaba/qwen3.7-flash");
+  });
 });

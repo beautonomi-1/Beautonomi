@@ -8,6 +8,7 @@ import {
 import { runSupportFollowUpSweep } from "@/lib/agents/workflows/support-followups";
 import { runRefundBriefingSweepForTenant } from "@/lib/agents/workflows/refund-preprocessor";
 import { expireStaleProposals } from "@/lib/agents/actions/action-service";
+import { runContentModerationSweep } from "@/lib/agents/workflows/content-moderation";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { slackNotifyAgentRunFailed } from "@/lib/integrations/slack/agent-triggers";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
@@ -107,6 +108,14 @@ async function runJob(request: NextRequest) {
     followUps = { error: error instanceof Error ? error.message : "unknown_error" };
   }
 
+  let moderation: Record<string, unknown> = {};
+  try {
+    moderation = await runContentModerationSweep(environment);
+  } catch (error) {
+    Sentry.captureException(error, { tags: { workflow: "content-moderation", cron: "agent-workforce-sweep" } });
+    moderation = { error: error instanceof Error ? error.message : "unknown_error" };
+  }
+
   return Response.json({
     ok: true,
     tenantCount: results.length,
@@ -114,5 +123,6 @@ async function runJob(request: NextRequest) {
     results,
     triageBackstop,
     followUps,
+    moderation,
   });
 }

@@ -131,6 +131,22 @@ const POLICIES: Record<string, AgentApprovalPolicy> = {
     stage: 1,
     auditModule: "users_trust",
   },
+  // Human-gated UGC hide — uses moderation-actions takedown service only.
+  "moderation.hide": {
+    section: ADMIN_SECTION_USERS_TRUST,
+    approverRoles: ["superadmin", "admin_trust"],
+    requiredCount: 1,
+    stage: 1,
+    auditModule: "users_trust",
+  },
+  // Escalation / legal-hold briefing — never auto-hides or suspends.
+  "moderation.briefing": {
+    section: ADMIN_SECTION_USERS_TRUST,
+    approverRoles: ["superadmin", "admin_trust"],
+    requiredCount: 1,
+    stage: 1,
+    auditModule: "users_trust",
+  },
 };
 
 export function getAgentApprovalPolicy(actionType: string): AgentApprovalPolicy | null {
