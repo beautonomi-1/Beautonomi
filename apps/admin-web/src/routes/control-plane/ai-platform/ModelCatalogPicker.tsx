@@ -35,6 +35,7 @@ export function ModelCatalogPicker(props: {
             {models.map((m) => (
               <option key={m.model_id} value={m.model_id}>
                 {m.model_id} ({m.tier})
+                {m.catalog_enabled === false ? " — enable in catalog" : ""}
               </option>
             ))}
           </optgroup>

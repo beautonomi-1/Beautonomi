@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpField } from "../../cpShared";
 import { ConfirmModal } from "../ConfirmModal";
 import { ModelCatalogPicker } from "../ModelCatalogPicker";
+import { buildDefaultModelPickerOptions, countEnabledLiveModels } from "../catalogModels";
 import { CAPABILITY_FILTERS, PRESETS, PRESET_HINTS, RUNTIMES, TIERS } from "../constants";
-import type { AiPlatformPayload, DirectGeminiModel, LiveModelRow, SelectableModel } from "../types";
+import type { AiPlatformPayload, DirectGeminiModel, LiveModelRow } from "../types";
 
 function groupByProvider<T extends { provider: string }>(rows: T[]): Map<string, T[]> {
   const map = new Map<string, T[]>();
@@ -45,7 +46,7 @@ export function GatewayTab(props: {
 }) {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [capabilityFilter, setCapabilityFilter] = useState<(typeof CAPABILITY_FILTERS)[number]>("all");
-  const [showAllModels, setShowAllModels] = useState(false);
+  const [showAllProviders, setShowAllProviders] = useState(false);
   const [enabledOnly, setEnabledOnly] = useState(true);
   const [presetConfirm, setPresetConfirm] = useState<string | null>(null);
   const [collapsedProviders, setCollapsedProviders] = useState<Set<string>>(new Set());
@@ -53,13 +54,22 @@ export function GatewayTab(props: {
   const runtimeRow = props.data.runtime ?? {};
   const catalogStats = props.data.stats?.catalog_stats ?? {};
   const liveModels = props.data.live_models ?? [];
+  const enabledCatalogCount = countEnabledLiveModels(liveModels);
 
-  const selectableForDefault: SelectableModel[] = [
-    ...(props.data.direct_gemini_models ?? [])
-      .filter((m) => m.enabled)
-      .map((m) => ({ model_id: m.id, provider: m.provider, tier: m.tier, gateway: m.gateway })),
-    ...(props.data.selectable_models ?? []),
-  ];
+  useEffect(() => {
+    if (enabledCatalogCount === 0) setEnabledOnly(false);
+  }, [enabledCatalogCount]);
+
+  const defaultModelOptions = useMemo(
+    () =>
+      buildDefaultModelPickerOptions({
+        runtime: props.runtime,
+        liveModels,
+        directGeminiModels: props.data.direct_gemini_models ?? [],
+        selectableModels: props.data.selectable_models ?? [],
+      }),
+    [props.runtime, liveModels, props.data.direct_gemini_models, props.data.selectable_models],
+  );
 
   const filteredLiveModels = useMemo(() => {
     return liveModels.filter((m) => {
@@ -72,7 +82,7 @@ export function GatewayTab(props: {
   }, [liveModels, enabledOnly, capabilityFilter, catalogSearch]);
 
   const grouped = useMemo(() => groupByProvider(filteredLiveModels), [filteredLiveModels]);
-  const displayGroups = showAllModels ? grouped : new Map([...grouped.entries()].slice(0, 8));
+  const displayGroups = showAllProviders ? grouped : new Map([...grouped.entries()].slice(0, 8));
 
   return (
     <div className="space-y-4">
@@ -118,11 +128,17 @@ export function GatewayTab(props: {
           </CpField>
           <CpField label="Default model">
             <ModelCatalogPicker
-              models={selectableForDefault}
+              models={defaultModelOptions}
               value={props.defaultModelId}
               onChange={props.setDefaultModelId}
               className="w-full rounded-lg border px-2 py-1.5 font-mono text-sm"
             />
+            {props.runtime === "vercel_gateway" ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Lists all chat/vision models from the live Vercel catalog ({defaultModelOptions.length}). Enable a model
+                in the catalog below before using it in production.
+              </p>
+            ) : null}
           </CpField>
         </div>
         <label className="flex items-center gap-2 text-sm">
@@ -176,7 +192,7 @@ export function GatewayTab(props: {
           <div className="flex flex-wrap gap-2">
             <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={props.onRefreshCatalog}>Refresh catalog</button>
             <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={enabledOnly} onChange={(e) => setEnabledOnly(e.target.checked)} /> Enabled only</label>
-            <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={showAllModels} onChange={(e) => setShowAllModels(e.target.checked)} /> Show all providers</label>
+            <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={showAllProviders} onChange={(e) => setShowAllProviders(e.target.checked)} /> Expand all providers</label>
             <input className="rounded-lg border px-2 py-1.5 text-sm" placeholder="Search…" value={catalogSearch} onChange={(e) => setCatalogSearch(e.target.value)} />
             <select className="rounded-lg border px-2 py-1.5 text-sm" value={capabilityFilter} onChange={(e) => setCapabilityFilter(e.target.value as typeof capabilityFilter)}>
               {CAPABILITY_FILTERS.map((f) => <option key={f} value={f}>{f === "all" ? "All types" : f}</option>)}
@@ -228,7 +244,10 @@ export function GatewayTab(props: {
             </div>
           );
         })}
-        <p className="text-xs text-gray-500">Showing {filteredLiveModels.length} of {liveModels.length} models</p>
+        <p className="text-xs text-gray-500">
+          Showing {filteredLiveModels.length} of {liveModels.length} models
+          {enabledCatalogCount === 0 && enabledOnly ? " — none enabled yet; uncheck Enabled only to browse" : ""}
+        </p>
       </AdminPanel>
 
       <ConfirmModal
