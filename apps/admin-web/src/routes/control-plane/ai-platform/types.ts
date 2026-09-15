@@ -26,6 +26,8 @@ export type SelectableModel = {
   provider: string;
   tier: string;
   gateway: boolean;
+  /** When false, model is visible in default picker but not enabled in catalog yet. */
+  catalog_enabled?: boolean;
 };
 
 export type WorkforceAgent = {
