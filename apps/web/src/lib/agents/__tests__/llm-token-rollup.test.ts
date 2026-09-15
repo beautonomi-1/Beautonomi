@@ -10,7 +10,14 @@ vi.mock("@/lib/ai/call-llm", () => ({ callLlm: (...args: unknown[]) => mockCallL
 vi.mock("@/lib/ai/resolve-runtime", () => ({
   resolveAiRuntime: (...args: unknown[]) => mockResolveAiRuntime(...args),
 }));
-vi.mock("@/lib/ai/pricing", () => ({ estimateCostUsd: (...args: unknown[]) => mockEstimateCostUsd(...args) }));
+vi.mock("@/lib/ai/pricing", () => ({
+  estimateCostUsd: (...args: unknown[]) => mockEstimateCostUsd(...args),
+  sanitizeCostUsd: (n: number) => Math.round(n * 1_000_000) / 1_000_000,
+}));
+vi.mock("@/lib/ai/enforce-budget", () => ({
+  enforceAiBudget: vi.fn().mockResolvedValue({ allowed: true }),
+  logAiUsage: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { callAgentLlm } from "../llm";
 
@@ -41,6 +48,13 @@ function buildSupabase(t: Tables) {
         eq: vi.fn().mockReturnThis(),
         maybeSingle: vi.fn().mockResolvedValue({ data: t.run, error: null }),
         update: runUpdate,
+      };
+    }
+    if (table === "agent_definitions" || table === "agent_module_config" || table === "users") {
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
     }
     throw new Error(`unexpected table ${table}`);

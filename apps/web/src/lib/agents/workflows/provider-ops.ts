@@ -122,9 +122,9 @@ export async function runProviderOpsSweepForTenant(params: {
   const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
-  const def = await loadAgentDefinition("ops-sentinel");
-  if (!def) return { skipped: true, reason: "ops_sentinel_not_configured" };
-  const op = await loadAgentOperationalState("ops-sentinel");
+  const def = await loadAgentDefinition("provider-success");
+  if (!def) return { skipped: true, reason: "provider_success_not_configured" };
+  const op = await loadAgentOperationalState("provider-success");
   if (op.state !== "active") return { skipped: true, reason: "agent_not_active" };
 
   const supabase = getSupabaseAdmin();
@@ -340,9 +340,9 @@ export async function runProviderDigestSweepForTenant(params: {
   const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
-  const def = await loadAgentDefinition("ops-sentinel");
-  if (!def) return { skipped: true, reason: "ops_sentinel_not_configured" };
-  const op = await loadAgentOperationalState("ops-sentinel");
+  const def = await loadAgentDefinition("provider-success");
+  if (!def) return { skipped: true, reason: "provider_success_not_configured" };
+  const op = await loadAgentOperationalState("provider-success");
   if (op.state !== "active") return { skipped: true, reason: "agent_not_active" };
 
   const supabase = getSupabaseAdmin();

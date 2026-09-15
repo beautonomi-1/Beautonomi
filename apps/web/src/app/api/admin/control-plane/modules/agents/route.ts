@@ -91,6 +91,29 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    if (body.agent_brain?.agent_id) {
+      const brainPayload: Record<string, unknown> = {};
+      if (body.agent_brain.preferred_model_id !== undefined) {
+        brainPayload.preferred_model_id = body.agent_brain.preferred_model_id || null;
+      }
+      if (body.agent_brain.fallback_model_id !== undefined) {
+        brainPayload.fallback_model_id = body.agent_brain.fallback_model_id || null;
+      }
+      if (body.agent_brain.task_default !== undefined) brainPayload.task_default = body.agent_brain.task_default;
+      if (body.agent_brain.max_cost_usd_per_run !== undefined) {
+        brainPayload.max_cost_usd_per_run = body.agent_brain.max_cost_usd_per_run;
+      }
+      if (body.agent_brain.vision_enabled !== undefined) {
+        brainPayload.vision_enabled = Boolean(body.agent_brain.vision_enabled);
+      }
+      if (body.agent_brain.reply_locale_mode !== undefined) {
+        brainPayload.reply_locale_mode = body.agent_brain.reply_locale_mode;
+      }
+      if (Object.keys(brainPayload).length > 0) {
+        await supabase.from("agent_definitions").update(brainPayload).eq("id", body.agent_brain.agent_id);
+      }
+    }
+
     if (body.emergency) {
       await supabase.from("agent_emergency_controls").upsert(
         {

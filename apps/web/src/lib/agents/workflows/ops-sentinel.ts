@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { routeModel } from "@beautonomi/agent-model-router";
+import { resolveAiRuntime } from "@/lib/ai/resolve-runtime";
 import { buildAgentPrincipal } from "../principal";
 import {
   loadAgentDefinition,
@@ -45,6 +46,7 @@ export async function runOpsSentinelWorkflow(params: { tenantId: string; environ
   });
 
   const health = await readSystemHealth(principal, params.environment);
+  const runtime = await resolveAiRuntime(params.environment, params.tenantId);
   const route = routeModel({
     task: "summarization",
     riskTier: 0,
@@ -54,6 +56,7 @@ export async function runOpsSentinelWorkflow(params: { tenantId: string; environ
     maxEscalations: 2,
     maxCostUsd: 0.05,
     spentUsd: 0,
+    catalog: runtime.catalog,
   });
 
   const summary = {

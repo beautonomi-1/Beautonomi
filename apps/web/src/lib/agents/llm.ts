@@ -3,14 +3,22 @@
  */
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { callLlm } from "@/lib/ai/call-llm";
-import { estimateCostUsd } from "@/lib/ai/pricing";
+import { estimateCostUsd, sanitizeCostUsd } from "@/lib/ai/pricing";
 import { resolveAiRuntime } from "@/lib/ai/resolve-runtime";
-import { GEMINI_MODELS, type ModelTask } from "@beautonomi/agent-model-router";
+import { enforceAiBudget, logAiUsage } from "@/lib/ai/enforce-budget";
+import { preferCachingCapableCatalog } from "@/lib/ai/merge-catalog";
+import { routeModel, type ModelCatalogEntry, type ModelTask } from "@beautonomi/agent-model-router";
+import {
+  applyRoutingPolicy,
+  parseRoutingPolicy,
+  resolveTaskModelOverride,
+  resolveTaskTierOverride,
+} from "./routing-policy";
+import { localePromptSuffix, resolveReplyLocale, resolveUserPreferredLanguage } from "./locale";
 
 const ENV = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
 const ENVIRONMENT = ENV === "production" ? "production" : ENV === "staging" ? "staging" : "development";
-
-export const DEFAULT_AGENT_MODEL = GEMINI_MODELS.flashLite;
+const LARGE_SYSTEM_PROMPT_CHARS = 1500;
 
 export type AgentLlmResult =
   | { configured: false }
@@ -23,6 +31,7 @@ export type AgentLlmResult =
       tokensIn: number;
       tokensOut: number;
       costUsd: number;
+      schemaValid?: boolean | null;
     };
 
 export interface CallAgentLlmParams {
@@ -39,6 +48,102 @@ export interface CallAgentLlmParams {
   riskTier?: number;
   tenantId?: string | null;
   modelId?: string;
+  fallbackModelId?: string | null;
+  /** agent_definitions.id — required for ai_usage_log when no auth user principal. */
+  agentId?: string;
+  maxCostUsd?: number;
+  spentUsd?: number;
+  images?: Array<{ url?: string; base64?: string; mime?: string }>;
+  visionEnabled?: boolean;
+  /** users.id — loads preferred_language when locale is omitted. */
+  recipientUserId?: string;
+  locale?: string;
+}
+
+type AgentBrain = {
+  preferred_model_id: string | null;
+  fallback_model_id: string | null;
+  task_default: ModelTask | null;
+  max_cost_usd_per_run: number | null;
+  vision_enabled: boolean;
+  reply_locale_mode: string;
+};
+
+async function loadAgentBrain(agentId: string): Promise<AgentBrain | null> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("agent_definitions")
+    .select(
+      "preferred_model_id, fallback_model_id, task_default, max_cost_usd_per_run, vision_enabled, reply_locale_mode",
+    )
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    preferred_model_id: (row.preferred_model_id as string | null) ?? null,
+    fallback_model_id: (row.fallback_model_id as string | null) ?? null,
+    task_default: (row.task_default as ModelTask | null) ?? null,
+    max_cost_usd_per_run:
+      row.max_cost_usd_per_run != null ? Number(row.max_cost_usd_per_run) : null,
+    vision_enabled: Boolean(row.vision_enabled),
+    reply_locale_mode: String(row.reply_locale_mode ?? "recipient"),
+  };
+}
+
+async function loadModuleRoutingPolicy(): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("agent_module_config")
+    .select("default_routing_policy_id")
+    .eq("environment", ENVIRONMENT)
+    .maybeSingle();
+  return (data as { default_routing_policy_id?: string | null } | null)?.default_routing_policy_id ?? null;
+}
+
+function findCatalogEntry(catalog: ModelCatalogEntry[], modelId: string): ModelCatalogEntry | null {
+  return catalog.find((c) => c.id === modelId && c.enabled) ?? null;
+}
+
+function resolveAgentModelId(params: {
+  catalog: ModelCatalogEntry[];
+  task: ModelTask;
+  riskTier: number;
+  maxCostUsd: number;
+  spentUsd: number;
+  explicitModelId?: string;
+  preferredModelId?: string | null;
+  routingPolicyRaw: string | null;
+  largeSystemPrompt: boolean;
+}): string {
+  const policy = parseRoutingPolicy(params.routingPolicyRaw);
+  let catalog = applyRoutingPolicy(params.catalog, policy);
+  if (params.largeSystemPrompt) {
+    catalog = preferCachingCapableCatalog(catalog);
+  }
+
+  const taskOverride = resolveTaskModelOverride(policy, params.task, catalog);
+  if (params.explicitModelId && findCatalogEntry(catalog, params.explicitModelId)) {
+    return params.explicitModelId;
+  }
+  if (params.preferredModelId && findCatalogEntry(catalog, params.preferredModelId)) {
+    return params.preferredModelId;
+  }
+  if (taskOverride) return taskOverride;
+
+  const routed = routeModel({
+    task: params.task,
+    riskTier: params.riskTier,
+    contextTokens: 500,
+    escalationSignals: [],
+    escalationCount: 0,
+    maxEscalations: 2,
+    maxCostUsd: params.maxCostUsd,
+    spentUsd: params.spentUsd,
+    catalog,
+    tierOverride: resolveTaskTierOverride(policy, params.task),
+  });
+  return routed.modelId;
 }
 
 async function nextStepSeq(
@@ -76,12 +181,12 @@ export async function recordAgentModelStep(params: {
       run_id: params.runId,
       seq,
       kind: "model",
-      model_provider: params.modelProvider ?? "gemini",
+      model_provider: params.modelProvider ?? null,
       model_id: params.model,
       prompt_version: params.promptVersion ?? null,
       tokens_in: params.tokensIn,
       tokens_out: params.tokensOut,
-      cost_usd: params.costUsd,
+      cost_usd: sanitizeCostUsd(params.costUsd),
       latency_ms: params.latencyMs,
       schema_valid: params.schemaValid ?? null,
       error: params.error ?? null,
@@ -102,7 +207,7 @@ export async function recordAgentModelStep(params: {
       .update({
         total_tokens_in: Number(current.total_tokens_in ?? 0) + params.tokensIn,
         total_tokens_out: Number(current.total_tokens_out ?? 0) + params.tokensOut,
-        total_cost_usd: Math.round((Number(current.total_cost_usd ?? 0) + params.costUsd) * 1_000_000) / 1_000_000,
+        total_cost_usd: sanitizeCostUsd(Number(current.total_cost_usd ?? 0) + params.costUsd),
       })
       .eq("id", params.runId);
   } catch (err) {
@@ -114,26 +219,107 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
   const runtime = await resolveAiRuntime(ENVIRONMENT, params.tenantId ?? null);
   if (!runtime.config.enabled) return { configured: false };
 
+  if (runtime.emergency.stopAllCalls || runtime.emergency.forceTemplateFallback) {
+    return { configured: true, success: false, errorCode: "LLM_BLOCKED_BY_KILL_SWITCH" };
+  }
+
+  const budget = await enforceAiBudget({
+    feature_key: params.featureKey ?? "agent",
+    actor_user_id: null,
+    agent_id: params.agentId ?? null,
+    provider_id: null,
+    role: "agent",
+    environment: ENVIRONMENT,
+    tenant_id: params.tenantId ?? null,
+    agent_workforce: true,
+  });
+  if (!budget.allowed) {
+    return { configured: true, success: false, errorCode: budget.reason ?? "budget_blocked" };
+  }
+
+  const brain = params.agentId ? await loadAgentBrain(params.agentId) : null;
+  const routingPolicyRaw = await loadModuleRoutingPolicy();
+  const task: ModelTask = params.task ?? brain?.task_default ?? "classification";
+  const maxCostUsd = params.maxCostUsd ?? brain?.max_cost_usd_per_run ?? 0.25;
+  const catalog = runtime.catalog.length ? runtime.catalog : [];
+  const modelId = resolveAgentModelId({
+    catalog,
+    task,
+    riskTier: params.riskTier ?? 1,
+    maxCostUsd,
+    spentUsd: params.spentUsd ?? 0,
+    explicitModelId: params.modelId,
+    preferredModelId: brain?.preferred_model_id,
+    routingPolicyRaw,
+    largeSystemPrompt: params.system.length >= LARGE_SYSTEM_PROMPT_CHARS,
+  });
+  const fallbackModelId = params.fallbackModelId ?? brain?.fallback_model_id ?? null;
+  const visionEnabled = params.visionEnabled ?? brain?.vision_enabled ?? false;
+
+  const recipientLocale =
+    params.locale ?? (params.recipientUserId ? await resolveUserPreferredLanguage(params.recipientUserId) : "en");
+  const replyLocale = resolveReplyLocale({
+    replyLocaleMode: brain?.reply_locale_mode,
+    recipientLocale,
+  });
+  const systemWithLocale =
+    replyLocale !== "en" ? `${params.system}${localePromptSuffix(replyLocale)}` : params.system;
+
   const startedAt = Date.now();
   const result = await callLlm({
-    system: params.system,
+    system: systemWithLocale,
     user: params.user,
     temperature: params.temperature ?? 0.3,
     maxTokens: params.maxTokens ?? 800,
     schema: params.schema,
+    images: visionEnabled ? params.images : undefined,
     timeoutMs: 60_000,
     featureKey: params.featureKey ?? "agent",
-    task: params.task ?? "complex_reasoning",
+    task,
     riskTier: params.riskTier ?? 1,
     tenantId: params.tenantId ?? null,
     environment: ENVIRONMENT,
-    modelId: params.modelId,
+    modelId,
+    fallbackModelId,
+    maxCostUsd,
+    spentUsd: params.spentUsd ?? 0,
   });
   const latencyMs = Date.now() - startedAt;
-  const model = result.model || runtime.config.defaultModelId || DEFAULT_AGENT_MODEL;
-  const costUsd = await estimateCostUsd(model, result.tokensIn, result.tokensOut);
+  const model = result.model || runtime.config.defaultModelId;
+  const costUsd = sanitizeCostUsd(await estimateCostUsd(model, result.tokensIn, result.tokensOut));
+
+  if (params.agentId) {
+    await logAiUsage({
+      actor_user_id: null,
+      agent_id: params.agentId,
+      provider_id: null,
+      feature_key: params.featureKey ?? "agent",
+      model,
+      tokens_in: result.tokensIn,
+      tokens_out: result.tokensOut,
+      cost_estimate: costUsd,
+      success: result.success,
+      error_code: result.errorCode ?? null,
+      tenant_id: params.tenantId ?? null,
+      model_provider: result.modelProvider,
+      runtime: result.runtime,
+      gateway: result.gateway,
+      latency_ms: latencyMs,
+      fallback_used: Boolean(result.failoverModel),
+      breaker_tripped: result.breakerTripped ?? false,
+    });
+  }
 
   const failed = !result.success || !result.text.trim();
+  const schemaValid =
+    params.schema != null
+      ? failed
+        ? false
+        : result.schemaValid === false
+          ? false
+          : isJsonParseable(result.text)
+      : null;
+
   if (params.runId) {
     await recordAgentModelStep({
       runId: params.runId,
@@ -145,7 +331,7 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
       costUsd,
       latencyMs,
       promptVersion: params.promptVersion,
-      schemaValid: params.schema ? (failed ? false : isJsonParseable(result.text)) : null,
+      schemaValid,
       error: failed ? (result.errorCode ?? "EMPTY_RESPONSE") : null,
       gateway: result.gateway,
     });
@@ -162,6 +348,7 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
     costUsd,
+    schemaValid,
   };
 }
 

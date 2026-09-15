@@ -20,6 +20,7 @@ export async function loadAgentModuleConfig(environment?: string): Promise<Agent
     masterEnabled: Boolean(data?.master_enabled),
     shadowMode: data?.shadow_mode !== false,
     globalDailySpendCapUsd: data?.global_daily_spend_cap_usd != null ? Number(data.global_daily_spend_cap_usd) : null,
+    defaultRoutingPolicyId: (data?.default_routing_policy_id as string | null) ?? null,
   };
 }
 

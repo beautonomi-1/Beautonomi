@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AdminSection } from "@beautonomi/admin-access";
 import { canAccessSection } from "@beautonomi/admin-access";
 import { routeModel } from "@beautonomi/agent-model-router";
+import { resolveAiRuntime } from "@/lib/ai/resolve-runtime";
 import { executeTool } from "@beautonomi/agent-tools";
 import type { AuthzContext } from "@beautonomi/agent-policy";
 import {
@@ -29,8 +30,22 @@ const copilotInputSchema = z.object({
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
-/** Plan which read-only tools can answer the question without inventing identifiers. */
-function planToolCalls(question: string, environment: string): Array<{ name: string; input: unknown }> {
+const COPILOT_TOOL_NAMES = [
+  "ops.readSystemHealth",
+  "support.readTicket",
+  "finance.readPayout",
+  "finance.readRefund",
+  "trust.readFraudCase",
+  "safety.readContentReport",
+  "provider.readHealthSnapshot",
+] as const;
+
+/** Plan read-only tool calls (UUID hints + bounded LLM planner fallback). */
+async function planToolCalls(
+  question: string,
+  environment: string,
+  allowedSections: string[],
+): Promise<Array<{ name: string; input: unknown }>> {
   const calls: Array<{ name: string; input: unknown }> = [
     { name: "ops.readSystemHealth", input: { environment } },
   ];
@@ -39,9 +54,54 @@ function planToolCalls(question: string, environment: string): Array<{ name: str
     const q = question.toLowerCase();
     if (q.includes("ticket")) calls.push({ name: "support.readTicket", input: { ticketId: referencedId } });
     if (q.includes("payout")) calls.push({ name: "finance.readPayout", input: { payoutId: referencedId } });
+    if (q.includes("refund")) calls.push({ name: "finance.readRefund", input: { refundId: referencedId } });
     if (q.includes("fraud")) calls.push({ name: "trust.readFraudCase", input: { caseId: referencedId } });
+    if (q.includes("report")) calls.push({ name: "safety.readContentReport", input: { reportId: referencedId } });
+    if (q.includes("provider")) calls.push({ name: "provider.readHealthSnapshot", input: { providerId: referencedId } });
   }
-  return calls;
+
+  if (calls.length <= 1) {
+    try {
+      const planner = await callAgentLlm({
+        system: [
+          "Pick up to 3 read-only admin tools to answer the question.",
+          `Allowed tools: ${COPILOT_TOOL_NAMES.join(", ")}.`,
+          'Return JSON: { "tools": [{ "name": string, "input": object }] }.',
+          "Only include tools whose requiredSection matches allowed sections when section-gated.",
+          "Never invent UUIDs.",
+        ].join("\n"),
+        user: JSON.stringify({ question, allowedSections, environment }),
+        schema: {
+          type: "object",
+          properties: {
+            tools: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { name: { type: "string" }, input: { type: "object" } },
+                required: ["name", "input"],
+              },
+            },
+          },
+        },
+        maxTokens: 300,
+        task: "classification",
+        featureKey: "agent.admin-copilot.planner",
+      });
+      if (planner.configured && planner.success === true) {
+        const parsed = JSON.parse(planner.text) as { tools?: Array<{ name: string; input: unknown }> };
+        for (const t of parsed.tools ?? []) {
+          if (COPILOT_TOOL_NAMES.includes(t.name as (typeof COPILOT_TOOL_NAMES)[number])) {
+            calls.push({ name: t.name, input: t.input });
+          }
+        }
+      }
+    } catch {
+      // deterministic plan only
+    }
+  }
+
+  return calls.slice(0, MAX_TOOL_CALLS);
 }
 
 export async function runAdminCopilot(raw: unknown) {
@@ -63,6 +123,8 @@ export async function runAdminCopilot(raw: unknown) {
     workflowRunId: `copilot-${Date.now()}`,
   });
 
+  const runtime = await resolveAiRuntime(agentModule.environment, input.tenantId);
+  const maxCostUsd = Number((def as { max_cost_usd_per_run?: number | null }).max_cost_usd_per_run ?? 0.1);
   const route = routeModel({
     task: "copilot",
     riskTier: 0,
@@ -70,9 +132,12 @@ export async function runAdminCopilot(raw: unknown) {
     escalationSignals: [],
     escalationCount: 0,
     maxEscalations: 2,
-    maxCostUsd: 0.1,
+    maxCostUsd,
     spentUsd: 0,
+    catalog: runtime.catalog,
   });
+  const preferredModel =
+    (def as { preferred_model_id?: string | null }).preferred_model_id ?? route.modelId;
 
   const emergency = await loadAgentEmergencyControls();
   const op = await loadAgentOperationalState("admin-copilot");
@@ -85,7 +150,7 @@ export async function runAdminCopilot(raw: unknown) {
   const deniedTools: string[] = [];
   let toolCalls = 0;
 
-  for (const planned of planToolCalls(input.question, agentModule.environment)) {
+  for (const planned of await planToolCalls(input.question, agentModule.environment, input.allowedSections)) {
     if (toolCalls >= MAX_TOOL_CALLS) break;
     const tool = getBoundTool(planned.name);
     if (!tool) continue;
@@ -126,7 +191,7 @@ export async function runAdminCopilot(raw: unknown) {
     findings.length > 0
       ? `Based on ${findings.length} authorized read-only tool result(s) (${toolCalls} calls), here is what I found for: ${input.question}`
       : `I could not retrieve authorized data for: ${input.question}. No unsupported claims were made.`;
-  let modelUsed = route.modelId;
+  let modelUsed = preferredModel;
 
   if (findings.length > 0) {
     try {
@@ -138,8 +203,13 @@ export async function runAdminCopilot(raw: unknown) {
         ].join("\n"),
         user: JSON.stringify({ question: input.question, findings: findings.map((f) => f.statement) }),
         maxTokens: 500,
-        modelId: route.modelId,
+        modelId: preferredModel,
+        fallbackModelId: (def as { fallback_model_id?: string | null }).fallback_model_id ?? null,
         task: "copilot",
+        agentId: def.id,
+        tenantId: input.tenantId,
+        maxCostUsd,
+        featureKey: "agent.admin-copilot",
       });
       if (llm.configured && llm.success === true) {
         answer = llm.text.trim();

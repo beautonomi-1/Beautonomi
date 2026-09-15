@@ -40,6 +40,8 @@ export type AgentModuleConfig = {
   masterEnabled: boolean;
   shadowMode: boolean;
   globalDailySpendCapUsd: number | null;
+  /** JSON routing policy (taskModel / taskTier / defaultTier). */
+  defaultRoutingPolicyId: string | null;
 };
 
 export type AgentOperationalState = {

@@ -8,11 +8,15 @@ import { slackNotifyAiBudgetThreshold } from "@/lib/ai/alerts";
 
 export interface EnforceAiBudgetParams {
   feature_key: string;
-  actor_user_id: string;
+  /** Null for agent workforce principals (use agent_id instead). */
+  actor_user_id: string | null;
+  agent_id?: string | null;
   provider_id: string | null;
   role: string;
   environment: string;
   tenant_id?: string | null;
+  /** When true, module enablement uses the global ai_module_config row only. */
+  agent_workforce?: boolean;
 }
 
 export interface EnforceAiBudgetResult {
@@ -26,12 +30,16 @@ export interface EnforceAiBudgetResult {
  * Check AI module enabled, daily budget, per-provider and per-user limits.
  * Logs usage on success; does not log when blocked.
  */
-async function loadAiModuleConfig(environment: string, tenantId?: string | null) {
+async function loadAiModuleConfig(
+  environment: string,
+  tenantId?: string | null,
+  options?: { globalOnly?: boolean },
+) {
   const supabase = getSupabaseAdmin();
   const select =
     "enabled, daily_budget_credits, per_provider_calls_per_day, per_user_calls_per_day, cache_ttl_seconds, monthly_budget_usd, alert_threshold_pct, tenant_id";
 
-  if (tenantId) {
+  if (tenantId && !options?.globalOnly) {
     const { data: tenantRow } = await supabase
       .from("ai_module_config")
       .select(select)
@@ -62,10 +70,20 @@ function usageCountQuery(supabase: ReturnType<typeof getSupabaseAdmin>, tenantId
 }
 
 export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<EnforceAiBudgetResult> {
-  const { feature_key: _feature_key, actor_user_id, provider_id, environment, tenant_id: tenantId } = params;
+  const {
+    feature_key: _feature_key,
+    actor_user_id,
+    agent_id: agentId,
+    provider_id,
+    environment,
+    tenant_id: tenantId,
+    agent_workforce: agentWorkforce,
+  } = params;
   const supabase = getSupabaseAdmin();
 
-  const { data: aiConfig, error: configError } = await loadAiModuleConfig(environment, tenantId);
+  const { data: aiConfig, error: configError } = await loadAiModuleConfig(environment, tenantId, {
+    globalOnly: Boolean(agentWorkforce),
+  });
 
   if (configError || !aiConfig) {
     return { allowed: false, disabled: true, reason: "ai_module_not_configured", fallback_mode: "off" };
@@ -120,7 +138,9 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
     }
   }
 
-  if (Number(aiConfig.daily_budget_credits) > 0) {
+  // Legacy call-count throttle — superseded by monthly USD budget and agent workforce metering.
+  const skipDailyCredits = monthlyCap > 0 || Boolean(agentWorkforce);
+  if (!skipDailyCredits && Number(aiConfig.daily_budget_credits) > 0) {
     const { count } = await usageCountQuery(supabase, tenantId)
       .gte("created_at", `${today}T00:00:00Z`)
       .lt("created_at", `${today}T23:59:59.999Z`);
@@ -143,7 +163,7 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
     }
   }
 
-  if (Number(aiConfig.per_user_calls_per_day) > 0) {
+  if (actor_user_id && Number(aiConfig.per_user_calls_per_day) > 0) {
     const { count } = await supabase
       .from("ai_usage_log")
       .select("id", { count: "exact", head: true })
@@ -156,6 +176,10 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
     }
   }
 
+  if (agentId && !actor_user_id) {
+    // Agent calls skip per-user limits; per-run caps enforced by routeModel / agent_definitions.
+  }
+
   return { allowed: true };
 }
 
@@ -163,7 +187,8 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
  * Log AI usage for billing and limits.
  */
 export async function logAiUsage(params: {
-  actor_user_id: string;
+  actor_user_id: string | null;
+  agent_id?: string | null;
   provider_id: string | null;
   feature_key: string;
   model: string;
@@ -180,15 +205,18 @@ export async function logAiUsage(params: {
   fallback_used?: boolean;
   breaker_tripped?: boolean;
 }) {
+  if (!params.actor_user_id && !params.agent_id) return;
+  const { sanitizeCostUsd } = await import("@/lib/ai/pricing");
   const supabase = getSupabaseAdmin();
   await supabase.from("ai_usage_log").insert({
     actor_user_id: params.actor_user_id,
+    agent_id: params.agent_id ?? null,
     provider_id: params.provider_id,
     feature_key: params.feature_key,
     model: params.model,
     tokens_in: params.tokens_in,
     tokens_out: params.tokens_out,
-    cost_estimate: params.cost_estimate,
+    cost_estimate: sanitizeCostUsd(params.cost_estimate),
     success: params.success,
     error_code: params.error_code ?? null,
     tenant_id: params.tenant_id ?? null,

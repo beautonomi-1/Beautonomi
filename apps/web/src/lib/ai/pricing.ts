@@ -104,6 +104,12 @@ export function clearModelPricingCache(): void {
   inflight = null;
 }
 
+/** Sanitize a USD amount before writing to NUMERIC cost columns. */
+export function sanitizeCostUsd(usd: number): number {
+  if (!Number.isFinite(usd) || usd < 0) return 0;
+  return Math.round(usd * 1_000_000) / 1_000_000;
+}
+
 /** Pure cost computation; exported for callers that already hold a pricing row. */
 export function computeCostUsd(
   pricing: Omit<ModelPricing, "model">,
@@ -112,9 +118,10 @@ export function computeCostUsd(
 ): number {
   const tokensIn = Math.max(0, Number(inputTokens) || 0);
   const tokensOut = Math.max(0, Number(outputTokens) || 0);
-  const usd = (tokensIn / 1000) * pricing.inputUsdPer1k + (tokensOut / 1000) * pricing.outputUsdPer1k;
-  // ai_usage_log.cost_estimate / agent_steps.cost_usd are NUMERIC(12,6).
-  return Math.round(usd * 1_000_000) / 1_000_000;
+  const inRate = Number.isFinite(pricing.inputUsdPer1k) ? pricing.inputUsdPer1k : UNKNOWN_MODEL_PRICING.inputUsdPer1k;
+  const outRate = Number.isFinite(pricing.outputUsdPer1k) ? pricing.outputUsdPer1k : UNKNOWN_MODEL_PRICING.outputUsdPer1k;
+  const usd = (tokensIn / 1000) * inRate + (tokensOut / 1000) * outRate;
+  return sanitizeCostUsd(usd);
 }
 
 /** Resolve pricing for a model: table row -> in-code default -> unknown-model fallback. */
@@ -133,7 +140,9 @@ export async function getModelPricing(model: string): Promise<ModelPricing> {
       const gw = live.find((m) => m.id === model);
       if (gw) {
         const p = gatewayPricingPer1k(gw);
-        return { model, inputUsdPer1k: p.inputUsdPer1k, outputUsdPer1k: p.outputUsdPer1k };
+        if (p.inputUsdPer1k > 0 || p.outputUsdPer1k > 0) {
+          return { model, inputUsdPer1k: p.inputUsdPer1k, outputUsdPer1k: p.outputUsdPer1k };
+        }
       }
     } catch {
       // Gateway unreachable — fall through.

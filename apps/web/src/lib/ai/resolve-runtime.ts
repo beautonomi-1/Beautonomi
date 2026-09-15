@@ -83,17 +83,63 @@ export async function resolveAiRuntime(
   let config: AiRuntimeConfig;
   let catalog: ModelCatalogEntry[] = [];
 
-  let runtimeQuery = supabase
-    .from("ai_runtime_config")
-    .select("*")
-    .eq("environment", environment);
-  runtimeQuery = tenantId ? runtimeQuery.eq("tenant_id", tenantId) : runtimeQuery.is("tenant_id", null);
-  const { data: runtimeRow, error: runtimeErr } = await runtimeQuery.maybeSingle();
+  async function loadRuntimeRow(): Promise<Record<string, unknown> | null> {
+    if (tenantId) {
+      const { data: tenantRow } = await supabase
+        .from("ai_runtime_config")
+        .select("*")
+        .eq("environment", environment)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (tenantRow) return tenantRow as Record<string, unknown>;
+    }
+    const { data: globalRow } = await supabase
+      .from("ai_runtime_config")
+      .select("*")
+      .eq("environment", environment)
+      .is("tenant_id", null)
+      .maybeSingle();
+    return (globalRow as Record<string, unknown> | null) ?? null;
+  }
 
-  if (runtimeErr || !runtimeRow) {
+  async function loadCatalogRows(): Promise<DbCatalogRow[]> {
+    const mapRows = (rows: unknown[]) =>
+      rows.map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          id: r.id as string | undefined,
+          model_id: String(r.model_id),
+          provider: r.provider as string | undefined,
+          tier: r.tier as string | undefined,
+          capability: r.capability as string | undefined,
+          gateway: r.gateway as boolean | undefined,
+          enabled: r.enabled as boolean | undefined,
+          eval_passed_at: (r.eval_passed_at as string | null | undefined) ?? null,
+        };
+      });
+
+    if (tenantId) {
+      const { data: tenantRows } = await supabase
+        .from("ai_model_catalog")
+        .select("model_id, provider, tier, gateway, enabled, capability")
+        .eq("environment", environment)
+        .eq("tenant_id", tenantId);
+      if (tenantRows?.length) return mapRows(tenantRows);
+    }
+    const { data: globalRows } = await supabase
+      .from("ai_model_catalog")
+      .select("model_id, provider, tier, gateway, enabled, capability")
+      .eq("environment", environment)
+      .is("tenant_id", null);
+    return mapRows(globalRows ?? []);
+  }
+
+  const runtimeRow = await loadRuntimeRow();
+
+  if (!runtimeRow) {
     config = await loadGeminiFallback(environment, tenantId);
   } else {
-    const r = runtimeRow as Record<string, unknown>;
+    const r = runtimeRow;
     const geminiFallback = await loadGeminiFallback(environment, tenantId);
     config = {
       enabled: Boolean(r.enabled),
@@ -107,26 +153,12 @@ export async function resolveAiRuntime(
     };
   }
 
-  let catalogQuery = supabase
-    .from("ai_model_catalog")
-    .select("model_id, provider, tier, gateway, enabled, capability")
-    .eq("environment", environment);
-  catalogQuery = tenantId ? catalogQuery.eq("tenant_id", tenantId) : catalogQuery.is("tenant_id", null);
-  const { data: catalogRows } = await catalogQuery;
-  const dbRows: DbCatalogRow[] = (catalogRows ?? []).map((row) => {
-    const r = row as Record<string, unknown>;
-    return {
-      id: r.id as string | undefined,
-      model_id: String(r.model_id),
-      provider: r.provider as string | undefined,
-      tier: r.tier as string | undefined,
-      capability: r.capability as string | undefined,
-      gateway: r.gateway as boolean | undefined,
-      enabled: r.enabled as boolean | undefined,
-      eval_passed_at: (r.eval_passed_at as string | null | undefined) ?? null,
-    };
+  const dbRows = await loadCatalogRows();
+  const merged = await buildMergedCatalog({
+    dbRows,
+    includeDirectGemini: true,
+    runtime: config.runtime,
   });
-  const merged = await buildMergedCatalog({ dbRows, includeDirectGemini: true });
   catalog = merged.runtimeCatalog;
 
   let emergency = defaultEmergency();

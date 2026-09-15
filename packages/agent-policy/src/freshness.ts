@@ -14,14 +14,14 @@ export type ActionFreshnessPolicy = {
 };
 
 export const ACTION_FRESHNESS_POLICIES: Record<string, ActionFreshnessPolicy> = {
-  "payout.approve": {
-    actionType: "payout.approve",
+  "payout.review": {
+    actionType: "payout.review",
     reloadAtExecution: ["kyc_status", "available_balance", "fraud_flags", "reconciliation_status", "bank_account_hash"],
     immutableFields: ["approved_amount"],
     materialChangeTriggersReapproval: ["bank_account_hash", "available_balance", "fraud_flags"],
   },
-  "refund.propose": {
-    actionType: "refund.propose",
+  "refund.briefing": {
+    actionType: "refund.briefing",
     reloadAtExecution: ["available_balance", "fraud_flags"],
     immutableFields: ["approved_amount"],
     materialChangeTriggersReapproval: ["available_balance"],

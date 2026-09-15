@@ -21,6 +21,8 @@ export interface CallGeminiParams {
   /** Used only for Sentry tagging on failures (e.g. `ai.provider.content_studio`, `agent.support-triage`). */
   featureKey?: string;
   images?: Array<{ url?: string; base64?: string; mime?: string }>;
+  /** From gemini_integration_config.safety_settings (admin-edited). */
+  safetySettings?: Record<string, unknown>;
 }
 
 export interface CallGeminiResult {
@@ -145,6 +147,9 @@ export async function callGemini(params: CallGeminiParams & { providerId?: strin
   };
   if (system) {
     body.system_instruction = { parts: [{ text: system }] };
+  }
+  if (params.safetySettings && Object.keys(params.safetySettings).length > 0) {
+    body.safetySettings = params.safetySettings;
   }
 
   try {

@@ -21,6 +21,12 @@ export type ModelCatalogEntry = {
   /** True when the ID is in Vercel AI Gateway `provider/model` format. */
   gateway: boolean;
   enabled: boolean;
+  /** USD per 1k input tokens (optional; used for cheapest-in-tier routing). */
+  inputUsdPer1k?: number;
+  /** USD per 1k output tokens (optional). */
+  outputUsdPer1k?: number;
+  /** Gateway tag: implicit-caching / explicit-caching (optional). */
+  supportsCaching?: boolean;
 };
 
 /** Current Gemini model IDs — verify against Google model list at deploy time. */
@@ -78,6 +84,8 @@ export type RouteRequest = {
   spentUsd: number;
   /** Optional override catalog (e.g. loaded from control-plane config). Defaults to Gemini. */
   catalog?: ModelCatalogEntry[];
+  /** When set, skips task/risk tier heuristics and picks cheapest enabled model in this tier. */
+  tierOverride?: ModelTier;
 };
 
 export type RouteResult = {
@@ -101,19 +109,48 @@ const COMPLEX_SIGNALS = new Set<EscalationSignal>([
   "eval_weak_category",
 ]);
 
+function inputPrice(entry: ModelCatalogEntry): number {
+  const p = entry.inputUsdPer1k;
+  return typeof p === "number" && Number.isFinite(p) ? p : Number.POSITIVE_INFINITY;
+}
+
+/** Cheapest enabled model in tier; degrades to lower tiers, never upgrades cost. */
 function pickModel(catalog: ModelCatalogEntry[], tier: ModelTier): ModelCatalogEntry {
   const enabled = catalog.filter((m) => m.enabled);
-  const exact = enabled.find((m) => m.tier === tier);
+  const pickCheapest = (list: ModelCatalogEntry[]) =>
+    list.slice().sort((a, b) => inputPrice(a) - inputPrice(b))[0];
+
+  const inTier = enabled.filter((m) => m.tier === tier);
+  const exact = pickCheapest(inTier);
   if (exact) return exact;
-  // Degrade gracefully: pro -> flash -> lite, never silently upgrade cost.
+
   const order: ModelTier[] = tier === "pro" ? ["flash", "lite"] : tier === "flash" ? ["lite"] : [];
   for (const t of order) {
-    const found = enabled.find((m) => m.tier === t);
+    const found = pickCheapest(enabled.filter((m) => m.tier === t));
     if (found) return found;
   }
-  const any = enabled[0] ?? catalog[0];
+  const any = pickCheapest(enabled) ?? catalog[0];
   if (!any) throw new Error("model_catalog_empty");
   return any;
+}
+
+/** Named fallback or cheapest enabled model at equal-or-lower tier from a different provider. */
+export function pickFailoverModel(
+  catalog: ModelCatalogEntry[],
+  primary: ModelCatalogEntry,
+  fallbackModelId?: string | null,
+): ModelCatalogEntry | null {
+  const enabled = catalog.filter((m) => m.enabled && m.id !== primary.id);
+  if (fallbackModelId) {
+    const named = enabled.find((m) => m.id === fallbackModelId);
+    if (named) return named;
+  }
+  const tierRank: Record<ModelTier, number> = { lite: 0, flash: 1, pro: 2 };
+  const maxRank = tierRank[primary.tier];
+  const candidates = enabled.filter(
+    (m) => tierRank[m.tier] <= maxRank && m.provider !== primary.provider,
+  );
+  return candidates.slice().sort((a, b) => inputPrice(a) - inputPrice(b))[0] ?? null;
 }
 
 function toResult(entry: ModelCatalogEntry, shouldStop: boolean, stopReason?: string): RouteResult {
@@ -134,6 +171,9 @@ export function routeModel(req: RouteRequest): RouteResult {
   }
   if (req.spentUsd >= req.maxCostUsd) {
     return toResult(pickModel(catalog, "lite"), true, "cost_cap");
+  }
+  if (req.tierOverride) {
+    return toResult(pickModel(catalog, req.tierOverride), false);
   }
   const needsFlash =
     req.task === "complex_reasoning" ||

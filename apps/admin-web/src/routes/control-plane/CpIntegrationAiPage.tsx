@@ -91,6 +91,8 @@ const THRESHOLDS = [
 ] as const;
 
 const PRESET_HINTS: Record<string, string> = {
+  gateway_cheap_global:
+    "Gateway-first open-weight stack (Qwen/DeepSeek/GLM) with explicit lite/flash/pro tiers. Est. ~$0.03–0.08 / 1k calls.",
   gemini_only: "Enables direct Gemini lite/flash/pro. Est. ~$0.05 / 1k calls.",
   gateway_balanced: "Gateway lite + OpenAI mini fallback. Est. ~$0.15 / 1k calls.",
   gateway_premium: "Adds Claude Sonnet for high-risk. Est. ~$0.45 / 1k calls.",
@@ -467,7 +469,8 @@ export function CpIntegrationAiPage() {
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  ["gemini_only", "Gemini only (current)"],
+                  ["gateway_cheap_global", "Cheap global (recommended)"],
+                  ["gemini_only", "Gemini only (rollback)"],
                   ["gateway_balanced", "Gateway balanced"],
                   ["gateway_premium", "Gateway premium"],
                 ] as const

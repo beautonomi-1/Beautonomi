@@ -8,6 +8,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import {
   routeModel,
+  pickFailoverModel,
   type ModelCatalogEntry,
   type ModelTask,
   DEFAULT_MODEL_CATALOG,
@@ -48,6 +49,8 @@ export interface CallLlmParams {
   environment?: string;
   /** Explicit model override (must be in enabled catalog). */
   modelId?: string;
+  /** Named failover model (agent_definitions.fallback_model_id). */
+  fallbackModelId?: string | null;
   maxCostUsd?: number;
   spentUsd?: number;
   /** Admin credential probe — overrides resolved runtime for a single call. */
@@ -66,6 +69,8 @@ export interface CallLlmResult {
   gateway: boolean;
   breakerTripped?: boolean;
   failoverModel?: string;
+  /** False when structured output fell back to text+JSON parse. */
+  schemaValid?: boolean | null;
 }
 
 const ENV = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
@@ -117,11 +122,14 @@ function findCatalogEntry(catalog: ModelCatalogEntry[], modelId: string): ModelC
 function pickFailover(
   catalog: ModelCatalogEntry[],
   primary: ModelCatalogEntry,
+  fallbackModelId?: string | null,
 ): ModelCatalogEntry | null {
+  const named = pickFailoverModel(catalog, primary, fallbackModelId);
+  if (named && isTierEqualOrCheaper(named.tier, primary.tier)) return named;
   const candidates = catalog.filter(
     (c) => c.enabled && c.id !== primary.id && isTierEqualOrCheaper(c.tier, primary.tier),
   );
-  return candidates[0] ?? null;
+  return candidates.slice().sort((a, b) => (a.inputUsdPer1k ?? Infinity) - (b.inputUsdPer1k ?? Infinity))[0] ?? null;
 }
 
 function buildSdkModel(
@@ -184,7 +192,7 @@ async function invokeSdk(params: {
   images?: LlmImageInput[];
   timeoutMs: number;
   featureKey?: string;
-}): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
+}): Promise<{ text: string; tokensIn: number; tokensOut: number; schemaValid?: boolean | null }> {
   const sdkModel = buildSdkModel(params.runtime, params.modelId, params.entry.gateway, params.keys);
   if (!sdkModel) {
     throw new Error("sdk_model_unavailable");
@@ -215,21 +223,41 @@ async function invokeSdk(params: {
       maxOutputTokens: params.maxTokens,
       abortSignal,
     };
-    const result = params.images?.length
-      ? await generateObject({
-          ...objectArgs,
-          messages: [{ role: "user" as const, content: userContent }],
-        })
-      : await generateObject({
-          ...objectArgs,
-          prompt: params.user,
-        });
-    const text = JSON.stringify(result.object);
-    return {
-      text,
-      tokensIn: result.usage?.inputTokens ?? 0,
-      tokensOut: result.usage?.outputTokens ?? 0,
-    };
+    try {
+      const result = params.images?.length
+        ? await generateObject({
+            ...objectArgs,
+            messages: [{ role: "user" as const, content: userContent }],
+          })
+        : await generateObject({
+            ...objectArgs,
+            prompt: params.user,
+          });
+      return {
+        text: JSON.stringify(result.object),
+        tokensIn: result.usage?.inputTokens ?? 0,
+        tokensOut: result.usage?.outputTokens ?? 0,
+        schemaValid: true,
+      };
+    } catch {
+      const fallbackUser = `${params.user}\n\nRespond with valid JSON only, matching this schema:\n${JSON.stringify(params.schema)}`;
+      const result = await generateText({
+        model: sdkModel,
+        system: params.system || undefined,
+        ...(params.images?.length
+          ? { messages: [{ role: "user" as const, content: userContent }] }
+          : { prompt: fallbackUser }),
+        temperature: params.temperature,
+        maxOutputTokens: params.maxTokens,
+        abortSignal,
+      });
+      return {
+        text: result.text,
+        tokensIn: result.usage?.inputTokens ?? 0,
+        tokensOut: result.usage?.outputTokens ?? 0,
+        schemaValid: false,
+      };
+    }
   }
 
   const result = await generateText({
@@ -256,6 +284,23 @@ type ResolvedKeys = {
   gemini: string | null;
 };
 
+async function loadGeminiSafetySettings(environment: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+      .from("gemini_integration_config")
+      .select("safety_settings")
+      .eq("environment", environment)
+      .is("tenant_id", null)
+      .maybeSingle();
+    const settings = (data as { safety_settings?: Record<string, unknown> } | null)?.safety_settings;
+    return settings && Object.keys(settings).length > 0 ? settings : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function invokeDirectGemini(params: {
   modelId: string;
   keys: ResolvedKeys;
@@ -268,6 +313,7 @@ async function invokeDirectGemini(params: {
   timeoutMs: number;
   featureKey?: string;
   providerId?: string;
+  environment?: string;
 }): Promise<CallLlmResult> {
   if (!params.keys.gemini) {
     return {
@@ -282,6 +328,7 @@ async function invokeDirectGemini(params: {
       gateway: false,
     };
   }
+  const safetySettings = await loadGeminiSafetySettings(params.environment ?? DEFAULT_ENVIRONMENT);
   const result = await callGemini({
     apiKey: params.keys.gemini,
     model: params.modelId,
@@ -291,6 +338,7 @@ async function invokeDirectGemini(params: {
     maxTokens: params.maxTokens,
     schema: params.schema,
     images: params.images,
+    safetySettings,
     timeoutMs: params.timeoutMs,
     featureKey: params.featureKey,
     providerId: params.providerId,
@@ -322,7 +370,7 @@ async function invokeOnce(
   const maxTokens = params.maxTokens ?? 600;
   const timeoutMs = params.timeoutMs ?? 20_000;
 
-  const breaker = checkModelBreaker(modelId);
+  const breaker = await checkModelBreaker(modelId);
   if (!breaker.allowed) {
     return {
       text: "",
@@ -348,9 +396,11 @@ async function invokeOnce(
         temperature,
         maxTokens,
         schema: params.schema,
+        images: params.images,
         timeoutMs,
         featureKey: params.featureKey,
         providerId: params.providerId,
+        environment: params.environment ?? DEFAULT_ENVIRONMENT,
       });
       if (geminiResult.success) recordModelSuccess(modelId);
       else recordModelFailure(modelId, params.environment ?? DEFAULT_ENVIRONMENT);
@@ -385,6 +435,7 @@ async function invokeOnce(
       modelProvider: entry.provider,
       runtime,
       gateway: entry.gateway,
+      schemaValid: out.schemaValid ?? null,
     };
   } catch (err) {
     recordModelFailure(modelId, params.environment ?? DEFAULT_ENVIRONMENT);
@@ -539,7 +590,7 @@ export async function callLlm(params: CallLlmParams): Promise<CallLlmResult> {
       result.errorCode === "LLM_TIMEOUT" ||
       result.errorCode === "LLM_NETWORK")
   ) {
-    const failover = pickFailover(catalog, entry);
+    const failover = pickFailover(catalog, entry, params.fallbackModelId);
     if (failover) {
       const second = await invokeOnce(failover.id, failover, params, effectiveRuntime, keys);
       if (second.success) {

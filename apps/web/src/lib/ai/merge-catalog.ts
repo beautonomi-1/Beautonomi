@@ -6,10 +6,12 @@ import {
   type ModelCatalogEntry,
   type ModelTier,
 } from "@beautonomi/agent-model-router";
+import type { AiRuntimeMode } from "@/lib/ai/resolve-runtime";
 import {
   fetchLiveGatewayModels,
   liveModelToCatalogEntry,
   gatewayPricingPer1k,
+  modelSupportsCaching,
   type LiveGatewayModel,
   type GatewayModelCapability,
 } from "@/lib/ai/gateway-models";
@@ -87,6 +89,7 @@ function directGeminiFromDb(dbByModelId: Map<string, DbCatalogRow>): ModelCatalo
 export async function buildMergedCatalog(params: {
   dbRows: DbCatalogRow[];
   includeDirectGemini?: boolean;
+  runtime?: AiRuntimeMode;
 }): Promise<MergedCatalogResult> {
   const dbByModelId = dbRowMap(params.dbRows);
   let live: LiveGatewayModel[] = [];
@@ -113,11 +116,36 @@ export async function buildMergedCatalog(params: {
   }
 
   const liveModels = mergeLiveModels(live, dbByModelId);
-  const runtimeLive = liveModels.map((m) => liveModelToCatalogEntry(m, m.enabled, m.tier));
-  const directGeminiModels = params.includeDirectGemini !== false ? directGeminiFromDb(dbByModelId) : [];
+  const runtimeLive: ModelCatalogEntry[] = liveModels.map((m) => {
+    const entry = liveModelToCatalogEntry(m, m.enabled, m.tier);
+    return {
+      ...entry,
+      inputUsdPer1k: m.input_usd_per_1k,
+      outputUsdPer1k: m.output_usd_per_1k,
+      supportsCaching: modelSupportsCaching(m),
+    };
+  });
+  const directGeminiModels =
+    params.includeDirectGemini !== false ? directGeminiFromDb(dbByModelId) : [];
 
-  const runtimeCatalog = [...directGeminiModels, ...runtimeLive];
+  const runtimeCatalog = buildRuntimeCatalogOrder({
+    runtime: params.runtime ?? "vercel_gateway",
+    gatewayEntries: runtimeLive,
+    directGeminiEntries: directGeminiModels,
+  });
   return { runtimeCatalog, liveModels, directGeminiModels };
+}
+
+/** Gateway-first unless runtime is direct_gemini rollback. */
+export function buildRuntimeCatalogOrder(params: {
+  runtime: AiRuntimeMode;
+  gatewayEntries: ModelCatalogEntry[];
+  directGeminiEntries: ModelCatalogEntry[];
+}): ModelCatalogEntry[] {
+  if (params.runtime === "direct_gemini") {
+    return [...params.directGeminiEntries, ...params.gatewayEntries];
+  }
+  return [...params.gatewayEntries, ...params.directGeminiEntries];
 }
 
 /** Models suitable for chat/template dropdowns (enabled + chat or vision). */
@@ -131,4 +159,21 @@ export function selectableChatCatalogEntries(result: MergedCatalogResult): Model
   const live = selectableChatModels(result).map((m) => liveModelToCatalogEntry(m, true, m.tier));
   const direct = result.directGeminiModels.filter((m) => m.enabled);
   return [...direct, ...live];
+}
+
+/** Prefer models tagged for implicit/explicit caching (large static system prompts). */
+export function preferCachingCapableModels(models: MergedLiveModel[]): MergedLiveModel[] {
+  const caching = models.filter(
+    (m) => m.enabled && (m.tags.includes("implicit-caching") || m.tags.includes("explicit-caching")),
+  );
+  return caching.length ? caching : models;
+}
+
+/** Reorder runtime catalog so caching-capable models are tried first within routing. */
+export function preferCachingCapableCatalog(catalog: ModelCatalogEntry[]): ModelCatalogEntry[] {
+  const caching = catalog.filter((c) => c.enabled && c.supportsCaching);
+  if (!caching.length) return catalog;
+  const cachingIds = new Set(caching.map((c) => c.id));
+  const rest = catalog.filter((c) => !cachingIds.has(c.id));
+  return [...caching, ...rest];
 }

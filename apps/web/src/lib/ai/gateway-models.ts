@@ -49,21 +49,27 @@ function inferCapability(raw: RawGatewayModel): GatewayModelCapability {
   return "other";
 }
 
-/** Heuristic tier from per-token input price (USD). */
+/** Heuristic tier from per-token input price (USD). Unknown pricing defaults to flash, not pro. */
 export function inferGatewayTier(inputUsdPerToken: number, modelId: string): ModelTier {
   const id = modelId.toLowerCase();
   if (/lite|mini|nano|flash-lite|3\.5|haiku|small/.test(id)) return "lite";
   if (/pro|opus|sonnet|gpt-5|gpt-4(?!\.1-mini)|o1|o3|reasoning/.test(id)) return "pro";
+  if (!Number.isFinite(inputUsdPerToken) || inputUsdPerToken <= 0) return "flash";
   const per1k = inputUsdPerToken * 1000;
   if (per1k < 0.0002) return "lite";
   if (per1k < 0.002) return "flash";
   return "pro";
 }
 
+function parseUsdPerToken(value: string | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function normalizeRawModel(raw: RawGatewayModel): LiveGatewayModel | null {
   if (!raw.id || !raw.id.includes("/")) return null;
-  const inputUsdPerToken = Number(raw.pricing?.input ?? 0);
-  const outputUsdPerToken = Number(raw.pricing?.output ?? 0);
+  const inputUsdPerToken = parseUsdPerToken(raw.pricing?.input);
+  const outputUsdPerToken = parseUsdPerToken(raw.pricing?.output);
   const ownedBy = raw.owned_by ?? raw.id.split("/")[0] ?? "unknown";
   return {
     id: raw.id,
@@ -128,16 +134,35 @@ export function liveModelToCatalogEntry(
   model: LiveGatewayModel,
   enabled: boolean,
   tierOverride?: ModelTier,
-): ReturnType<typeof catalogEntryFromGatewayId> {
+): ReturnType<typeof catalogEntryFromGatewayId> & {
+  inputUsdPer1k?: number;
+  outputUsdPer1k?: number;
+} {
   const tier = tierOverride ?? inferGatewayTier(model.inputUsdPerToken, model.id);
-  return catalogEntryFromGatewayId(model.id, tier, enabled);
+  const pricing = gatewayPricingPer1k(model);
+  return {
+    ...catalogEntryFromGatewayId(model.id, tier, enabled),
+    inputUsdPer1k: pricing.inputUsdPer1k,
+    outputUsdPer1k: pricing.outputUsdPer1k,
+  };
 }
 
 export function gatewayPricingPer1k(model: LiveGatewayModel): { inputUsdPer1k: number; outputUsdPer1k: number } {
+  const inTok = Number.isFinite(model.inputUsdPerToken) ? model.inputUsdPerToken : 0;
+  const outTok = Number.isFinite(model.outputUsdPerToken) ? model.outputUsdPerToken : 0;
   return {
-    inputUsdPer1k: model.inputUsdPerToken * 1000,
-    outputUsdPer1k: model.outputUsdPerToken * 1000,
+    inputUsdPer1k: inTok * 1000,
+    outputUsdPer1k: outTok * 1000,
   };
+}
+
+export function modelHasVision(model: LiveGatewayModel): boolean {
+  return model.capability === "vision" || (model.tags ?? []).includes("vision");
+}
+
+export function modelSupportsCaching(model: LiveGatewayModel): boolean {
+  const tags = model.tags ?? [];
+  return tags.includes("implicit-caching") || tags.includes("explicit-caching");
 }
 
 /** Pick the newest model matching a provider prefix and optional filter (for presets). */
