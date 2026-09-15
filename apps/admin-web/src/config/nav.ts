@@ -304,7 +304,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Courier shipping", href: "/admin/integrations/shipping", icon: Truck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
-      { title: "AI providers", href: "/admin/control-plane/integrations/ai", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "AI Platform", href: "/admin/control-plane/integrations/ai", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Aura (trust & safety)", href: "/admin/control-plane/integrations/aura", icon: Zap, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
     ],
   },

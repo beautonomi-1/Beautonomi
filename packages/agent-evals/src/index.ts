@@ -130,7 +130,13 @@ function baseAuthzContext(): AuthzContext {
       issuedAt: new Date(now).toISOString(),
       expiresAt: new Date(now + 60_000).toISOString(),
     },
-    module: { environment: "development", masterEnabled: true, shadowMode: true, globalDailySpendCapUsd: null },
+    module: {
+      environment: "development",
+      masterEnabled: true,
+      shadowMode: true,
+      globalDailySpendCapUsd: null,
+      defaultRoutingPolicyId: "default",
+    },
     operational: { state: "active" },
     emergency: {
       stopNewRuns: false,

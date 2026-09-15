@@ -23,8 +23,8 @@ vi.mock("@/lib/tenant/admin-tenant-scope", () => ({
   fetchAllProviderIdsForTenant: (...args: unknown[]) => mockFetchAllProviderIdsForTenant(...args),
 }));
 
-vi.mock("@/lib/admin/refundable-payment-transactions", () => ({
-  countRefundableSuccessPaymentTxsForTenant: (...args: unknown[]) => mockCountRefundable(...args),
+vi.mock("@/lib/admin/count-refunds-needing-review", () => ({
+  countRefundsNeedingReview: (...args: unknown[]) => mockCountRefundable(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -87,7 +87,7 @@ describe("GET /api/admin/nav-counts refunds badge", () => {
     mockGetSupabaseAdmin.mockReturnValue(makeSupabase());
   });
 
-  it("uses refundable success payment count for /admin/refunds", async () => {
+  it("uses needs-review refund count for /admin/refunds", async () => {
     mockCountRefundable.mockResolvedValue(42);
 
     const { GET } = await import("../route");

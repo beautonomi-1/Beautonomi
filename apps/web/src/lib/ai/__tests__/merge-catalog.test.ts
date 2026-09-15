@@ -12,6 +12,7 @@ vi.mock("../gateway-models", () => ({
   })),
   gatewayPricingPer1k: vi.fn(() => ({ inputUsdPer1k: 0.0001, outputUsdPer1k: 0.0004 })),
   inferGatewayTier: vi.fn(() => "flash" as const),
+  modelSupportsCaching: vi.fn(() => false),
 }));
 
 describe("buildMergedCatalog", () => {

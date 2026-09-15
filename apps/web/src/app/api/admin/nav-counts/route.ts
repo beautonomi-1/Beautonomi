@@ -4,7 +4,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
-import { countRefundableSuccessPaymentTxsForTenant } from "@/lib/admin/refundable-payment-transactions";
+import { countRefundsNeedingReview } from "@/lib/admin/count-refunds-needing-review";
 import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         return { count: 0, sla_breached: 0 };
       })(),
       (async () => {
-        const count = await countRefundableSuccessPaymentTxsForTenant(supabase, tenantId);
+        const count = await countRefundsNeedingReview(supabase, tenantId);
         return { count };
       })(),
       supabase

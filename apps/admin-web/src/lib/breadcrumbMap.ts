@@ -182,8 +182,8 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "integrations/shipping": { label: "Courier shipping", parentHref: null },
   "control-plane/integrations": { label: "Integrations Hub", parentHref: "/admin/control-plane/overview" },
   "control-plane/integrations/didit": { label: "Didit (KYC)", parentHref: "/admin/control-plane/integrations" },
-  "control-plane/integrations/gemini": { label: "AI Providers", parentHref: "/admin/control-plane/integrations" },
-  "control-plane/integrations/ai": { label: "AI Providers", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/gemini": { label: "AI Platform", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/ai": { label: "AI Platform", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/aura": { label: "Aura (Trust & Safety)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/wasender": { label: "Wasender", parentHref: "/admin/control-plane/integrations" },
 

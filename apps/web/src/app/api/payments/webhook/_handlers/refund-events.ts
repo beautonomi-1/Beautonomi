@@ -54,7 +54,7 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
   const { data: txn } = await supabase.from("payment_transactions")
     .select("id, booking_id, amount, metadata")
     .eq("reference", reference)
-    .eq("status", "success")
+    .in("status", ["success", "partially_refunded"])
     .maybeSingle();
 
   // Idempotency: skip if this refund reference was already recorded

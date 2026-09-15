@@ -1,6 +1,5 @@
 /**
  * Content moderation sweep — human-gated proposals only.
- * Uses gpt-oss-safeguard for text policy + cheap VLM for imagery.
  */
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { loadAgentDefinition, loadAgentModuleConfig, loadAgentOperationalState } from "../config-loader";
@@ -20,7 +19,7 @@ Beautonomi community standards:
 - No graphic violence or hardcore pornography in public UGC.
 - No harassment, hate speech, spam, or misleading medical claims.
 - Beauty procedure photos may be allowed but ambiguous medical claims need human review.
-Illegal/exploitative suspicion must escalate to humans and legal — never auto-delete silently.
+Illegal/exploitative suspicion must escalate to humans and legal — never auto-suspend.
 `.trim();
 
 type ModerationLlmOutput = {
@@ -61,7 +60,8 @@ export async function runContentModerationSweep(environment?: string): Promise<
 
   const supabase = getSupabaseAdmin();
   const env = agentModule.environment;
-  const safeguardModel = (def as { preferred_model_id?: string | null }).preferred_model_id ?? (await resolveSafeguardModel(env));
+  const safeguardModel =
+    (def as { preferred_model_id?: string | null }).preferred_model_id ?? (await resolveSafeguardModel(env));
   const scanner = getImageSafetyScanner();
 
   const { data: reports } = await supabase

@@ -18,7 +18,7 @@ export type ComputeGatewayFeeSuggestionsOptions = {
   asOfDate?: string | null;
 };
 
-const CHARGE_STATUSES = ["success"] as const;
+const CHARGE_STATUSES = ["success", "partially_refunded", "refunded"] as const;
 
 export const LEDGER_FEE_TYPES = [
   "payment",

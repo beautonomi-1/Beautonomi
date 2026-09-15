@@ -32,12 +32,15 @@ export async function GET(request: NextRequest) {
       return successResponse({ runId, steps: steps ?? [] });
     }
 
-    const { data, error } = await supabase
+    const agentId = searchParams.get("agent_id");
+    let runsQuery = supabase
       .from("agent_runs")
       .select("*")
       .eq("tenant_id", tenantId)
       .order("started_at", { ascending: false })
       .limit(50);
+    if (agentId) runsQuery = runsQuery.eq("agent_id", agentId);
+    const { data, error } = await runsQuery;
     if (error) throw error;
     return successResponse(data ?? []);
   } catch (error) {

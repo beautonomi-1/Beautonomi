@@ -455,6 +455,14 @@ export async function POST(
       if (finalizeErr) {
         return errorResponse("Failed to finalise card refund record.", "FINALIZE_ERROR", 500);
       }
+      try {
+        const { syncBookingRefundTransactions } = await import(
+          "@/lib/finance/sync-booking-refund-transactions"
+        );
+        await syncBookingRefundTransactions(supabaseAdmin, bookingId, reason, user.id);
+      } catch (syncErr) {
+        console.warn("Failed to sync payment transaction after terminal refund:", syncErr);
+      }
     } else {
       // Wallet credited successfully — finalise the refund. The status flip
       // to `completed` triggers (a) the finance_transactions reversal row

@@ -65,8 +65,8 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: Settings,
   },
   {
-    title: "AI providers",
-    description: "API key, models, safety",
+    title: "AI Platform",
+    description: "Vercel Gateway, workforce, budgets, emergency",
     to: adminSpaTo("/admin/control-plane/integrations/ai"),
     icon: Sparkles,
   },

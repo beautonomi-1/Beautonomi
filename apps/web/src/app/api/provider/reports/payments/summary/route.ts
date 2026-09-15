@@ -173,14 +173,14 @@ export async function GET(request: NextRequest) {
     const bookingIdsForPt = [...new Set([...bookingIds, ...ledgerBookingIds])];
 
     // ── 3. Payment transactions (gateway + no-gateway settlements) ──
-    let paymentTxRows: Array<{ provider: string; amount: number; net_amount: number; status: string; booking_id: string | null; metadata: Record<string, unknown> | null }> = [];
+    let paymentTxRows: Array<{ provider: string; amount: number; refund_amount?: number | null; net_amount: number; status: string; booking_id: string | null; metadata: Record<string, unknown> | null }> = [];
     if (bookingIdsForPt.length > 0) {
       paymentTxRows = await fetchInIdChunks(bookingIdsForPt, (slice) =>
         supabaseAdmin
           .from("payment_transactions")
-          .select("provider, amount, net_amount, status, booking_id, metadata")
+          .select("provider, amount, refund_amount, net_amount, status, booking_id, metadata")
           .in("booking_id", slice)
-          .eq("status", "success"),
+          .in("status", ["success", "partially_refunded", "refunded"]),
       );
     }
 
@@ -221,8 +221,13 @@ export async function GET(request: NextRequest) {
     paymentTxRows.forEach((pt) => {
       const method = pt.provider || "unknown";
       if (!byMethod[method]) byMethod[method] = { count: 0, amount: 0 };
+      const net = Math.max(
+        0,
+        Number(pt.amount ?? 0) - Number(pt.refund_amount ?? 0),
+      );
+      if (net <= 0) return;
       byMethod[method].count += 1;
-      byMethod[method].amount += Number(pt.amount ?? 0);
+      byMethod[method].amount += net;
     });
     // Booking.wallet_amount: split Paystack+wallet has no separate PT row for wallet — add from booking.
     // Wallet/gift-only settlements already have a payment_transactions row (internal ref); do not add twice.

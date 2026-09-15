@@ -1,13 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  CHARGE_ROW_STATUSES,
+  netPaymentTransactionAmount,
+} from "@/lib/finance/payment-transaction-net";
 
 function roundCurrency2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 /**
- * Cash-like amount collected for a booking across gateway rows, minus completed wallet/store-credit refunds.
- * Used to cap dispute "full refund" and admin partial refunds so rewritten `bookings.total_amount` cannot
- * under-state what was actually charged.
+ * Cash-like amount collected for a booking across gateway rows, net of refunds
+ * recorded on payment_transactions. Uses booking_refunds only when no gateway
+ * rows exist (in-person / cash-only bookings).
  */
 export async function getCollectedTotalForBooking(
   supabase: SupabaseClient,
@@ -15,31 +19,38 @@ export async function getCollectedTotalForBooking(
 ): Promise<number> {
   const { data: txs, error: txErr } = await supabase
     .from("payment_transactions")
-    .select("amount, transaction_type")
+    .select("amount, refund_amount, transaction_type, status")
     .eq("booking_id", bookingId)
-    .eq("status", "success");
+    .in("status", [...CHARGE_ROW_STATUSES]);
 
   if (txErr) throw txErr;
 
   const inflowTypes = new Set(["charge", "additional_charge"]);
-  const collected = (txs ?? []).reduce((sum, row) => {
+  const netFromTx = (txs ?? []).reduce((sum, row) => {
     const tt = String((row as { transaction_type?: string }).transaction_type || "charge");
     if (!inflowTypes.has(tt)) return sum;
-    return sum + Number((row as { amount?: unknown }).amount ?? 0);
+    return sum + netPaymentTransactionAmount(row as { amount?: unknown; refund_amount?: unknown });
   }, 0);
 
-  const { data: refunds, error: refErr } = await supabase
-    .from("booking_refunds")
-    .select("amount")
-    .eq("booking_id", bookingId)
-    .eq("status", "completed");
+  if (netFromTx > 0) {
+    return roundCurrency2(netFromTx);
+  }
 
-  if (refErr) throw refErr;
+  const { data: booking, error: bookingErr } = await supabase
+    .from("bookings")
+    .select("total_paid, total_refunded, wallet_amount, gift_card_amount")
+    .eq("id", bookingId)
+    .maybeSingle();
 
-  const refunded = (refunds ?? []).reduce(
-    (sum, row) => sum + Number((row as { amount?: unknown }).amount ?? 0),
-    0,
-  );
+  if (bookingErr) throw bookingErr;
+  if (!booking) return 0;
 
-  return roundCurrency2(Math.max(0, collected - refunded));
+  const totalPaid = Number((booking as { total_paid?: number }).total_paid ?? 0);
+  const walletGift =
+    Number((booking as { wallet_amount?: number }).wallet_amount ?? 0) +
+    Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0);
+  const totalRefunded = Number((booking as { total_refunded?: number }).total_refunded ?? 0);
+  const collected = Math.max(totalPaid, walletGift);
+
+  return roundCurrency2(Math.max(0, collected - totalRefunded));
 }

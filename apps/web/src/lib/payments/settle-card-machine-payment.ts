@@ -808,6 +808,25 @@ async function reverseBookingCardMachinePayments(
     }
   }
 
+  const syncedBookings = new Set(
+    sortedRows.map((p) => String((p as { booking_id?: string }).booking_id ?? "")).filter(Boolean),
+  );
+  try {
+    const { syncBookingRefundTransactions } = await import(
+      "@/lib/finance/sync-booking-refund-transactions"
+    );
+    for (const bookingId of syncedBookings) {
+      await syncBookingRefundTransactions(
+        supabase,
+        bookingId,
+        `${input.paymentProvider}_${reversalKind}`,
+        input.processedBy ?? null,
+      );
+    }
+  } catch (syncErr) {
+    console.warn("Failed to sync payment transactions after card-machine reversal:", syncErr);
+  }
+
   return { reversed: true };
 }
 

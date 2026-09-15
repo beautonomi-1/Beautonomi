@@ -23,7 +23,7 @@ describe("admin-activity-feed", () => {
   it("defines expected deep links for actionable queues", () => {
     expect(ADMIN_ACTIVITY_LINKS.disputesOpen).toBe("/admin/disputes?status=open");
     expect(ADMIN_ACTIVITY_LINKS.webhooksFailures).toBe("/admin/webhooks?tab=failures");
-    expect(ADMIN_ACTIVITY_LINKS.refundsSuccess).toBe("/admin/refunds?status=success");
+    expect(ADMIN_ACTIVITY_LINKS.refundsSuccess).toBe("/admin/refunds?status=needs_action");
     expect(ADMIN_ACTIVITY_LINKS.opsTrackerStalled).toBe(
       "/admin/provider-ops/tracker?status=stalled",
     );

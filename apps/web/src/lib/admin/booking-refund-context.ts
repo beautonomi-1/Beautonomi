@@ -151,7 +151,18 @@ export type ChargeAllocationInput = {
   amount?: unknown;
   refund_amount?: unknown;
   created_at?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
+
+function isExtraChargeRow(row: ChargeAllocationInput): boolean {
+  const tt = String(row.transaction_type ?? "charge");
+  if (tt === "additional_charge") return true;
+  const kind =
+    row.metadata && typeof row.metadata === "object"
+      ? String((row.metadata as { kind?: unknown }).kind ?? "")
+      : "";
+  return kind === "walk_in_additional_charge";
+}
 
 export type ChargeAllocationResult = {
   walletApplied: number;
@@ -171,8 +182,8 @@ export function allocateBookingWalletAcrossCharges(
   if (charges.length === 0) return result;
 
   const sorted = [...charges].sort((a, b) => {
-    const aPrimary = a.transaction_type === "charge" ? 0 : 1;
-    const bPrimary = b.transaction_type === "charge" ? 0 : 1;
+    const aPrimary = isExtraChargeRow(a) ? 1 : 0;
+    const bPrimary = isExtraChargeRow(b) ? 1 : 0;
     if (aPrimary !== bPrimary) return aPrimary - bPrimary;
     const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
     const tb = b.created_at ? new Date(b.created_at).getTime() : 0;

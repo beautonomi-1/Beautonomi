@@ -30,6 +30,20 @@ export async function finalizeCashRefund(
     /* non-blocking */
   }
 
+  try {
+    const { syncBookingRefundTransactions } = await import(
+      "@/lib/finance/sync-booking-refund-transactions"
+    );
+    await syncBookingRefundTransactions(
+      supabaseAdmin,
+      bookingId,
+      "Cash refund confirmed",
+      userId ?? null,
+    );
+  } catch {
+    /* non-blocking */
+  }
+
   return {};
 }
 

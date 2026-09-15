@@ -57,6 +57,11 @@ export interface IssueAdminWalletRefundOptions {
    * `refunded` / `partially_refunded` after the wallet credit succeeds.
    */
   transactionId?: string;
+  /**
+   * In-person / cash booking with no gateway capture row. Skips transaction
+   * claim but keeps idempotency, gift-card handling, and provider warning.
+   */
+  bookingTenderMode?: boolean;
 }
 
 export type IssueAdminWalletRefundSuccess = {
@@ -109,6 +114,7 @@ export async function issueAdminWalletRefund(
     actorRole = "superadmin",
     notes,
     transactionId,
+    bookingTenderMode = false,
   } = opts;
 
   // 1. Validate amount
@@ -142,14 +148,32 @@ export async function issueAdminWalletRefund(
   // When an explicit transactionId is supplied (transaction-level refund) we use it.
   // Otherwise (dispute refund) we locate the booking's successful charge so the
   // charge does not remain refundable on the Refunds page (avoids double refunds).
-  let resolvedTransactionId: string | null = transactionId ?? null;
-  if (!resolvedTransactionId) {
+  if (bookingTenderMode) {
+    const { data: gatewayRows } = await supabase
+      .from("payment_transactions")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .in("status", ["success", "partially_refunded"])
+      .in("transaction_type", ["charge", "additional_charge"])
+      .limit(1);
+    if ((gatewayRows ?? []).length > 0) {
+      return err(
+        "This booking has a gateway capture — use the transaction refund endpoint",
+        "GATEWAY_CAPTURE_EXISTS",
+        409,
+      );
+    }
+  }
+
+  let resolvedTransactionId: string | null =
+    bookingTenderMode ? null : (transactionId ?? null);
+  if (!resolvedTransactionId && !bookingTenderMode) {
     try {
       const { data: chargeTxns } = await supabase
         .from("payment_transactions")
         .select("id, transaction_type, created_at")
         .eq("booking_id", bookingId)
-        .eq("status", "success")
+        .in("status", ["success", "partially_refunded"])
         .in("transaction_type", ["charge", "additional_charge"])
         .order("created_at", { ascending: false });
       const rows = (chargeTxns ?? []) as Array<{
@@ -322,6 +346,15 @@ export async function issueAdminWalletRefund(
       "[issueAdminWalletRefund] failed to finalize booking_refunds row:",
       finalizeErr
     );
+  }
+
+  try {
+    const { syncBookingRefundTransactions } = await import(
+      "@/lib/finance/sync-booking-refund-transactions"
+    );
+    await syncBookingRefundTransactions(supabase, bookingId, reason, actorUserId);
+  } catch (syncErr) {
+    console.warn("[issueAdminWalletRefund] multi-row payment sync failed:", syncErr);
   }
 
   // 9. Restore gift card balance on full refund (best-effort)

@@ -1,62 +1,61 @@
 # Refunds and Disputes
 
-## How /admin/refunds works (who does what)
+## Admin refunds queue (`/admin/refunds`)
 
-**Page:** `/admin/refunds` — **Refunds Management** (superadmin only).
+### Purpose
+
+Cancelled bookings are **refunded to the customer wallet automatically** via cancellation policy. The admin refunds page is an **exception queue** — it surfaces bookings where something went wrong or a manual support credit is needed. It is not a list of every successful payment.
 
 ### What the page shows
 
-- **Data source:** Rows are **payment_transactions** for this tenant: refund-related rows (`transaction_type = refund` or `refund_amount` set) **or** successful captures (`status = success`) that can still be refunded.
-- **Metrics:** **Refundable payments** counts successful captures in the current filter; **Total refunded** sums recorded `refund_amount` values; **Rows matching filter** follows the active status tab.
-- **Filters:** Filter by status (all, success, failed, pending, refunded, partially_refunded).
-- **Tabs:** All, success, Pending, Failed, Refunded, partially_refunded — same list, filtered in the UI.
-- **Each row:** Booking number, amount, customer, provider, status badge, refund amount/reason/date and “refunded by” user when already processed.
+- **One row per booking** (not per gateway capture row). Walk-in extras and base payments collapse into a single booking row.
+- **Needs action** — real exceptions: failed auto-credits, stuck pending refunds, overdue cash confirmations, open disputes, refund support tickets, or cancelled bookings where money was never returned.
+- **Explained** — cases that look like leftovers but are not actionable: retained cancellation fees, voided gift-card legs, cash refunds awaiting customer confirmation, completed in-progress bookings.
+- **Why column** — plain-English reason derived from booking status, refund records, disputes, and policy signals.
+- **Paid with** — tender label from gateway provider or in-person `booking_payments` (Paystack, PayCloud, Yoco, cash, wallet, gift card, mixed).
+
+In-person bookings (cash / card machine) that never created a `payment_transactions` row appear when they need review, via a booking-tender queue row.
 
 ### Who can do what
 
 | Who | What |
 |-----|------|
-| **Superadmin** | Opens `/admin/refunds`, sees the list, uses filters/tabs and search. |
-| **Superadmin** | Clicks **Process Refund** on a row with status **success** (a successful payment capture not yet refunded). |
-| **Nobody** | Cannot process rows already **refunded** or **partially_refunded** (button is hidden). |
+| **Finance admin** | Opens `/admin/refunds`, reviews Needs action, credits wallet when appropriate. |
+| **Finance admin** | Uses **Credit wallet** on processable rows — never reverses card/bank; customer receives wallet balance. |
+| **Nobody** | Cannot process rows marked explained (retained fee, gift void, awaiting cash confirm). |
 
-### What “Process Refund” does (when superadmin clicks it)
+### Credit wallet flows
 
-1. **Dialog:** Admin enters **refund amount** (defaults to full transaction amount) and **refund reason** (required), then clicks **Process Refund**.
-2. **API:** Frontend calls **POST /api/admin/refunds/[id]** with `{ refund_amount, refund_reason }`. The `[id]` is the **payment_transaction** id (the row they clicked on).
-3. **Backend (POST /api/admin/refunds/[id]):**
-   - Validates amount and that the transaction is not already refunded.
-   - Loads the booking for that transaction to get **customer_id**.
-   - **Credits the customer’s wallet** via `wallet_credit_admin` (refund amount).
-   - Updates the **payment_transaction**: sets `refund_amount`, `refund_reason`, `refunded_at`, `refunded_by`, `status` (refunded or partially_refunded), `refund_reference`.
-   - Inserts a **booking_refund** (store_credit, completed) so booking totals (e.g. total_refunded) stay in sync.
-   - Writes an **audit log** and sends the customer a **notification** (“Refund added to wallet…”).
-4. **Result:** Customer’s wallet balance goes up; they can use it for the next booking or request a payout. The row on `/admin/refunds` now shows as refunded/partially_refunded and the Process button disappears.
+1. **Gateway capture** — `POST /api/admin/refunds/[transactionId]` via `issueAdminWalletRefund`. Claims the charge row, credits wallet with idempotency key, syncs all charge rows on the booking, warns if provider balance goes negative after payout.
+2. **In-person / no capture row** — `POST /api/admin/refunds/booking/[bookingId]` with `bookingTenderMode`. Same safety rail; refuses when a gateway capture still exists.
 
-### Summary
+Do **not** use `POST /api/admin/bookings/[id]/refund` from this page — it lacks idempotency, gift-card handling, provider warnings, and incorrectly cancels the booking on full refund.
 
-- **List:** GET `/api/admin/refunds` → payment_transactions (refund type or with refund_amount), with booking + customer + provider + refunded_by user.
-- **Process:** POST `/api/admin/refunds/[id]` → wallet credit for customer + update that transaction + create booking_refund + notify. No Paystack (or other gateway) call; refund is always wallet credit.
+### Sidebar badge
+
+The `/admin/refunds` nav badge counts **bookings needing review** (`countRefundsNeedingReview`), matching the Needs action tab — not every successful gateway capture.
+
+### Reconciliation
+
+`GET /api/admin/refunds/reconciliation` (read-only) lists stale `payment_transactions` rows where `refund_amount` lags `bookings.total_refunded`, and in-person bookings with refunds but no gateway capture. Optional backfill uses `syncPaymentTransactionRefundState` — never credits wallets.
 
 ---
 
-## Refunds: always credit wallet
+## Refunds: wallet-first policy
 
-All refunds (admin refunds page, booking refund, payment transaction refund, dispute resolution) **credit the customer’s wallet** instead of refunding to the original payment method (e.g. card via Paystack).
+All customer refunds credit the **Beautonomi wallet** instead of reversing the original card/bank payment.
 
-- **Customers** can use the balance for their next booking or **request a payout** when they want.
-- **Providers** are not credited on refunds; the refund is to the customer. Provider earnings for that booking are effectively reversed by the refund (booking totals and payment status are updated).
+- **Customers** spend the balance on their next booking or request a payout.
+- **Providers** are clawed back via ledger triggers when refunds complete; admin may see a provider balance warning if payout already happened.
 
-This keeps one consistent flow for every payment type (Paystack, wallet, gift card, etc.) and avoids gateway-specific refund logic.
+### Write paths and sync
 
-### Implementation
+- **Cancellation** — auto wallet credit; `syncPaymentTransactionRefundState` aligns all gateway charge rows.
+- **Provider refund** — store_credit, cash, or terminal (`original`); non-wallet paths now sync gateway rows after completion.
+- **Terminal reversal** — `reverseCardMachineSettlement` syncs after `booking_refunds` insert.
+- **Cash confirmation** — `finalizeCashRefund` syncs when customer confirms (or auto-finalises after 48h).
 
-- **Admin Refunds page (Process)** – `POST /api/admin/refunds/[id]`: credits customer wallet, updates `payment_transactions`, inserts `booking_refunds` (store_credit), notifies customer.
-- **Admin booking refund** – `POST /api/admin/bookings/[id]/refund`: credits customer wallet, inserts `booking_refunds` (store_credit), updates booking status if full refund.
-- **Provider booking refund** – `POST /api/provider/bookings/[id]/refund`: provider (with `process_payments` permission) can issue a refund; credits customer wallet, inserts `booking_refunds` (store_credit), notifies customer. Used from provider app booking detail (Refund modal; amount + reason required).
-- **Customer cancellation refund** – when a customer cancels and the cancellation policy allows full or partial refund, `processBookingRefund` in `refund-processing.ts` credits the customer wallet and inserts `booking_refunds` (store_credit); no Paystack call.
-- **Payment transaction refund** – `POST /api/admin/payments/[txId]/refund`: credits customer wallet (no Paystack call), updates transaction and booking, inserts `booking_refunds`, ledger and notifications.
-- **Dispute resolve** – `POST /api/admin/bookings/[id]/dispute/resolve`: when resolution is refund_full/refund_partial, credits customer wallet, inserts `booking_refunds`, optionally marks `payment_transactions` as refunded; works even when there is no Paystack transaction.
+Coverage signals (`giftCardVoidedTotal`, `retainedFeeTotal`, `reservedPendingTotal`) are **display/classification only** — they are not folded into `effectiveRefundedTotal`, which drives refund gates.
 
 ---
 
@@ -64,10 +63,7 @@ This keeps one consistent flow for every payment type (Paystack, wallet, gift ca
 
 There is **no** customer or provider action that directly opens a **booking dispute**. Disputes are opened only by admins after review.
 
-- **Customers and providers** can:
-  - **Contact support** (support ticket) to describe the issue and ask for help.
-  - Rely on an **admin** to open a formal dispute from the admin side after reviewing the case.
+- **Customers and providers** can contact support; an admin opens a formal dispute via `POST /api/admin/bookings/[id]/dispute`.
+- **Resolution** — `POST /api/admin/bookings/[id]/dispute/resolve` with refund_full/refund_partial credits wallet via the shared admin refund rail.
 
-- **Admins** open a dispute via **POST /api/admin/bookings/[id]/dispute**. Only then can the dispute be resolved (refund_full, refund_partial, or deny) via the dispute resolve endpoint.
-
-This is intentional: it reduces frivolous disputes and ensures each dispute is reviewed before it is created. The `booking_disputes.opened_by` column supports `'customer' | 'provider' | 'admin'` for future use if you add a self-service “raise dispute” flow later.
+Open disputes appear on the refunds queue with reason **open_dispute** — resolve on the dispute page, not by crediting wallet blindly.
