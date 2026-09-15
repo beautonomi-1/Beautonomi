@@ -88,9 +88,9 @@ export const CONTROL_PLANE_OVERVIEW_GROUPS: {
         icon: Bot,
       },
       {
-        title: "AI providers",
+        title: "AI Platform",
         to: "/admin/control-plane/integrations/ai",
-        description: "Runtime, models, credentials, kill switches",
+        description: "Vercel Gateway, agent workforce, budgets, safety",
         icon: Sparkles,
       },
       {

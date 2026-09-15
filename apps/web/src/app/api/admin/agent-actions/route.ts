@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
+    const agentId = searchParams.get("agent_id");
     const supabase = getSupabaseAdmin();
     let q = supabase
       .from("agent_actions")
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(100);
     if (status) q = q.eq("status", status);
+    if (agentId) q = q.eq("agent_id", agentId);
     const { data, error } = await q;
     if (error) throw error;
     return successResponse(data ?? []);

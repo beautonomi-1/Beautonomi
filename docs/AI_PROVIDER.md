@@ -26,8 +26,8 @@ Model selection: per-feature `ai_prompt_templates.model_id` → `routeModel()` f
 
 ## Admin
 
-- **Control page:** Admin → Control plane → Integrations → AI providers (`/admin/control-plane/integrations/ai`)
-- **Legacy redirect:** `/integrations/gemini` → AI providers page
+- **Control page:** Admin → Control plane → Integrations → **AI Platform** (`/admin/control-plane/integrations/ai`) — tabs: Overview, Gateway (Vercel), Workforce, Budgets, Safety
+- **Legacy redirect:** `/integrations/gemini` → AI Platform hub
 - **Emergency controls:** `ai_emergency_controls` — `stop_all_calls`, `force_template_fallback`, `disable_streaming`, `disable_vision`, `disable_embeddings`
 - **Eval gate:** Production catalog rows require `eval_passed_at` before enable.
 
@@ -65,7 +65,7 @@ Admin and runtime model lists are synced from **Vercel AI Gateway** (`GET https:
 
 ## Admin UI coverage
 
-The unified AI providers page includes: runtime selector, all credential fields (Gateway/OpenAI/Anthropic/Gemini), per-credential test probes, presets (pick latest models from live catalog), safety dropdowns, budgets, live Gateway catalog with tier/cost/latency columns, and emergency kill switches.
+The **AI Platform hub** includes: Vercel-first setup checklist, Gateway tab (credentials, presets with confirm, grouped live catalog, failover toggle), Workforce tab (full agent roster with catalog-backed model pickers, routing policy, cron map), Budgets tab (USD spend breakdown agent vs provider AI), and Safety tab (dual AI + agent emergency panels). **Agentic Console** remains the home for approvals inbox, live runs, and copilot.
 
 Provider AI module page adds monthly budget fields; Usage tab shows provider/runtime/latency/cost; Templates tab supports per-row model override.
 

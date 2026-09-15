@@ -32,6 +32,9 @@ vi.mock("@/lib/regions/config", () => ({
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn().mockResolvedValue("tenant-1"),
 }));
+vi.mock("@/lib/finance/sync-booking-refund-transactions", () => ({
+  syncBookingRefundTransactions: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { issueAdminWalletRefund } from "../issue-admin-wallet-refund";
 
@@ -153,10 +156,10 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
           return Object.assign(Promise.resolve({ error: null }), claimChain);
         };
         return {
-          // no-transactionId charge lookup: select().eq().eq().in().order()
+          // no-transactionId charge lookup: select().eq().in().in().order()
           select: () => ({
             eq: () => ({
-              eq: () => ({
+              in: () => ({
                 in: () => ({
                   order: () =>
                     Promise.resolve({ data: chargeTxns, error: null }),

@@ -188,23 +188,36 @@ export function RefundsListPage() {
 
   const processRefund = useMutation({
     mutationFn: async ({
-      id,
+      row,
       amount,
       reason,
       notes,
     }: {
-      id: string;
+      row: Record<string, unknown>;
       amount: number;
       reason: string;
       notes: string;
     }) => {
-      return adminApi.postJson<{
-        provider_balance_warning?: string | null;
-      }>(`/api/admin/refunds/${id}`, {
+      const source = String(row.source ?? "gateway_capture");
+      const bookingId = String(
+        row.booking_id ?? (row.booking as { id?: string } | null)?.id ?? "",
+      );
+      const payload = {
         refund_amount: amount,
         refund_reason: reason,
         notes: notes.trim() || undefined,
-      });
+      };
+      if (source === "booking_tender" && bookingId) {
+        return adminApi.postJson<{ provider_balance_warning?: string | null }>(
+          `/api/admin/refunds/booking/${encodeURIComponent(bookingId)}`,
+          payload,
+        );
+      }
+      const txnId = String(row.primary_transaction_id ?? row.id ?? "");
+      return adminApi.postJson<{ provider_balance_warning?: string | null }>(
+        `/api/admin/refunds/${encodeURIComponent(txnId)}`,
+        payload,
+      );
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.refunds(filters) });
@@ -271,15 +284,30 @@ export function RefundsListPage() {
     setSp(n, { replace: true });
   }
 
+  function reasonPresetFromQueueReason(queueReason: string): RefundReasonPreset | "" {
+    switch (queueReason) {
+      case "open_dispute":
+        return "Dispute resolution";
+      case "cancelled_unrefunded":
+      case "wallet_credit_failed":
+        return "Customer cancellation";
+      case "refund_support_ticket":
+        return "Service not delivered";
+      default:
+        return "";
+    }
+  }
+
   function openProcessRefund(row: Record<string, unknown>) {
-    const id = String(row.id ?? "");
+    const id = String(row.id ?? row.key ?? "");
     const remaining = parseRefundAmount(
       row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
     );
+    const queueReason = String(row.queue_reason ?? "");
     setProcessId(id);
     setProcessRow(row);
     setRefundAmount(String(remaining));
-    setReasonPreset("");
+    setReasonPreset(reasonPresetFromQueueReason(queueReason));
     setReasonOther("");
     setRefundNotes("");
     setWalletConfirm(false);
@@ -304,6 +332,7 @@ export function RefundsListPage() {
 
   const tabs = [
     "needs_action",
+    "explained",
     "all",
     "success",
     "pending",
@@ -312,15 +341,16 @@ export function RefundsListPage() {
     "partially_refunded",
   ] as const;
 
-const TAB_LABELS: Record<string, string> = {
-  needs_action: "Needs action",
-  all: "All",
-  success: "Paid (capture ok)",
-  pending: "Pending",
-  failed: "Failed",
-  refunded: "Fully refunded",
-  partially_refunded: "Partially refunded",
-};
+  const TAB_LABELS: Record<string, string> = {
+    needs_action: "Needs action",
+    explained: "Explained",
+    all: "All",
+    success: "Paid (capture ok)",
+    pending: "Pending",
+    failed: "Failed",
+    refunded: "Fully refunded",
+    partially_refunded: "Partially refunded",
+  };
 
   const byStatus = stats?.by_status ?? {};
   const totalListed = stats?.total_transactions ?? stats?.total ?? 0;
@@ -341,23 +371,23 @@ const TAB_LABELS: Record<string, string> = {
     <div className="space-y-6">
       <AdminPageHeader
         title="Refunds"
-        description="Booking payment charges that may need a wallet refund. Credit wallet is a manual action — nothing is refunded until you confirm. Card and bank reversals do not happen here."
+        description="Cancelled bookings are refunded to the customer wallet automatically. This queue shows exceptions and manual support credits — not every paid booking."
       />
 
       <AdminPanel>
         <h3 className="text-sm font-semibold text-gray-900">How this page works</h3>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
           <li>
-            <strong>Credit wallet</strong> — adds the refund to the customer&apos;s Beautonomi
-            wallet immediately, updates the payment record, and sends a push notification.
+            <strong>Needs action</strong> — failed auto-credits, open disputes, stuck refunds, or
+            cancelled bookings where money was never returned.
           </li>
           <li>
-            <strong>Not refunded</strong> rows still have the full charge available — the reason is
-            recorded when you issue the refund.
+            <strong>Explained</strong> — retained fees, gift-card restores, or cash refunds waiting
+            on customer confirmation. No wallet credit needed.
           </li>
           <li>
-            <strong>Credited elsewhere</strong> means the wallet was already topped up (e.g.
-            cancellation or provider refund) even if this payment row was out of date.
+            <strong>Credit wallet</strong> — manual support credit only. This never reverses a card
+            or bank payment; the customer can spend the balance or request a payout.
           </li>
           <li>
             <strong>Non-booking payments</strong> (gift cards, memberships, subscriptions, ads) must
@@ -383,13 +413,13 @@ const TAB_LABELS: Record<string, string> = {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AdminPanel className="!p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Needs wallet credit
+                Needs review
               </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
                 {actionableRefundable}
               </p>
               <p className="mt-1 text-[11px] text-gray-500">
-                Booking charges with remaining refundable balance
+                Bookings with a refund exception (matches sidebar badge)
               </p>
             </AdminPanel>
             <AdminPanel className="!p-4">
@@ -470,12 +500,14 @@ const TAB_LABELS: Record<string, string> = {
         <EmptyState
           title={
             status === "needs_action"
-              ? "No charges need a wallet refund"
-              : "No payment rows match this filter"
+              ? "Nothing needs review"
+              : status === "explained"
+                ? "No explained refund cases"
+                : "No bookings match this filter"
           }
           description={
             status === "needs_action"
-              ? "Successful booking charges either already have wallet credits or are not refundable from this page."
+              ? "Automatic wallet credits and policy fees are handled elsewhere. Check Explained or All if you expected a row."
               : undefined
           }
         />
@@ -483,16 +515,16 @@ const TAB_LABELS: Record<string, string> = {
         <AdminDataTable>
           <AdminTableHead>
             <tr>
-              <AdminTh>Type</AdminTh>
-              <AdminTh>Refund state</AdminTh>
-              <AdminTh>Payment</AdminTh>
+              <AdminTh>Paid with</AdminTh>
+              <AdminTh>Booking status</AdminTh>
+              <AdminTh>Why</AdminTh>
+              <AdminTh>Collected</AdminTh>
               <AdminTh>Refunded</AdminTh>
               <AdminTh>Remaining</AdminTh>
-              <AdminTh>Payout</AdminTh>
-              <AdminTh>Reason</AdminTh>
-              <AdminTh>Booking / source</AdminTh>
+              <AdminTh>Refund state</AdminTh>
+              <AdminTh>Booking</AdminTh>
               <AdminTh>Customer</AdminTh>
-              <AdminTh>Payment date</AdminTh>
+              <AdminTh>Date</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
@@ -530,10 +562,16 @@ const TAB_LABELS: Record<string, string> = {
               const remaining = parseRefundAmount(
                 row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
               );
+              const whyText =
+                String(row.queue_reason_detail ?? "") ||
+                String(row.queue_reason_label ?? "") ||
+                derived.reason ||
+                "—";
               const orphan = !booking ? orphanPaymentLabel(row.metadata) : null;
               const isExpanded = expandedId === id;
               const refundedBy = unwrapRefundedByUser(row.refunded_by_user);
               const bookingRefunds = (row.booking_refunds as BookingRefundEmbed[] | undefined) ?? [];
+              const captures = (row.captures as Array<Record<string, unknown>> | undefined) ?? [];
 
               return (
                 <Fragment key={id}>
@@ -541,8 +579,24 @@ const TAB_LABELS: Record<string, string> = {
                     className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                   >
-                    <AdminTd className="font-mono text-xs text-gray-700">
-                      {String(row.transaction_type ?? "—")}
+                    <AdminTd className="text-xs text-gray-700">
+                      {String(row.tender_label ?? row.provider ?? "—")}
+                    </AdminTd>
+                    <AdminTd className="text-xs text-gray-600">
+                      {String(row.booking_status ?? booking?.status ?? "—")}
+                    </AdminTd>
+                    <AdminTd
+                      className="max-w-[200px] text-xs text-gray-700"
+                      title={whyText}
+                    >
+                      {whyText}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums">
+                      {formatAdminCurrency(parseRefundAmount(row.amount))}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums">{formatRefundedAmount(row)}</AdminTd>
+                    <AdminTd className="tabular-nums">
+                      {remaining > 0 ? formatAdminCurrency(remaining) : "—"}
                     </AdminTd>
                     <AdminTd>
                       <span
@@ -555,27 +609,6 @@ const TAB_LABELS: Record<string, string> = {
                       >
                         {derived.label}
                       </span>
-                    </AdminTd>
-                    <AdminTd className="tabular-nums">
-                      {formatAdminCurrency(parseRefundAmount(row.amount))}
-                    </AdminTd>
-                    <AdminTd className="tabular-nums">{formatRefundedAmount(row)}</AdminTd>
-                    <AdminTd className="tabular-nums">
-                      {remaining > 0 ? formatAdminCurrency(remaining) : "—"}
-                    </AdminTd>
-                    <AdminTd className="text-xs text-gray-600">
-                      {derived.payoutLabel ?? "—"}
-                    </AdminTd>
-                    <AdminTd
-                      className="max-w-[140px] truncate text-xs text-gray-600"
-                      title={
-                        derived.reason ??
-                        (derived.canProcess
-                          ? "Reason is recorded when you credit the wallet"
-                          : undefined)
-                      }
-                    >
-                      {derived.reason ?? "—"}
                     </AdminTd>
                     <AdminTd className="text-xs">
                       {booking?.id && booking.booking_number ? (
@@ -652,6 +685,16 @@ const TAB_LABELS: Record<string, string> = {
                                 {statusStr}
                               </span>
                             </p>
+                            {row.tender_label ? (
+                              <p className="text-xs text-gray-500">
+                                Paid with: {String(row.tender_label)}
+                              </p>
+                            ) : null}
+                            {row.additional_charge_description ? (
+                              <p className="text-xs text-gray-500">
+                                Extra: {String(row.additional_charge_description)}
+                              </p>
+                            ) : null}
                             {booking?.status ? (
                               <p className="text-xs text-gray-500">
                                 Booking status: {String(booking.status)}
@@ -659,6 +702,20 @@ const TAB_LABELS: Record<string, string> = {
                                   ? ` · payment ${String(booking.payment_status)}`
                                   : ""}
                               </p>
+                            ) : null}
+                            {captures.length > 1 ? (
+                              <div className="mt-2 space-y-1">
+                                <p className="text-xs font-medium text-gray-700">Captures</p>
+                                {captures.map((c) => (
+                                  <p key={String(c.id)} className="text-xs text-gray-500">
+                                    {String(c.charge_label ?? c.transaction_type ?? "charge")} ·{" "}
+                                    {formatAdminCurrency(parseRefundAmount(c.amount))}
+                                    {parseRefundAmount(c.remaining_refundable) > 0
+                                      ? ` · ${formatAdminCurrency(parseRefundAmount(c.remaining_refundable))} left`
+                                      : ""}
+                                  </p>
+                                ))}
+                              </div>
                             ) : null}
                             {row.provider ? (
                               <p className="text-xs text-gray-500">
@@ -781,9 +838,9 @@ const TAB_LABELS: Record<string, string> = {
                   !walletConfirm
                 }
                 onClick={() => {
-                  if (!processId) return;
+                  if (!processId || !processRow) return;
                   processRefund.mutate({
-                    id: processId,
+                    row: processRow,
                     amount: amountNum,
                     reason: resolvedReason,
                     notes: refundNotes,
@@ -805,6 +862,12 @@ const TAB_LABELS: Record<string, string> = {
           <div className="space-y-4">
             {processRow ? (
               <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                {processRow.queue_reason_detail || processRow.queue_reason_label ? (
+                  <p className="mb-2 text-xs text-gray-600">
+                    <span className="font-medium">Why:</span>{" "}
+                    {String(processRow.queue_reason_detail ?? processRow.queue_reason_label)}
+                  </p>
+                ) : null}
                 <p>
                   <span className="font-medium">Customer:</span>{" "}
                   {processCustomer?.full_name || processCustomer?.email || "—"}
@@ -814,8 +877,26 @@ const TAB_LABELS: Record<string, string> = {
                     <span className="font-medium">Provider:</span> {processProviderName}
                   </p>
                 ) : null}
+                {processRow.tender_label ? (
+                  <p>
+                    <span className="font-medium">Paid with:</span>{" "}
+                    {String(processRow.tender_label)}
+                  </p>
+                ) : null}
+                {processBooking?.status ? (
+                  <p>
+                    <span className="font-medium">Booking status:</span>{" "}
+                    {String(processBooking.status)}
+                  </p>
+                ) : null}
+                {processRow.additional_charge_description ? (
+                  <p>
+                    <span className="font-medium">Extra charge:</span>{" "}
+                    {String(processRow.additional_charge_description)}
+                  </p>
+                ) : null}
                 <p>
-                  <span className="font-medium">Original payment:</span>{" "}
+                  <span className="font-medium">Collected:</span>{" "}
                   {formatAdminCurrency(parseRefundAmount(processRow.amount))}
                   {processRow.provider ? ` (${String(processRow.provider)})` : ""}
                 </p>

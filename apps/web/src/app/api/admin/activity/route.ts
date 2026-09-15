@@ -14,7 +14,10 @@ import {
   ADMIN_ACTIVITY_LINKS,
   computeActivityTotalUnreadFromCounts,
 } from "@/lib/admin/admin-activity-feed";
-import { fetchRefundableSuccessPaymentTxsForTenant } from "@/lib/admin/refundable-payment-transactions";
+import {
+  countRefundsNeedingReview,
+  fetchRefundableActivitySample,
+} from "@/lib/admin/count-refunds-needing-review";
 
 /**
  * GET /api/admin/activity
@@ -139,11 +142,15 @@ export async function GET(request: NextRequest) {
 
       (async () => {
         try {
-          const rows = await fetchRefundableSuccessPaymentTxsForTenant(supabase, tenantId, 10);
-          return { data: rows, error: null };
+          const count = await countRefundsNeedingReview(supabase, tenantId);
+          const rows =
+            count > 0
+              ? await fetchRefundableActivitySample(supabase, tenantId, 10)
+              : [];
+          return { data: rows, count, error: null };
         } catch (e) {
           console.error('activity refundable payments:', e);
-          return { data: [], error: e };
+          return { data: [], count: 0, error: e };
         }
       })(),
 
@@ -684,13 +691,21 @@ export async function GET(request: NextRequest) {
       payment_failures: failedPayments.status === 'fulfilled' && failedPayments.value.data
         ? failedPayments.value.data.length
         : 0,
-      refundable_payments: refundablePayments.status === 'fulfilled' && refundablePayments.value.data
-        ? refundablePayments.value.data.length
-        : 0,
+      refundable_payments:
+        refundablePayments.status === 'fulfilled' &&
+        typeof refundablePayments.value.count === 'number'
+          ? refundablePayments.value.count
+          : refundablePayments.status === 'fulfilled' && refundablePayments.value.data
+            ? refundablePayments.value.data.length
+            : 0,
       /** @deprecated use refundable_payments */
-      refund_requests: refundablePayments.status === 'fulfilled' && refundablePayments.value.data
-        ? refundablePayments.value.data.length
-        : 0,
+      refund_requests:
+        refundablePayments.status === 'fulfilled' &&
+        typeof refundablePayments.value.count === 'number'
+          ? refundablePayments.value.count
+          : refundablePayments.status === 'fulfilled' && refundablePayments.value.data
+            ? refundablePayments.value.data.length
+            : 0,
       disputes: disputes.status === 'fulfilled' && disputes.value.data
         ? disputes.value.data.length
         : 0,

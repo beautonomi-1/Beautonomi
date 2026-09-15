@@ -29,7 +29,7 @@ plus a valid lease (`acquireExecutionLease`) and an approval policy for the acti
    the environment has a database URL). Only when green, set `AGENT_RLS_HARNESS_GREEN=true` in the Vercel project for that environment.
 3. **Env flags.** Set `AGENT_P0_MIGRATIONS_VERIFIED=true` after step 1. Redeploy so the flags are in the running lambda.
 4. **AI runtime.** Default is `direct_gemini` via `gemini_integration_config` (`enabled=true` + API key). Multi-provider runtime lives in
-   Admin -> Control plane -> Integrations -> **AI providers** (`ai_runtime_config`, `ai_model_catalog`, `ai_emergency_controls`). See
+   Admin -> Control plane -> Integrations -> **AI Platform** (`/admin/control-plane/integrations/ai`) — Gateway, Workforce, Budgets, Safety tabs (`ai_runtime_config`, `ai_model_catalog`, `ai_emergency_controls`). See
    [docs/AI_PROVIDER.md](./AI_PROVIDER.md). Rollback: set runtime to `direct_gemini` or engage `stop_all_calls`.
 5. **Gemini (legacy).** The Gemini integration row remains the fallback when no `ai_runtime_config` row exists; agents and provider AI
    both route through `callLlm()`.
@@ -40,7 +40,7 @@ plus a valid lease (`acquireExecutionLease`) and an approval policy for the acti
 
 ### AI platform rollback drill
 
-1. In AI providers, enable **Stop all calls** with a documented reason — confirm provider AI and agents return template/heuristic fallbacks (HTTP 200 with `fallback: true` for provider features).
+1. In AI Platform → Safety tab, enable **Stop all LLM calls** with a documented reason — confirm provider AI and agents return template/heuristic fallbacks (HTTP 200 with `fallback: true` for provider features).
 2. Revoke the Gateway key in staging — confirm failover to Gemini direct or template fallback, not HTTP 500.
 3. Clear emergency controls and confirm a content-studio call succeeds again.
 

@@ -29,8 +29,6 @@ type BookingRow = {
 
 type DisputeRow = { id: string };
 
-type PaymentTxRow = { id: string; amount?: number | string };
-
 /**
  * POST /api/admin/bookings/[id]/dispute/resolve
  * 
@@ -197,39 +195,24 @@ export async function POST(
         );
       }
 
-      const refundReference = `dispute_refund_${(dispute as DisputeRow).id}_${Date.now()}`;
-
-      // Optional: mark any success payment_transaction for this booking as refunded (ledger consistency)
-      const { data: tx } = await supabase
-        .from("payment_transactions")
-        .select("id, amount")
-        .eq("booking_id", id)
-        .eq("status", "success")
-        .neq("transaction_type", "refund")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (tx) {
-        const txData = tx as PaymentTxRow;
-        const isFullRefund = refundAmt >= Number(txData.amount ?? 0);
-        await supabase
-          .from("payment_transactions")
-          .update({
-            status: isFullRefund ? "refunded" : "partially_refunded",
-            refund_amount: refundAmt,
-            refund_reference: refundReference,
-            refund_reason: "booking_dispute",
-            refunded_at: new Date().toISOString(),
-            refunded_by: user.id,
-          })
-          .eq("id", txData.id);
-      }
-
       await supabase
         .from("booking_refunds")
         .update({ status: "completed" })
         .eq("id", disputeRefundId);
+
+      try {
+        const { syncBookingRefundTransactions } = await import(
+          "@/lib/finance/sync-booking-refund-transactions"
+        );
+        await syncBookingRefundTransactions(
+          supabase,
+          id,
+          "booking_dispute",
+          user.id,
+        );
+      } catch (syncErr) {
+        console.warn("Failed to sync payment transactions after dispute refund:", syncErr);
+      }
 
       // NOTE: finance_transactions row is written by trigger
       // `create_finance_ledger_from_booking_refund` (migration 490) via the

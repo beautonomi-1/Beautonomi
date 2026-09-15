@@ -22,6 +22,7 @@ import {
   type LiveGatewayModel,
 } from "@/lib/ai/gateway-models";
 import { upsertCatalogPreference } from "@/lib/ai/catalog-prefs";
+import { loadAiPlatformWorkforceSummary } from "@/lib/ai/platform-summary";
 import { GEMINI_MODELS } from "@beautonomi/agent-model-router";
 
 const ENVS = ["production", "staging", "development"];
@@ -192,10 +193,17 @@ export async function GET(request: NextRequest) {
         "vercel_gateway",
     });
     const selectable = selectableChatCatalogEntries(merged);
+    const monthlyCap = Number((moduleConfig as { monthly_budget_usd?: number } | null)?.monthly_budget_usd ?? 0);
+    const workforce = await loadAiPlatformWorkforceSummary({
+      environment,
+      dbCatalogRows,
+      monthlyBudgetUsd: monthlyCap > 0 ? monthlyCap : null,
+    });
 
     return successResponse({
       runtime: safeRuntime,
       emergency: toSafeEmergencyRow(emergency as Record<string, unknown> | null),
+      workforce,
       /** @deprecated use live_models — kept for older admin builds */
       catalog: merged.liveModels.map((m) => ({
         id: m.db_id,
@@ -407,6 +415,7 @@ export async function PUT(request: NextRequest) {
       () => [] as LiveGatewayModel[],
     );
     const liveById = new Map<string, LiveGatewayModel>(liveModels.map((m) => [m.id, m]));
+    const catalogSkippedEval: string[] = [];
 
     if (presetPlan) {
       for (const entry of presetPlan.enableModels) {
@@ -425,7 +434,10 @@ export async function PUT(request: NextRequest) {
           continue;
         }
         const gate = canEnableCatalogModel({ environment, enabled: true, evalPassedAt: null });
-        if (!gate.allowed && environment === "production") continue;
+        if (!gate.allowed && environment === "production") {
+          catalogSkippedEval.push(modelId);
+          continue;
+        }
         await upsertCatalogPreference(supabase, {
           environment,
           tenantId: scopeTenantId,
@@ -564,6 +576,7 @@ export async function PUT(request: NextRequest) {
       ok: true,
       catalog_errors: catalogErrors.length ? catalogErrors : undefined,
       catalog_error_reason: catalogErrors.length ? "eval_required_before_production_enable" : undefined,
+      catalog_skipped_eval: catalogSkippedEval.length ? catalogSkippedEval : undefined,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to update AI config");

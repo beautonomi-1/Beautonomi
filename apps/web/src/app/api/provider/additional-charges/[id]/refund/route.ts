@@ -183,6 +183,20 @@ export async function POST(
 
     await supabaseAdmin.from("booking_refunds").update({ status: "completed" }).eq("id", refund.id);
 
+    try {
+      const { syncBookingRefundTransactions } = await import(
+        "@/lib/finance/sync-booking-refund-transactions"
+      );
+      await syncBookingRefundTransactions(
+        supabaseAdmin,
+        bookingId,
+        `Additional charge refund: ${reason}`,
+        permissionCheck.user.id,
+      );
+    } catch (syncErr) {
+      console.warn("Failed to sync payment transaction after charge refund:", syncErr);
+    }
+
     if (amount + 0.01 >= Number(charge.amount ?? 0)) {
       await supabaseAdmin
         .from("additional_charges")

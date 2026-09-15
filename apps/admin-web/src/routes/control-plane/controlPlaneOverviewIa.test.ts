@@ -24,7 +24,7 @@ describe("control plane overview IA", () => {
     const ai = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "AI & agents")!;
     expect(ai.items.map((i) => i.title)).toEqual([
       "Provider AI",
-      "AI providers",
+      "AI Platform",
       "Agentic console",
     ]);
     const allTos = CONTROL_PLANE_OVERVIEW_GROUPS.flatMap((g) => g.items.map((i) => i.to));
@@ -39,7 +39,7 @@ describe("control plane overview IA", () => {
     expect(allTos).toContain("/admin/control-plane/modules/ranking");
   });
 
-  it("keeps AI providers under AI & agents, not Identity & trust", () => {
+  it("keeps AI Platform under AI & agents, not Identity & trust", () => {
     const identity = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "Identity & trust")!;
     const ai = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "AI & agents")!;
     expect(identity.items.map((i) => i.to)).not.toContain("/admin/control-plane/integrations/ai");

@@ -76,7 +76,7 @@ export async function POST(
       .from("payment_transactions")
       .select("*")
       .eq("id", txId)
-      .eq("status", "success")
+      .in("status", ["success", "partially_refunded"])
       .single();
 
     if (!transaction) {

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -7,6 +9,7 @@ import { CpBack, EnvSelect } from "./cpShared";
 
 type AgentAction = {
   id: string;
+  agent_id: string;
   action_type: string;
   target_type: string;
   target_id: string;
@@ -24,6 +27,7 @@ type AgentAction = {
 
 type AgentRun = {
   id: string;
+  agent_id: string;
   workflow_type: string;
   status: string;
   trigger_kind: string;
@@ -121,6 +125,9 @@ type GateStatusResponse = {
 
 export function CpAgenticConsolePage() {
   const { allowed, denied } = useSuperadminPage("Agentic console is superadmin-only.");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const agentFilter = searchParams.get("agent_id") ?? "";
+  const panelParam = searchParams.get("panel");
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -130,7 +137,7 @@ export function CpAgenticConsolePage() {
   const [data, setData] = useState<AgentModuleResponse | null>(null);
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "");
   const [expandedAction, setExpandedAction] = useState<string | null>(null);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState("");
@@ -149,15 +156,21 @@ export function CpAgenticConsolePage() {
     setLoading(true);
     setMsg(null);
     try {
-      const actionsPath = statusFilter
-        ? `/api/admin/agent-actions?status=${encodeURIComponent(statusFilter)}`
+      const actionsQs = new URLSearchParams();
+      if (statusFilter) actionsQs.set("status", statusFilter);
+      if (agentFilter) actionsQs.set("agent_id", agentFilter);
+      const actionsPath = actionsQs.toString()
+        ? `/api/admin/agent-actions?${actionsQs.toString()}`
         : "/api/admin/agent-actions";
+      const runsPath = agentFilter
+        ? `/api/admin/agent-runs?agent_id=${encodeURIComponent(agentFilter)}`
+        : "/api/admin/agent-runs";
       const [mod, act, runList, gates] = await Promise.all([
         adminApi.getJson<AgentModuleResponse>(
           `/api/admin/control-plane/modules/agents?environment=${encodeURIComponent(env)}`,
         ),
         adminApi.getJson<AgentAction[]>(actionsPath),
-        adminApi.getJson<AgentRun[]>("/api/admin/agent-runs"),
+        adminApi.getJson<AgentRun[]>(runsPath),
         adminApi
           .getJson<GateStatusResponse>(`/api/admin/agents/gate-status?environment=${encodeURIComponent(env)}`)
           .catch(() => null),
@@ -256,9 +269,39 @@ export function CpAgenticConsolePage() {
   };
 
   useEffect(() => {
+    setStatusFilter(searchParams.get("status") ?? "");
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!allowed) return;
     void load();
-  }, [allowed, env, statusFilter]);
+  }, [allowed, env, statusFilter, agentFilter]);
+
+  useEffect(() => {
+    if (loading) return;
+    const targetId =
+      panelParam === "runs" ? "agent-console-runs" : panelParam === "proposals" ? "agent-console-proposals" : null;
+    if (targetId) document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loading, panelParam, agentFilter]);
+
+  const filteredAgentName = data?.agents.find((a) => a.id === agentFilter)?.display_name;
+
+  const clearAgentFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("agent_id");
+    next.delete("panel");
+    next.delete("status");
+    setSearchParams(next, { replace: true });
+    setStatusFilter("");
+  };
+
+  const updateStatusFilter = (value: string) => {
+    setStatusFilter(value);
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set("status", value);
+    else next.delete("status");
+    setSearchParams(next, { replace: true });
+  };
 
   const saveRoutingPolicy = async (policyJson: string) => {
     setSaving(true);
@@ -363,8 +406,21 @@ export function CpAgenticConsolePage() {
       <CpBack />
       <AdminPageHeader
         title="Agentic Console"
-        description="Master switch, shadow mode, approvals inbox, live runs, and emergency controls."
+        description="Approvals inbox, live runs, and copilot. Gateway credentials and workforce roster live on AI Platform."
       />
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <Link to={adminSpaTo("/admin/control-plane/integrations/ai")} className="text-blue-700 underline">
+          ← AI Platform (Gateway & workforce)
+        </Link>
+        {agentFilter ? (
+          <span className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900">
+            Filtered: {filteredAgentName ?? agentFilter.slice(0, 8)}
+            <button type="button" className="ml-2 underline" onClick={clearAgentFilter}>
+              Clear
+            </button>
+          </span>
+        ) : null}
+      </div>
       <EnvSelect value={env} onChange={setEnv} />
       {msg ? (
         <AdminPanel>
@@ -576,13 +632,13 @@ export function CpAgenticConsolePage() {
               ))}
             </div>
           </AdminPanel>
-          <AdminPanel>
+          <AdminPanel id="agent-console-proposals">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-gray-900">Approvals inbox</h2>
               <select
                 className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => updateStatusFilter(e.target.value)}
               >
                 <option value="">All statuses</option>
                 <option value="proposed">Proposed</option>
@@ -682,7 +738,7 @@ export function CpAgenticConsolePage() {
               {actions.length === 0 ? <li className="text-gray-500">No agent actions</li> : null}
             </ul>
           </AdminPanel>
-          <AdminPanel>
+          <AdminPanel id="agent-console-runs">
             <h2 className="mb-3 text-sm font-semibold text-gray-900">Live runs</h2>
             <ul className="text-sm space-y-2 max-h-64 overflow-auto">
               {runs.slice(0, 25).map((r) => (

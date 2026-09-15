@@ -190,12 +190,13 @@ export async function buildProviderPaymentMethodsReport(
     id?: string;
     provider: string;
     amount?: number;
+    refund_amount?: number | null;
     booking_id: string | null;
   }>(async (from, to) => {
     const { data, error } = await supabase
       .from("payment_transactions")
-      .select("id, provider, amount, booking_id, created_at")
-      .eq("status", "success")
+      .select("id, provider, amount, refund_amount, booking_id, created_at")
+      .in("status", ["success", "partially_refunded", "refunded"])
       .gte("created_at", rangeStartIso)
       .lte("created_at", rangeEndIso)
       .order("created_at", { ascending: true })
@@ -220,8 +221,14 @@ export async function buildProviderPaymentMethodsReport(
       }
       keys.add(key);
       const b = getBucket(key);
+      const net =
+        Math.max(
+          0,
+          Number(pt.amount ?? 0) - Number((pt as { refund_amount?: number | null }).refund_amount ?? 0),
+        );
+      if (net <= 0) continue;
       b.ptCount += 1;
-      b.ptAmount += Number(pt.amount ?? 0);
+      b.ptAmount += net;
     }
   }
 

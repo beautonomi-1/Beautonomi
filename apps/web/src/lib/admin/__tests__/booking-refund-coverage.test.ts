@@ -39,7 +39,8 @@ describe("backfillPaymentTransactionFromBookingRefunds", () => {
 
     expect(syncPaymentTransactionRefundState).toHaveBeenCalledWith(
       expect.objectContaining({
-        cumulativeRefundAmount: 50,
+        cumulativeRefundAmount: 208,
+        bookingId: "b-1",
       }),
     );
   });
