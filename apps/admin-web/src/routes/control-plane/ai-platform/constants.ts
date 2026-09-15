@@ -37,9 +37,13 @@ export const PRESETS = [
   { id: "gateway_premium", label: "Gateway premium" },
 ] as const;
 
+/** Applied to agent_module_config when Cheap global preset is saved. */
+export const CHEAP_GLOBAL_ROUTING_POLICY =
+  '{"defaultTier":"lite","taskTier":{"complex_reasoning":"flash","copilot":"flash"}}';
+
 export const PRESET_HINTS: Record<string, string> = {
   gateway_cheap_global:
-    "Gateway-first open-weight stack (Qwen/DeepSeek/GLM). Est. ~$0.03–0.08 / 1k calls.",
+    "Gateway-first open-weight stack (Qwen/DeepSeek/GLM + safeguard + embeddings). Disables legacy direct Gemini. Est. ~$0.03–0.08 / 1k calls.",
   gemini_only: "Direct Gemini lite/flash/pro. Est. ~$0.05 / 1k calls.",
   gateway_balanced: "Gateway lite + OpenAI mini. Est. ~$0.15 / 1k calls.",
   gateway_premium: "Adds Claude Sonnet for high-risk. Est. ~$0.45 / 1k calls.",

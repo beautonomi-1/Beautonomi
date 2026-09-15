@@ -119,6 +119,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
     "setup:env": "node scripts/setup-env.js",
     "setup": "pnpm install && node scripts/setup-env.js",
+    "seed:ai-platform": "node scripts/seed-ai-platform-agents.mjs",
     "seed:postal:za": "node scripts/import-za-postal-areas.mjs",
     "seed:postal:za:keep-stage": "node scripts/import-za-postal-areas.mjs --keep-stage",
     "load:booking-flow": "k6 run tooling/load-test/k6-booking-flow.js",

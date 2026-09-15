@@ -69,6 +69,10 @@ export type AiPlatformPayload = {
       { success_rate: number; p95_latency_ms: number | null; calls_24h: number }
     >;
   };
+  config_scope?: {
+    scope: "global" | "tenant";
+    tenant_id: string | null;
+  };
   workforce: {
     module: {
       master_enabled: boolean;

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { callLlm } from "@/lib/ai/call-llm";
-import type { AiRuntimeMode } from "@/lib/ai/resolve-runtime";
+import { resolveAiRuntime, type AiRuntimeMode } from "@/lib/ai/resolve-runtime";
 import { GEMINI_MODELS } from "@beautonomi/agent-model-router";
 import {
   fetchLiveGatewayModels,
@@ -23,11 +23,16 @@ const CREDENTIAL_RUNTIME: Record<string, AiRuntimeMode> = {
   anthropic: "direct_anthropic",
 };
 
-async function resolveTestModelId(credential: string): Promise<string> {
+async function resolveTestModelId(credential: string, environment: string): Promise<string> {
   if (credential === "gemini") return GEMINI_MODELS.flashLite;
 
   const live: LiveGatewayModel[] = await fetchLiveGatewayModels().catch(() => []);
   if (credential === "gateway") {
+    const runtime = await resolveAiRuntime(environment, null);
+    const defaultId = runtime.config.defaultModelId;
+    if (defaultId.includes("/")) {
+      return defaultId;
+    }
     return (
       pickLatestGatewayModel(live, "google", (m) => m.capability === "chat" && /lite|flash-lite/i.test(m.id))?.id ??
       pickLatestGatewayModel(live, "google", (m) => m.capability === "chat")?.id ??
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest) {
       typeof body.model_id === "string"
         ? body.model_id
         : credential
-          ? await resolveTestModelId(credential)
+          ? await resolveTestModelId(credential, environment)
           : undefined;
 
     const started = Date.now();
