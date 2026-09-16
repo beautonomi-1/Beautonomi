@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -21,6 +22,8 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 type PayoutRow = Record<string, unknown> & {
   id?: string;
@@ -153,6 +156,8 @@ export function PayoutsPage() {
       return adminApi.getRawJson<PayoutsEnvelope>(`/api/admin/payouts?${buildQueryString()}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const rows = q.data?.data ?? [];
@@ -240,9 +245,12 @@ export function PayoutsPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/mark-paid`, {}),
+    mutationFn: ({ id, text }: { id: string; text: string }) =>
+      adminApi.postJson(`/api/admin/payouts/${id}/mark-paid`, { notes: text }),
     onSuccess: () => {
       invalidate();
+      setModal(null);
+      setReason("");
       adminToast.success("Marked as paid");
     },
     onError: handlePayoutMutationError,
@@ -261,10 +269,11 @@ export function PayoutsPage() {
   });
 
   const transferMut = useMutation({
-    mutationFn: (id: string) =>
-      adminApi.postJson<TransferActionResult>(`/api/admin/payouts/${id}/initiate-transfer`, {}),
-    onSuccess: (result, id) => {
+    mutationFn: ({ id, text }: { id: string; text: string }) =>
+      adminApi.postJson<TransferActionResult>(`/api/admin/payouts/${id}/initiate-transfer`, { reason: text }),
+    onSuccess: (result, { id }) => {
       invalidate();
+      setReason("");
       const transfer = result?.transfer;
       if (transfer?.status === "otp" && transfer.transfer_code) {
         setTransferOtp("");
@@ -326,12 +335,15 @@ export function PayoutsPage() {
       return;
     }
     if (modal.kind === "mark_paid") {
-      markPaidMut.mutate(modal.id);
-      setModal(null);
+      const text = reason.trim();
+      if (!text) return;
+      markPaidMut.mutate({ id: modal.id, text });
       return;
     }
     if (modal.kind === "transfer") {
-      transferMut.mutate(modal.id);
+      const text = reason.trim();
+      if (!text) return;
+      transferMut.mutate({ id: modal.id, text });
       return;
     }
     if (modal.kind === "finalize_transfer") {
@@ -393,12 +405,38 @@ export function PayoutsPage() {
       {
         id: "provider",
         header: "Provider",
-        cell: (r) => (
+        cell: (r) => {
+          const provider = r.provider as { id?: string; business_name?: string } | null;
+          const providerId = (r as { provider_id?: string }).provider_id ?? provider?.id;
+          return (
           <div>
-            <div className="font-medium text-gray-900">{(r.provider as { business_name?: string } | null)?.business_name ?? "—"}</div>
+            {providerId ? (
+              <Link
+                to={adminSpaTo(`/admin/providers/${providerId}`)}
+                className="font-medium text-gray-900 hover:text-primary hover:underline"
+              >
+                {provider?.business_name ?? "Provider"}
+              </Link>
+            ) : (
+              <div className="font-medium text-gray-900">{provider?.business_name ?? "—"}</div>
+            )}
             <div className="text-xs text-gray-500">{r.payout_number ?? r.id ?? "—"}</div>
+            {(r as { payout_hold?: { fraud_case_id?: string | null } | null }).payout_hold ? (
+              <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+                Payout held
+                {(r as { payout_hold?: { fraud_case_id?: string | null } }).payout_hold?.fraud_case_id ? (
+                  <>
+                    {" · "}
+                    <Link className="underline" to={adminSpaTo("fraud-cases")}>
+                      view in Trust
+                    </Link>
+                  </>
+                ) : null}
+              </span>
+            ) : null}
           </div>
-        ),
+          );
+        },
       },
       { id: "status", header: "Status", cell: (r) => String(r.status ?? "") },
       {
@@ -600,7 +638,7 @@ export function PayoutsPage() {
   const isMarkPaidModal = modal?.kind === "mark_paid";
   const isTransferModal = modal?.kind === "transfer";
   const isFinalizeTransferModal = modal?.kind === "finalize_transfer";
-  const isConfirmationOnlyModal = isApproveModal || isMarkPaidModal || isTransferModal;
+  const isConfirmationOnlyModal = isApproveModal;
 
   return (
     <div className="space-y-6">
@@ -608,6 +646,7 @@ export function PayoutsPage() {
         title="Payouts"
         description="Provider withdrawal queue for this market. Balances are validated when the provider requests a payout; marking paid records the finance ledger so their available balance stays accurate."
       />
+      <AgentAssistEntitySection targetType="payout" actionTypes={["payout.review"]} />
       {negativeBalances && negativeBalances.count > 0 ? (
         <AdminPanel>
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -621,7 +660,14 @@ export function PayoutsPage() {
             <ul className="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5">
               {negativeBalances.providers.slice(0, 25).map((p) => (
                 <li key={p.provider_id} className="tabular-nums">
-                  {p.business_name ?? p.slug ?? p.provider_id}: {formatAdminCurrency(p.raw_balance)}
+                  <Link
+                    to={adminSpaTo(`/admin/providers/${p.provider_id}`)}
+                    className="font-medium hover:text-primary hover:underline"
+                  >
+                    {p.business_name ?? p.slug ?? p.provider_id}
+                  </Link>
+                  {": "}
+                  {formatAdminCurrency(p.raw_balance)}
                 </li>
               ))}
             </ul>
@@ -870,14 +916,28 @@ export function PayoutsPage() {
           </>
         }
       >
+        {modal?.id ? (
+          <AdminAuditTrailLink entityType="payout" entityId={modal.id} label="View payout audit trail" />
+        ) : null}
         {isConfirmationOnlyModal ? (
           <p className="text-sm text-gray-600">
-            {isApproveModal
-              ? "Approving a payout moves it to processing and notifies the provider. Make sure the payout amount and provider details are correct before proceeding."
-              : isMarkPaidModal
-                ? "This records the payout as paid in admin operations. Confirm the external payment has settled before continuing."
-                : "This starts the transfer flow for the payout. Confirm provider banking details and amount before continuing."}
+            Approving a payout moves it to processing and notifies the provider. Make sure the payout amount and provider details are correct before proceeding.
           </p>
+        ) : isMarkPaidModal || isTransferModal ? (
+          <>
+            <p className="mb-3 text-sm text-gray-600">
+              {isMarkPaidModal
+                ? "Record the payout as paid only after external settlement is confirmed. A reason is required for the audit trail."
+                : "This may trigger a real provider payout. Confirm banking details and amount. A reason is required for the audit trail."}
+            </p>
+            <textarea
+              className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3 text-sm shadow-inner"
+              rows={4}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (required)…"
+            />
+          </>
         ) : isFinalizeTransferModal ? (
           <label className="block text-sm">
             <span className="text-gray-700">Paystack OTP</span>

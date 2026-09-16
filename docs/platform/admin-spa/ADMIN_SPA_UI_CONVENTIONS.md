@@ -132,8 +132,26 @@ Use these instead of one-off copies so waves 2–5 stay consistent.
 | **Confirmations & short forms** | `AdminModal` (backdrop click closes) |
 | **Mutation errors** | `AdminMutationAlert` with `errors={[mutation.error]}` |
 | **Segmented tabs (filters)** | `adminTabButtonClass(active)` from `@/lib/adminUi` |
+| **Agent assist (AI proposals)** | `AgentAssistCard`, `AgentAssistPanel`, `DomainAiQueuePage`, `AdminConfirmDialog` — see §18 |
 
 **URL + debounced search:** `useDebouncedUrlParam` when a text field should sync to `?q=` (or similar) without thrashing the server.
+
+---
+
+## 18. Agent assist (AI workforce proposals)
+
+Domain staff review agent proposals on **their own pages**, not only in the superadmin Agentic Console.
+
+| Piece | Location | Use |
+|-------|----------|-----|
+| **Card** | `components/agent-assist/AgentAssistCard.tsx` | Single proposal: human title, impact pill, editable draft, confirm dialog, approve/reject/execute |
+| **Panel** | `components/agent-assist/AgentAssistPanel.tsx` | Load proposals for `target_type` + `target_id` (ticket, payout, …) |
+| **Queue page** | `components/agent-assist/DomainAiQueuePage.tsx` | Section-scoped inbox with URL filters |
+| **Entity banner** | `components/agent-assist/AgentAssistEntitySection.tsx` | List pages with `?highlight=<id>` |
+| **Confirm** | `components/admin/AdminConfirmDialog.tsx` | Customer-visible sends — never `window.confirm` |
+| **Copy** | `lib/agentAssistCopy.ts` (admin-web) + `present-action.ts` (apps/web) | Keep labels in sync |
+
+**Rules:** Decision-first copy (no raw `action_type` / UUID in the default view). Shadow mode banner when execution is paused. `min-h-11` on actions. Deep links use `?assist=<actionId>`.
 
 **Performance / routing:** New routes use **`lazyAdminPages.tsx`** + **`App.tsx`** pattern — see [`ADMIN_PERFORMANCE_OPTIMIZATION_REPORT.md`](./ADMIN_PERFORMANCE_OPTIMIZATION_REPORT.md).
 
@@ -162,3 +180,8 @@ Use these instead of one-off copies so waves 2–5 stay consistent.
 |------|--------|
 | 2026-04-05 | §15 governance + performance pointer; renumber approval section |
 | 2026-04-05 | §14 shared primitives + query-key convention (post–Wave 1 foundation hardening) |
+| 2026-09-15 | §18 Agent assist components for domain-first AI proposal review |
+| 2026-09-16 | **Undo rule:** destructive confirms must name the entity; prefer reversible flows or explicit “cannot undo” copy in `AdminConfirmDialog` — never `window.confirm`. |
+| 2026-09-16 | **Reason-capture:** account sanctions (suspend, role change, bulk deactivate) require an optional reason field in the confirm modal, persisted to audit — not `window.prompt`. |
+| 2026-09-16 | **Queue-home template:** section AI/work queues use `DomainAiQueuePage` (`useSearchParams` status tabs, `AdminDataList`, entity deep links) — see §18. |
+| 2026-09-16 | CI regression guards: native-dialog allowlist, URL filter state on critical lists, extended critical flows + nav snapshot tests. |

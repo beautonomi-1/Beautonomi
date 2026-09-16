@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface SmsTemplate {
   id: string;
@@ -41,6 +42,7 @@ function defaultForm(): { name: string; message_template: string; category: stri
 }
 
 export function SmsTemplatesListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_MARKETING_COMMS,
     "Marketing & comms access is required."
@@ -255,7 +257,7 @@ export function SmsTemplatesListPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { if (confirm(`Delete template "${t.name}"?`)) deleteMut.mutate(t.id); }}
+                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete template "${t.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(t.id) }); }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -267,6 +269,8 @@ export function SmsTemplatesListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

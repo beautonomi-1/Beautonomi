@@ -6,6 +6,8 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
+import { loadProviderOpsStallSettings } from "@/lib/provider-ops/stall-thresholds";
+import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 
 /**
  * POST /api/admin/provider-ops/run-stall-check
@@ -59,22 +61,13 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     // ── 1. Load ops settings ────────────────────────────────────────────────
-    const { data: settingsRow } = await supabase
-      .from("platform_settings")
-      .select("settings")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const allSettings = (settingsRow?.settings as Record<string, unknown>) || {};
-    const opsSettings = (allSettings.provider_ops as Record<string, unknown>) || {};
-
-    const stallThresholdHours: number = Number(opsSettings.stall_threshold_hours ?? 24);
-    const dropoffThresholdHours: number = Number(opsSettings.dropoff_threshold_hours ?? 168);
-    const autoSmsOnStall: boolean = Boolean(opsSettings.auto_sms_on_stall ?? false);
-    const slaContactStalledHours: number = Number(opsSettings.sla_contact_stalled_hours ?? 4);
+    const opsSettings = await loadProviderOpsStallSettings(supabase, tenantId);
+    const {
+      stall_threshold_hours: stallThresholdHours,
+      dropoff_threshold_hours: dropoffThresholdHours,
+      auto_sms_on_stall: autoSmsOnStall,
+      sla_contact_stalled_hours: slaContactStalledHours,
+    } = opsSettings;
 
     const now = new Date();
     const stallCutoff = new Date(now.getTime() - stallThresholdHours * 60 * 60 * 1000).toISOString();
@@ -112,35 +105,48 @@ export async function POST(request: NextRequest) {
     for (const chunk of chunkIds(tenantUserIds, 400)) {
       const { data: draftChunk, error: draftErr } = await supabase
         .from("provider_onboarding_drafts")
-        .select("id, user_id, step, status, updated_at, metadata")
-        .in("user_id", chunk)
-        .in("status", ["in_progress", "stalled"]);
+        .select("id, user_id, current_step, updated_at, created_at")
+        .in("user_id", chunk);
       if (draftErr) throw draftErr;
       drafts.push(...((draftChunk ?? []) as Record<string, unknown>[]));
     }
 
+    const { data: existingProviders } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .in("user_id", tenantUserIds);
+    const providerOwnerIds = new Set(
+      (existingProviders || []).map((p: { user_id: string }) => p.user_id)
+    );
+
     const results = { stalled: 0, dropped: 0, on_track: 0, sms_sent: 0 };
-    const toUpdateStalled: string[] = [];
-    const toUpdateDropped: string[] = [];
+    const toUpdateTrackingStalled: string[] = [];
+    const toUpdateTrackingDropped: string[] = [];
+    const smsCreds = autoSmsOnStall
+      ? await resolveTwilioCredentials(supabase, tenantId)
+      : null;
 
     for (const raw of drafts) {
-      const draft = raw as { id: string; user_id: string; updated_at?: string | null; created_at?: string | null };
-      const lastUpdated = draft.updated_at ? new Date(draft.updated_at) : null;
-      if (!lastUpdated) continue;
+      const draft = raw as {
+        id: string;
+        user_id: string;
+        updated_at?: string | null;
+        created_at?: string | null;
+      };
+      if (providerOwnerIds.has(draft.user_id)) continue;
 
-      const updatedStr = lastUpdated.toISOString();
+      const lastActivity = draft.updated_at || draft.created_at;
+      if (!lastActivity) continue;
 
-      if (updatedStr < dropoffCutoff) {
-        // Beyond drop-off threshold → mark as dropped
-        toUpdateDropped.push(draft.id);
+      if (lastActivity < dropoffCutoff) {
+        toUpdateTrackingDropped.push(draft.user_id);
         results.dropped++;
-      } else if (updatedStr < stallCutoff) {
-        // Beyond stall threshold but not yet dropped → mark as stalled
-        toUpdateStalled.push(draft.id);
+      } else if (lastActivity < stallCutoff) {
+        toUpdateTrackingStalled.push(draft.user_id);
         results.stalled++;
 
-        // Send SMS alert if enabled and SLA window exceeded
-        if (autoSmsOnStall && updatedStr < slaCutoff) {
+        if (autoSmsOnStall && lastActivity < slaCutoff && smsCreds?.smsFrom) {
           try {
             const { data: userRow } = await supabase
               .from("users")
@@ -151,20 +157,26 @@ export async function POST(request: NextRequest) {
             const phone = (userRow as { phone?: string } | null)?.phone;
             const name = (userRow as { full_name?: string } | null)?.full_name ?? "Provider";
 
-            if (phone) {
-              if (await phoneIsDoNotContact(supabase, tenantId, phone)) {
-                continue;
-              }
-              // Dynamic import — graceful fallback when Twilio env vars are not set
-              const { sendTwilioSMS } = await import("@/lib/integrations/twilio").catch(() => ({ sendTwilioSMS: null }));
-              if (sendTwilioSMS) {
-                await sendTwilioSMS(
-                  phone,
-                  `Hi ${name}, we noticed you haven't completed your onboarding on Beautonomi. ` +
-                    `Our team is here to help — reply or visit the app to continue.`
-                );
-                results.sms_sent++;
-              }
+            if (phone && !(await phoneIsDoNotContact(supabase, tenantId, phone))) {
+              await sendTwilioSMS(
+                smsCreds,
+                phone,
+                `Hi ${name}, we noticed you started signing up on Beautonomi but haven't finished. Need help? Reply to this message or contact us. We'd love to have you on board!`
+              );
+              results.sms_sent++;
+
+              await supabase.from("provider_lead_communications").insert({
+                tenant_id: tenantId,
+                user_id: draft.user_id,
+                channel: "sms",
+                direction: "outbound",
+                from_number: smsCreds.smsFrom,
+                to_number: phone,
+                body: `Auto-stall SMS to ${name}`,
+                status: "sent",
+                metadata: { auto_trigger: "stall_check" },
+                sent_by: null,
+              });
             }
           } catch (smsErr) {
             console.error(`[provider-ops-stall-check] SMS failed for draft ${draft.id}:`, smsErr);
@@ -175,18 +187,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 3. Batch-update statuses ────────────────────────────────────────────
-    if (toUpdateStalled.length > 0) {
+    // ── 3. Batch-update tracking wizard_status ─────────────────────────────
+    if (toUpdateTrackingStalled.length > 0) {
       await supabase
-        .from("provider_onboarding_drafts")
-        .update({ status: "stalled", updated_at: now.toISOString() })
-        .in("id", toUpdateStalled);
+        .from("provider_onboarding_tracking")
+        .upsert(
+          toUpdateTrackingStalled.map((userId) => ({
+            user_id: userId,
+            tenant_id: tenantId,
+            wizard_status: "stalled",
+            updated_at: now.toISOString(),
+          })),
+          { onConflict: "user_id" }
+        );
     }
-    if (toUpdateDropped.length > 0) {
+    if (toUpdateTrackingDropped.length > 0) {
       await supabase
-        .from("provider_onboarding_drafts")
-        .update({ status: "dropped", updated_at: now.toISOString() })
-        .in("id", toUpdateDropped);
+        .from("provider_onboarding_tracking")
+        .upsert(
+          toUpdateTrackingDropped.map((userId) => ({
+            user_id: userId,
+            tenant_id: tenantId,
+            wizard_status: "dropped",
+            updated_at: now.toISOString(),
+          })),
+          { onConflict: "user_id" }
+        );
     }
 
     // ── 4. Audit log ────────────────────────────────────────────────────────

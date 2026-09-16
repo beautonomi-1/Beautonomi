@@ -21,6 +21,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Lifecycle = "active" | "sandbox" | "suspended" | "disabled";
 
@@ -73,6 +74,7 @@ export function TenantsListPage() {
   useAdminDocumentTitle("Tenants");
   const { allowed, denied } = useSuperadminPage("Tenant management is superadmin-only.");
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -272,9 +274,13 @@ export function TenantsListPage() {
                         type="button"
                         disabled={deactivateMut.isPending}
                         onClick={() => {
-                          if (confirm(`Deactivate tenant "${t.name}"? This will suspend the tenant.`)) {
-                            deactivateMut.mutate(t.id);
-                          }
+                          requestConfirm({
+                            title: "Deactivate tenant",
+                            consequence: `Deactivate tenant "${t.name}"? This will suspend the tenant and all associated access.`,
+                            variant: "danger",
+                            confirmLabel: "Deactivate",
+                            onConfirm: async () => deactivateMut.mutate(t.id),
+                          });
                         }}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -297,6 +303,8 @@ export function TenantsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

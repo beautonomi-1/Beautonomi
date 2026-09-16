@@ -22,6 +22,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface Addon {
   id: string;
@@ -55,6 +56,7 @@ function defaultForm() {
 type FormState = ReturnType<typeof defaultForm>;
 
 export function AddonsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E‑commerce access is required.");
   useAdminDocumentTitle("Add-ons");
   const qc = useQueryClient();
@@ -291,7 +293,7 @@ export function AddonsListPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { if (confirm(`Delete add-on "${a.name ?? a.title}"?`)) deleteMut.mutate(a.id); }}
+                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete add-on "${a.name ?? a.title}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(a.id) }); }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -303,6 +305,8 @@ export function AddonsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Promo = {
   id: string;
@@ -159,6 +160,7 @@ function PromoForm({
 }
 
 export function PromotionsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Promotions");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_MARKETING_COMMS,
@@ -311,7 +313,7 @@ export function PromotionsListPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { if (confirm(`Delete "${r.name}"?`)) deleteMut.mutate(r.id); }}
+                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete "${r.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) }); }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -323,6 +325,8 @@ export function PromotionsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

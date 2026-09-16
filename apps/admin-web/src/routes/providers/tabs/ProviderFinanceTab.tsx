@@ -21,6 +21,7 @@ import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { ProviderBankAccountModal } from "../ProviderBankAccountModal";
 import { ProviderMarketingCreditsPanel } from "@/components/marketing/ProviderMarketingCreditsPanel";
 import { str } from "./types";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Props = {
   id: string;
@@ -84,6 +85,7 @@ export function ProviderFinanceTab({
   const qc = useQueryClient();
   const { bootstrap } = useAdminSession();
   const isSuperadmin = bootstrap?.isSuperadmin === true;
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
   const [txType, setTxType] = useState("all");
@@ -194,9 +196,15 @@ export function ProviderFinanceTab({
                           className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
                           disabled={patchSubscription.isPending}
                           onClick={() => {
-                            if (window.confirm("Cancel this subscription?")) {
-                              patchSubscription.mutate({ subId: sub.id, status: "cancelled" });
-                            }
+                            requestConfirm({
+                              title: "Cancel subscription",
+                              consequence: "Cancel this provider subscription? Billing stops at the end of the current period.",
+                              variant: "danger",
+                              confirmLabel: "Cancel subscription",
+                              onConfirm: async () => {
+                                patchSubscription.mutate({ subId: sub.id, status: "cancelled" });
+                              },
+                            });
                           }}
                         >
                           Cancel
@@ -427,6 +435,8 @@ export function ProviderFinanceTab({
           </div>
         )}
       </AdminPanel>
+
+      <ConfirmDialog />
     </div>
   );
 }

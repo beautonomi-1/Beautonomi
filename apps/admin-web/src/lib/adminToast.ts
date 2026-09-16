@@ -17,4 +17,12 @@ export const adminToast = {
   message(message: string) {
     toast.message(message);
   },
+  successWithUndo(message: string, onUndo: () => void) {
+    toast.success(message, {
+      action: {
+        label: "Undo",
+        onClick: onUndo,
+      },
+    });
+  },
 };

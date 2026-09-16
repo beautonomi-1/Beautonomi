@@ -25,6 +25,7 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminToast } from "@/lib/adminToast";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 const ADMIN_ROLES = [
   "superadmin",
@@ -106,6 +107,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function AdminTeamPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useSuperadminPage("Admin team management is superadmin-only.");
   const { bootstrap } = useAdminSession();
@@ -385,13 +387,13 @@ export function AdminTeamPage() {
                               disabled={removeMut.isPending}
                               className="text-xs text-red-600 hover:underline disabled:opacity-50"
                               onClick={() => {
-                                if (
-                                  confirm(
-                                    `Remove admin access for ${m.full_name ?? m.email}? Their role will be downgraded to customer.`
-                                  )
-                                ) {
-                                  void removeMut.mutate(m.id);
-                                }
+                                requestConfirm({
+                                  title: "Remove admin access",
+                                  consequence: `Remove admin access for ${m.full_name ?? m.email}? Their role will be downgraded to customer.`,
+                                  variant: "danger",
+                                  confirmLabel: "Remove access",
+                                  onConfirm: async () => removeMut.mutate(m.id),
+                                });
                               }}
                             >
                               Remove access
@@ -531,6 +533,8 @@ export function AdminTeamPage() {
           </div>
         )}
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

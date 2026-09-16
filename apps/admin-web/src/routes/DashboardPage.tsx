@@ -560,7 +560,7 @@ export function DashboardPage() {
                   label="Pending provider approvals"
                   value={formatAdminNumber(s.pending_approvals)}
                   hint="Status pending_approval — review before go-live"
-                  footer={metricFooterLink("/admin/providers?status=pending", "Review queue")}
+                  footer={metricFooterLink("/admin/provider-ops/activation", "Review queue")}
                 />
                 <AdminMetricCard
                   variant="slate"

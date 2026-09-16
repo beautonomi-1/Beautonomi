@@ -25,6 +25,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { cn } from "@/lib/cn";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface WebhookEndpoint {
   id: string;
@@ -258,6 +259,7 @@ const WEBHOOK_TABS: { id: WebhookTab; label: string }[] = [
 ];
 
 export function WebhooksEndpointsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_INTEGRATIONS_DEV,
     "Integrations & dev access is required."
@@ -626,12 +628,7 @@ export function WebhooksEndpointsPage() {
                         type="button"
                         disabled={deleteMut.isPending}
                         onClick={() => {
-                          if (
-                            confirm(
-                              `Delete webhook endpoint "${ep.name}"? This cannot be undone.`
-                            )
-                          )
-                            deleteMut.mutate(ep.id);
+                          requestConfirm({ title: "Confirm action", consequence: `Delete webhook endpoint "${ep.name}"? This cannot be undone.`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(ep.id) });
                         }}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -645,6 +642,8 @@ export function WebhooksEndpointsPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

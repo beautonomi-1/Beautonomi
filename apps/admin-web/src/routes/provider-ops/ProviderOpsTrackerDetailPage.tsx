@@ -15,6 +15,12 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { cn } from "@/lib/cn";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { AssigneeSearchPanel, type AssignableUser } from "@/components/provider-ops/LeadAssigneeInline";
+import { MessageCircle, Send, UserCog, UserPlus } from "lucide-react";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { Entity360CompactLink, Entity360Layout } from "@/components/admin/Entity360Layout";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 interface TrackerUser {
   id: string;
@@ -75,6 +81,12 @@ interface TrackerDetailPayload {
   linked_lead: LinkedLead | null;
 }
 
+interface RecommendedAction {
+  title: string;
+  description: string;
+  tone: "blue" | "amber" | "green" | "gray";
+}
+
 interface ParsedNote {
   id: string;
   note: string;
@@ -122,9 +134,14 @@ export function ProviderOpsTrackerDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const { bootstrap } = useAdminSession();
+  const isSuperadmin = bootstrap?.isSuperadmin === true;
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [noteText, setNoteText] = useState("");
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [draftEditForm, setDraftEditForm] = useState<DraftEditForm>(emptyDraftEditForm());
+  const [showAssignPanel, setShowAssignPanel] = useState(false);
+  const [impersonateReason, setImpersonateReason] = useState("");
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.trackerDetail(userId!),
@@ -166,6 +183,44 @@ export function ProviderOpsTrackerDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to save draft: ${e.message}`),
   });
 
+  const remindMut = useMutation({
+    mutationFn: (channel: "sms" | "whatsapp") =>
+      adminApi.postJson(`/api/admin/provider-ops/tracker/${userId}/remind`, { channel }),
+    onSuccess: (_data, channel) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerDetail(userId!) });
+      adminToast.success(`${channel === "whatsapp" ? "WhatsApp" : "SMS"} reminder sent`);
+    },
+    onError: (e: Error) => adminToast.error(`Reminder failed: ${e.message}`),
+  });
+
+  const assignMut = useMutation({
+    mutationFn: (assigned_to: string | null) =>
+      adminApi.patchJson(`/api/admin/provider-ops/tracker/${userId}/assign`, { assigned_to }),
+    onSuccess: () => {
+      setShowAssignPanel(false);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerDetail(userId!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerStats() });
+      adminToast.success("Assignee updated");
+    },
+    onError: (e: Error) => adminToast.error(`Assign failed: ${e.message}`),
+  });
+
+  const impersonateMut = useMutation({
+    mutationFn: (reason: string) =>
+      adminApi.postJson<{ url?: string }>(`/api/admin/users/${encodeURIComponent(userId!)}/impersonate`, {
+        reason,
+      }),
+    onSuccess: (res) => {
+      const path = res?.url;
+      if (path && typeof path === "string") {
+        window.location.assign(path);
+        return;
+      }
+      adminToast.info("Impersonation session started");
+    },
+    onError: (e: Error) => adminToast.error(`Impersonation failed: ${e.message}`),
+  });
+
   if (denied) return denied;
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Tracker Detail" /><AdminPanel><AdminPageSkeleton rows={8} /></AdminPanel></div>;
   if (q.error) {
@@ -190,6 +245,14 @@ export function ProviderOpsTrackerDetailPage() {
     .sort((a, b) => a.step - b.step);
   const canSubmit = !provider && !!draft && Boolean(draftData.business_name);
   const lifecycleBadge = deriveLifecycleBadge(provider, draft);
+  const recommendedAction = deriveRecommendedNextAction({
+    provider,
+    draft,
+    stepRows,
+    currentStep,
+    canSubmit,
+  });
+  const canRemind = !provider && Boolean(user.phone);
   const otherDraftEntries = Object.entries(draftData).filter(([key]) => !EDITABLE_DRAFT_TOP_LEVEL_KEYS.has(key));
 
   function startDraftEditing() {
@@ -211,43 +274,172 @@ export function ProviderOpsTrackerDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Link to={adminSpaTo("/admin/provider-ops/tracker")} className="text-sm text-gray-500 hover:text-gray-700">← Back to Tracker</Link>
-
-      <AdminPageHeader
-        title={name}
-        description={
-          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
-            <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium", lifecycleBadge.cls)}>
-              {lifecycleBadge.label}
-            </span>
-            {user.email ? <span>{user.email}</span> : null}
-            {user.phone ? <span>{user.phone}</span> : null}
-            {user.created_at ? <span>Signed up {new Date(user.created_at).toLocaleDateString()}</span> : null}
+    <Entity360Layout
+      backLink={
+        <Link to={adminSpaTo("/admin/provider-ops/tracker")} className="text-sm text-gray-500 hover:text-gray-700">
+          ← Back to Tracker
+        </Link>
+      }
+      title={name}
+      description={
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium", lifecycleBadge.cls)}>
+            {lifecycleBadge.label}
+          </span>
+          {user.email ? <span>{user.email}</span> : null}
+          {user.phone ? <span>{user.phone}</span> : null}
+          {user.created_at ? <span>Signed up {new Date(user.created_at).toLocaleDateString()}</span> : null}
+        </div>
+      }
+      primaryAction={
+        <div className="flex flex-wrap gap-2">
+          {provider ? (
+            <Link
+              to={adminSpaTo(`/admin/provider-ops/providers/${provider.id}`)}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              View lifecycle
+            </Link>
+          ) : null}
+          {!provider ? (
+            <button
+              type="button"
+              disabled={submitOnboarding.isPending || !canSubmit}
+              title={!draft ? "No onboarding draft found" : !draftData.business_name ? "Draft is missing business name" : undefined}
+              onClick={() => {
+                requestConfirm({
+                  title: "Submit onboarding",
+                  consequence:
+                    "Submit onboarding on behalf of this user? This creates a provider in pending approval.",
+                  confirmLabel: "Submit onboarding",
+                  onConfirm: async () => submitOnboarding.mutate(),
+                });
+              }}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitOnboarding.isPending ? "Submitting..." : "Submit Onboarding"}
+            </button>
+          ) : null}
+        </div>
+      }
+      panels={{
+        money: provider ? (
+          <Entity360CompactLink
+            href={adminSpaTo(`/admin/providers/${provider.id}`)}
+            label="Provider finance"
+            hint={provider.business_name || "View payouts & ledger"}
+          />
+        ) : (
+          <span className="text-xs text-gray-500">No provider account yet</span>
+        ),
+        history: (
+          <span className="text-xs text-gray-600">
+            {notes.length} admin note{notes.length === 1 ? "" : "s"}
+          </span>
+        ),
+        tickets: (
+          <Entity360CompactLink
+            href={adminSpaTo(`/admin/support-tickets?q=${encodeURIComponent(user.email || userId || "")}`)}
+            label="Support tickets"
+            hint="Search by email"
+          />
+        ),
+        risk: (
+          <Entity360CompactLink
+            href={adminSpaTo(`/admin/fraud-cases?subject_user_id=${encodeURIComponent(userId!)}`)}
+            label="Fraud cases"
+            hint="Subject user filter"
+          />
+        ),
+        audit: userId ? <AdminAuditTrailLink entityType="user" entityId={userId} label="Audit trail" /> : null,
+      }}
+      banner={
+      <AdminPanel className={cn("!border-blue-200 !bg-blue-50/30", recommendedAction.tone === "amber" && "!border-amber-200 !bg-amber-50/40", recommendedAction.tone === "green" && "!border-green-200 !bg-green-50/30")}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Recommended next action</p>
+            <h3 className="mt-1 text-sm font-semibold text-gray-900">{recommendedAction.title}</h3>
+            <p className="mt-1 text-sm text-gray-600">{recommendedAction.description}</p>
           </div>
-        }
-        actions={
           <div className="flex flex-wrap gap-2">
-            {provider ? (
-              <Link to={adminSpaTo(`/admin/provider-ops/providers/${provider.id}`)} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                View lifecycle
-              </Link>
+            {canRemind ? (
+              <>
+                <button
+                  type="button"
+                  disabled={remindMut.isPending}
+                  onClick={() => remindMut.mutate("sms")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {remindMut.isPending && remindMut.variables === "sms" ? "Sending…" : "Remind (SMS)"}
+                </button>
+                <button
+                  type="button"
+                  disabled={remindMut.isPending}
+                  onClick={() => remindMut.mutate("whatsapp")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-white px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {remindMut.isPending && remindMut.variables === "whatsapp" ? "Sending…" : "Remind (WhatsApp)"}
+                </button>
+              </>
             ) : null}
-            {!provider ? (
+            <button
+              type="button"
+              onClick={() => setShowAssignPanel((open) => !open)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              {tracking?.assigned_to ? "Reassign" : "Assign"}
+            </button>
+            {isSuperadmin ? (
               <button
                 type="button"
-                disabled={submitOnboarding.isPending || !canSubmit}
-                title={!draft ? "No onboarding draft found" : !draftData.business_name ? "Draft is missing business name" : undefined}
-                onClick={() => { if (confirm("Submit onboarding on behalf of this user? This creates a provider in pending approval.")) submitOnboarding.mutate(); }}
-                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={impersonateMut.isPending || impersonateReason.trim().length < 3}
+                title={impersonateReason.trim().length < 3 ? "Enter a reason below (min 3 chars)" : undefined}
+                onClick={() => impersonateMut.mutate(impersonateReason.trim())}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
               >
-                {submitOnboarding.isPending ? "Submitting..." : "Submit Onboarding"}
+                <UserCog className="h-3.5 w-3.5" />
+                {impersonateMut.isPending ? "Starting…" : "Impersonate"}
               </button>
             ) : null}
           </div>
-        }
-      />
-
+        </div>
+        {showAssignPanel ? (
+          <div className="mt-4 border-t border-blue-100 pt-4">
+            <AssigneeSearchPanel
+              title="Assign onboarding owner"
+              onClose={() => setShowAssignPanel(false)}
+              onPick={(u: AssignableUser) => assignMut.mutate(u.id)}
+            />
+            {tracking?.assigned_to ? (
+              <button
+                type="button"
+                disabled={assignMut.isPending}
+                onClick={() => assignMut.mutate(null)}
+                className="mt-2 text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+              >
+                Unassign current owner
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {isSuperadmin ? (
+          <label className="mt-4 block border-t border-blue-100 pt-3 text-sm">
+            <span className="text-xs font-medium text-gray-500">Impersonation reason (superadmin)</span>
+            <input
+              type="text"
+              value={impersonateReason}
+              onChange={(e) => setImpersonateReason(e.target.value)}
+              placeholder="Support ticket #…"
+              className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        ) : null}
+      </AdminPanel>
+      }
+    >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {draft && (
@@ -485,6 +677,7 @@ export function ProviderOpsTrackerDetailPage() {
             <h3 className="mb-3 text-sm font-semibold text-gray-700">Status</h3>
             <div className="space-y-2 text-sm">
               <StatusRow label="Wizard status" value={tracking?.wizard_status || (provider ? "submitted" : draft ? "in progress" : "not started")} />
+              <StatusRow label="Assigned to" value={tracking?.assigned_to ? `${tracking.assigned_to.slice(0, 8)}…` : "—"} />
               <StatusRow label="Admin assisted" value={tracking?.admin_assisted ? "Yes" : "No"} />
               <StatusRow label="Has provider" value={provider ? "Yes" : "No"} />
               <StatusRow label="Provider status" value={provider?.status || "—"} />
@@ -539,8 +732,78 @@ export function ProviderOpsTrackerDetailPage() {
           </AdminPanel>
         </div>
       </div>
-    </div>
+
+      <ConfirmDialog />
+    </Entity360Layout>
   );
+}
+
+function deriveRecommendedNextAction(args: {
+  provider: TrackerProvider | null;
+  draft: TrackerDraft | null;
+  stepRows: Array<{ step: number; completed: boolean; name: string; data_present: string[] }>;
+  currentStep: number;
+  canSubmit: boolean;
+}): RecommendedAction {
+  const { provider, draft, stepRows, currentStep, canSubmit } = args;
+
+  if (provider?.status === "pending_approval") {
+    return {
+      title: "Review for activation",
+      description: "Onboarding was submitted — verify business details, location, and verification before activating.",
+      tone: "amber",
+    };
+  }
+  if (provider) {
+    return {
+      title: "Monitor provider lifecycle",
+      description: "This user already has a provider account. Use lifecycle view for verification and status changes.",
+      tone: "green",
+    };
+  }
+  if (!draft) {
+    return {
+      title: "Onboarding not started",
+      description: "No wizard draft exists yet. Send a reminder or assign an owner to follow up.",
+      tone: "gray",
+    };
+  }
+
+  const current = stepRows.find((row) => row.step === currentStep);
+  if (current && !current.completed) {
+    const detail =
+      current.data_present.length > 0
+        ? `Partial data saved: ${current.data_present.join(", ")}.`
+        : "No step data saved yet.";
+    return {
+      title: `Help complete ${current.name}`,
+      description: `User is on step ${currentStep}. ${detail} Nudge them to continue or assist via draft edit.`,
+      tone: "blue",
+    };
+  }
+
+  const nextIncomplete = stepRows.find((row) => !row.completed);
+  if (nextIncomplete) {
+    return {
+      title: `Waiting on ${nextIncomplete.name}`,
+      description: `Step ${nextIncomplete.step} is still incomplete. Follow up before the signup stalls.`,
+      tone: "amber",
+    };
+  }
+
+  if (canSubmit) {
+    return {
+      title: "Submit for activation review",
+      description: "Draft looks complete enough to submit on the provider's behalf.",
+      tone: "green",
+    };
+  }
+
+  return {
+    title: "Follow up on draft",
+    description: "Review draft data, add notes, and contact the provider to unblock onboarding.",
+    tone: "gray",
+  };
 }
 
 /** At-a-glance onboarding lifecycle badge derived from provider + draft state. */

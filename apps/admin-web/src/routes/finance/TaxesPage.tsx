@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface TaxRate {
   id: string;
@@ -159,6 +160,7 @@ export function TaxesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   useAdminDocumentTitle("Taxes");
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const q = useQuery({
     queryKey: adminQueryKeys.taxes(),
@@ -350,7 +352,18 @@ export function TaxesPage() {
                         type="button"
                         disabled={deleteMut.isPending}
                         onClick={() => {
-                          if (confirm(`Delete tax rate "${r.name}"?`)) deleteMut.mutate(r.id);
+                          requestConfirm({
+                            title: "Delete tax rate",
+                            consequence: `Delete tax rate "${r.name}"? This may affect checkout calculations.`,
+                            variant: "danger",
+                            confirmLabel: "Delete",
+                            auditTrail: {
+                              entityType: "tax_rate",
+                              entityId: r.id,
+                              label: "View tax rate audit trail",
+                            },
+                            onConfirm: async () => deleteMut.mutate(r.id),
+                          });
                         }}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -364,6 +377,8 @@ export function TaxesPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

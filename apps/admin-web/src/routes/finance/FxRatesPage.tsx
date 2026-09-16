@@ -18,6 +18,7 @@ import {
   AdminTh,
   AdminTd,
 } from "@/components/admin/AdminDataTable";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminToast } from "@/lib/adminToast";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -243,7 +244,7 @@ export function FxRatesPage() {
               ) : (
                 <span className="text-sm text-gray-500">No cron run recorded yet</span>
               )}
-              <Link to="/admin/cron-runs" className="text-sm text-indigo-600 hover:underline">
+              <Link to={adminSpaTo("/admin/cron-runs")} className="text-sm text-indigo-600 hover:underline">
                 Cron runs
               </Link>
               <button
@@ -493,7 +494,7 @@ export function FxRatesPage() {
                 </li>
               ))}
             </ul>
-            <Link to="/admin/audit-logs?module=finance" className="mt-3 inline-block text-sm text-indigo-600 hover:underline">
+            <Link to={adminSpaTo("/admin/audit-logs?module=finance")} className="mt-3 inline-block text-sm text-indigo-600 hover:underline">
               Full audit logs
             </Link>
           </>

@@ -110,9 +110,10 @@ describe("SUPPORT_TICKET_SAVED_VIEWS", () => {
     expect(v?.params.assign).toBe("unassigned");
   });
 
-  it("has a breaching_sla view using at_risk sla_state", () => {
+  it("has a breaching_sla view using sla_overdue filter", () => {
     const v = SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "breaching_sla");
     expect(v).toBeDefined();
-    expect(v?.params.slaState).toBe("at_risk");
+    expect(v?.params.slaOverdue).toBe(true);
+    expect(v?.params.slaState).toBe("");
   });
 });

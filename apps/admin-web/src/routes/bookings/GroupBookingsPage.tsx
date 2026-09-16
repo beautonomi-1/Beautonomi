@@ -14,6 +14,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminApi } from "@/lib/adminClient";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type GroupBookingRow = {
@@ -129,6 +130,7 @@ export function GroupBookingsPage() {
     "Providers & operations access is required for group bookings."
   );
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -458,16 +460,19 @@ export function GroupBookingsPage() {
                       className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 disabled:opacity-50"
                       disabled={actionMutation.isPending}
                       onClick={() => {
-                        if (
-                          window.confirm(
-                            "Cancel this group booking and all child bookings?"
-                          )
-                        ) {
-                          actionMutation.mutate({
-                            id: detailQuery.data!.id,
-                            action: "cancel",
-                          });
-                        }
+                        requestConfirm({
+                          title: "Cancel group booking",
+                          consequence:
+                            "Cancel this group booking and all child bookings? Customers will be notified.",
+                          variant: "danger",
+                          confirmLabel: "Cancel group booking",
+                          onConfirm: async () => {
+                            actionMutation.mutate({
+                              id: detailQuery.data!.id,
+                              action: "cancel",
+                            });
+                          },
+                        });
                       }}
                     >
                       Cancel
@@ -529,6 +534,8 @@ export function GroupBookingsPage() {
           </AdminPanel>
         </div>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

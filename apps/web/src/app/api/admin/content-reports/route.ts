@@ -7,7 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { resolveContentAuthorUserId } from "@/lib/safety/moderation-actions";
+import { listAuthorContentTargets, resolveContentAuthorUserId } from "@/lib/safety/moderation-actions";
 
 async function fetchTargetPreview(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -79,11 +79,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const targetType = searchParams.get("target_type");
+    const authorUserId = searchParams.get("author_user_id");
     const slaOverdue =
       searchParams.get("sla_overdue") === "1" ||
       searchParams.get("sla_overdue") === "true";
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
+
+    let authorTargets: Awaited<ReturnType<typeof listAuthorContentTargets>> | null = null;
+    if (authorUserId) {
+      authorTargets = await listAuthorContentTargets(supabase, authorUserId);
+      if (authorTargets.length === 0) {
+        return successResponse({ data: [], total: 0, has_more: false });
+      }
+    }
 
     let query = supabase
       .from("content_reports")
@@ -94,6 +103,13 @@ export async function GET(request: NextRequest) {
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (authorTargets?.length) {
+      const orFilter = authorTargets
+        .map((t) => `and(target_type.eq.${t.type},target_id.eq.${t.id})`)
+        .join(",");
+      query = query.or(orFilter);
+    }
 
     if (slaOverdue) {
       const slaCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

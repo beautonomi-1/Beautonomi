@@ -11,6 +11,7 @@ import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { Loader2, Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface Template {
   id: string;
@@ -55,6 +56,7 @@ function resolvePreview(body: string): string {
 }
 
 export function WhatsAppTemplatesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_INTEGRATIONS_DEV,
     "Integrations & dev access is required for WhatsApp templates."
@@ -176,7 +178,7 @@ export function WhatsAppTemplatesPage() {
                   <button
                     className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
                     onClick={() => {
-                      if (window.confirm(`Archive "${tpl.name}"?`)) deleteMutation.mutate(tpl.id);
+                      requestConfirm({ title: "Confirm action", consequence: `Archive "${tpl.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMutation.mutate(tpl.id) });
                     }}
                     title="Archive"
                   >
@@ -277,6 +279,8 @@ export function WhatsAppTemplatesPage() {
           </div>
         </div>
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

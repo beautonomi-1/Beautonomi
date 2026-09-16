@@ -33,6 +33,20 @@ export async function POST(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { notes?: string; reason?: string };
+    const operatorNotes = (body.notes ?? body.reason ?? "").trim();
+    if (!operatorNotes) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "A reason is required to mark a payout as paid",
+            code: "REASON_REQUIRED",
+          },
+        },
+        { status: 400 },
+      );
+    }
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
@@ -268,7 +282,7 @@ export async function POST(
       action: "admin.payout.paid",
       entity_type: "payout",
       entity_id: id,
-      metadata: { provider_id: payoutData.provider_id, amount: payoutData.amount },
+      metadata: { provider_id: payoutData.provider_id, amount: payoutData.amount, notes: operatorNotes },
     });
 
     try {

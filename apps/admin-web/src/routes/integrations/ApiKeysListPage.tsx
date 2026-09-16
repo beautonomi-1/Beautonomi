@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface ApiKeyRow {
   id: string;
@@ -60,6 +61,7 @@ export function ApiKeysListPage() {
   );
   useAdminDocumentTitle("API Keys");
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const [showCreate, setShowCreate] = useState(false);
   const [editKey, setEditKey] = useState<ApiKeyRow | null>(null);
@@ -376,8 +378,13 @@ export function ApiKeysListPage() {
                         type="button"
                         disabled={deleteMut.isPending}
                         onClick={() => {
-                          if (confirm(`Permanently revoke key "${k.name}"? This cannot be undone.`))
-                            deleteMut.mutate(k.id);
+                          requestConfirm({
+                            title: "Revoke API key",
+                            consequence: `Permanently revoke key "${k.name}"? This cannot be undone.`,
+                            variant: "danger",
+                            confirmLabel: "Revoke key",
+                            onConfirm: async () => deleteMut.mutate(k.id),
+                          });
                         }}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -391,6 +398,8 @@ export function ApiKeysListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

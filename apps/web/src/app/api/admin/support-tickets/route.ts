@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
+    const statusGroup = searchParams.get("status_group");
     const priority = searchParams.get("priority");
     const category = searchParams.get("category");
     const assignedTo = searchParams.get("assigned_to");
@@ -62,7 +63,9 @@ export async function GET(request: NextRequest) {
           { count: "exact" }
         );
 
-      if (status) {
+      if (statusGroup === "resolved_closed") {
+        query = query.in("status", ["resolved", "closed"]);
+      } else if (status) {
         query = query.eq("status", status);
       }
 

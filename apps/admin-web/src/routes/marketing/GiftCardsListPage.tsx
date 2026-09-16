@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Gc = Record<string, unknown> & { id?: string; code?: string; balance?: number; is_active?: boolean };
 
@@ -31,6 +32,7 @@ type GiftPayload = {
 };
 
 export function GiftCardsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_MARKETING_COMMS,
     "Marketing & comms access is required."
@@ -226,7 +228,15 @@ export function GiftCardsListPage() {
                       <button
                         type="button"
                         disabled={deleteMut.isPending}
-                        onClick={() => { if (confirm(`Delete gift card "${String(r.code ?? r.id)}"?`)) deleteMut.mutate(String(r.id)); }}
+                        onClick={() => {
+                          requestConfirm({
+                            title: "Delete gift card",
+                            consequence: `Delete gift card "${String(r.code ?? r.id)}"?`,
+                            variant: "danger",
+                            confirmLabel: "Delete",
+                            onConfirm: async () => deleteMut.mutate(String(r.id)),
+                          });
+                        }}
                         className="text-xs text-red-600 underline disabled:opacity-50"
                       >
                         Delete
@@ -248,6 +258,8 @@ export function GiftCardsListPage() {
           Next page
         </button>
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

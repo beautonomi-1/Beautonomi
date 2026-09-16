@@ -16,6 +16,9 @@ import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
+import { AgentAssistPanel } from "@/components/agent-assist/AgentAssistPanel";
+import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
+import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -24,6 +27,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminTabButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 import { ProviderOverviewTab } from "./tabs/ProviderOverviewTab";
 import { ProviderCommercialTab } from "./tabs/ProviderCommercialTab";
@@ -65,10 +69,12 @@ export function ProviderDetailPage() {
     "Providers & operations access is required.",
   );
   const { canAccess, bootstrap } = useAdminSession();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const canOpenLifecycle = canAccess(ADMIN_SECTION_PROVIDER_OPS);
   const canOpenVerifications = canAccess(ADMIN_SECTION_USERS_TRUST);
   const hasCommercialAccess = canAccess(ADMIN_SECTION_COMMERCIAL);
   const hasFinanceAccess = canAccess(ADMIN_SECTION_FINANCE);
+  const { shadowMode } = useAgentShadowMode();
 
   const setTab = useCallback(
     (next: TabKey) => {
@@ -198,7 +204,14 @@ export function ProviderDetailPage() {
                 type="button"
                 className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 disabled={changeStatus.isPending}
-                onClick={() => { if (confirm(`Approve ${business}?`)) changeStatus.mutate("active"); }}
+                onClick={() => {
+                  requestConfirm({
+                    title: "Approve provider",
+                    consequence: `Approve ${business}? They will become active on the marketplace.`,
+                    confirmLabel: "Approve",
+                    onConfirm: async () => changeStatus.mutate("active"),
+                  });
+                }}
               >
                 Approve
               </button>
@@ -208,7 +221,15 @@ export function ProviderDetailPage() {
                 type="button"
                 className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                 disabled={changeStatus.isPending}
-                onClick={() => { if (confirm(`Suspend ${business}?`)) changeStatus.mutate("suspended"); }}
+                onClick={() => {
+                  requestConfirm({
+                    title: "Suspend provider",
+                    consequence: `Suspend ${business}? They will lose marketplace access.`,
+                    variant: "danger",
+                    confirmLabel: "Suspend",
+                    onConfirm: async () => changeStatus.mutate("suspended"),
+                  });
+                }}
               >
                 Suspend
               </button>
@@ -218,7 +239,14 @@ export function ProviderDetailPage() {
                 type="button"
                 className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 disabled={changeStatus.isPending}
-                onClick={() => { if (confirm(`Reactivate ${business}?`)) changeStatus.mutate("active"); }}
+                onClick={() => {
+                  requestConfirm({
+                    title: "Reactivate provider",
+                    consequence: `Reactivate ${business}? They will regain marketplace access.`,
+                    confirmLabel: "Reactivate",
+                    onConfirm: async () => changeStatus.mutate("active"),
+                  });
+                }}
               >
                 Reactivate
               </button>
@@ -238,7 +266,15 @@ export function ProviderDetailPage() {
                 type="button"
                 className="rounded-xl border border-amber-200 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                 disabled={verifyProvider.isPending}
-                onClick={() => { if (confirm(`Remove verified badge for ${business}?`)) verifyProvider.mutate(false); }}
+                onClick={() => {
+                  requestConfirm({
+                    title: "Remove verified badge",
+                    consequence: `Remove verified badge for ${business}?`,
+                    variant: "danger",
+                    confirmLabel: "Remove badge",
+                    onConfirm: async () => verifyProvider.mutate(false),
+                  });
+                }}
               >
                 Unverify
               </button>
@@ -259,6 +295,23 @@ export function ProviderDetailPage() {
           verifyProvider.error instanceof Error ? verifyProvider.error : null,
         ]}
       />
+
+      <AdminPanel title="AI suggestion">
+        <AgentAssistPanel
+          targetType="provider"
+          targetId={id}
+          actionTypes={["provider.outreach", "provider.digest", "catalog.review"]}
+          entityLabel={business}
+          shadowMode={shadowMode}
+        />
+        <div className="mt-4">
+          <DomainCopilotDock
+            section={ADMIN_SECTION_PROVIDERS_OPERATIONS}
+            contextHint={`Provider ${id}. Read-only provider health and ops context.`}
+            starters={[`How is provider ${id} doing?`]}
+          />
+        </div>
+      </AdminPanel>
 
       {/* ── Tab row ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-px">
@@ -319,6 +372,8 @@ export function ProviderDetailPage() {
       {tab === "growth" && providerCanonicalId && (
         <ProviderGrowthTab providerCanonicalId={providerCanonicalId} />
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

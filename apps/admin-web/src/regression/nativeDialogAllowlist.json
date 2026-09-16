@@ -1,0 +1,7 @@
+{
+  "description": "Known files still using window.confirm/prompt/alert or bare confirm(). New offenders fail CI; remove entries as pages migrate to AdminConfirmDialog.",
+  "allowedFiles": [
+    "components/admin/RichTextEditor.tsx",
+    "components/provider-ops/LeadVoiceDialer.tsx"
+  ]
+}

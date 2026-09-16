@@ -24,6 +24,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type FlagRow = {
   id: string;
@@ -257,6 +258,7 @@ function AdvancedTargetingFields({
 }
 
 export function FeatureFlagsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Feature Flags");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PLATFORM_CONFIG,
@@ -718,7 +720,7 @@ export function FeatureFlagsListPage() {
                         <button
                           type="button"
                           disabled={deleteMut.isPending}
-                          onClick={() => { if (confirm(`Delete flag "${r.feature_key ?? r.feature_name}"? This may break features that rely on it.`)) deleteMut.mutate(r.id); }}
+                          onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete flag "${r.feature_key ?? r.feature_name}"? This may break features that rely on it.`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) }); }}
                           className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
                           Delete
@@ -733,6 +735,8 @@ export function FeatureFlagsListPage() {
           </div>
         ))
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

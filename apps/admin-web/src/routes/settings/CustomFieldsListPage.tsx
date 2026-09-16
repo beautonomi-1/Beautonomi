@@ -21,6 +21,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Field = {
   id: string;
@@ -158,6 +159,7 @@ function FieldFormUI({
 }
 
 export function CustomFieldsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Custom Fields");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PLATFORM_CONFIG,
@@ -336,7 +338,7 @@ export function CustomFieldsListPage() {
                         type="button"
                         disabled={deleteMut.isPending}
                         onClick={() => {
-                          if (confirm(`Delete field "${r.name}"?`)) deleteMut.mutate(r.id);
+                          requestConfirm({ title: "Confirm action", consequence: `Delete field "${r.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) });
                         }}
                         className="text-xs text-red-600 hover:underline disabled:opacity-50"
                       >
@@ -364,6 +366,8 @@ export function CustomFieldsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

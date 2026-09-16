@@ -18,11 +18,13 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type ProviderRow = { id: string; business_name?: string; name?: string };
 type SourceRow = { id: string; name?: string; description?: string | null; is_active?: boolean };
 
 export function ReferralSourcesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
@@ -222,7 +224,7 @@ export function ReferralSourcesPage() {
                         type="button"
                         className="text-sm text-rose-700 hover:underline"
                         onClick={() => {
-                          if (confirm("Delete this referral source?")) delMut.mutate(s.id);
+                          requestConfirm({ title: "Confirm action", consequence: "Delete this referral source?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => delMut.mutate(s.id) });
                         }}
                       >
                         Delete
@@ -235,6 +237,8 @@ export function ReferralSourcesPage() {
           )}
         </>
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

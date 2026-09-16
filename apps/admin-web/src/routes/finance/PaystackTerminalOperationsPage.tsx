@@ -33,6 +33,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 type AdminTerminalProvider = {
   id?: string;
@@ -1139,6 +1140,12 @@ export function PaystackTerminalOperationsPage() {
                 <p className="mt-1 text-sm text-gray-600">
                   This writes the allocation and updates the target booking, product order, or sale when supported.
                 </p>
+                <AdminAuditTrailLink
+                  entityType="terminal_payment"
+                  entityId={resolveFor.id}
+                  label="View terminal payment audit trail"
+                  className="mt-2"
+                />
               </div>
             </div>
             <div className="space-y-3">

@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 /**
  * GET /api/admin/search
@@ -45,13 +46,38 @@ type ProviderResult = {
   status: string | null;
 };
 
+type LeadResult = {
+  id: string;
+  business_name: string | null;
+  lead_name: string | null;
+  email: string | null;
+  phone_e164: string | null;
+  commercial_stage: string | null;
+};
+
+type OnboardingDraftResult = {
+  user_id: string;
+  business_name: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  current_step: number | null;
+};
+
 type SearchResults = {
   users: UserResult[];
   bookings: BookingResult[];
   providers: ProviderResult[];
+  leads: LeadResult[];
+  onboarding_drafts: OnboardingDraftResult[];
 };
 
-const EMPTY_RESULTS: SearchResults = { users: [], bookings: [], providers: [] };
+const EMPTY_RESULTS: SearchResults = {
+  users: [],
+  bookings: [],
+  providers: [],
+  leads: [],
+  onboarding_drafts: [],
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -74,13 +100,16 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
 
     const rpcResults = await runFuzzySearchRpc(admin, tenantId, searchTerm);
-    if (rpcResults) {
-      return NextResponse.json({ data: rpcResults, error: null });
-    }
-
-    // Fallback: RPC missing/failed — keep search working with substring queries.
-    const fallback = await runLegacySearch(supabase, admin, tenantId, searchTerm);
-    return NextResponse.json({ data: fallback, error: null });
+    const base = rpcResults ?? (await runLegacySearch(supabase, admin, tenantId, searchTerm));
+    const ops = await searchProviderOpsRecords(admin, tenantId, searchTerm);
+    return NextResponse.json({
+      data: {
+        ...base,
+        leads: ops.leads,
+        onboarding_drafts: ops.onboarding_drafts,
+      },
+      error: null,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to search");
   }
@@ -147,7 +176,7 @@ async function runFuzzySearchRpc(
     };
   });
 
-  return { users, providers, bookings };
+  return { users, providers, bookings, leads: [], onboarding_drafts: [] };
 }
 
 /** Legacy substring fallback (no fuzzy) — used only when the RPC is unavailable. */
@@ -301,5 +330,77 @@ async function runLegacySearch(
     };
   });
 
-  return { users, bookings, providers };
+  return { users, bookings, providers, leads: [], onboarding_drafts: [] };
+}
+
+/** Provider Ops leads and in-progress onboarding drafts (substring match). */
+async function searchProviderOpsRecords(
+  admin: SupabaseClient,
+  tenantId: string,
+  searchTerm: string,
+): Promise<{ leads: LeadResult[]; onboarding_drafts: OnboardingDraftResult[] }> {
+  const term = searchTerm.toLowerCase();
+
+  const { data: leadRows } = await admin
+    .from("provider_leads")
+    .select("id, business_name, lead_name, email, phone_e164, commercial_stage")
+    .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
+    .or(
+      [
+        `business_name.ilike.%${term}%`,
+        `lead_name.ilike.%${term}%`,
+        `email.ilike.%${term}%`,
+        `phone_e164.ilike.%${term}%`,
+        `contact_person_name.ilike.%${term}%`,
+      ].join(","),
+    )
+    .limit(5);
+
+  const leads: LeadResult[] = (leadRows ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      business_name: r.business_name != null ? String(r.business_name) : null,
+      lead_name: r.lead_name != null ? String(r.lead_name) : null,
+      email: r.email != null ? String(r.email) : null,
+      phone_e164: r.phone_e164 != null ? String(r.phone_e164) : null,
+      commercial_stage: r.commercial_stage != null ? String(r.commercial_stage) : null,
+    };
+  });
+
+  const { data: draftRows } = await admin
+    .from("provider_onboarding_drafts")
+    .select("user_id, current_step, draft_data, updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(40);
+
+  const onboarding_drafts: OnboardingDraftResult[] = [];
+  for (const raw of draftRows ?? []) {
+    const row = raw as {
+      user_id: string;
+      current_step?: number | null;
+      draft_data?: Record<string, unknown> | null;
+    };
+    const draftData = row.draft_data ?? {};
+    const businessName = draftData.business_name != null ? String(draftData.business_name) : "";
+    const ownerName = draftData.owner_name != null ? String(draftData.owner_name) : "";
+    const ownerEmail = draftData.owner_email != null ? String(draftData.owner_email) : "";
+    const haystack = [businessName, ownerName, ownerEmail, row.user_id].join(" ").toLowerCase();
+    if (!haystack.includes(term)) continue;
+
+    const userRow = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, row.user_id);
+    if (!userRow) continue;
+
+    onboarding_drafts.push({
+      user_id: row.user_id,
+      business_name: businessName || null,
+      owner_name: ownerName || (userRow.full_name != null ? String(userRow.full_name) : null),
+      owner_email: ownerEmail || (userRow.email != null ? String(userRow.email) : null),
+      current_step: row.current_step ?? null,
+    });
+    if (onboarding_drafts.length >= 5) break;
+  }
+
+  return { leads, onboarding_drafts };
 }

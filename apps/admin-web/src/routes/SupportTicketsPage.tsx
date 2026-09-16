@@ -27,9 +27,11 @@ import {
 import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
 import {
   buildSupportTicketsSearchParams,
+  matchSupportTicketSavedView,
   supportTicketsPageSize,
   SUPPORT_TICKET_SAVED_VIEWS,
 } from "@/lib/buildSupportTicketsSearchParams";
+import { AdminSavedViewChips } from "@/components/admin/AdminSavedViewChips";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminSupportContextHref } from "@/lib/adminSupportContextHref";
@@ -40,6 +42,7 @@ import { Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
 import { cn } from "@/lib/cn";
+import { AdminVirtualList } from "@/components/admin/AdminVirtualList";
 
 type AttentionState =
   | "awaiting_agent"
@@ -157,19 +160,115 @@ function ticketAgeDays(createdAt: string): number {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
+function SupportTicketsBulkBar({
+  selectedCount,
+  bulkAssignee,
+  setBulkAssignee,
+  bulkStatus,
+  setBulkStatus,
+  assignees,
+  bulkMutPending,
+  onAssign,
+  onUpdateStatus,
+  className = "",
+}: {
+  selectedCount: number;
+  bulkAssignee: string;
+  setBulkAssignee: (v: string) => void;
+  bulkStatus: string;
+  setBulkStatus: (v: string) => void;
+  assignees: Array<{ id: string; full_name: string | null; email: string | null }>;
+  bulkMutPending: boolean;
+  onAssign: () => void;
+  onUpdateStatus: () => void;
+  className?: string;
+}) {
+  if (selectedCount <= 0) return null;
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3", className)}>
+      <span className="text-sm text-gray-600">{selectedCount} selected</span>
+      <select
+        value={bulkAssignee}
+        onChange={(e) => setBulkAssignee(e.target.value)}
+        className="min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+      >
+        <option value="">Bulk assign…</option>
+        {assignees.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.full_name || a.email}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={!bulkAssignee || bulkMutPending}
+        onClick={onAssign}
+        className="min-h-11 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-white disabled:opacity-50"
+      >
+        Assign
+      </button>
+      <select
+        value={bulkStatus}
+        onChange={(e) => setBulkStatus(e.target.value)}
+        className="min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+      >
+        <option value="">Bulk status…</option>
+        <option value="in_progress">In progress</option>
+        <option value="waiting_customer">Waiting on customer</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+      <button
+        type="button"
+        disabled={!bulkStatus || bulkMutPending}
+        onClick={onUpdateStatus}
+        className="min-h-11 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-white disabled:opacity-50"
+      >
+        Update status
+      </button>
+    </div>
+  );
+}
+
 function SupportTicketCard({
   ticket,
   isSelected,
   isDesktopInbox,
   onSelectDesktop,
+  selectable = false,
+  isChecked = false,
+  onToggleCheck,
 }: {
   ticket: SupportTicket;
   isSelected: boolean;
   isDesktopInbox: boolean;
   onSelectDesktop: () => void;
+  selectable?: boolean;
+  isChecked?: boolean;
+  onToggleCheck?: () => void;
 }) {
   return (
-    <Link
+    <div
+      className={cn(
+        "relative rounded-2xl border bg-white shadow-sm transition-all",
+        isSelected
+          ? "border-gray-900 bg-gray-50 ring-2 ring-gray-900/15"
+          : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
+        ticket.agent_unread && "border-l-4 border-l-red-400",
+      )}
+    >
+      {selectable ? (
+        <input
+          type="checkbox"
+          className="absolute right-3 top-3 z-10 h-4 w-4"
+          checked={isChecked}
+          onChange={() => onToggleCheck?.()}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select ${ticket.ticket_number}`}
+        />
+      ) : null}
+      <Link
       to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticket.id)}`)}
       onClick={(e) => {
         if (isDesktopInbox) {
@@ -178,13 +277,7 @@ function SupportTicketCard({
         }
       }}
       aria-current={isSelected ? "true" : undefined}
-      className={cn(
-        "block rounded-2xl border bg-white p-4 shadow-sm transition-all",
-        isSelected
-          ? "border-gray-900 bg-gray-50 ring-2 ring-gray-900/15"
-          : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
-        ticket.agent_unread && "border-l-4 border-l-red-400",
-      )}
+      className="block p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -246,6 +339,7 @@ function SupportTicketCard({
         </div>
       </div>
     </Link>
+    </div>
   );
 }
 
@@ -352,7 +446,7 @@ export function SupportTicketsPage() {
   const firstResponseOverdueFilter = searchParams.get("first_response_overdue") === "1";
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
-  const savedViewId = searchParams.get("saved_view") ?? "needs_response";
+  const statusGroupFilter = searchParams.get("status_group") ?? "";
   const isTableView = viewFilter === "table";
   const isCardsView = !isTableView;
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
@@ -377,6 +471,7 @@ export function SupportTicketsPage() {
       setSearchParams(
         (prev) => {
           const n = new URLSearchParams(prev);
+          n.delete("saved_view");
           n.delete("needs_response");
           n.delete("first_response_overdue");
           n.delete("sla_state");
@@ -399,6 +494,7 @@ export function SupportTicketsPage() {
       setSearchParams(
         (prev) => {
           const n = new URLSearchParams(prev);
+          n.delete("saved_view");
           const defaults: Record<string, string> = {
             status: "all",
             priority: "all",
@@ -409,9 +505,11 @@ export function SupportTicketsPage() {
             needs_response: "0",
             sla_state: "",
             first_response_overdue: "0",
+            status_group: "",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
+          if (key === "status" && value !== "all") n.delete("status_group");
           n.set("page", "1");
           return n;
         },
@@ -419,6 +517,40 @@ export function SupportTicketsPage() {
       );
     },
     [setSearchParams]
+  );
+
+  const activeSavedViewId = useMemo(
+    () =>
+      matchSupportTicketSavedView({
+        pageIndex,
+        status: statusFilter,
+        priority: priorityFilter,
+        category: categoryFilter,
+        assign: assignFilter,
+        q: qFromUrl,
+        staffUserId: bootstrap?.userId,
+        sort: sortFilter,
+        slaOverdue: slaOverdueFilter,
+        needsResponse: needsResponseFilter,
+        slaState: slaStateFilter,
+        firstResponseOverdue: firstResponseOverdueFilter,
+        statusGroup: statusGroupFilter,
+      }),
+    [
+      pageIndex,
+      statusFilter,
+      priorityFilter,
+      categoryFilter,
+      assignFilter,
+      qFromUrl,
+      bootstrap?.userId,
+      sortFilter,
+      slaOverdueFilter,
+      needsResponseFilter,
+      slaStateFilter,
+      firstResponseOverdueFilter,
+      statusGroupFilter,
+    ],
   );
 
   const queryString = useMemo(
@@ -436,6 +568,7 @@ export function SupportTicketsPage() {
         needsResponse: needsResponseFilter,
         slaState: slaStateFilter,
         firstResponseOverdue: firstResponseOverdueFilter,
+        statusGroup: statusGroupFilter,
       })}&include_counts=1`,
     [
       pageIndex,
@@ -450,6 +583,7 @@ export function SupportTicketsPage() {
       slaStateFilter,
       firstResponseOverdueFilter,
       slaOverdueFilter,
+      statusGroupFilter,
     ]
   );
 
@@ -479,7 +613,7 @@ export function SupportTicketsPage() {
       adminApi.getJson<{ assignees: Array<{ id: string; full_name: string | null; email: string | null }> }>(
         "/api/admin/support-ticket-assignees",
       ),
-    enabled: allowed && isTableView,
+    enabled: allowed,
   });
 
   const bulkMut = useMutation({
@@ -520,8 +654,8 @@ export function SupportTicketsPage() {
 
   useEffect(() => {
     if (!isDesktop || isTableView || tickets.length === 0) return;
-    const valid = selectedId && tickets.some((t) => t.id === selectedId);
-    if (!valid) {
+    // Only auto-select when nothing is selected — do not override after filter changes.
+    if (!selectedId) {
       setSelectedTicket(tickets[0].id);
     }
   }, [isDesktop, isTableView, tickets, selectedId, setSelectedTicket]);
@@ -578,9 +712,11 @@ export function SupportTicketsPage() {
           n.delete("needs_response");
           n.delete("sla_state");
           n.delete("first_response_overdue");
+          n.delete("status_group");
           if (view) {
             const p = view.params;
-            if (p.status && p.status !== "all") n.set("status", p.status);
+            if (p.statusGroup) n.set("status_group", p.statusGroup);
+            else if (p.status && p.status !== "all") n.set("status", p.status);
             if (p.priority && p.priority !== "all") n.set("priority", p.priority);
             if (p.assign && p.assign !== "all") n.set("assign", p.assign);
             if (p.sort && p.sort !== "smart") n.set("sort", p.sort);
@@ -656,6 +792,12 @@ export function SupportTicketsPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={adminSpaTo("/admin/support-tickets/ai-drafts")}
+              className="inline-flex min-h-11 items-center rounded-xl border border-primary/30 bg-primary/5 px-4 text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              AI drafts
+            </Link>
             <Link
               to={adminSpaTo("/admin/reports/support-performance")}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
@@ -759,24 +901,11 @@ export function SupportTicketsPage() {
         </div>
       </AdminModal>
 
-      {/* Saved-view chips */}
-      <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
-        {SUPPORT_TICKET_SAVED_VIEWS.map((view) => (
-          <button
-            key={view.id}
-            type="button"
-            onClick={() => applySavedView(view.id)}
-            className={cn(
-              "inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-              savedViewId === view.id
-                ? "bg-gray-900 text-white shadow-sm"
-                : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300",
-            )}
-          >
-            {view.label}
-          </button>
-        ))}
-      </div>
+      <AdminSavedViewChips
+        views={SUPPORT_TICKET_SAVED_VIEWS}
+        activeViewId={activeSavedViewId}
+        onSelect={applySavedView}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
@@ -906,6 +1035,36 @@ export function SupportTicketsPage() {
         />
       ) : (
         <>
+          {isCardsView ? (
+            <SupportTicketsBulkBar
+              selectedCount={selectedIds.length}
+              bulkAssignee={bulkAssignee}
+              setBulkAssignee={setBulkAssignee}
+              bulkStatus={bulkStatus}
+              setBulkStatus={setBulkStatus}
+              assignees={assignees?.assignees ?? []}
+              bulkMutPending={bulkMut.isPending}
+              onAssign={() => bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })}
+              onUpdateStatus={() => bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })}
+            />
+          ) : null}
+
+          {isCardsView ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+              <label className="inline-flex min-h-11 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={tickets.length > 0 && selectedIds.length === tickets.length}
+                  onChange={(e) =>
+                    setSelectedIds(e.target.checked ? tickets.map((t) => t.id) : [])
+                  }
+                  aria-label="Select all tickets on page"
+                />
+                Select all on page
+              </label>
+            </div>
+          ) : null}
+
           {isCardsView && isDesktop ? (
             <div
               ref={inboxRef}
@@ -914,20 +1073,45 @@ export function SupportTicketsPage() {
               className="grid grid-cols-1 gap-4 outline-none lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-start"
               aria-label="Support ticket inbox"
             >
-              <div className="max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto pr-1">
-                {tickets.map((ticket) => (
+              <AdminVirtualList
+                items={tickets}
+                estimateSize={168}
+                threshold={12}
+                maxHeight="calc(100dvh - 14rem)"
+                ariaLabel="Support ticket list"
+                renderItem={(ticket) => (
                   <SupportTicketCard
                     key={ticket.id}
                     ticket={ticket}
                     isSelected={selectedId === ticket.id}
                     isDesktopInbox
                     onSelectDesktop={() => setSelectedTicket(ticket.id)}
+                    selectable
+                    isChecked={selectedIds.includes(ticket.id)}
+                    onToggleCheck={() =>
+                      setSelectedIds((prev) =>
+                        prev.includes(ticket.id)
+                          ? prev.filter((id) => id !== ticket.id)
+                          : [...prev, ticket.id],
+                      )
+                    }
                   />
-                ))}
-              </div>
+                )}
+              />
               <div className="sticky top-4 max-h-[calc(100dvh-14rem)] min-h-[24rem] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-gray-950/[0.03]">
                 {selectedId && tickets.some((t) => t.id === selectedId) ? (
-                  <SupportTicketDetailView id={selectedId} variant="panel" />
+                  <SupportTicketDetailView
+                    id={selectedId}
+                    variant="panel"
+                    onNavigateNext={(nextId) => {
+                      if (nextId) setSelectedTicket(nextId);
+                      else setSearchParams((prev) => {
+                        const n = new URLSearchParams(prev);
+                        n.delete("selected");
+                        return n;
+                      }, { replace: true });
+                    }}
+                  />
                 ) : (
                   <EmptyState
                     title="Select a ticket"
@@ -939,68 +1123,45 @@ export function SupportTicketsPage() {
           ) : null}
 
           {isCardsView && !isDesktop ? (
-            <div className="grid gap-3">
-              {tickets.map((ticket) => (
+            <AdminVirtualList
+              items={tickets}
+              estimateSize={168}
+              threshold={12}
+              ariaLabel="Support ticket cards"
+              renderItem={(ticket) => (
                 <SupportTicketCard
                   key={ticket.id}
                   ticket={ticket}
                   isSelected={false}
                   isDesktopInbox={false}
                   onSelectDesktop={() => {}}
+                  selectable
+                  isChecked={selectedIds.includes(ticket.id)}
+                  onToggleCheck={() =>
+                    setSelectedIds((prev) =>
+                      prev.includes(ticket.id)
+                        ? prev.filter((id) => id !== ticket.id)
+                        : [...prev, ticket.id],
+                    )
+                  }
                 />
-              ))}
-            </div>
+              )}
+            />
           ) : null}
 
           <AdminDataTable className={isTableView ? "" : "hidden"}>
-            {selectedIds.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-                <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
-                <select
-                  value={bulkAssignee}
-                  onChange={(e) => setBulkAssignee(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                >
-                  <option value="">Bulk assign…</option>
-                  {(assignees?.assignees ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.full_name || a.email}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={!bulkAssignee || bulkMut.isPending}
-                  onClick={() =>
-                    bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })
-                  }
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Assign
-                </button>
-                <select
-                  value={bulkStatus}
-                  onChange={(e) => setBulkStatus(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                >
-                  <option value="">Bulk status…</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="waiting_customer">Waiting on customer</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-                <button
-                  type="button"
-                  disabled={!bulkStatus || bulkMut.isPending}
-                  onClick={() =>
-                    bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })
-                  }
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Update status
-                </button>
-              </div>
-            ) : null}
+            <SupportTicketsBulkBar
+              selectedCount={selectedIds.length}
+              bulkAssignee={bulkAssignee}
+              setBulkAssignee={setBulkAssignee}
+              bulkStatus={bulkStatus}
+              setBulkStatus={setBulkStatus}
+              assignees={assignees?.assignees ?? []}
+              bulkMutPending={bulkMut.isPending}
+              onAssign={() => bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })}
+              onUpdateStatus={() => bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })}
+              className="border-b border-gray-100"
+            />
             <AdminTableHead>
               <tr>
                 <AdminTh>

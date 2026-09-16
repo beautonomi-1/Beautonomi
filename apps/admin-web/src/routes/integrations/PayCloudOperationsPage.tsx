@@ -27,6 +27,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { formatPaycloudMerchantOptionLabel } from "@/lib/formatPaycloudMerchantLabel";
 import { AdminProviderPicker } from "@/components/AdminProviderPicker";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { channelLabel, PaycloudPaymentDetailModal } from "./PaycloudPaymentDetailModal";
 
 type PaycloudProvider = {
@@ -185,6 +186,7 @@ function buildFleetQuery(filters: {
 }
 
 export function PayCloudOperationsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("PayCloud Operations");
   const { allowed, denied } = useSuperadminPage("PayCloud operations console is superadmin-only.");
   void allowed;
@@ -386,13 +388,14 @@ export function PayCloudOperationsPage() {
               className={adminToolbarButtonClass(decommissionSandboxMut.isPending)}
               disabled={decommissionSandboxMut.isPending}
               onClick={() => {
-                if (
-                  window.confirm(
+                requestConfirm({
+                  title: "Decommission sandbox terminals",
+                  consequence:
                     "Decommission all sandbox card machines for this tenant? This is the recommended cutover step after go-live.",
-                  )
-                ) {
-                  decommissionSandboxMut.mutate();
-                }
+                  variant: "danger",
+                  confirmLabel: "Decommission",
+                  onConfirm: async () => decommissionSandboxMut.mutate(),
+                });
               }}
             >
               {decommissionSandboxMut.isPending ? "Working…" : "Decommission sandbox terminals"}
@@ -670,9 +673,14 @@ export function PayCloudOperationsPage() {
                           className="rounded border border-gray-200 px-2 py-1 text-xs"
                           disabled={terminalActionMut.isPending}
                           onClick={() => {
-                            if (window.confirm(`Unassign ${t.display_name} from provider?`)) {
-                              terminalActionMut.mutate({ action: "unassign", terminal_id: t.id });
-                            }
+                            requestConfirm({
+                              title: "Unassign terminal",
+                              consequence: `Unassign ${t.display_name} from provider?`,
+                              variant: "danger",
+                              confirmLabel: "Unassign",
+                              onConfirm: async () =>
+                                terminalActionMut.mutate({ action: "unassign", terminal_id: t.id }),
+                            });
                           }}
                         >
                           Unassign
@@ -1025,13 +1033,13 @@ export function PayCloudOperationsPage() {
                             className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
                             disabled={forceSettleMut.isPending}
                             onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Force-settle ${money(payment.amount, payment.currency)} for ${payment.entity_type} ${payment.entity_id}?`,
-                                )
-                              ) {
-                                forceSettleMut.mutate(payment.id);
-                              }
+                              requestConfirm({
+                                title: "Force-settle payment",
+                                consequence: `Force-settle ${money(payment.amount, payment.currency)} for ${payment.entity_type} ${payment.entity_id}?`,
+                                variant: "danger",
+                                confirmLabel: "Force settle",
+                                onConfirm: async () => forceSettleMut.mutate(payment.id),
+                              });
                             }}
                           >
                             Force settle
@@ -1053,6 +1061,8 @@ export function PayCloudOperationsPage() {
           onClose={() => setDetailPaymentId(null)}
         />
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

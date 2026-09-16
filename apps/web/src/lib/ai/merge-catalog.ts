@@ -71,12 +71,16 @@ function mergeLiveModels(
     });
 }
 
-function directGeminiFromDb(dbByModelId: Map<string, DbCatalogRow>): ModelCatalogEntry[] {
+function directGeminiFromDb(
+  dbByModelId: Map<string, DbCatalogRow>,
+  catalogHasRows: boolean,
+): ModelCatalogEntry[] {
   const direct = DEFAULT_MODEL_CATALOG.map((entry) => {
     const db = dbByModelId.get(entry.id);
+    const enabled = db ? Boolean(db.enabled) : catalogHasRows ? false : entry.enabled;
     return {
       ...entry,
-      enabled: db?.enabled ?? entry.enabled,
+      enabled,
       tier: (db?.tier as ModelTier | undefined) ?? entry.tier,
     };
   });
@@ -128,8 +132,9 @@ export async function buildMergedCatalog(params: {
       supportsCaching: modelSupportsCaching(m),
     };
   });
+  const catalogHasRows = params.dbRows.length > 0;
   const directGeminiModels =
-    params.includeDirectGemini !== false ? directGeminiFromDb(dbByModelId) : [];
+    params.includeDirectGemini !== false ? directGeminiFromDb(dbByModelId, catalogHasRows) : [];
 
   const runtimeCatalog = buildRuntimeCatalogOrder({
     runtime: params.runtime ?? "vercel_gateway",

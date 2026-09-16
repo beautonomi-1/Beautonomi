@@ -9,6 +9,7 @@ import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -58,10 +59,11 @@ export function ContentReportsListPage() {
   const status = sp.get("status") || "all";
   const slaOverdue = sp.get("sla_overdue") === "1";
   const targetType = sp.get("target_type") || "all";
+  const authorUserId = sp.get("author_user_id") || "";
   const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
   const qk = useMemo(
-    () => adminQueryKeys.contentReports(`s=${status}|sla=${slaOverdue}|t=${targetType}|o=${offset}`),
-    [status, slaOverdue, targetType, offset]
+    () => adminQueryKeys.contentReports(`s=${status}|sla=${slaOverdue}|t=${targetType}|a=${authorUserId}|o=${offset}`),
+    [status, slaOverdue, targetType, authorUserId, offset],
   );
 
   const [actionId, setActionId] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export function ContentReportsListPage() {
       if (slaOverdue) p.set("sla_overdue", "1");
       else if (status !== "all") p.set("status", status);
       if (targetType !== "all") p.set("target_type", targetType);
+      if (authorUserId) p.set("author_user_id", authorUserId);
       return adminApi.getJson<ContentReportsPayload>(`/api/admin/content-reports?${p}`, {
         timeoutMs: 60_000,
       });
@@ -199,6 +202,10 @@ export function ContentReportsListPage() {
       <AdminPageHeader
         title="Content reports"
         description="Review user-submitted reports on posts, comments, messages, and reviews."
+      />
+      <AgentAssistEntitySection
+        targetType="content_report"
+        actionTypes={["moderation.briefing", "moderation.hide"]}
       />
       <AdminPanel>
         <TrustReportsTabNav />

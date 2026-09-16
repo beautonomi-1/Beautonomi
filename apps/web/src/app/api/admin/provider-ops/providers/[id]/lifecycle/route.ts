@@ -8,6 +8,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  computeActivationGates,
+  isReadyToActivate,
+} from "@/lib/provider-ops/activation-gates";
 
 interface TimelineEvent {
   type: string;
@@ -240,6 +244,15 @@ export async function GET(
 
     // Profile completeness score
     const locations = provider.provider_locations as Array<Record<string, unknown>> || [];
+    const activationGates = computeActivationGates({
+      business_name: provider.business_name,
+      is_verified: provider.is_verified,
+      provider_locations: locations.map((loc) => ({
+        address_line1: loc.address_line1 as string | null,
+        latitude: loc.latitude as number | null,
+        longitude: loc.longitude as number | null,
+      })),
+    });
     const completeness = {
       has_business_name: !!provider.business_name,
       has_description: !!provider.description,
@@ -260,6 +273,8 @@ export async function GET(
       lead,
       timeline,
       completeness,
+      activation_gates: activationGates,
+      ready_to_activate: isReadyToActivate(activationGates),
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch lifecycle data");

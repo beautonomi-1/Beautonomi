@@ -8,6 +8,9 @@ import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpBack, EnvSelect } from "./cpShared";
+import { AgentAssistCard } from "@/components/agent-assist/AgentAssistCard";
+import { getAgentAssistPresentation } from "@/lib/agentAssistCopy";
+import type { AgentActionRow } from "@/lib/agentActionTypes";
 
 type AgentAction = {
   id: string;
@@ -130,6 +133,7 @@ export function CpAgenticConsolePage() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const agentFilter = searchParams.get("agent_id") ?? "";
+  const actionDeepLink = searchParams.get("action") ?? "";
   const panelParam = searchParams.get("panel");
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
@@ -160,11 +164,13 @@ export function CpAgenticConsolePage() {
     setMsg(null);
     try {
       const actionsQs = new URLSearchParams();
-      if (statusFilter) actionsQs.set("status", statusFilter);
+      if (statusFilter) {
+        actionsQs.set("status", statusFilter);
+      } else {
+        actionsQs.set("include_decided", "true");
+      }
       if (agentFilter) actionsQs.set("agent_id", agentFilter);
-      const actionsPath = actionsQs.toString()
-        ? `/api/admin/agent-actions?${actionsQs.toString()}`
-        : "/api/admin/agent-actions";
+      const actionsPath = `/api/admin/agent-actions?${actionsQs.toString()}`;
       const runsPath = agentFilter
         ? `/api/admin/agent-runs?agent_id=${encodeURIComponent(agentFilter)}`
         : "/api/admin/agent-runs";
@@ -295,6 +301,14 @@ export function CpAgenticConsolePage() {
       panelParam === "runs" ? "agent-console-runs" : panelParam === "proposals" ? "agent-console-proposals" : null;
     if (targetId) document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [loading, panelParam, agentFilter]);
+
+  useEffect(() => {
+    if (loading || !actionDeepLink) return;
+    setExpandedAction(actionDeepLink);
+    requestAnimationFrame(() => {
+      document.getElementById(`agent-assist-${actionDeepLink}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [loading, actionDeepLink, actions.length]);
 
   const filteredAgentName = data?.agents.find((a) => a.id === agentFilter)?.display_name;
 
@@ -663,85 +677,55 @@ export function CpAgenticConsolePage() {
                 <option value="permanent_failure">Permanent failure</option>
               </select>
             </div>
-            <ul className="text-sm space-y-2 max-h-[32rem] overflow-auto">
+            <ul className="text-sm space-y-3 max-h-[48rem] overflow-auto">
               {actions.slice(0, 50).map((a) => {
                 const expiry = expiryLabel(a.approval_expires_at);
                 const isExpanded = expandedAction === a.id;
                 const canDecide = ACTIONABLE_STATUSES.has(a.status) && !expiry.expired;
                 const canExecute = a.status === "approved" && !expiry.expired;
+                const pres = getAgentAssistPresentation(a.action_type);
+                if (isExpanded) {
+                  return (
+                    <li key={a.id}>
+                      <AgentAssistCard
+                        action={a as AgentActionRow}
+                        entityLabel={`${pres.title} · ${a.target_type}`}
+                        shadowMode={data?.module?.shadow_mode ?? true}
+                        highlightId={actionDeepLink}
+                        onUpdated={() => void load({ silent: true })}
+                      />
+                    </li>
+                  );
+                }
                 return (
                   <li key={a.id} className="rounded-lg border border-gray-100 p-2">
                     <button
                       type="button"
-                      className="flex w-full flex-wrap items-center gap-2 text-left"
+                      className="flex w-full flex-wrap items-center gap-2 text-left min-h-11 touch-manipulation"
                       onClick={() => setExpandedAction(isExpanded ? null : a.id)}
                     >
-                      <span className="font-medium">{a.action_type}</span>
-                      {riskBadge(a.risk_level)}
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{a.status}</span>
-                      <span className="text-gray-500">
-                        {a.target_type}/{a.target_id.slice(0, 8)}…
-                      </span>
-                      <span className={`ml-auto text-xs ${expiry.expired ? "text-red-600" : "text-gray-400"}`}>
+                      <span className="font-medium">{pres.title}</span>
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{a.status.replace(/_/g, " ")}</span>
+                      <span className="text-gray-500">{pres.impactLabel}</span>
+                      <span className={`ms-auto text-xs ${expiry.expired ? "text-red-600" : "text-gray-400"}`}>
                         {ACTIONABLE_STATUSES.has(a.status) || a.status === "approved" ? expiry.text : ""}
                       </span>
                     </button>
-                    {isExpanded ? (
-                      <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
-                        {a.reasoning_summary ? (
-                          <p className="text-gray-700">
-                            <span className="font-medium">Agent reasoning:</span> {a.reasoning_summary}
-                          </p>
+                    {!isExpanded && (canDecide || canExecute) ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+                        <button
+                          type="button"
+                          disabled={deciding === a.id}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium disabled:opacity-50 min-h-11"
+                          onClick={() => setExpandedAction(a.id)}
+                        >
+                          Review
+                        </button>
+                        {expiry.expired && (ACTIONABLE_STATUSES.has(a.status) || a.status === "approved") ? (
+                          <span className="text-xs text-red-600">
+                            Approval window expired — the agent must re-propose.
+                          </span>
                         ) : null}
-                        <pre className="max-h-48 overflow-auto rounded bg-gray-50 p-2 text-xs">
-                          {JSON.stringify(a.proposed_payload, null, 2)}
-                        </pre>
-                        {a.last_execution_error ? (
-                          <p className="text-xs text-red-600">Last execution error: {a.last_execution_error}</p>
-                        ) : null}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {canDecide ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={deciding === a.id}
-                                className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                                onClick={() => void decideAction(a.id, "approve")}
-                              >
-                                Approve
-                              </button>
-                              <input
-                                className="w-48 rounded-lg border border-gray-200 px-2 py-1 text-xs"
-                                placeholder="Reject reason (optional)"
-                                value={rejectComment}
-                                onChange={(e) => setRejectComment(e.target.value)}
-                              />
-                              <button
-                                type="button"
-                                disabled={deciding === a.id}
-                                className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                                onClick={() => void decideAction(a.id, "reject")}
-                              >
-                                Reject
-                              </button>
-                            </>
-                          ) : null}
-                          {canExecute ? (
-                            <button
-                              type="button"
-                              disabled={deciding === a.id}
-                              className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                              onClick={() => void decideAction(a.id, "execute")}
-                            >
-                              Execute now
-                            </button>
-                          ) : null}
-                          {expiry.expired && (ACTIONABLE_STATUSES.has(a.status) || a.status === "approved") ? (
-                            <span className="text-xs text-red-600">
-                              Approval window expired — the agent must re-propose.
-                            </span>
-                          ) : null}
-                        </div>
                       </div>
                     ) : null}
                   </li>
@@ -761,7 +745,10 @@ export function CpAgenticConsolePage() {
               </p>
             </div>
             <ul className="text-sm space-y-2 max-h-64 overflow-auto">
-              {runs.slice(0, 25).map((r) => {
+              {runs
+                .filter((r) => r.status !== "running" || Boolean(r.ended_at))
+                .slice(0, 25)
+                .map((r) => {
                 const isFailure =
                   r.status === "retryable_failure" ||
                   r.status === "permanent_failure" ||

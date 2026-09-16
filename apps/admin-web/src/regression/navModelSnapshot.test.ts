@@ -17,46 +17,37 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { flattenNavItems, NAV_GROUPS, type NavItemConfig } from "../config/nav";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const navSrc = readFileSync(join(__dirname, "../config/nav.ts"), "utf8");
 
 type NavItem = { title: string; href: string; superadminOnly: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
-function parseNavGroups(src: string): NavGroup[] {
-  const groups: NavGroup[] = [];
+function toFlatItems(groups: typeof NAV_GROUPS): NavGroup[] {
+  return groups.map((group) => ({
+    label: group.label,
+    items: flattenNavItems([group]).map((item) => ({
+      title: item.title,
+      href: item.href,
+      superadminOnly: item.superadminOnly === true,
+    })),
+  }));
+}
 
-  // Match each { label: "…", items: [ … ] } block
-  const groupRe = /label:\s*"([^"]+)"[\s\S]*?items:\s*\[([\s\S]*?)\],?\s*\}/g;
-  let gm: RegExpExecArray | null;
-
-  while ((gm = groupRe.exec(src)) !== null) {
-    const label = gm[1];
-    const itemsBlock = gm[2];
-    const items: NavItem[] = [];
-
-    const itemRe = /\{[^}]*title:\s*"([^"]+)"[^}]*href:\s*"([^"]+)"([^}]*)\}/g;
-    let im: RegExpExecArray | null;
-
-    while ((im = itemRe.exec(itemsBlock)) !== null) {
-      const title = im[1];
-      const href = im[2];
-      const rest = im[3];
-      const superadminOnly = /superadminOnly\s*:\s*true/.test(rest);
-      items.push({ title, href, superadminOnly });
-    }
-
-    if (items.length > 0) {
-      groups.push({ label, items });
-    }
-  }
-
-  return groups;
+function countVisibleTopLevel(items: NavItemConfig[]): number {
+  return items.reduce((count, item) => {
+    const visible = item.superadminOnly !== true ? 1 : 0;
+    return count + visible;
+  }, 0);
 }
 
 describe("nav-model structural invariants", () => {
-  const groups = parseNavGroups(navSrc);
+  const groups = toFlatItems(NAV_GROUPS);
+  const topLevelGroups = NAV_GROUPS.map((g) => ({
+    label: g.label,
+    visibleCount: countVisibleTopLevel(g.items),
+  }));
 
   it("has at most 14 top-level groups", () => {
     expect(
@@ -69,13 +60,12 @@ describe("nav-model structural invariants", () => {
     expect(groups.length).toBeGreaterThan(0);
   });
 
-  it.each(groups)(
-    'group "$label" has ≤9 non-superadmin items',
-    ({ label, items }) => {
-      const visibleCount = items.filter((i) => !i.superadminOnly).length;
+  it.each(topLevelGroups)(
+    'group "$label" has ≤9 non-superadmin top-level items',
+    ({ label, visibleCount }) => {
       expect(
         visibleCount,
-        `Group "${label}" has ${visibleCount} visible items (>9). Split or mark excess items as superadminOnly.`,
+        `Group "${label}" has ${visibleCount} visible top-level items (>9). Nest under a hub or mark excess items as superadminOnly.`,
       ).toBeLessThanOrEqual(9);
     },
   );
@@ -94,5 +84,59 @@ describe("nav-model structural invariants", () => {
     }
 
     expect(duplicates, `Duplicate hrefs found: ${duplicates.join(", ")}`).toHaveLength(0);
+  });
+
+  it("has no duplicate nav item titles", () => {
+    const allTitles = groups.flatMap((g) => g.items.map((i) => i.title));
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+
+    for (const title of allTitles) {
+      if (seen.has(title)) {
+        duplicates.push(title);
+      } else {
+        seen.add(title);
+      }
+    }
+
+    expect(duplicates, `Duplicate nav titles found: ${duplicates.join(", ")}`).toHaveLength(0);
+  });
+});
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Strip `/admin` prefix from nav hrefs to match App.tsx route paths. */
+function navHrefAppPaths(): string[] {
+  const hrefs = flattenNavItems(NAV_GROUPS).map((item) =>
+    item.href.replace(/^\/admin\//, "").replace(/\/$/, ""),
+  );
+  return [...new Set(hrefs)];
+}
+
+function appRegistersPath(adminRelPath: string, appSrc: string): boolean {
+  if (adminRelPath === "custom-fields") {
+    return (
+      new RegExp(`path="${escapeRe("custom-fields")}"`).test(appSrc) ||
+      appSrc.includes("settings/custom-fields")
+    );
+  }
+
+  if (adminRelPath.startsWith("control-plane/")) {
+    const child = adminRelPath.slice("control-plane/".length);
+    return (
+      appSrc.includes('path="control-plane"') && new RegExp(`path="${escapeRe(child)}"`).test(appSrc)
+    );
+  }
+
+  return new RegExp(`path="${escapeRe(adminRelPath)}"`).test(appSrc);
+}
+
+describe("nav hrefs resolve in App.tsx", () => {
+  const appSrc = readFileSync(join(__dirname, "../App.tsx"), "utf8");
+
+  it.each(navHrefAppPaths())("nav href /admin/%s is registered", (p) => {
+    expect(appRegistersPath(p, appSrc), `Missing route for /admin/${p}`).toBe(true);
   });
 });

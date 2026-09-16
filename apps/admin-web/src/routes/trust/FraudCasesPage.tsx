@@ -1,13 +1,15 @@
 import { Fragment, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -22,6 +24,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type FraudCasesPayload = {
   data: Record<string, unknown>[];
@@ -55,8 +58,12 @@ export function FraudCasesPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
+  const subjectUserId = sp.get("subject_user_id") || "";
   const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
-  const qk = useMemo(() => adminQueryKeys.fraudCases(`s=${status}|o=${offset}`), [status, offset]);
+  const qk = useMemo(
+    () => adminQueryKeys.fraudCases(`s=${status}|u=${subjectUserId}|o=${offset}`),
+    [status, subjectUserId, offset],
+  );
 
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<ActionType | null>(null);
@@ -70,6 +77,7 @@ export function FraudCasesPage() {
       p.set("limit", "50");
       p.set("offset", String(offset));
       if (status !== "all") p.set("status", status);
+      if (subjectUserId) p.set("subject_user_id", subjectUserId);
       return adminApi.getJson<FraudCasesPayload>(`/api/admin/fraud-cases?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -92,6 +100,7 @@ export function FraudCasesPage() {
     },
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
+      invalidateAdminShellCounts(qc);
       setActionId(null);
       setActionType(null);
       setDecisionNotes("");
@@ -133,8 +142,9 @@ export function FraudCasesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Fraud cases"
-        description="Review signals from payments, identity checks, and user reports. Hold or release after human review — payout holds are applied separately in Finance."
+        description="Review signals from payments, identity checks, and user reports. Hold blocks provider payouts until you release the case."
       />
+      <AgentAssistEntitySection targetType="fraud_case" actionTypes={["fraud.briefing", "trust.open_case"]} />
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (
@@ -171,8 +181,10 @@ export function FraudCasesPage() {
               const statusStr = String(row.status ?? "open");
               const badgeClass = STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
               const riskScore = row.risk_score != null ? Number(row.risk_score) : null;
-              const subjectUser = row.subject_user as { full_name?: string; email?: string } | null;
-              const subjectProvider = row.subject_provider as { business_name?: string } | null;
+              const subjectUser = row.subject_user as { id?: string; full_name?: string; email?: string } | null;
+              const subjectProvider = row.subject_provider as { id?: string; business_name?: string } | null;
+              const subjectUserId = row.subject_user_id ? String(row.subject_user_id) : subjectUser?.id ?? "";
+              const subjectProviderId = row.subject_provider_id ? String(row.subject_provider_id) : subjectProvider?.id ?? "";
               const isExpanded = expandedId === id;
               const signals = (row.signals ?? {}) as Record<string, unknown>;
               const agentBriefing = signals.agent_briefing as
@@ -206,10 +218,25 @@ export function FraudCasesPage() {
                       )}
                     </AdminTd>
                     <AdminTd className="text-xs">
-                      {subjectProvider?.business_name ??
-                        subjectUser?.full_name ??
-                        subjectUser?.email ??
-                        "—"}
+                      {subjectProviderId ? (
+                        <Link
+                          to={adminSpaTo(`/admin/providers/${subjectProviderId}`)}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {subjectProvider?.business_name ?? subjectProviderId}
+                        </Link>
+                      ) : subjectUserId ? (
+                        <Link
+                          to={adminSpaTo(`/admin/users/${subjectUserId}`)}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {subjectUser?.full_name ?? subjectUser?.email ?? subjectUserId}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </AdminTd>
                     <AdminTd className="font-mono text-xs text-gray-500">
                       {row.payment_reference ? String(row.payment_reference).slice(0, 16) : "—"}
@@ -291,6 +318,26 @@ export function FraudCasesPage() {
                             </pre>
                           </div>
                           <div>
+                            {(subjectUserId || subjectProviderId) ? (
+                              <div className="mb-3 flex flex-wrap gap-3 text-xs">
+                                {subjectUserId ? (
+                                  <Link
+                                    to={adminSpaTo(`/admin/users/${subjectUserId}`)}
+                                    className="font-medium text-primary hover:underline"
+                                  >
+                                    Open user profile
+                                  </Link>
+                                ) : null}
+                                {subjectProviderId ? (
+                                  <Link
+                                    to={adminSpaTo(`/admin/providers/${subjectProviderId}`)}
+                                    className="font-medium text-primary hover:underline"
+                                  >
+                                    Open provider profile
+                                  </Link>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {agentBriefing ? (
                               <div className="mb-3">
                                 <p className="mb-1 font-medium text-gray-700">Agent briefing</p>
@@ -312,12 +359,11 @@ export function FraudCasesPage() {
                                 <p className="text-xs text-gray-600">{String(row.decision)}</p>
                               </div>
                             ) : null}
-                            {Boolean(signals.recommend_hold) && (
+                            {Boolean(signals.recommend_hold) && statusStr !== "held" ? (
                               <p className="mt-2 text-xs text-amber-700">
-                                Payout hold recommended — apply via Finance → Payouts or Paystack Terminal
-                                operations if needed.
+                                Signals recommend a payout hold — use Hold to block payouts for this provider.
                               </p>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </td>
@@ -357,9 +403,9 @@ export function FraudCasesPage() {
             </h3>
             <p className="mb-4 text-sm text-gray-500">
               {actionType === "hold"
-                ? "Records a hold decision and notifies the subject that their account is under review. Apply payout holds separately in Finance if needed."
+                ? "Places a payout hold on the provider and records the decision. Payouts cannot be approved or transferred until you release this case."
                 : actionType === "release"
-                  ? "Clears the hold and notifies the subject that review is complete."
+                  ? "Releases the payout hold and notifies the subject that review is complete."
                   : "Add decision notes for the audit trail."}
             </p>
             <label className="mb-1 block text-sm font-medium text-gray-700">

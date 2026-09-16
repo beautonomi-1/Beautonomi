@@ -20,6 +20,8 @@ import { AdminBulkActionBar } from "@/components/admin/AdminBulkActionBar";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { AdminVirtualList } from "@/components/admin/AdminVirtualList";
 
 interface BookingListRow {
   id: string;
@@ -71,6 +73,7 @@ export function BookingsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [tab, setTab] = useState<string>("all");
   const deferredSearch = useDeferredValue(searchQuery);
 
@@ -212,8 +215,16 @@ export function BookingsPage() {
   function runBulk(action: "cancel" | "complete") {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (!window.confirm(`Perform ${action} on ${ids.length} booking(s)?`)) return;
-    bulkMutation.mutate({ booking_ids: ids, action });
+    const label = action === "cancel" ? "Cancel bookings" : "Complete bookings";
+    requestConfirm({
+      title: label,
+      consequence: `${label} for ${ids.length} selected booking(s)? This affects customer and provider records.`,
+      variant: action === "cancel" ? "danger" : "primary",
+      confirmLabel: action === "cancel" ? "Cancel bookings" : "Mark complete",
+      onConfirm: async () => {
+        bulkMutation.mutate({ booking_ids: ids, action });
+      },
+    });
   }
 
   if (denied) return denied;
@@ -370,9 +381,13 @@ export function BookingsPage() {
         {visible.length === 0 ? (
           <EmptyState title="No bookings" description="No bookings match these filters." />
         ) : (
-          <ul className="space-y-3">
-            {visible.map((b) => (
-              <li key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <AdminVirtualList
+            items={visible}
+            estimateSize={220}
+            threshold={15}
+            ariaLabel="Bookings list"
+            renderItem={(b) => (
+              <div key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   <input
                     type="checkbox"
@@ -465,9 +480,9 @@ export function BookingsPage() {
                     View
                   </Link>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          />
         )}
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
@@ -493,6 +508,8 @@ export function BookingsPage() {
           </div>
         )}
       </AdminPanel>
+
+      <ConfirmDialog />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   getNegativeBalanceProvidersForTenant,
   type NegativeBalanceProvidersPayload,
 } from "@/lib/admin/negative-provider-payout-balances";
+import { getActiveProviderPayoutHoldsForProviders } from "@/lib/fraud/provider-payout-hold";
 
 type PayoutRow = {
   id?: string;
@@ -299,6 +300,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const payoutHoldByProvider =
+      providerIds.length > 0
+        ? await getActiveProviderPayoutHoldsForProviders(supabase, providerIds)
+        : new Map();
+
     type PayoutWithScope = PayoutRow & { providers?: unknown };
     const enrichedPayouts = (payoutRows as PayoutWithScope[]).map((payout) => {
       const { providers: _tenantScope, ...payoutRest } = payout;
@@ -316,6 +322,9 @@ export async function GET(request: NextRequest) {
           ? providerMap.get(payoutRest.provider_id) || null
           : null,
         bank_account: bankFromRecipient || bankFromProvider || null,
+        payout_hold: payoutRest.provider_id
+          ? payoutHoldByProvider.get(payoutRest.provider_id) ?? null
+          : null,
       };
     });
 

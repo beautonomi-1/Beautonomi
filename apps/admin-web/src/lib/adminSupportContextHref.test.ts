@@ -13,9 +13,18 @@ describe("adminSupportContextHref", () => {
     expect(adminSupportContextHref("gift_card", "g1")).toBe("/admin/gift-cards/g1");
   });
 
+  it("maps extended support context types", () => {
+    expect(adminSupportContextHref("provider_onboarding", "u1")).toBe("/admin/provider-ops/tracker/u1");
+    expect(adminSupportContextHref("user", "u1")).toBe("/admin/users/u1");
+    expect(adminSupportContextHref("provider", "p1")).toBe("/admin/providers/p1");
+    expect(adminSupportContextHref("lead", "l1")).toBe("/admin/provider-ops/leads/l1");
+    expect(adminSupportContextHref("payment", "pay-1")).toBe("/admin/refunds?q=pay-1");
+    expect(adminSupportContextHref("account", "u1")).toBe("/admin/users/u1");
+  });
+
   it("returns null when type or id is missing", () => {
     expect(adminSupportContextHref("booking", "")).toBeNull();
-    expect(adminSupportContextHref("payment", "p1")).toBeNull();
+    expect(adminSupportContextHref("technical", "x1")).toBeNull();
   });
 
   it("labels the open action", () => {

@@ -23,6 +23,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { marked } from "marked";
 import { Plus, Search } from "lucide-react";
 
@@ -290,6 +291,7 @@ function ArticleForm({
 }
 
 export function LearningArticlesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Learning Articles");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const [sp, setSp] = useSearchParams();
@@ -636,7 +638,7 @@ export function LearningArticlesPage() {
                       type="button"
                       disabled={deleteMut.isPending}
                       onClick={() => {
-                        if (confirm(`Delete "${r.title}"?`)) deleteMut.mutate(r.id);
+                        requestConfirm({ title: "Confirm action", consequence: `Delete "${r.title}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) });
                       }}
                       className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
@@ -662,6 +664,8 @@ export function LearningArticlesPage() {
           </li>
         </ul>
       </div>
+      <ConfirmDialog />
+
     </div>
   );
 }

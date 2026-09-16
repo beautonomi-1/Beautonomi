@@ -24,6 +24,7 @@ import {
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { cn } from "@/lib/cn";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface WalletMismatch {
   user_id: string;
@@ -73,6 +74,7 @@ export function WalletReconciliationPage() {
   const qc = useQueryClient();
 
   const [mismatchesOnly, setMismatchesOnly] = useState(false);
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const q = useQuery({
     queryKey: QK,
@@ -283,12 +285,20 @@ export function WalletReconciliationPage() {
                               type="button"
                               disabled={fixMut.isPending}
                               onClick={() => {
-                                if (
-                                  confirm(
-                                    `Set stored balance from ${row.wallet_balance.toFixed(2)} to ${row.transaction_sum.toFixed(2)} (${row.currency})?\n\nThis only fixes the stored number to match the sum of ledger rows — it does not add a new transaction.`,
-                                  )
-                                )
-                                  fixMut.mutate(row.wallet_id);
+                                requestConfirm({
+                                  title: "Fix wallet balance",
+                                  consequence: `Set stored balance from ${row.wallet_balance.toFixed(2)} to ${row.transaction_sum.toFixed(2)} (${row.currency})? This only fixes the stored number to match the sum of ledger rows — it does not add a new transaction.`,
+                                  variant: "danger",
+                                  confirmLabel: "Fix balance",
+                                  auditTrail: {
+                                    entityType: "wallet",
+                                    entityId: row.wallet_id,
+                                    label: "View wallet audit trail",
+                                  },
+                                  onConfirm: async () => {
+                                    fixMut.mutate(row.wallet_id);
+                                  },
+                                });
                               }}
                               className="rounded border border-blue-200 px-2 py-1 text-left text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
                             >
@@ -329,6 +339,8 @@ export function WalletReconciliationPage() {
           <li>Up to 1 000 wallets per run (most recently updated).</li>
         </ul>
       </div>
+
+      <ConfirmDialog />
     </div>
   );
 }

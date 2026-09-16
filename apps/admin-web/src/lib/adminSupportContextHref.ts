@@ -9,6 +9,12 @@ export function adminSupportContextHref(
   if (t === "booking") return `/admin/bookings/${i}`;
   if (t === "product_order") return `/admin/ecommerce/orders/${i}`;
   if (t === "gift_card") return `/admin/gift-cards/${i}`;
+  if (t === "provider_onboarding") return `/admin/provider-ops/tracker/${i}`;
+  if (t === "user") return `/admin/users/${i}`;
+  if (t === "provider") return `/admin/providers/${i}`;
+  if (t === "lead") return `/admin/provider-ops/leads/${i}`;
+  if (t === "payment") return `/admin/refunds?q=${encodeURIComponent(i)}`;
+  if (t === "account") return `/admin/users/${i}`;
   return null;
 }
 
@@ -17,6 +23,12 @@ export function adminSupportContextActionLabel(type?: string | null): string {
   if (t === "booking") return "Open booking";
   if (t === "product_order") return "Open product order";
   if (t === "gift_card") return "Open gift card";
+  if (t === "provider_onboarding") return "Open onboarding tracker";
+  if (t === "user") return "Open user";
+  if (t === "provider") return "Open provider";
+  if (t === "lead") return "Open lead";
+  if (t === "payment") return "Search refunds";
+  if (t === "account") return "Open account";
   return "Open related record";
 }
 

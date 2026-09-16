@@ -19,6 +19,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type ProviderRow = {
   id: string;
@@ -54,6 +55,7 @@ export function ProvidersListPage() {
   );
   const { canAccess } = useAdminSession();
   const canOpenLifecycle = canAccess(ADMIN_SECTION_PROVIDER_OPS);
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
   const search = sp.get("search") || "";
@@ -187,9 +189,16 @@ export function ProvidersListPage() {
                     className="w-fit rounded border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                     disabled={verifyProvider.isPending}
                     onClick={() => {
-                      if (confirm(`Remove verified badge for ${p.business_name ?? "this provider"}?`)) {
-                        verifyProvider.mutate({ id: p.id, verified: false });
-                      }
+                      const name = p.business_name ?? "this provider";
+                      requestConfirm({
+                        title: "Remove verified badge",
+                        consequence: `Remove verified badge for ${name}?`,
+                        variant: "danger",
+                        confirmLabel: "Remove badge",
+                        onConfirm: async () => {
+                          verifyProvider.mutate({ id: p.id, verified: false });
+                        },
+                      });
                     }}
                   >
                     Unverify
@@ -246,8 +255,15 @@ export function ProvidersListPage() {
                   className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
                   disabled={changeStatus.isPending}
                   onClick={() => {
-                    if (confirm(`Approve ${p.business_name ?? "this provider"}?`))
-                      changeStatus.mutate({ id: p.id, newStatus: "active" });
+                    const name = p.business_name ?? "this provider";
+                    requestConfirm({
+                      title: "Approve provider",
+                      consequence: `Approve ${name}? They will become active on the marketplace.`,
+                      confirmLabel: "Approve",
+                      onConfirm: async () => {
+                        changeStatus.mutate({ id: p.id, newStatus: "active" });
+                      },
+                    });
                   }}
                 >
                   Approve
@@ -259,8 +275,16 @@ export function ProvidersListPage() {
                   className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
                   disabled={changeStatus.isPending}
                   onClick={() => {
-                    if (confirm(`Suspend ${p.business_name ?? "this provider"}?`))
-                      changeStatus.mutate({ id: p.id, newStatus: "suspended" });
+                    const name = p.business_name ?? "this provider";
+                    requestConfirm({
+                      title: "Suspend provider",
+                      consequence: `Suspend ${name}? They will lose marketplace access.`,
+                      variant: "danger",
+                      confirmLabel: "Suspend",
+                      onConfirm: async () => {
+                        changeStatus.mutate({ id: p.id, newStatus: "suspended" });
+                      },
+                    });
                   }}
                 >
                   Suspend
@@ -272,8 +296,15 @@ export function ProvidersListPage() {
                   className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
                   disabled={changeStatus.isPending}
                   onClick={() => {
-                    if (confirm(`Reactivate ${p.business_name ?? "this provider"}?`))
-                      changeStatus.mutate({ id: p.id, newStatus: "active" });
+                    const name = p.business_name ?? "this provider";
+                    requestConfirm({
+                      title: "Reactivate provider",
+                      consequence: `Reactivate ${name}? They will regain marketplace access.`,
+                      confirmLabel: "Reactivate",
+                      onConfirm: async () => {
+                        changeStatus.mutate({ id: p.id, newStatus: "active" });
+                      },
+                    });
                   }}
                 >
                   Reactivate
@@ -284,7 +315,7 @@ export function ProvidersListPage() {
         },
       },
     ],
-    [canOpenLifecycle, changeStatus.isPending, verifyProvider.isPending]
+    [canOpenLifecycle, changeStatus.isPending, verifyProvider.isPending, requestConfirm]
   );
 
   if (denied) return denied;
@@ -380,6 +411,8 @@ export function ProvidersListPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

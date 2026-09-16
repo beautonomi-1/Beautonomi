@@ -22,6 +22,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { Plus, Search } from "lucide-react";
 
 type FeaturedCity = {
@@ -164,6 +165,7 @@ function FeaturedCityForm({
 }
 
 export function ContentFeaturedCitiesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Featured Cities");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const qc = useQueryClient();
@@ -409,7 +411,7 @@ export function ContentFeaturedCitiesPage() {
                       type="button"
                       disabled={deleteMut.isPending}
                       onClick={() => {
-                        if (confirm(`Delete "${cityLabel(r)}"?`)) deleteMut.mutate(r.id);
+                        requestConfirm({ title: "Confirm action", consequence: `Delete "${cityLabel(r)}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) });
                       }}
                       className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
@@ -432,6 +434,8 @@ export function ContentFeaturedCitiesPage() {
           </li>
         </ul>
       </div>
+      <ConfirmDialog />
+
     </div>
   );
 }

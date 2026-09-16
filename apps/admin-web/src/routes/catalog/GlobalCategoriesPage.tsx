@@ -18,6 +18,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type CatRow = Record<string, unknown> & {
   id?: string;
@@ -122,6 +123,7 @@ function CategoryTranslationsEditor({
 }
 
 export function GlobalCategoriesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const [msg, setMsg] = useState<string | null>(null);
@@ -329,7 +331,13 @@ export function GlobalCategoriesPage() {
                           type="button"
                           className="text-sm font-medium text-rose-700 hover:underline"
                           onClick={() => {
-                            if (confirm("Deactivate this category?")) deactivateMut.mutate(id);
+                            requestConfirm({
+                              title: "Deactivate category",
+                              consequence: "Deactivate this category? It will be hidden from the public catalog.",
+                              variant: "danger",
+                              confirmLabel: "Deactivate",
+                              onConfirm: async () => deactivateMut.mutate(id),
+                            });
                           }}
                         >
                           Deactivate
@@ -356,6 +364,8 @@ export function GlobalCategoriesPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

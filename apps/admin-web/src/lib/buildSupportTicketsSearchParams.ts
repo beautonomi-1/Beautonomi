@@ -1,3 +1,9 @@
+import {
+  createDefaultSavedViewMatcher,
+  matchAdminSavedView,
+  type AdminSavedView,
+} from "@/lib/adminSavedViews";
+
 const PAGE_SIZE = 25;
 
 export interface SupportTicketsFilterState {
@@ -19,6 +25,8 @@ export interface SupportTicketsFilterState {
   slaState: string;
   /** Segment: only tickets where first_response_due_at has passed and no reply yet */
   firstResponseOverdue: boolean;
+  /** Multi-status group — e.g. resolved + closed */
+  statusGroup: string;
 }
 
 /** Build query string for GET /api/admin/support-tickets (matches Next list page). */
@@ -26,7 +34,8 @@ export function buildSupportTicketsSearchParams(f: SupportTicketsFilterState): s
   const params = new URLSearchParams();
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String(f.pageIndex * PAGE_SIZE));
-  if (f.status !== "all") params.set("status", f.status);
+  if (f.statusGroup) params.set("status_group", f.statusGroup);
+  else if (f.status !== "all") params.set("status", f.status);
   if (f.priority !== "all") params.set("priority", f.priority);
   if (f.category !== "all") params.set("category", f.category);
   if (f.assign === "unassigned") params.set("assigned_to", "unassigned");
@@ -45,15 +54,8 @@ export function supportTicketsPageSize(): number {
   return PAGE_SIZE;
 }
 
-/**
- * Saved-view chip definitions.  Each view is a preset URL-param combination
- * surfaced as a clickable chip above the queue.
- */
-export interface SavedView {
-  id: string;
-  label: string;
-  params: Partial<SupportTicketsFilterState>;
-}
+/** Saved-view chip definitions for the support ticket queue. */
+export type SavedView = AdminSavedView<SupportTicketsFilterState>;
 
 export const SUPPORT_TICKET_SAVED_VIEWS: SavedView[] = [
   {
@@ -98,10 +100,10 @@ export const SUPPORT_TICKET_SAVED_VIEWS: SavedView[] = [
     id: "breaching_sla",
     label: "Breaching SLA",
     params: {
-      slaState: "at_risk",
+      slaOverdue: true,
       status: "all",
       sort: "sla_asc",
-      slaOverdue: false,
+      slaState: "",
       needsResponse: false,
       firstResponseOverdue: false,
     },
@@ -135,7 +137,8 @@ export const SUPPORT_TICKET_SAVED_VIEWS: SavedView[] = [
     id: "resolved",
     label: "Resolved / Closed",
     params: {
-      status: "resolved",
+      status: "all",
+      statusGroup: "resolved_closed",
       sort: "updated_desc",
       slaOverdue: false,
       needsResponse: false,
@@ -144,3 +147,44 @@ export const SUPPORT_TICKET_SAVED_VIEWS: SavedView[] = [
     },
   },
 ];
+
+const SUPPORT_TICKET_VIEW_DEFAULTS: Partial<SupportTicketsFilterState> = {
+  status: "all",
+  priority: "all",
+  assign: "all",
+  sort: "smart",
+  slaOverdue: false,
+  needsResponse: false,
+  slaState: "",
+  firstResponseOverdue: false,
+  statusGroup: "",
+};
+
+const supportTicketViewMatcher = createDefaultSavedViewMatcher<SupportTicketsFilterState>(
+  SUPPORT_TICKET_VIEW_DEFAULTS,
+);
+
+/** Returns the saved-view id that matches the current filter state, or null. */
+export function matchSupportTicketSavedView(f: SupportTicketsFilterState): string | null {
+  return matchAdminSavedView(
+    SUPPORT_TICKET_SAVED_VIEWS,
+    f,
+    [
+      "status",
+      "statusGroup",
+      "priority",
+      "assign",
+      "sort",
+      "slaOverdue",
+      "needsResponse",
+      "slaState",
+      "firstResponseOverdue",
+    ],
+    (current, paramValue, key) => {
+      if (key === "statusGroup") {
+        return (current.statusGroup || "") === (String(paramValue ?? "") || "");
+      }
+      return supportTicketViewMatcher(current, paramValue, key);
+    },
+  );
+}

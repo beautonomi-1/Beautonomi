@@ -21,6 +21,7 @@ import {
   AdminTd,
 } from "@/components/admin/AdminDataTable";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface PeriodLock {
   id: string;
@@ -42,6 +43,7 @@ export function PeriodLocksPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   useAdminDocumentTitle("Financial Period Locks");
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const [showForm, setShowForm] = useState(false);
   const [formStart, setFormStart] = useState("");
@@ -230,12 +232,20 @@ export function PeriodLocksPage() {
                       type="button"
                       disabled={deleteMut.isPending}
                       onClick={() => {
-                        if (
-                          confirm(
-                            `Unlock period ${lock.period_start?.slice(0, 10)} – ${lock.period_end?.slice(0, 10)}? This will allow writes to this period again.`
-                          )
-                        )
-                          deleteMut.mutate(lock.id);
+                        requestConfirm({
+                          title: "Unlock finance period",
+                          consequence: `Unlock period ${lock.period_start?.slice(0, 10)} – ${lock.period_end?.slice(0, 10)}? This will allow writes to this period again.`,
+                          variant: "danger",
+                          confirmLabel: "Unlock period",
+                          auditTrail: {
+                            entityType: "period_lock",
+                            entityId: lock.id,
+                            label: "View period lock audit trail",
+                          },
+                          onConfirm: async () => {
+                            deleteMut.mutate(lock.id);
+                          },
+                        });
                       }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
@@ -259,6 +269,8 @@ export function PeriodLocksPage() {
           <li>All lock and unlock actions are recorded in the audit log.</li>
         </ul>
       </div>
+
+      <ConfirmDialog />
     </div>
   );
 }

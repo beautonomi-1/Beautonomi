@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -107,6 +108,7 @@ export function ReviewsListPage() {
   const search = sp.get("search")?.trim() || "";
   const [searchInput, setSearchInput] = useState(search);
   const [flagModal, setFlagModal] = useState<{ id: string; reason: string } | null>(null);
+  const [hideConfirmId, setHideConfirmId] = useState<string | null>(null);
 
   // Provider-client-ratings has its own independent page state
   const [pcrPage, setPcrPage] = useState(1);
@@ -165,10 +167,13 @@ export function ReviewsListPage() {
     }) => adminApi.patchJson(`/api/admin/reviews/${id}`, updates),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
+      invalidateAdminShellCounts(qc);
       if ("is_flagged" in vars.updates) {
         adminToast.success(vars.updates.is_flagged ? "Review flagged" : "Review unflagged");
+        if (vars.updates.is_flagged) setFlagModal(null);
       } else if ("is_visible" in vars.updates) {
         adminToast.success(vars.updates.is_visible ? "Review shown" : "Review hidden");
+        if (!vars.updates.is_visible) setHideConfirmId(null);
       } else {
         adminToast.success("Review updated");
       }
@@ -437,12 +442,7 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-gray-500 px-2 py-1 text-xs text-white hover:bg-gray-600 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() =>
-                            moderateReview.mutate({
-                              id: String(row.id),
-                              updates: { is_visible: false },
-                            })
-                          }
+                          onClick={() => setHideConfirmId(String(row.id))}
                         >
                           Hide
                         </button>
@@ -654,6 +654,41 @@ export function ReviewsListPage() {
         )}
       </AdminPanel>
 
+      {hideConfirmId ? (
+        <AdminModal
+          open
+          onClose={() => setHideConfirmId(null)}
+          title="Hide review"
+          description="This review will no longer be visible to customers on the provider profile."
+          footer={
+            <>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                onClick={() => setHideConfirmId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={moderateReview.isPending}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                onClick={() =>
+                  moderateReview.mutate({
+                    id: hideConfirmId,
+                    updates: { is_visible: false },
+                  })
+                }
+              >
+                {moderateReview.isPending ? "Hiding…" : "Hide review"}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-gray-600">You can restore visibility later with Show.</p>
+        </AdminModal>
+      ) : null}
+
       {/* Flag review modal */}
       {flagModal && (
         <AdminModal
@@ -683,7 +718,6 @@ export function ReviewsListPage() {
                       flagged_reason: flagModal.reason || null,
                     },
                   });
-                  setFlagModal(null);
                 }}
               >
                 {moderateReview.isPending ? "Flagging…" : "Flag review"}

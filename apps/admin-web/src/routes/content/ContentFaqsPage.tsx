@@ -20,6 +20,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Faq = {
   id: string;
@@ -110,6 +111,7 @@ function FaqForm({
 }
 
 export function ContentFaqsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("FAQs");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const qc = useQueryClient();
@@ -255,7 +257,7 @@ export function ContentFaqsPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { if (confirm(`Delete "${r.question}"?`)) deleteMut.mutate(r.id); }}
+                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete "${r.question}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) }); }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -267,6 +269,8 @@ export function ContentFaqsPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

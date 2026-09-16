@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -9,7 +9,10 @@ import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
+import { AdminDataList, type AdminListColumn } from "@/components/admin/AdminDataList";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
+import { formatAdminDateTime, formatAdminRelativeTime } from "@/lib/formatAdminDateTime";
 import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -18,8 +21,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminToast } from "@/lib/adminToast";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface DisputeBooking {
   id: string;
@@ -80,10 +85,12 @@ export function DisputesPage() {
     "Providers & operations access is required for disputes."
   );
   const qc = useQueryClient();
+  const isDesktop = useIsDesktop();
   const [sp, setSp] = useSearchParams();
 
   // Server-driven filter state (persisted to URL)
   const statusFilter = sp.get("status") || "all";
+  const customerId = sp.get("customer_id") || "";
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const urlSearch = sp.get("q") || "";
 
@@ -110,7 +117,7 @@ export function DisputesPage() {
 
   const [closeId, setCloseId] = useState<string | null>(null);
 
-  const queryKey = adminQueryKeys.disputes.list({ statusFilter, page });
+  const queryKey = adminQueryKeys.disputes.list({ statusFilter, page, customerId });
 
   const q = useQuery({
     queryKey,
@@ -119,6 +126,7 @@ export function DisputesPage() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       params.set("limit", String(LIMIT));
       params.set("page", String(page));
+      if (customerId) params.set("customer_id", customerId);
       if (urlSearch) params.set("search", urlSearch);
       return adminApi.getJson<DisputesPayload>(
         `/api/admin/disputes?${params.toString()}`,
@@ -126,6 +134,8 @@ export function DisputesPage() {
       );
     },
     enabled: allowed,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const disputes = q.data?.disputes ?? [];
@@ -242,12 +252,139 @@ export function DisputesPage() {
     ["closed", "Closed"],
   ] as const;
 
+  const disputeColumns: AdminListColumn<Dispute>[] = [
+      {
+        id: "status",
+        header: "Status",
+        cell: (d) => (
+          <div className="flex flex-wrap gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[d.status] ?? "bg-gray-100 text-gray-600"}`}
+            >
+              {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+            </span>
+            <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+              Opened by {d.opened_by}
+            </span>
+            {d.opened_at ? (
+              <span
+                className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600"
+                title={formatAdminDateTime(d.opened_at)}
+              >
+                Opened {formatAdminRelativeTime(d.opened_at)}
+              </span>
+            ) : null}
+            {d.resolution ? (
+              <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+                {RESOLUTION_LABEL[d.resolution] ?? d.resolution}
+              </span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "reason",
+        header: "Reason",
+        cell: (d) => (
+          <div>
+            <p className="font-semibold text-gray-900">{d.reason}</p>
+            {d.description ? <p className="mt-1 text-gray-600">{d.description}</p> : null}
+          </div>
+        ),
+      },
+      {
+        id: "booking",
+        header: "Booking",
+        cell: (d) => (
+          <p className="text-sm text-gray-600">
+            {d.booking?.id ? (
+              <Link
+                to={adminSpaTo(`/admin/bookings/${d.booking.id}`)}
+                className="font-semibold text-primary hover:underline"
+              >
+                {d.booking.booking_number}
+              </Link>
+            ) : (
+              <strong>{d.booking?.booking_number}</strong>
+            )}
+            {" · "}
+            {d.booking?.customer?.id ? (
+              <Link
+                to={adminSpaTo(`/admin/users/${d.booking.customer.id}`)}
+                className="text-primary hover:underline"
+              >
+                {d.booking.customer.full_name || d.booking.customer.email}
+              </Link>
+            ) : (
+              d.booking?.customer?.full_name || d.booking?.customer?.email
+            )}
+            {" · "}
+            {d.booking?.provider?.id ? (
+              <Link
+                to={adminSpaTo(`/admin/providers/${d.booking.provider.id}`)}
+                className="text-primary hover:underline"
+              >
+                {d.booking.provider.business_name}
+              </Link>
+            ) : (
+              d.booking?.provider?.business_name
+            )}
+            {" · "}
+            <span className="font-medium">{formatAdminCurrency(d.booking?.total_amount ?? 0)}</span>
+          </p>
+        ),
+      },
+      {
+        id: "refund",
+        header: "Refund",
+        cell: (d) =>
+          d.refund_amount != null ? (
+            <span className="font-semibold text-green-700">{formatAdminCurrency(d.refund_amount)}</span>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        compactMobile: true,
+        cell: (d) => (
+          <div className="flex flex-wrap gap-2">
+            {d.status === "open" && (
+              <button
+                type="button"
+                className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700"
+                onClick={() => {
+                  setResolveId(d.id);
+                  setResolution("deny");
+                  setRefundAmount("");
+                  setNotes("");
+                }}
+              >
+                Resolve
+              </button>
+            )}
+            {d.status !== "closed" && (
+              <button
+                type="button"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => setCloseId(d.id)}
+              >
+                Close
+              </button>
+            )}
+          </div>
+        ),
+      },
+    ];
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Disputes"
         description="Manage booking disputes. Resolving with a refund credits the customer's wallet immediately."
       />
+      <AgentAssistEntitySection targetType="booking_dispute" actionTypes={["dispute.briefing"]} />
 
       {/* Statistics banner */}
       {stats && (
@@ -318,100 +455,13 @@ export function DisputesPage() {
           </p>
         )}
 
-        {disputes.length === 0 ? (
-          <EmptyState title="No disputes" description="Nothing matches these filters." />
-        ) : (
-          <ul className="space-y-4">
-            {disputes.map((d) => (
-              <li key={d.id} className="rounded-xl border border-gray-200 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-                  <div className="min-w-0 flex-1 space-y-2 text-sm">
-                    {/* Status badges */}
-                    <div className="flex flex-wrap gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[d.status] ?? "bg-gray-100 text-gray-600"}`}
-                      >
-                        {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
-                      </span>
-                      <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
-                        Opened by {d.opened_by}
-                      </span>
-                      {d.resolution && (
-                        <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
-                          {RESOLUTION_LABEL[d.resolution] ?? d.resolution}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Reason + description */}
-                    <p className="font-semibold text-gray-900">{d.reason}</p>
-                    {d.description && (
-                      <p className="text-gray-600">{d.description}</p>
-                    )}
-
-                    {/* Booking info */}
-                    <p className="text-gray-600">
-                      Booking{" "}
-                      <strong>{d.booking?.booking_number}</strong>
-                      {" · "}
-                      {d.booking?.customer?.full_name || d.booking?.customer?.email}
-                      {" · "}
-                      {d.booking?.provider?.business_name}
-                      {" · "}
-                      <span className="font-medium">
-                        {formatAdminCurrency(d.booking?.total_amount ?? 0)}
-                      </span>
-                    </p>
-
-                    {/* Refund recorded */}
-                    {d.refund_amount != null && (
-                      <p className="text-sm text-gray-700">
-                        Refund issued:{" "}
-                        <span className="font-semibold text-green-700">
-                          {formatAdminCurrency(d.refund_amount)}
-                        </span>
-                      </p>
-                    )}
-
-                    {/* Notes */}
-                    {d.notes && (
-                      <p className="rounded border border-gray-100 bg-gray-50 p-2 text-xs text-gray-700">
-                        Notes: {d.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex shrink-0 flex-wrap items-start gap-2 sm:flex-col">
-                    {d.status === "open" && (
-                      <button
-                        type="button"
-                        className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700"
-                        onClick={() => {
-                          setResolveId(d.id);
-                          setResolution("deny");
-                          setRefundAmount("");
-                          setNotes("");
-                        }}
-                      >
-                        Resolve
-                      </button>
-                    )}
-                    {d.status !== "closed" && (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setCloseId(d.id)}
-                      >
-                        Close
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <AdminDataList
+          columns={disputeColumns}
+          rows={disputes}
+          rowKey={(d) => d.id}
+          empty={<EmptyState title="No disputes" description="Nothing matches these filters." />}
+          tableMinWidthClass={isDesktop ? "min-w-[900px]" : "min-w-[680px]"}
+        />
 
         {/* Pagination */}
         {pag && pag.total_pages > 1 && (

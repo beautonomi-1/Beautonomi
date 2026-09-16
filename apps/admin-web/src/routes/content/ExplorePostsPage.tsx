@@ -22,6 +22,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { publicEnv } from "@/config/publicEnv";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff } from "lucide-react";
 
 const LIMIT = 50;
@@ -53,6 +54,7 @@ type ExplorePayload = {
 type ProviderJoin = { business_name?: string; slug?: string; id?: string };
 
 export function ExplorePostsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_CONTENT_CATALOG,
@@ -491,8 +493,14 @@ export function ExplorePostsPage() {
                           disabled={rowBusyId === id}
                           title="Show in public feed again"
                           onClick={() => {
-                            if (!window.confirm("Unhide this post and show it in the public Explore feed again?")) return;
-                            singlePostMut.mutate({ id, is_hidden: false, moderation_notes: null });
+                            requestConfirm({
+                              title: "Unhide post",
+                              consequence:
+                                "Unhide this post and show it in the public Explore feed again?",
+                              confirmLabel: "Unhide",
+                              onConfirm: async () =>
+                                singlePostMut.mutate({ id, is_hidden: false, moderation_notes: null }),
+                            });
                           }}
                         >
                           <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -632,6 +640,8 @@ export function ExplorePostsPage() {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

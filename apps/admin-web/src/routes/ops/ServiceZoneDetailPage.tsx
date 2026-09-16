@@ -27,6 +27,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
 import { ServiceZoneMapEditor } from "@/components/maps/ServiceZoneMapEditor";
 import type { ZoneBbox } from "@/components/maps/serviceZoneMapGeo";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type AreaRow = {
   id: string;
@@ -87,6 +88,7 @@ function formatResolvedPostalLabel(r: {
 }
 
 export function ServiceZoneDetailPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   useAdminDocumentTitle("Zone detail");
@@ -287,9 +289,13 @@ export function ServiceZoneDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                 disabled={publishMut.isPending}
                 onClick={() => {
-                  if (confirm("Unpublish this zone? It will revert to draft status.")) {
-                    publishMut.mutate("unpublish");
-                  }
+                  requestConfirm({
+                    title: "Unpublish service zone",
+                    consequence: "Unpublish this zone? It will revert to draft status.",
+                    variant: "danger",
+                    confirmLabel: "Unpublish",
+                    onConfirm: async () => publishMut.mutate("unpublish"),
+                  });
                 }}
               >
                 <XCircle className="h-4 w-4" />
@@ -301,9 +307,12 @@ export function ServiceZoneDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 disabled={publishMut.isPending}
                 onClick={() => {
-                  if (confirm("Publish this zone? It will go live and auto-enroll qualifying providers.")) {
-                    publishMut.mutate("publish");
-                  }
+                  requestConfirm({
+                    title: "Publish service zone",
+                    consequence: "Publish this zone? It will go live and auto-enroll qualifying providers.",
+                    confirmLabel: "Publish",
+                    onConfirm: async () => publishMut.mutate("publish"),
+                  });
                 }}
               >
                 <Send className="h-4 w-4" />
@@ -533,9 +542,13 @@ export function ServiceZoneDetailPage() {
                       disabled={removeInclusionMut.isPending}
                       title="Remove inclusion"
                       onClick={() => {
-                        if (confirm(`Remove inclusion "${inc.ref_name ?? inc.ref_code}"?`)) {
-                          removeInclusionMut.mutate(inc.id);
-                        }
+                        requestConfirm({
+                          title: "Remove inclusion",
+                          consequence: `Remove inclusion "${inc.ref_name ?? inc.ref_code}"?`,
+                          variant: "danger",
+                          confirmLabel: "Remove",
+                          onConfirm: async () => removeInclusionMut.mutate(inc.id),
+                        });
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -599,9 +612,13 @@ export function ServiceZoneDetailPage() {
                       disabled={removeExclusionMut.isPending}
                       title="Remove exclusion"
                       onClick={() => {
-                        if (confirm(`Remove exclusion "${exc.ref_name ?? exc.ref_code}"?`)) {
-                          removeExclusionMut.mutate(exc.id);
-                        }
+                        requestConfirm({
+                          title: "Remove exclusion",
+                          consequence: `Remove exclusion "${exc.ref_name ?? exc.ref_code}"?`,
+                          variant: "danger",
+                          confirmLabel: "Remove",
+                          onConfirm: async () => removeExclusionMut.mutate(exc.id),
+                        });
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -782,6 +799,8 @@ export function ServiceZoneDetailPage() {
           </div>
         </div>
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

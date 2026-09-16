@@ -16,6 +16,10 @@ import {
   type FraudCaseStatus,
 } from "@/lib/fraud/fraud-case-transitions";
 import { notifyFraudCaseReviewStatus } from "@/lib/fraud/notify-fraud-case-review";
+import {
+  placeProviderPayoutHold,
+  releaseProviderPayoutHold,
+} from "@/lib/fraud/provider-payout-hold";
 
 const patchSchema = z.object({
   status: z.enum(["review", "held", "released", "closed"]),
@@ -136,6 +140,24 @@ export async function PATCH(
       return errorResponse("decision notes are required for this status", "VALIDATION_ERROR", 400);
     }
 
+    const subjectProviderId = (existing as { subject_provider_id?: string | null }).subject_provider_id;
+
+    if (nextStatus === "held" && subjectProviderId) {
+      try {
+        await placeProviderPayoutHold({
+          supabase,
+          tenantId,
+          providerId: subjectProviderId,
+          fraudCaseId: id,
+          placedBy: user.id,
+          reason: decisionNotes || "Fraud case held by admin",
+        });
+      } catch (holdErr) {
+        const msg = holdErr instanceof Error ? holdErr.message : "Failed to place payout hold";
+        return errorResponse(msg, "PAYOUT_HOLD_FAILED", 409);
+      }
+    }
+
     const patch: Record<string, unknown> = {
       status: nextStatus,
       updated_at: new Date().toISOString(),
@@ -156,6 +178,20 @@ export async function PATCH(
       .single();
 
     if (error) return handleApiError(error, "Failed to update fraud case");
+
+    if ((nextStatus === "released" || nextStatus === "closed") && subjectProviderId) {
+      try {
+        await releaseProviderPayoutHold({
+          supabase,
+          providerId: subjectProviderId,
+          releasedBy: user.id,
+          releaseReason: decisionNotes || `Fraud case ${nextStatus}`,
+          fraudCaseId: id,
+        });
+      } catch (releaseErr) {
+        console.error("[fraud-cases PATCH] payout hold release failed:", releaseErr);
+      }
+    }
 
     if (nextStatus === "held" || nextStatus === "released" || nextStatus === "closed") {
       try {

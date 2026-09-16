@@ -22,6 +22,7 @@ import {
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminSupportTicketsSearchHref } from "@/lib/adminSupportContextHref";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -58,6 +59,7 @@ export function ProductOrderDetailPage() {
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E-commerce access is required.");
   const [trackingInput, setTrackingInput] = useState("");
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const updateOrder = useMutation({
     mutationFn: (updates: Record<string, unknown>) =>
@@ -209,8 +211,13 @@ export function ProductOrderDetailPage() {
               value={str(order.status)}
               disabled={updateOrder.isPending}
               onChange={(e) => {
-                if (confirm(`Change order status to "${e.target.value}"?`))
-                  updateOrder.mutate({ status: e.target.value });
+                const next = e.target.value;
+                requestConfirm({
+                  title: "Change order status",
+                  consequence: `Change order status to "${next}" for order ${str(order.order_number) || id}?`,
+                  confirmLabel: "Change status",
+                  onConfirm: async () => updateOrder.mutate({ status: next }),
+                });
               }}
             >
               {ORDER_STATUSES.map((s) => (
@@ -225,8 +232,14 @@ export function ProductOrderDetailPage() {
               value={str(order.payment_status)}
               disabled={updateOrder.isPending}
               onChange={(e) => {
-                if (confirm(`Change payment status to "${e.target.value}"?`))
-                  updateOrder.mutate({ payment_status: e.target.value });
+                const next = e.target.value;
+                requestConfirm({
+                  title: "Change payment status",
+                  consequence: `Change payment status to "${next}" for order ${str(order.order_number) || id}?`,
+                  variant: "danger",
+                  confirmLabel: "Change payment status",
+                  onConfirm: async () => updateOrder.mutate({ payment_status: next }),
+                });
               }}
             >
               {PAYMENT_STATUSES.map((s) => (
@@ -405,6 +418,8 @@ export function ProductOrderDetailPage() {
           </AdminDataTable>
         )}
       </AdminPanel>
+
+      <ConfirmDialog />
     </div>
   );
 }

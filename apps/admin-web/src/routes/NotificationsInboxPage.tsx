@@ -1,12 +1,18 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
+import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 
 type NotificationRow = {
   id: string;
@@ -23,10 +29,15 @@ const PAGE_SIZE = 25;
 
 export function NotificationsInboxPage() {
   useAdminDocumentTitle("Notifications");
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_OVERVIEW,
+    "You do not have access to the notifications inbox.",
+  );
   const qc = useQueryClient();
-  const [page, setPage] = useState(0);
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [typeFilter, setTypeFilter] = useState("");
+  const [sp, setSp] = useSearchParams();
+  const page = Math.max(0, parseInt(sp.get("page") || "0", 10) || 0);
+  const unreadOnly = sp.get("unread_only") === "1";
+  const typeFilter = sp.get("type") ?? "";
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const listQ = useQuery({
@@ -45,10 +56,12 @@ export function NotificationsInboxPage() {
         has_more?: boolean;
       }>(`/api/admin/notifications?${params.toString()}`);
     },
+    enabled: allowed,
   });
 
   const refreshShell = () => {
     invalidateAdminShellCounts(qc);
+    void listQ.refetch();
     setSelectedIds(new Set());
   };
 
@@ -57,6 +70,16 @@ export function NotificationsInboxPage() {
       Promise.all(
         ids.map((id) =>
           adminApi.patchJson(`/api/admin/notifications/${encodeURIComponent(id)}`, { is_read: true }),
+        ),
+      ),
+    onSuccess: () => refreshShell(),
+  });
+
+  const markUnread = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(
+        ids.map((id) =>
+          adminApi.patchJson(`/api/admin/notifications/${encodeURIComponent(id)}`, { is_read: false }),
         ),
       ),
     onSuccess: () => refreshShell(),
@@ -77,6 +100,31 @@ export function NotificationsInboxPage() {
     mutationFn: () => adminApi.postJson("/api/admin/notifications/mark-all-read", {}),
     onSuccess: () => refreshShell(),
   });
+
+  const setFilter = (key: "unread_only" | "type" | "page", value: string) => {
+    setSp(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (key === "page") {
+          if (value === "0") n.delete("page");
+          else n.set("page", value);
+        } else if (key === "unread_only") {
+          if (value === "1") n.set("unread_only", "1");
+          else n.delete("unread_only");
+          n.delete("page");
+        } else if (key === "type") {
+          if (value) n.set("type", value);
+          else n.delete("type");
+          n.delete("page");
+        }
+        return n;
+      },
+      { replace: true },
+    );
+    setSelectedIds(new Set());
+  };
+
+  if (denied) return denied;
 
   const rows = listQ.data?.notifications ?? [];
   const totalUnread = listQ.data?.total_unread ?? 0;
@@ -119,22 +167,14 @@ export function NotificationsInboxPage() {
             <input
               type="checkbox"
               checked={unreadOnly}
-              onChange={(e) => {
-                setUnreadOnly(e.target.checked);
-                setPage(0);
-                setSelectedIds(new Set());
-              }}
+              onChange={(e) => setFilter("unread_only", e.target.checked ? "1" : "0")}
             />
             Unread only
           </label>
           <select
             className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
             value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value);
-              setPage(0);
-              setSelectedIds(new Set());
-            }}
+            onChange={(e) => setFilter("type", e.target.value)}
           >
             <option value="">All types</option>
             <option value="admin_ops_alert">Ops alerts</option>
@@ -186,9 +226,16 @@ export function NotificationsInboxPage() {
       ) : null}
 
       {listQ.isLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <AdminPageSkeleton rows={4} />
       ) : listQ.isError ? (
-        <p className="text-sm text-red-600">Could not load notifications.</p>
+        isAdminApiAuthFailure(listQ.error) ? (
+          <PermissionDenied />
+        ) : (
+          <AdminRetryBlock
+            message={listQ.error instanceof Error ? listQ.error.message : "Could not load notifications"}
+            onRetry={() => void listQ.refetch()}
+          />
+        )
       ) : rows.length === 0 ? (
         <p className="text-sm text-gray-500">No notifications to show.</p>
       ) : (
@@ -225,14 +272,33 @@ export function NotificationsInboxPage() {
                     <p className="mt-1 text-xs text-gray-400">{new Date(n.created_at).toLocaleString()}</p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className="shrink-0 rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"
-                  aria-label="Delete"
-                  onClick={() => void deleteIds.mutateAsync([n.id])}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex shrink-0 flex-col gap-1">
+                  {unread ? (
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                      onClick={() => void markRead.mutateAsync([n.id])}
+                    >
+                      Mark read
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                      onClick={() => void markUnread.mutateAsync([n.id])}
+                    >
+                      Mark unread
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                    aria-label="Delete"
+                    onClick={() => void deleteIds.mutateAsync([n.id])}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -244,10 +310,7 @@ export function NotificationsInboxPage() {
           type="button"
           className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40"
           disabled={page === 0}
-          onClick={() => {
-            setPage((p) => Math.max(0, p - 1));
-            setSelectedIds(new Set());
-          }}
+          onClick={() => setFilter("page", String(page - 1))}
         >
           Previous
         </button>
@@ -256,10 +319,7 @@ export function NotificationsInboxPage() {
           type="button"
           className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40"
           disabled={!hasMore}
-          onClick={() => {
-            setPage((p) => p + 1);
-            setSelectedIds(new Set());
-          }}
+          onClick={() => setFilter("page", String(page + 1))}
         >
           Next
         </button>

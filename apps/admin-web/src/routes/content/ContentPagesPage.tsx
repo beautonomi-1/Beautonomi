@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import {
   CMS_PAGE_CONTENT_GROUP_LABELS,
   CMS_PAGE_CONTENT_GROUP_ORDER,
@@ -243,6 +244,7 @@ function PageContentForm({
 }
 
 export function ContentPagesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("CMS Pages");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_CONTENT_CATALOG,
@@ -669,12 +671,13 @@ export function ContentPagesPage() {
                                       type="button"
                                       disabled={deleteMut.isPending}
                                       onClick={() => {
-                                        if (
-                                          confirm(
-                                            `Delete section "${displayTitle}" (${r.section_key}) permanently? This removes the CMS row.`,
-                                          )
-                                        )
-                                          deleteMut.mutate(r.id);
+                                        requestConfirm({
+                                          title: "Delete CMS section",
+                                          consequence: `Delete section "${displayTitle}" (${r.section_key}) permanently? This removes the CMS row.`,
+                                          variant: "danger",
+                                          confirmLabel: "Delete section",
+                                          onConfirm: async () => deleteMut.mutate(r.id),
+                                        });
                                       }}
                                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                                     >
@@ -695,6 +698,8 @@ export function ContentPagesPage() {
           ))}
         </div>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

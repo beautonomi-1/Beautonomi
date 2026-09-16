@@ -20,6 +20,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { ProviderDetail, str, OWNERSHIP_STATUS_LABELS, TERMINAL_VENDOR_LABELS } from "./types";
 import { PaycloudPaymentDetailModal } from "@/routes/integrations/PaycloudPaymentDetailModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Props = {
   id: string;
@@ -152,6 +153,7 @@ function paycloudChecklistItems(readiness: PaycloudReadiness | undefined) {
 }
 
 export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommercialAccess }: Props) {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { bootstrap } = useAdminSession();
   const isSuperadmin = bootstrap?.isSuperadmin === true;
@@ -803,9 +805,7 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                 className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                 disabled={disconnectYocoOauth.isPending || !yoco?.integration?.oauth_token_present}
                 onClick={() => {
-                  if (window.confirm("Disconnect Yoco OAuth tokens? Provider must reconnect for Web POS.")) {
-                    disconnectYocoOauth.mutate();
-                  }
+                  requestConfirm({ title: "Confirm action", consequence: "Disconnect Yoco OAuth tokens? Provider must reconnect for Web POS.", variant: "primary", confirmLabel: "Confirm", onConfirm: async () => disconnectYocoOauth.mutate() });
                 }}
               >
                 {disconnectYocoOauth.isPending ? "Disconnecting…" : "Disconnect OAuth tokens"}
@@ -1279,9 +1279,14 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                             className="rounded border border-gray-200 px-2 py-0.5 text-xs"
                             disabled={paycloudTerminalAction.isPending}
                             onClick={() => {
-                              if (window.confirm(`Unassign ${t.display_name}?`)) {
-                                paycloudTerminalAction.mutate({ action: "unassign", terminal_id: t.id });
-                              }
+                              requestConfirm({
+                                title: "Unassign terminal",
+                                consequence: `Unassign ${t.display_name}?`,
+                                variant: "danger",
+                                confirmLabel: "Unassign",
+                                onConfirm: async () =>
+                                  paycloudTerminalAction.mutate({ action: "unassign", terminal_id: t.id }),
+                              });
                             }}
                           >
                             Unassign
@@ -1425,13 +1430,13 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                                   className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
                                   disabled={forceSettlePaycloud.isPending}
                                   onClick={() => {
-                                    if (
-                                      window.confirm(
-                                        `Force-settle ${paycloudMoney(payment.amount)} for ${payment.entity_type} ${payment.entity_id}?`,
-                                      )
-                                    ) {
-                                      forceSettlePaycloud.mutate(payment.id);
-                                    }
+                                    requestConfirm({
+                                      title: "Force-settle payment",
+                                      consequence: `Force-settle ${paycloudMoney(payment.amount)} for ${payment.entity_type} ${payment.entity_id}?`,
+                                      variant: "danger",
+                                      confirmLabel: "Force settle",
+                                      onConfirm: async () => forceSettlePaycloud.mutate(payment.id),
+                                    });
                                   }}
                                 >
                                   Force settle
@@ -1568,6 +1573,8 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
           onClose={() => setPaycloudDetailPaymentId(null)}
         />
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

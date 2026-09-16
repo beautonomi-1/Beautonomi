@@ -15,6 +15,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { cn } from "@/lib/cn";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type DetailResponse = {
   application: Record<string, unknown>;
@@ -71,6 +72,7 @@ export function TerminalOnboardingDetailPage() {
   useAdminDocumentTitle("Application detail");
 
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [merchantNo, setMerchantNo] = useState("");
   const [storeNo, setStoreNo] = useState("");
   const [infoReason, setInfoReason] = useState("");
@@ -454,9 +456,13 @@ export function TerminalOnboardingDetailPage() {
                 className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 disabled:opacity-50"
                 disabled={isTerminal || statusMutation.isPending}
                 onClick={() => {
-                  if (window.confirm("Cancel this application? This cannot be undone.")) {
-                    statusMutation.mutate({ status: "cancelled" });
-                  }
+                  requestConfirm({
+                    title: "Cancel terminal application",
+                    consequence: "Cancel this application? This cannot be undone.",
+                    variant: "danger",
+                    confirmLabel: "Cancel application",
+                    onConfirm: async () => statusMutation.mutate({ status: "cancelled" }),
+                  });
                 }}
               >
                 Cancel application
@@ -518,6 +524,8 @@ export function TerminalOnboardingDetailPage() {
           </AdminPanel>
         </div>
       </div>
+
+      <ConfirmDialog />
     </div>
   );
 }

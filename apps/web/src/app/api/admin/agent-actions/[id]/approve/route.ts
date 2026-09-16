@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { hashPayload } from "@beautonomi/agent-policy";
 import { recordApproval } from "@/lib/agents/actions/action-service";
 import { getAgentApprovalPolicy } from "@/lib/agents/actions/approval-policy";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -36,6 +37,20 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     }
 
     const body = await request.json().catch(() => ({}));
+
+    if (body.payload_override && typeof body.payload_override === "object") {
+      const merged = {
+        ...((action as { proposed_payload?: Record<string, unknown> }).proposed_payload ?? {}),
+        ...(body.payload_override as Record<string, unknown>),
+      };
+      const payloadHash = hashPayload(merged);
+      await supabase
+        .from("agent_actions")
+        .update({ proposed_payload: merged, payload_hash: payloadHash })
+        .eq("id", id);
+      action.payload_hash = payloadHash;
+      (action as { proposed_payload?: Record<string, unknown> }).proposed_payload = merged;
+    }
 
     await recordApproval({
       actionId: id,

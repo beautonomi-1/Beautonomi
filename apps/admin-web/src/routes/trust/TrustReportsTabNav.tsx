@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminTabButtonClass } from "@/lib/adminUi";
 
 export function TrustReportsTabNav() {
@@ -7,10 +8,10 @@ export function TrustReportsTabNav() {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Link to="/admin/user-reports" className={adminTabButtonClass(!isContent)}>
+      <Link to={adminSpaTo("/admin/user-reports")} className={adminTabButtonClass(!isContent)}>
         User reports
       </Link>
-      <Link to="/admin/content-reports" className={adminTabButtonClass(isContent)}>
+      <Link to={adminSpaTo("/admin/content-reports")} className={adminTabButtonClass(isContent)}>
         Content reports
       </Link>
     </div>

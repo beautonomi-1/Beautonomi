@@ -42,6 +42,11 @@ const QUEUE_LINKS = [
     countKey: "/admin/user-blocks",
   },
   {
+    title: "Disputes",
+    description: "Booking payment disputes and chargeback resolution.",
+    href: "/admin/disputes",
+  },
+  {
     title: "Fraud cases",
     description: "Investigate flagged payment and account fraud signals.",
     href: "/admin/fraud-cases",
@@ -50,6 +55,11 @@ const QUEUE_LINKS = [
     title: "Reviews & ratings",
     description: "Moderate public reviews and provider responses.",
     href: "/admin/reviews",
+  },
+  {
+    title: "Trust AI queue",
+    description: "AI-drafted moderation and fraud briefings awaiting review.",
+    href: "/admin/trust-safety-ops/ai-queue",
   },
 ] as const;
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
@@ -6,6 +6,8 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
+import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
+import { AdminDataList, type AdminListColumn } from "@/components/admin/AdminDataList";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -16,6 +18,8 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { activationGateLabels } from "@/lib/providerOpsActivationGates";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 const PAGE_SIZE = 50;
 const STAGE_TABS = [
@@ -37,6 +41,7 @@ interface ActivationProvider {
 }
 
 export function ProviderOpsActivationPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -77,16 +82,93 @@ export function ProviderOpsActivationPage() {
   const total = q.data?.meta?.total ?? 0;
   const hasMore = q.data?.meta?.has_more ?? false;
 
-  function commitSearch() {
-    const n = new URLSearchParams(sp);
-    if (searchInput.trim()) n.set("search", searchInput.trim()); else n.delete("search");
-    n.delete("page"); setSp(n, { replace: true });
-  }
+  const commitSearch = useCallback(
+    (value: string) => {
+      const n = new URLSearchParams(sp);
+      if (value.trim()) n.set("search", value.trim());
+      else n.delete("search");
+      n.delete("page");
+      setSp(n, { replace: true });
+    },
+    [sp, setSp],
+  );
   function setStage(next: string) {
     const n = new URLSearchParams(sp);
     if (next === "pending") n.delete("stage"); else n.set("stage", next);
     n.delete("page"); setSp(n, { replace: true });
   }
+
+  const columns: AdminListColumn<ActivationProvider>[] = [
+    {
+      id: "business",
+      header: "Provider",
+      cell: (p) => (
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900">{p.business_name}</span>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              {p.status.replace(/_/g, " ")}
+            </span>
+            {p.ready_to_activate ? (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">Ready</span>
+            ) : (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">Blocked</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {p.owner_name || p.owner_email} · {p.days_waiting}d waiting
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: "gates",
+      header: "Gates",
+      cell: (p) => (
+        <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs">
+          <Gate label="Name" ok={p.activation_gates.has_business_name} />
+          <Gate label="Location" ok={p.activation_gates.has_location} />
+          <Gate label="Verified" ok={p.activation_gates.is_verified} />
+        </div>
+      ),
+    },
+    {
+      id: "created",
+      header: "Created",
+      cell: (p) => new Date(p.created_at).toLocaleDateString(),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: (p) => {
+        const missingGates = activationGateLabels(p.activation_gates);
+        return (
+          <div className="flex flex-wrap gap-2">
+            <Link to={adminSpaTo(`/admin/providers/${p.id}`)} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+              View
+            </Link>
+            <button
+              type="button"
+              disabled={approve.isPending || !p.ready_to_activate}
+              title={!p.ready_to_activate ? `Missing: ${missingGates.join(", ")}` : undefined}
+              onClick={() => {
+                requestConfirm({
+                  title: "Confirm action",
+                  consequence: `Activate ${p.business_name}?`,
+                  variant: "primary",
+                  confirmLabel: "Confirm",
+                  onConfirm: async () => approve.mutate(p.id),
+                });
+              }}
+              className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Activate
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   if (denied) return denied;
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Activation Queue" /><AdminPanel><AdminPageSkeleton rows={5} /></AdminPanel></div>;
@@ -118,78 +200,44 @@ export function ProviderOpsActivationPage() {
         </div>
       </AdminPanel>
 
-      <div className="flex items-center gap-3">
-        <input type="text" placeholder="Search by business name, owner..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitSearch()} className="w-full max-w-sm rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm placeholder:text-gray-400" />
-        <button type="button" className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white" onClick={commitSearch}>Search</button>
-      </div>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={
-            stage === "draft"
-              ? "No incomplete drafts"
-              : stage === "all"
-                ? "No drafts or pending providers"
-                : "No providers pending approval"
+      <AdminPanel>
+        <AdminListToolbar
+          searchValue={searchInput}
+          onSearchChange={setSearchInput}
+          searchPlaceholder="Search by business name, owner…"
+          hasActiveFilters={Boolean(search)}
+          onClearFilters={() => {
+            setSearchInput("");
+            commitSearch("");
+          }}
+          actions={
+            <button
+              type="button"
+              className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+              onClick={() => commitSearch(searchInput)}
+            >
+              Search
+            </button>
           }
         />
-      ) : (
-        <div className="space-y-3">
-          {rows.map((p) => {
-            const missingGates = activationGateLabels(p.activation_gates);
-            return (
-            <AdminPanel key={p.id} className={!p.ready_to_activate ? "!border-amber-200 !bg-amber-50/20" : undefined}>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-900">{p.business_name}</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">{p.status.replace(/_/g, " ")}</span>
-                    {p.ready_to_activate ? (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">Ready</span>
-                    ) : (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">Blocked</span>
-                    )}
-                    {p.days_waiting > 3 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">{p.days_waiting}d in queue</span>}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">{p.owner_name || p.owner_email} · Created {new Date(p.created_at).toLocaleDateString()}</p>
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">
-                    <Gate label="Business Name" ok={p.activation_gates.has_business_name} />
-                    <Gate label="Location" ok={p.activation_gates.has_location} />
-                    <Gate label="Verified" ok={p.activation_gates.is_verified} />
-                    {p.activation_gates.has_location && !p.activation_gates.has_coordinates ? (
-                      <span className="flex items-center gap-1 text-xs text-amber-600">⚠ Coordinates not pinned</span>
-                    ) : null}
-                  </div>
-                  {!p.ready_to_activate && (
-                    <p className="mt-2 text-xs text-amber-700">
-                      Resolve before activation: {missingGates.join(", ")}.
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link to={adminSpaTo(`/admin/providers/${p.id}`)} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">View</Link>
-                  <Link
-                    to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(p.id)}`)}
-                    className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                  >
-                    Verification
-                  </Link>
-                  <button
-                    type="button"
-                    disabled={approve.isPending || !p.ready_to_activate}
-                    title={!p.ready_to_activate ? `Missing: ${missingGates.join(", ")}` : undefined}
-                    onClick={() => { if (confirm(`Activate ${p.business_name}?`)) approve.mutate(p.id); }}
-                    className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Activate
-                  </button>
-                </div>
-              </div>
-            </AdminPanel>
-          );
-          })}
-        </div>
-      )}
+      </AdminPanel>
+
+      <AdminDataList
+        columns={columns}
+        rows={rows}
+        rowKey={(p) => p.id}
+        empty={
+          <EmptyState
+            title={
+              stage === "draft"
+                ? "No incomplete drafts"
+                : stage === "all"
+                  ? "No drafts or pending providers"
+                  : "No providers pending approval"
+            }
+          />
+        }
+      />
 
       {total > PAGE_SIZE && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -200,18 +248,12 @@ export function ProviderOpsActivationPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }
 
 function Gate({ label, ok }: { label: string; ok: boolean }) {
   return <span className={`flex items-center gap-1 text-xs ${ok ? "text-green-600" : "text-red-500"}`}>{ok ? "✓" : "✗"} {label}</span>;
-}
-
-function activationGateLabels(gates: ActivationProvider["activation_gates"]): string[] {
-  const missing: string[] = [];
-  if (!gates.has_business_name) missing.push("business name");
-  if (!gates.has_location) missing.push("location");
-  if (!gates.is_verified) missing.push("verification");
-  return missing;
 }

@@ -8,14 +8,20 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  DEFAULT_DROPOFF_THRESHOLD_HOURS,
+  DEFAULT_SLA_CONTACT_DROPPED_HOURS,
+  DEFAULT_SLA_CONTACT_STALLED_HOURS,
+  DEFAULT_STALL_THRESHOLD_HOURS,
+} from "@/lib/provider-ops/stall-thresholds";
 
 const DEFAULT_SETTINGS = {
-  stall_threshold_hours: 24,
-  dropoff_threshold_hours: 168,
+  stall_threshold_hours: DEFAULT_STALL_THRESHOLD_HOURS,
+  dropoff_threshold_hours: DEFAULT_DROPOFF_THRESHOLD_HOURS,
   auto_assign_enabled: false,
   auto_sms_on_stall: false,
-  sla_contact_stalled_hours: 4,
-  sla_contact_dropped_hours: 24,
+  sla_contact_stalled_hours: DEFAULT_SLA_CONTACT_STALLED_HOURS,
+  sla_contact_dropped_hours: DEFAULT_SLA_CONTACT_DROPPED_HOURS,
 };
 
 export async function GET(request: NextRequest) {

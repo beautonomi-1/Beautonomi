@@ -13,6 +13,7 @@ export const ACTIONABLE_ACTIVITY_TYPES = new Set([
   "ops_stalled_onboarding",
   "safety_event",
   "support_ticket",
+  "agent_proposal",
 ]);
 
 export type AdminActivityItem = {

@@ -23,6 +23,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type Tab = "countries" | "currencies" | "languages" | "locales" | "timezones";
 
@@ -88,6 +89,7 @@ function getCodeKey(_tab: Tab): string {
 }
 
 export function IsoCodesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_INTEGRATIONS_DEV,
     "Integrations access is required."
@@ -325,7 +327,7 @@ export function IsoCodesPage() {
                         disabled={deleteMut.isPending}
                         onClick={() => {
                           const code = String(r[codeKey] ?? "");
-                          if (confirm(`Delete "${code}"?`)) deleteMut.mutate(code);
+                          requestConfirm({ title: "Confirm action", consequence: `Delete "${code}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(code) });
                         }}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -340,6 +342,8 @@ export function IsoCodesPage() {
           {rows.length > 200 && <p className="text-sm text-gray-500">Showing first 200 of {rows.length} rows.</p>}
         </>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

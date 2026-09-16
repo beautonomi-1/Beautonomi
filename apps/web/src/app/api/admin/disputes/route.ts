@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
 
     const status = searchParams.get("status");
     const openedBy = searchParams.get("opened_by");
+    const customerId = searchParams.get("customer_id");
     const search = searchParams.get("search")?.trim() ?? "";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
@@ -186,6 +187,9 @@ export async function GET(request: NextRequest) {
     if (openedBy) {
       query = query.eq("opened_by", openedBy);
     }
+    if (customerId) {
+      query = query.eq("booking.customer_id", customerId);
+    }
     if (searchDisputeIds !== null) {
       query = query.in("id", searchDisputeIds);
     }
@@ -193,7 +197,7 @@ export async function GET(request: NextRequest) {
     // ---- Count query (mirrors filters without range) ----------------------
     let countQuery = supabase
       .from("booking_disputes")
-      .select("id, booking:bookings!inner(tenant_id)", { count: "exact", head: true })
+      .select("id, booking:bookings!inner(tenant_id, customer_id)", { count: "exact", head: true })
       .eq("booking.tenant_id", tenantId);
 
     if (status && status !== "all") {
@@ -201,6 +205,9 @@ export async function GET(request: NextRequest) {
     }
     if (openedBy) {
       countQuery = countQuery.eq("opened_by", openedBy);
+    }
+    if (customerId) {
+      countQuery = countQuery.eq("booking.customer_id", customerId);
     }
     if (searchDisputeIds !== null) {
       countQuery = countQuery.in("id", searchDisputeIds);
