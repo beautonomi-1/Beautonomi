@@ -34,6 +34,18 @@ export const DisputesPage = lazy(() =>
 export const SupportTicketsPage = lazy(() =>
   import("@/routes/SupportTicketsPage").then((m) => ({ default: m.SupportTicketsPage }))
 );
+export const SupportAiDraftsPage = lazy(() =>
+  import("@/routes/support/SupportAiDraftsPage").then((m) => ({ default: m.SupportAiDraftsPage }))
+);
+export const FinanceAiQueuePage = lazy(() =>
+  import("@/routes/finance/FinanceAiQueuePage").then((m) => ({ default: m.FinanceAiQueuePage }))
+);
+export const TrustAiQueuePage = lazy(() =>
+  import("@/routes/trust/TrustAiQueuePage").then((m) => ({ default: m.TrustAiQueuePage }))
+);
+export const ProviderOpsAiQueuePage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsAiQueuePage").then((m) => ({ default: m.ProviderOpsAiQueuePage }))
+);
 export const NotificationsInboxPage = lazy(() =>
   import("@/routes/NotificationsInboxPage").then((m) => ({ default: m.NotificationsInboxPage }))
 );
@@ -398,6 +410,18 @@ export const AutomationsListPage = lazy(() =>
 );
 export const BroadcastHubPage = lazy(() =>
   import("@/routes/marketing/BroadcastHubPage").then((m) => ({ default: m.BroadcastHubPage }))
+);
+export const MarketingOpsHubPage = lazy(() =>
+  import("@/routes/marketing/MarketingOpsHubPage").then((m) => ({ default: m.MarketingOpsHubPage }))
+);
+export const IntegrationsHubPage = lazy(() =>
+  import("@/routes/integrations/IntegrationsHubPage").then((m) => ({ default: m.IntegrationsHubPage }))
+);
+export const OpsHubPage = lazy(() =>
+  import("@/routes/operations/OpsHubPage").then((m) => ({ default: m.OpsHubPage }))
+);
+export const PlatformConfigHubPage = lazy(() =>
+  import("@/routes/settings/PlatformConfigHubPage").then((m) => ({ default: m.PlatformConfigHubPage }))
 );
 export const BroadcastHistoryPage = lazy(() =>
   import("@/routes/marketing/BroadcastHistoryPage").then((m) => ({ default: m.BroadcastHistoryPage }))

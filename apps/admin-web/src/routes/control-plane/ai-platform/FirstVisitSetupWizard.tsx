@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AdminPanel } from "@/components/ui/AdminPanel";
-import { ConfirmModal } from "./ConfirmModal";
+import { AdminConfirmDialog } from "@/components/admin/AdminConfirmDialog";
 import { PRESET_HINTS } from "./constants";
 import type { AiPlatformPayload } from "./types";
 
@@ -205,18 +205,14 @@ export function FirstVisitSetupWizard(props: {
           </div>
         ) : null}
 
-        <ConfirmModal
+        <AdminConfirmDialog
           open={presetConfirm}
+          onClose={() => setPresetConfirm(false)}
           title="Apply gateway_cheap_global?"
-          body={
-            <>
-              <p>Sets runtime to Vercel AI Gateway and enables starter models from the live catalog.</p>
-              <p className="mt-2 text-xs text-gray-500">{PRESET_HINTS.gateway_cheap_global}</p>
-            </>
-          }
+          consequence="Sets runtime to Vercel AI Gateway and enables starter models from the live catalog."
+          preview={<p className="text-xs text-gray-500">{PRESET_HINTS.gateway_cheap_global}</p>}
           confirmLabel="Apply preset"
           busy={props.saving}
-          onCancel={() => setPresetConfirm(false)}
           onConfirm={() => {
             setPresetConfirm(false);
             void props.onApplyPreset("gateway_cheap_global").then(() => setStep("budget"));

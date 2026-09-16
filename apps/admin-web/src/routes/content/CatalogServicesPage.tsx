@@ -21,6 +21,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type ServiceRow = {
   id: string;
@@ -197,6 +198,7 @@ function ServiceFormUI({
 }
 
 export function CatalogServicesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Catalog Services");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const [sp] = useSearchParams();
@@ -370,7 +372,7 @@ export function CatalogServicesPage() {
                         type="button"
                         disabled={deleteMut.isPending}
                         onClick={() => {
-                          if (confirm(`Delete "${r.name}"?`)) deleteMut.mutate(r.id);
+                          requestConfirm({ title: "Confirm action", consequence: `Delete "${r.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) });
                         }}
                         className="text-xs text-red-600 hover:underline disabled:opacity-50"
                       >
@@ -399,6 +401,8 @@ export function CatalogServicesPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

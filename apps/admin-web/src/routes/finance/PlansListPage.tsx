@@ -24,6 +24,7 @@ import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { isBlankHtmlContent } from "@/lib/pricingFeatureHtml";
 import { getFreePlanFeatures, normalizeFeatures, type PlanFeaturesMap } from "@beautonomi/subscription-features";
 import { PlanFeatureEditor } from "./PlanFeatureEditor";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type PricingPlanLink = {
   id?: string;
@@ -97,6 +98,7 @@ export function PlansListPage() {
     "Plans & pricing management is restricted to platform superadmins (matches Next.js /admin/plans).",
   );
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const paystackQ = useTenantFeatureFlags([TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_PAYSTACK], allowed);
   const showPaystackOffBanner =
     paystackQ.isSuccess &&
@@ -1004,11 +1006,18 @@ export function PlansListPage() {
                           onClick={() => {
                             const id = String(row.pricing_plan_id ?? row.pricing_plan?.id ?? "");
                             if (!id) return;
-                            if (
-                              confirm("Hide this card from /pricing? (Does not delete the row; you can link it again later.)")
-                            ) {
-                              hidePoCard.mutate(id);
-                            }
+                            requestConfirm({
+                              title: "Hide pricing card",
+                              consequence:
+                                "Hide this card from /pricing? Does not delete the row; you can link it again later.",
+                              confirmLabel: "Hide card",
+                              auditTrail: {
+                                entityType: "pricing_card",
+                                entityId: id,
+                                label: "View pricing card audit trail",
+                              },
+                              onConfirm: async () => hidePoCard.mutate(id),
+                            });
                           }}
                         >
                           Hide from /pricing
@@ -1293,8 +1302,18 @@ export function PlansListPage() {
                         disabled={deletePlan.isPending}
                         className="text-sm text-red-600 underline disabled:opacity-50"
                         onClick={() => {
-                          if (confirm(`Delete plan "${r.name ?? r.id}"? Providers with active subscriptions will keep access (plan deactivated).`))
-                            deletePlan.mutate(String(r.id));
+                          requestConfirm({
+                            title: "Delete plan",
+                            consequence: `Delete plan "${r.name ?? r.id}"? Providers with active subscriptions will keep access (plan deactivated).`,
+                            variant: "danger",
+                            confirmLabel: "Delete plan",
+                            auditTrail: {
+                              entityType: "subscription_plan",
+                              entityId: String(r.id),
+                              label: "View plan audit trail",
+                            },
+                            onConfirm: async () => deletePlan.mutate(String(r.id)),
+                          });
                         }}
                       >
                         Delete
@@ -1307,6 +1326,7 @@ export function PlansListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

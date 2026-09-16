@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 export type AdminSubscriptionActionKind = "assign_plan" | "cancel" | "reactivate";
 
@@ -98,6 +99,13 @@ export function AdminSubscriptionActionModal({
 
   return (
     <AdminModal open={open} onClose={onClose} title={title} description={description} footer={footer}>
+      <div className="mb-3">
+        <AdminAuditTrailLink
+          entityType="provider_subscription"
+          entityId={payload.subId}
+          label="View subscription audit trail"
+        />
+      </div>
       <dl className="space-y-2 text-sm text-gray-700">
         <div className="flex justify-between gap-4">
           <dt className="text-gray-500">Provider</dt>

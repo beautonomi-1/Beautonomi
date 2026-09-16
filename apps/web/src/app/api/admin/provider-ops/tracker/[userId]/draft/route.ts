@@ -9,6 +9,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { deepMergeDraftData } from "@/lib/provider-ops/deep-merge-draft-data";
 
 export async function GET(
   request: NextRequest,
@@ -73,7 +74,10 @@ export async function PATCH(
 
     const existingData =
       (existing?.draft_data as Record<string, unknown>) || {};
-    const mergedData = { ...existingData, ...body.draft_data };
+    const mergedData = deepMergeDraftData(
+      existingData,
+      body.draft_data as Record<string, unknown> | undefined
+    );
 
     const updates: Record<string, unknown> = {
       draft_data: mergedData,

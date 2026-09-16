@@ -8,6 +8,7 @@ import {
 import { runSupportFollowUpSweep } from "@/lib/agents/workflows/support-followups";
 import { runRefundBriefingSweepForTenant } from "@/lib/agents/workflows/refund-preprocessor";
 import { expireStaleProposals } from "@/lib/agents/actions/action-service";
+import { reapStuckAgentRuns } from "@/lib/agents/actions/agent-run-lifecycle";
 import { runContentModerationSweep } from "@/lib/agents/workflows/content-moderation";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { slackNotifyAgentRunFailed } from "@/lib/integrations/slack/agent-triggers";
@@ -45,10 +46,16 @@ async function runJob(request: NextRequest) {
 
   // Retire overdue proposals first so re-sweeps can propose with fresh data.
   let expiredProposals = 0;
+  let reapedStuckRuns = 0;
   try {
     expiredProposals = await expireStaleProposals();
   } catch (error) {
     Sentry.captureException(error, { tags: { workflow: "expire-proposals", cron: "agent-workforce-sweep" } });
+  }
+  try {
+    reapedStuckRuns = await reapStuckAgentRuns();
+  } catch (error) {
+    Sentry.captureException(error, { tags: { workflow: "reap-stuck-runs", cron: "agent-workforce-sweep" } });
   }
 
   for (;;) {
@@ -120,6 +127,7 @@ async function runJob(request: NextRequest) {
     ok: true,
     tenantCount: results.length,
     expiredProposals,
+    reapedStuckRuns,
     results,
     triageBackstop,
     followUps,

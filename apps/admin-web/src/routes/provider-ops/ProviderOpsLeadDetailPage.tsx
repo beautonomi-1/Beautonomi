@@ -39,6 +39,7 @@ import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
 import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
 import { ReferrerPicker, referrerSelectionFromLead, type ReferrerSelection } from "@/components/provider-ops/ReferrerPicker";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import {
   canWhatsAppLead,
   getLeadContactAlertLabel,
@@ -112,6 +113,7 @@ interface Activity {
 }
 
 export function ProviderOpsLeadDetailPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -273,14 +275,10 @@ export function ProviderOpsLeadDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to log call: ${e.message}`),
   });
 
-  const handleLeadCallClick = useCallback(async () => {
+  const executeLeadCall = useCallback(async () => {
     const lead = q.data as Record<string, unknown> | undefined;
     const phone = typeof lead?.phone_e164 === "string" ? lead.phone_e164.trim() : "";
     if (!phone) return;
-    if (lead?.do_not_contact) {
-      const ok = window.confirm("This lead is marked Do Not Contact. Place the call anyway?");
-      if (!ok) return;
-    }
 
     const now = Date.now();
     const shouldLog = now - lastCallLogAtRef.current >= 2000;
@@ -312,6 +310,23 @@ export function ProviderOpsLeadDetailPage() {
       adminToast.error(e instanceof Error ? e.message : "Failed to log call");
     }
   }, [id, q.data, qc]);
+
+  const handleLeadCallClick = useCallback(() => {
+    const lead = q.data as Record<string, unknown> | undefined;
+    const phone = typeof lead?.phone_e164 === "string" ? lead.phone_e164.trim() : "";
+    if (!phone) return;
+    if (lead?.do_not_contact) {
+      requestConfirm({
+        title: "Do Not Contact lead",
+        consequence: "This lead is marked Do Not Contact. Place the call anyway?",
+        variant: "danger",
+        confirmLabel: "Place call",
+        onConfirm: async () => executeLeadCall(),
+      });
+      return;
+    }
+    void executeLeadCall();
+  }, [executeLeadCall, q.data, requestConfirm]);
 
   const assignMut = useMutation({
     mutationFn: (args: { assigned_to: string; assigned_to_name?: string }) => {
@@ -721,7 +736,7 @@ export function ProviderOpsLeadDetailPage() {
               disabled={restoreLead.isPending}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 touch-manipulation hover:bg-emerald-50 transition-colors disabled:opacity-50"
               onClick={() => {
-                if (confirm("Restore this lead from trash?")) restoreLead.mutate();
+                requestConfirm({ title: "Confirm action", consequence: "Restore this lead from trash?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => restoreLead.mutate() });
               }}
             >
               <RotateCcw className="h-4 w-4" />Restore
@@ -731,7 +746,7 @@ export function ProviderOpsLeadDetailPage() {
               type="button"
               className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 touch-manipulation hover:bg-red-50 transition-colors"
               onClick={() => {
-                if (confirm("Move this lead to trash?")) deleteLead.mutate();
+                requestConfirm({ title: "Confirm action", consequence: "Move this lead to trash?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteLead.mutate() });
               }}
             >
               <Trash2 className="h-4 w-4" />Trash
@@ -1424,6 +1439,8 @@ export function ProviderOpsLeadDetailPage() {
           </div>
         </div>
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

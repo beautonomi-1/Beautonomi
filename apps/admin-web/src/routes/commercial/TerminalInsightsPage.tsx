@@ -381,7 +381,7 @@ export function TerminalInsightsPage() {
                   <tr key={item.id} className="hover:bg-gray-50/60">
                     <AdminTd>
                       <Link
-                        to={`/admin/providers/${item.provider_id}`}
+                        to={adminSpaTo(`/admin/providers/${item.provider_id}`)}
                         className="font-medium text-slate-900 hover:underline"
                       >
                         {item.providers?.business_name ?? item.provider_id}

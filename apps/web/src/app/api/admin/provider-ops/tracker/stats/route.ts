@@ -10,6 +10,10 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
 import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
 import { isOnboardingWizardUserRole } from "@/lib/provider-ops/onboarding-wizard-roles";
+import {
+  computeStallStatus,
+  loadProviderOpsStallSettings,
+} from "@/lib/provider-ops/stall-thresholds";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,8 +21,9 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const stallThresholdHours = 24;
-    const dropOffThresholdHours = 168;
+    const stallSettings = await loadProviderOpsStallSettings(supabase, tenantId);
+    const stallThresholdHours = stallSettings.stall_threshold_hours;
+    const dropOffThresholdHours = stallSettings.dropoff_threshold_hours;
     const now = Date.now();
 
     const rawDrafts = await fetchProviderOnboardingDraftsForTenantScope(
@@ -65,9 +70,14 @@ export async function GET(request: NextRequest) {
 
       const diff = now - new Date(d.updated_at).getTime();
       const hours = diff / (1000 * 60 * 60);
-      if (hours > dropOffThresholdHours) droppedOffCount++;
-      else if (hours > stallThresholdHours) stalledCount++;
-      else if (hours > stallThresholdHours / 2) slowingCount++;
+      const stallStatus = computeStallStatus(
+        d.updated_at,
+        stallThresholdHours,
+        dropOffThresholdHours
+      );
+      if (stallStatus === "dropped_off") droppedOffCount++;
+      else if (stallStatus === "stalled") stalledCount++;
+      else if (stallStatus === "slowing") slowingCount++;
       else activeCount++;
     }
 

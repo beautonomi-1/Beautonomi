@@ -21,6 +21,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminToast } from "@/lib/adminToast";
+import { AdminConfirmDialog } from "@/components/admin/AdminConfirmDialog";
 import { cn } from "@/lib/cn";
 
 type Proposal = {
@@ -51,6 +52,7 @@ export function LedgerRepairPage() {
   const [note, setNote] = useState("");
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [approveConfirmId, setApproveConfirmId] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: adminQueryKeys.ledgerRepair(status),
@@ -95,6 +97,7 @@ export function LedgerRepairPage() {
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/finance/ledger-repair/${id}/approve`, {}),
     onSuccess: () => {
       adminToast.success("Approved and posted");
+      setApproveConfirmId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.ledgerRepair(status) });
     },
     onError: (e: Error) => adminToast.error(e.message),
@@ -197,7 +200,7 @@ export function LedgerRepairPage() {
                     isSuperadmin &&
                     row.proposed_by !== bootstrap?.userId ? (
                       <div className="flex flex-wrap gap-1">
-                        <button type="button" className="text-xs text-emerald-700 underline" onClick={() => void approveMut.mutate(row.id)}>
+                        <button type="button" className="text-xs text-emerald-700 underline" onClick={() => setApproveConfirmId(row.id)}>
                           Approve
                         </button>
                         <button type="button" className="text-xs text-red-700 underline" onClick={() => setRejectId(row.id)}>
@@ -231,6 +234,28 @@ export function LedgerRepairPage() {
           </div>
         </AdminPanel>
       ) : null}
+
+      <AdminConfirmDialog
+        open={approveConfirmId != null}
+        onClose={() => setApproveConfirmId(null)}
+        title="Approve ledger repair"
+        consequence="This posts the proposed ledger entry. Period locks are enforced and this cannot be undone from this screen."
+        confirmLabel="Approve and post"
+        variant="primary"
+        busy={approveMut.isPending}
+        auditTrail={
+          approveConfirmId
+            ? {
+                entityType: "ledger_repair_proposal",
+                entityId: approveConfirmId,
+                label: "View proposal audit trail",
+              }
+            : undefined
+        }
+        onConfirm={() => {
+          if (approveConfirmId) void approveMut.mutateAsync(approveConfirmId);
+        }}
+      />
     </div>
   );
 }

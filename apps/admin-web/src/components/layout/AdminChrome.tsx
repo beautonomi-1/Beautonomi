@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate, type NavLinkRenderProps } from "react-router";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu, LogOut, Search, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
 import { ADMIN_SECTION_SUPPORT, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
@@ -21,7 +21,9 @@ import type { UserRole } from "@beautonomi/types";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { NAV_GROUPS } from "@/config/nav";
+import { filterNavTree, flattenNavItems, NAV_GROUPS } from "@/config/nav";
+import { AdminNavSidebar } from "@/components/layout/AdminNavSidebar";
+import { CommandPalette, pushRecentSearch } from "@/components/layout/CommandPalette";
 import { cn } from "@/lib/cn";
 import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
 import { adminSpaTo } from "@/lib/adminSpaPath";
@@ -67,7 +69,10 @@ export function AdminChrome() {
       owner_name?: string | null;
       owner_email?: string | null;
     }>;
+    leads?: Array<{ id: string; business_name: string | null; lead_name: string | null; email: string | null }>;
+    onboarding_drafts?: Array<{ user_id: string; business_name: string | null; owner_email: string | null; owner_name: string | null }>;
   } | null>(null);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   /** Highlighted entry in the flattened result list (nav + entities) for keyboard nav. */
   const [activeIndex, setActiveIndex] = useState(0);
@@ -163,6 +168,8 @@ export function AdminChrome() {
           users: Array<{ id: string; email: string; full_name: string | null; phone?: string | null }>;
           bookings: Array<{ id: string; booking_number: string; created_at?: string }>;
           providers: Array<{ id: string; business_name: string; owner_name?: string | null; owner_email?: string | null }>;
+          leads?: Array<{ id: string; business_name: string | null; lead_name: string | null; email: string | null }>;
+          onboarding_drafts?: Array<{ user_id: string; business_name: string | null; owner_email: string | null; owner_name: string | null }>;
         }>(`/api/admin/search?q=${q}`);
         setSearchResults(data);
       } catch {
@@ -177,14 +184,12 @@ export function AdminChrome() {
   const filteredNav = useMemo(() => {
     const role = bootstrap?.role as UserRole;
     if (!role) return [];
+    const opts = { isSuperadmin: bootstrap?.isSuperadmin === true, canAccess };
     return NAV_GROUPS.map((g) => ({
       ...g,
-      items: g.items.filter((item) => {
-        if (item.superadminOnly && !bootstrap?.isSuperadmin) return false;
-        // Each nav item carries its own RBAC section; filter individually so
-        // groups can span multiple sections without hiding the whole group.
-        return canAccess(item.section);
-      }),
+      items: g.items
+        .map((item) => filterNavTree(item, opts))
+        .filter((item): item is NonNullable<typeof item> => item != null),
     })).filter((g) => g.items.length > 0);
   }, [bootstrap, canAccess]);
 
@@ -199,19 +204,20 @@ export function AdminChrome() {
     if (query.length < 2) return [];
     const scored: Array<{ m: NavMatch; score: number }> = [];
     const seen = new Set<string>();
-    for (const group of filteredNav) {
-      for (const item of group.items) {
-        if (seen.has(item.href)) continue;
-        const title = item.title.toLowerCase();
-        const group_ = group.label.toLowerCase();
-        let score = -1;
-        if (title.startsWith(query)) score = 0;
-        else if (title.includes(query)) score = 1;
-        else if (group_.includes(query)) score = 2;
-        if (score >= 0) {
-          seen.add(item.href);
-          scored.push({ m: { title: item.title, href: item.href, group: group.label, icon: item.icon }, score });
-        }
+    for (const item of flattenNavItems(filteredNav)) {
+      if (seen.has(item.href)) continue;
+      const title = item.title.toLowerCase();
+      const group_ = item.groupLabel.toLowerCase();
+      let score = -1;
+      if (title.startsWith(query)) score = 0;
+      else if (title.includes(query)) score = 1;
+      else if (group_.includes(query)) score = 2;
+      if (score >= 0) {
+        seen.add(item.href);
+        scored.push({
+          m: { title: item.title, href: item.href, group: item.groupLabel, icon: item.icon },
+          score,
+        });
       }
     }
     scored.sort((a, b) => (a.score - b.score) || a.m.title.localeCompare(b.m.title));
@@ -225,6 +231,8 @@ export function AdminChrome() {
     for (const u of (searchResults?.users ?? []).slice(0, 5)) items.push({ key: `user:${u.id}`, to: adminSearchResultSpaPath("user", u.id) });
     for (const p of (searchResults?.providers ?? []).slice(0, 5)) items.push({ key: `provider:${p.id}`, to: adminSearchResultSpaPath("provider", p.id) });
     for (const b of (searchResults?.bookings ?? []).slice(0, 5)) items.push({ key: `booking:${b.id}`, to: adminSearchResultSpaPath("booking", b.id) });
+    for (const l of (searchResults?.leads ?? []).slice(0, 5)) items.push({ key: `lead:${l.id}`, to: adminSearchResultSpaPath("lead", l.id) });
+    for (const d of (searchResults?.onboarding_drafts ?? []).slice(0, 5)) items.push({ key: `draft:${d.user_id}`, to: adminSearchResultSpaPath("onboarding_draft", d.user_id) });
     return items;
   }, [navMatches, searchResults]);
 
@@ -264,6 +272,9 @@ export function AdminChrome() {
         if (target) {
           e.preventDefault();
           navigate(target.to);
+          if (searchQuery.trim().length >= 2) {
+            pushRecentSearch({ query: searchQuery.trim(), label: target.to, to: target.to });
+          }
           closeSearch();
         }
       }
@@ -271,25 +282,33 @@ export function AdminChrome() {
     [flatResults, activeIndex, navigate, closeSearch],
   );
 
-  /** ⌘K / Ctrl+K focuses the header search from anywhere in the shell. */
+  /** ⌘K / Ctrl+K opens the command palette from anywhere in the shell. */
   useEffect(() => {
     if (!canUseGlobalSearch) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
+        setCommandPaletteOpen(true);
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [canUseGlobalSearch]);
 
+  const recordSearchSelection = useCallback(
+    (label: string, to: string) => {
+      if (searchQuery.trim().length >= 2) {
+        pushRecentSearch({ query: searchQuery.trim(), label, to });
+      }
+      closeSearch();
+    },
+    [searchQuery, closeSearch],
+  );
+
   const navCounts = navCountsQuery.data ?? {};
 
   const canAccessSupport = canAccess(ADMIN_SECTION_SUPPORT);
   const canAccessUsersTrust = canAccess(ADMIN_SECTION_USERS_TRUST);
-  const isSuperadminShell = bootstrap?.isSuperadmin === true;
 
   // Realtime: refresh shell badges when queues or personal notifications change.
   useEffect(() => {
@@ -326,7 +345,7 @@ export function AdminChrome() {
           .subscribe(),
       );
     }
-    if (isSuperadminShell) {
+    if (userId) {
       channels.push(
         sb
           .channel("admin-shell-agent-actions")
@@ -353,7 +372,7 @@ export function AdminChrome() {
         }
       }
     };
-  }, [bootstrap?.userId, canAccessSupport, canAccessUsersTrust, isSuperadminShell, qc]);
+  }, [bootstrap?.userId, canAccessSupport, canAccessUsersTrust, qc]);
 
   useEffect(() => {
     const hash = location.hash.replace(/^#/, "").trim();
@@ -400,67 +419,13 @@ export function AdminChrome() {
           "max-h-[calc(100vh-3.5rem)] overflow-y-auto text-sm",
           sidebarCollapsed ? "p-1.5" : "p-3",
         )}>
-          {filteredNav.map((group) => (
-            <div key={group.label} className="mb-4">
-              {!sidebarCollapsed && (
-                <div className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-                  {group.label}
-                </div>
-              )}
-              <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  const count = navCounts[item.href] ?? 0;
-                  return (
-                    <li key={item.href}>
-                      {item.subheader && !sidebarCollapsed ? (
-                        <div className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400/80">
-                          {item.subheader}
-                        </div>
-                      ) : item.subheader && sidebarCollapsed ? (
-                        <div className="my-1.5 mx-1 border-t border-gray-100" />
-                      ) : null}
-                      <NavLink
-                        to={adminSpaTo(item.href)}
-                        className={({ isActive }: NavLinkRenderProps) =>
-                          cn(
-                            "flex min-h-11 items-center rounded-xl border border-transparent text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
-                            isActive && "border-primary/15 bg-primary/10 font-medium text-primary shadow-sm",
-                            sidebarCollapsed ? "relative justify-center px-2 py-2.5" : "justify-between px-3 py-2.5",
-                          )
-                        }
-                        onClick={() => setSidebarOpen(false)}
-                        title={sidebarCollapsed ? item.title : undefined}
-                      >
-                        {({ isActive }: NavLinkRenderProps) => (
-                          <>
-                            <span className={cn("flex items-center", sidebarCollapsed ? "" : "gap-2")}>
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 shrink-0",
-                                  isActive ? "text-primary" : "text-gray-500 opacity-80"
-                                )}
-                              />
-                              {!sidebarCollapsed && <span>{item.title}</span>}
-                            </span>
-                            {!sidebarCollapsed && count > 0 ? (
-                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                                {count}
-                              </span>
-                            ) : null}
-                            {sidebarCollapsed && count > 0 ? (
-                              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold text-white">
-                                {count > 99 ? "•" : count}
-                              </span>
-                            ) : null}
-                          </>
-                        )}
-                      </NavLink>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+          <AdminNavSidebar
+            groups={filteredNav}
+            navCounts={navCounts}
+            sidebarCollapsed={sidebarCollapsed}
+            pathname={location.pathname}
+            onNavigate={() => setSidebarOpen(false)}
+          />
         </nav>
       </aside>
 
@@ -649,11 +614,76 @@ export function AdminChrome() {
                     {searching ? (
                       <div className="px-2 py-2 text-xs text-gray-400">Searching records…</div>
                     ) : null}
+                    {searchResults?.leads?.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Provider leads</div>
+                        {searchResults.leads.slice(0, 5).map((l) => {
+                          const active = indexByKey.get(`lead:${l.id}`) === activeIndex;
+                          const label = l.business_name || l.lead_name || l.email || l.id;
+                          return (
+                            <Link
+                              key={l.id}
+                              to={adminSearchResultSpaPath("lead", l.id)}
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "block w-full min-h-11 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`lead:${l.id}`);
+                                if (idx != null) setActiveIndex(idx);
+                              }}
+                              onClick={() => recordSearchSelection(label, adminSearchResultSpaPath("lead", l.id))}
+                            >
+                              <span className="font-medium text-gray-900">{label}</span>
+                              {l.email ? <span className="mt-0.5 block text-xs text-gray-500">{l.email}</span> : null}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {searchResults?.onboarding_drafts?.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Onboarding drafts</div>
+                        {searchResults.onboarding_drafts.slice(0, 5).map((d) => {
+                          const active = indexByKey.get(`draft:${d.user_id}`) === activeIndex;
+                          const label = d.business_name || d.owner_name || d.owner_email || d.user_id;
+                          return (
+                            <Link
+                              key={d.user_id}
+                              to={adminSearchResultSpaPath("onboarding_draft", d.user_id)}
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "block w-full min-h-11 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`draft:${d.user_id}`);
+                                if (idx != null) setActiveIndex(idx);
+                              }}
+                              onClick={() =>
+                                recordSearchSelection(label, adminSearchResultSpaPath("onboarding_draft", d.user_id))
+                              }
+                            >
+                              <span className="font-medium text-gray-900">{label}</span>
+                              {d.owner_email ? (
+                                <span className="mt-0.5 block text-xs text-gray-500">{d.owner_email}</span>
+                              ) : null}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
                     {!searching &&
                     !navMatches.length &&
                     !searchResults?.users?.length &&
                     !searchResults?.providers?.length &&
-                    !searchResults?.bookings?.length ? (
+                    !searchResults?.bookings?.length &&
+                    !searchResults?.leads?.length &&
+                    !searchResults?.onboarding_drafts?.length ? (
                       <div className="p-3 text-gray-500">No results for “{searchQuery.trim()}”</div>
                     ) : null}
                   </div>
@@ -780,6 +810,14 @@ export function AdminChrome() {
           </div>
         </main>
       </div>
+
+      {canUseGlobalSearch ? (
+        <CommandPalette
+          open={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          navMatches={navMatches}
+        />
+      ) : null}
     </div>
   );
 }

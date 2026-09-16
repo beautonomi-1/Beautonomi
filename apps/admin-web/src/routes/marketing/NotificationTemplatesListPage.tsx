@@ -24,6 +24,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { Bell, Edit, Mail, MessageSquare, Plus, Search, Smartphone, Trash2 } from "lucide-react";
 import { NotificationDeliveryLogsTab } from "./NotificationDeliveryLogsTab";
 
@@ -155,6 +156,7 @@ function TemplateEditor({
   isSaving: boolean;
   error?: string | null;
 }) {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [key, setKey] = useState(initial.key ?? initial.name ?? "");
   const [typePreset, setTypePreset] = useState(initial.type ?? initial.key ?? "");
   const [title, setTitle] = useState(initial.title ?? initial.title_template ?? "");
@@ -356,19 +358,25 @@ function TemplateEditor({
     }
   };
 
-  const deleteRemoteTwilio = async () => {
+  const deleteRemoteTwilio = () => {
     if (!initial.id) return;
-    if (!window.confirm("Delete the remote Twilio Content template? You can push a new version after saving.")) {
-      return;
-    }
-    setWhatsappPushBusy(true);
-    try {
-      await adminApi.deleteJson(`/api/admin/notification-templates/${initial.id}/whatsapp/push`);
-      setWhatsappContentSid("");
-      setWhatsappStatus("unknown");
-    } finally {
-      setWhatsappPushBusy(false);
-    }
+    requestConfirm({
+      title: "Delete remote Twilio template",
+      consequence:
+        "Delete the remote Twilio Content template? You can push a new version after saving.",
+      variant: "danger",
+      confirmLabel: "Delete remote template",
+      onConfirm: async () => {
+        setWhatsappPushBusy(true);
+        try {
+          await adminApi.deleteJson(`/api/admin/notification-templates/${initial.id}/whatsapp/push`);
+          setWhatsappContentSid("");
+          setWhatsappStatus("unknown");
+        } finally {
+          setWhatsappPushBusy(false);
+        }
+      },
+    });
   };
 
   return (
@@ -781,11 +789,14 @@ function TemplateEditor({
           {isSaving ? "Saving…" : mode === "edit" ? "Save changes" : "Create template"}
         </button>
       </div>
+
+      <ConfirmDialog />
     </div>
   );
 }
 
 export function NotificationTemplatesListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Notification Templates");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const [sp, setSp] = useSearchParams();
@@ -1139,7 +1150,7 @@ export function NotificationTemplatesListPage() {
                       aria-label="Delete"
                       disabled={deleteMut.isPending}
                       onClick={() => {
-                        if (confirm(`Delete template "${r.key ?? r.name}"?`)) deleteMut.mutate(r.id);
+                        requestConfirm({ title: "Confirm action", consequence: `Delete template "${r.key ?? r.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) });
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1209,6 +1220,8 @@ export function NotificationTemplatesListPage() {
           </li>
         </ul>
       </div>
+      <ConfirmDialog />
+
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpField } from "../../cpShared";
-import { ConfirmModal } from "../ConfirmModal";
+import { AdminConfirmDialog } from "@/components/admin/AdminConfirmDialog";
 import { ModelCatalogPicker } from "../ModelCatalogPicker";
 import { buildDefaultModelPickerOptions, countEnabledLiveModels } from "../catalogModels";
 import { CAPABILITY_FILTERS, PRESETS, PRESET_HINTS, RUNTIMES, TIERS } from "../constants";
@@ -250,20 +250,14 @@ export function GatewayTab(props: {
         </p>
       </AdminPanel>
 
-      <ConfirmModal
+      <AdminConfirmDialog
         open={presetConfirm != null}
+        onClose={() => setPresetConfirm(null)}
         title="Apply preset?"
-        body={
-          presetConfirm ? (
-            <div className="space-y-2">
-              <p>{PRESET_HINTS[presetConfirm]}</p>
-              <p className="text-xs text-gray-500">This updates runtime and catalog enable flags immediately. In production, models without eval may be skipped.</p>
-            </div>
-          ) : null
-        }
+        consequence="This updates runtime and catalog enable flags immediately. In production, models without eval may be skipped."
+        preview={presetConfirm ? <p>{PRESET_HINTS[presetConfirm]}</p> : undefined}
         confirmLabel="Apply preset"
         busy={props.saving}
-        onCancel={() => setPresetConfirm(null)}
         onConfirm={() => {
           if (presetConfirm) props.onApplyPreset(presetConfirm);
           setPresetConfirm(null);

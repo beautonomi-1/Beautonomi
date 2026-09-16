@@ -16,6 +16,7 @@ import { publicEnv } from "@/config/publicEnv";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 const BUCKET = "explore-posts";
 
@@ -33,6 +34,7 @@ type ExploreDetailPayload = {
 };
 
 export function ExplorePostDetailPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content access required.");
@@ -260,7 +262,15 @@ export function ExplorePostDetailPage() {
                     className="shrink-0 rounded border border-red-200 px-2 py-1 text-xs text-red-800 hover:bg-red-50 disabled:opacity-50"
                     disabled={deleteCommentMutation.isPending}
                     onClick={() => {
-                      if (confirm("Remove this comment?")) void deleteCommentMutation.mutateAsync(cid);
+                      requestConfirm({
+                        title: "Remove comment",
+                        consequence: "Remove this comment from the post?",
+                        variant: "danger",
+                        confirmLabel: "Remove",
+                        onConfirm: async () => {
+                          await deleteCommentMutation.mutateAsync(cid);
+                        },
+                      });
                     }}
                   >
                     Remove
@@ -307,6 +317,8 @@ export function ExplorePostDetailPage() {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

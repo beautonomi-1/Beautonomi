@@ -21,6 +21,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type CollectionLocation = {
   id: string;
@@ -58,6 +59,7 @@ function formatAddress(addr: Record<string, unknown> | undefined): string {
 }
 
 export function TerminalCollectionLocationsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_COMMERCIAL, "Commercial section access required");
   useAdminDocumentTitle("Terminal Pickup Locations");
   const qc = useQueryClient();
@@ -195,7 +197,7 @@ export function TerminalCollectionLocationsPage() {
                       type="button"
                       className="text-sm text-red-600 underline"
                       onClick={() => {
-                        if (window.confirm(`Delete "${loc.name}"?`)) deleteMut.mutate(loc.id);
+                        requestConfirm({ title: "Confirm action", consequence: `Delete "${loc.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(loc.id) });
                       }}
                     >
                       <Trash2 className="inline h-3.5 w-3.5 mr-1" />
@@ -304,6 +306,8 @@ export function TerminalCollectionLocationsPage() {
           </div>
         </div>
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

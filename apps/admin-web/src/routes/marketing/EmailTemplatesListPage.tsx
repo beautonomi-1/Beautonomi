@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface EmailTemplate {
   id: string;
@@ -44,6 +45,7 @@ function defaultForm() {
 type FormState = { name: string; subject_template: string; body_template: string; category: string; enabled: boolean };
 
 export function EmailTemplatesListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_MARKETING_COMMS,
     "Marketing & comms access is required."
@@ -254,7 +256,7 @@ export function EmailTemplatesListPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { if (confirm(`Delete template "${t.name}"?`)) deleteMut.mutate(t.id); }}
+                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete template "${t.name}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(t.id) }); }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -266,6 +268,8 @@ export function EmailTemplatesListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

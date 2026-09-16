@@ -8,6 +8,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  computeActivationGates,
+  isReadyToActivate,
+} from "@/lib/provider-ops/activation-gates";
 
 export async function GET(request: NextRequest) {
   try {
@@ -74,21 +78,16 @@ export async function GET(request: NextRequest) {
       const locations = (p.provider_locations as Array<Record<string, unknown>>) || [];
       const owner = usersMap.get(p.user_id as string);
 
-      const firstLocation = locations[0];
-      const hasCoordinates =
-        firstLocation?.latitude != null && firstLocation?.longitude != null;
-      const hasAddressLine =
-        typeof firstLocation?.address_line1 === "string" &&
-        firstLocation.address_line1.trim().length > 0;
-
-      const gates = {
-        has_location: locations.length > 0 && (hasAddressLine || hasCoordinates),
-        has_coordinates: hasCoordinates,
-        has_business_name: !!p.business_name,
-        is_verified: !!p.is_verified,
-      };
-      const allGatesPassed =
-        gates.has_location && gates.has_business_name && gates.is_verified;
+      const gates = computeActivationGates({
+        business_name: p.business_name as string | null,
+        is_verified: p.is_verified as boolean | null,
+        provider_locations: locations.map((loc) => ({
+          address_line1: loc.address_line1 as string | null,
+          latitude: loc.latitude as number | null,
+          longitude: loc.longitude as number | null,
+        })),
+      });
+      const allGatesPassed = isReadyToActivate(gates);
 
       return {
         ...p,

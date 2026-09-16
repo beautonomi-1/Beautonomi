@@ -99,7 +99,11 @@ export default function App() {
           <Route path="knowledge-base" element={<P.KnowledgeBasePage />} />
           <Route path="knowledge-base/:slug" element={<P.KnowledgeBaseArticlePage />} />
           <Route path="support-tickets" element={<P.SupportTicketsPage />} />
+          <Route path="support-tickets/ai-drafts" element={<P.SupportAiDraftsPage />} />
           <Route path="support-tickets/:id" element={<P.SupportTicketDetailPage />} />
+          <Route path="finance/ai-queue" element={<P.FinanceAiQueuePage />} />
+          <Route path="trust-safety-ops/ai-queue" element={<P.TrustAiQueuePage />} />
+          <Route path="provider-ops/ai-queue" element={<P.ProviderOpsAiQueuePage />} />
           <Route path="bookings" element={<P.BookingsPage />} />
           <Route path="bookings/:id" element={<P.BookingDetailPage />} />
           <Route path="group-bookings" element={<P.GroupBookingsPage />} />
@@ -171,6 +175,9 @@ export default function App() {
           <Route path="ecommerce/products" element={<P.ProductCatalogPage />} />
           <Route path="ecommerce" element={<P.EcommerceOverviewPage />} />
           <Route path="addons" element={<P.AddonsListPage />} />
+          <Route path="integrations-hub" element={<P.IntegrationsHubPage />} />
+          <Route path="operations" element={<P.OpsHubPage />} />
+          <Route path="platform-config" element={<P.PlatformConfigHubPage />} />
           <Route path="webhooks" element={<P.WebhooksEndpointsPage />} />
           <Route path="api-keys" element={<P.ApiKeysListPage />} />
           <Route path="integrations/amplitude" element={<P.AmplitudeConfigPage />} />
@@ -205,6 +212,7 @@ export default function App() {
           <Route path="gamification/operations" element={<P.GamificationOperationsPage />} />
           <Route path="notifications/inbox" element={<P.NotificationsInboxPage />} />
           <Route path="notifications" element={<P.NotificationsConfigPage />} />
+          <Route path="marketing" element={<P.MarketingOpsHubPage />} />
           <Route path="broadcast/history" element={<P.BroadcastHistoryPage />} />
           <Route path="broadcast/compose" element={<P.BroadcastComposePage />} />
           <Route path="broadcast" element={<P.BroadcastHubPage />} />

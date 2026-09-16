@@ -5,6 +5,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { AdminPanel } from "@/components/ui/AdminPanel";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 
 const PIPELINE_STATUSES = [
@@ -163,13 +164,13 @@ export function TerminalUpsellPanel({
 
         <div className="flex flex-wrap gap-2">
           <Link
-            to={`/admin/providers/${item.provider_id}?tab=commercial`}
+            to={adminSpaTo(`/admin/providers/${item.provider_id}?tab=commercial`)}
             className={adminToolbarButtonClass()}
           >
             Provider commercial
           </Link>
           <Link
-            to="/admin/commercial/terminal-campaigns"
+            to={adminSpaTo("/admin/commercial/terminal-campaigns")}
             className={adminToolbarButtonClass()}
           >
             Campaigns

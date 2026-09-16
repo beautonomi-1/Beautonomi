@@ -21,6 +21,7 @@ import { callAgentLlm, parseLlmJson } from "../llm";
 import { buildLocalizedFallbackReply } from "../i18n-drafts";
 import { redactPromptObject, redactPromptText } from "@/lib/ai/redact-prompt-pii";
 import { hashPayload } from "@beautonomi/agent-policy";
+import { finalizeAgentRun } from "../actions/agent-run-lifecycle";
 
 export type SupportTriageClassification = {
   category: string;
@@ -276,6 +277,7 @@ export async function classifyAndProposeForTicket(params: {
     shadow_mode: params.shadowMode,
   });
 
+  try {
   const context = await fetchSupportTicketContext(supabase, ticket).catch(() => null);
 
   const ticketInput = {
@@ -392,16 +394,19 @@ export async function classifyAndProposeForTicket(params: {
     }
   }
 
-  await supabase
-    .from("agent_runs")
-    .update({
-      status: "completed",
-      ended_at: new Date().toISOString(),
-      escalation_count: classification.needsHuman ? 1 : 0,
-    })
-    .eq("id", agentRunId);
+  await finalizeAgentRun(agentRunId, {
+    status: "completed",
+    escalationCount: classification.needsHuman ? 1 : 0,
+  });
 
   return { classification, proposals, shadowMode: params.shadowMode, agentRunId };
+  } catch (err) {
+    await finalizeAgentRun(agentRunId, {
+      status: "retryable_failure",
+      errorClass: err instanceof Error ? err.message.slice(0, 120) : "triage_failed",
+    });
+    throw err;
+  }
 }
 
 export async function runSupportTriageWorkflow(params: {

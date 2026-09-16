@@ -24,6 +24,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 import { adminToast } from "@/lib/adminToast";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
@@ -1036,6 +1037,15 @@ function FeeConfigFormModal({
         </>
       }
     >
+      {mode === "edit" && initial?.id ? (
+        <div className="mb-3">
+          <AdminAuditTrailLink
+            entityType="fee_config"
+            entityId={String(initial.id)}
+            label="View fee config audit trail"
+          />
+        </div>
+      ) : null}
       <form id="fee-config-form" className="space-y-3" onSubmit={submit}>
         <div>
           <label className={labelClass()} htmlFor="fc-gateway">
@@ -1266,6 +1276,23 @@ function CreateAdjustmentModal({
         </>
       }
     >
+      {txKind === "payment" && paymentId.trim() ? (
+        <div className="mb-3">
+          <AdminAuditTrailLink
+            entityType="payment_transaction"
+            entityId={paymentId.trim()}
+            label="View payment transaction audit trail"
+          />
+        </div>
+      ) : txKind === "finance" && financeId.trim() ? (
+        <div className="mb-3">
+          <AdminAuditTrailLink
+            entityType="finance_transaction"
+            entityId={financeId.trim()}
+            label="View finance transaction audit trail"
+          />
+        </div>
+      ) : null}
       <form id="adj-create-form" className="space-y-3" onSubmit={submit}>
         <div>
           <span className={labelClass()}>Transaction</span>
@@ -1726,6 +1753,13 @@ function EditReconciliationModal({
         </>
       }
     >
+      <div className="mb-3">
+        <AdminAuditTrailLink
+          entityType="fee_reconciliation"
+          entityId={String(row.id)}
+          label="View reconciliation audit trail"
+        />
+      </div>
       <form id="recon-patch-form" className="space-y-3" onSubmit={submit}>
         <p className="text-xs text-gray-500">
           Gateway: <strong>{String(row.gateway_name ?? "")}</strong> · Date:{" "}

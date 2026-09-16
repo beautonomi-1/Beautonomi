@@ -72,6 +72,40 @@ export async function resolveContentAuthorUserId(
   }
 }
 
+export type AuthorContentTarget = { type: ContentReportTargetType; id: string };
+
+/** List content targets authored by a user (for filtering content reports). */
+export async function listAuthorContentTargets(
+  supabase: SupabaseClient,
+  authorUserId: string,
+): Promise<AuthorContentTarget[]> {
+  const [posts, comments, messages, reviews, productReviews] = await Promise.all([
+    supabase.from("explore_posts").select("id").eq("created_by_user_id", authorUserId).limit(500),
+    supabase.from("explore_comments").select("id").eq("user_id", authorUserId).limit(500),
+    supabase.from("messages").select("id").eq("sender_id", authorUserId).limit(500),
+    supabase.from("reviews").select("id").eq("customer_id", authorUserId).limit(500),
+    supabase.from("product_reviews").select("id").eq("customer_id", authorUserId).limit(500),
+  ]);
+
+  const targets: AuthorContentTarget[] = [];
+  for (const row of posts.data ?? []) {
+    targets.push({ type: "explore_post", id: String((row as { id: string }).id) });
+  }
+  for (const row of comments.data ?? []) {
+    targets.push({ type: "explore_comment", id: String((row as { id: string }).id) });
+  }
+  for (const row of messages.data ?? []) {
+    targets.push({ type: "message", id: String((row as { id: string }).id) });
+  }
+  for (const row of reviews.data ?? []) {
+    targets.push({ type: "review", id: String((row as { id: string }).id) });
+  }
+  for (const row of productReviews.data ?? []) {
+    targets.push({ type: "product_review", id: String((row as { id: string }).id) });
+  }
+  return targets;
+}
+
 /** Suspend a platform user account (auth ban + users.deactivated_at). */
 export async function suspendUserAsAdmin(
   supabase: SupabaseClient,

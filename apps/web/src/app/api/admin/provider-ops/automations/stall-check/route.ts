@@ -10,6 +10,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
+import { loadProviderOpsStallSettings } from "@/lib/provider-ops/stall-thresholds";
 
 /**
  * On-demand stall detection. Scans all in-progress onboarding drafts,
@@ -23,24 +24,11 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: platformSettings } = await supabase
-      .from("platform_settings")
-      .select("settings")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const allSettings =
-      (platformSettings?.settings as Record<string, unknown>) || {};
-    const opsSettings =
-      (allSettings.provider_ops as Record<string, unknown>) || {};
-
-    const stallThresholdHours =
-      (opsSettings.stall_threshold_hours as number) ?? 24;
-    const dropoffThresholdHours =
-      (opsSettings.dropoff_threshold_hours as number) ?? 168;
+    const {
+      stall_threshold_hours: stallThresholdHours,
+      dropoff_threshold_hours: dropoffThresholdHours,
+      auto_sms_on_stall: autoSmsEnabled,
+    } = await loadProviderOpsStallSettings(supabase, tenantId);
 
     const now = new Date();
     const stallCutoff = new Date(
@@ -153,9 +141,9 @@ export async function POST(request: NextRequest) {
 
     // Auto-SMS stalled signups if enabled
     let smsSentCount = 0;
-    const autoSmsEnabled = (opsSettings.auto_sms_on_stall as boolean) === true;
+    const autoSmsOnStall = autoSmsEnabled === true;
 
-    if (autoSmsEnabled && stalled.length > 0) {
+    if (autoSmsOnStall && stalled.length > 0) {
       const creds = await resolveTwilioCredentials(supabase, tenantId);
       if (creds && creds.smsFrom) {
         for (const entry of stalled) {
@@ -200,7 +188,7 @@ export async function POST(request: NextRequest) {
         dropped_off: droppedOff.length,
         stall_threshold_hours: stallThresholdHours,
         dropoff_threshold_hours: dropoffThresholdHours,
-        auto_sms_enabled: autoSmsEnabled,
+        auto_sms_enabled: autoSmsOnStall,
         sms_sent: smsSentCount,
       },
     });

@@ -12,6 +12,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { Loader2, Pause, Play, XCircle, ArrowLeft, CheckCircle2, Clock, AlertTriangle, Send } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface Batch {
   id: string;
@@ -62,6 +63,7 @@ export function WhatsAppBatchDetailPage() {
     "Integrations & dev access is required for WhatsApp batches."
   );
   const { batchId } = useParams<{ batchId: string }>();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
 
@@ -148,7 +150,15 @@ export function WhatsAppBatchDetailPage() {
             {["processing", "queued", "paused"].includes(batch.status) ? (
               <button
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700"
-                onClick={() => { if (window.confirm("Cancel all remaining messages?")) cancelMutation.mutate(); }}
+                onClick={() => {
+                  requestConfirm({
+                    title: "Cancel remaining messages",
+                    consequence: "Cancel all remaining messages in this batch? Already-sent messages cannot be recalled.",
+                    variant: "danger",
+                    confirmLabel: "Cancel remaining",
+                    onConfirm: async () => cancelMutation.mutate(),
+                  });
+                }}
                 disabled={cancelMutation.isPending}
               >
                 <XCircle className="h-4 w-4" /> Cancel Remaining
@@ -237,6 +247,8 @@ export function WhatsAppBatchDetailPage() {
           </div>
         )}
       </AdminPanel>
+
+      <ConfirmDialog />
     </div>
   );
 }

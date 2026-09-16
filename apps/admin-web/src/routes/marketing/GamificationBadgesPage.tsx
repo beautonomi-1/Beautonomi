@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 const BADGE_REQUIREMENT_HINT =
   "Supported requirement keys: points, min_rating, min_reviews, min_bookings (non-negative numbers). Missing keys mean no minimum.";
@@ -49,6 +50,7 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> {
 }
 
 export function GamificationBadgesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -376,8 +378,14 @@ export function GamificationBadgesPage() {
                       className="text-red-700 underline disabled:opacity-50"
                       disabled={deleteBadge.isPending || !r.id}
                       onClick={() => {
-                        if (r.id && window.confirm("Delete this badge? (Fails if assigned to a provider.)")) {
-                          deleteBadge.mutate(r.id);
+                        if (r.id) {
+                          requestConfirm({
+                            title: "Delete badge",
+                            consequence: "Delete this badge? Fails if assigned to a provider.",
+                            variant: "danger",
+                            confirmLabel: "Delete",
+                            onConfirm: async () => deleteBadge.mutate(r.id!),
+                          });
                         }
                       }}
                     >
@@ -390,6 +398,8 @@ export function GamificationBadgesPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

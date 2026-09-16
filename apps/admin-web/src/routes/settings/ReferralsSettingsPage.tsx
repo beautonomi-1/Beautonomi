@@ -10,6 +10,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type ReferralSettings = {
   referral_amount?: number;
@@ -21,6 +22,7 @@ type ReferralSettings = {
 type FaqRow = { id: string; question?: string; answer?: string | null; display_order?: number; is_active?: boolean };
 
 export function ReferralsSettingsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PLATFORM_CONFIG,
@@ -204,7 +206,7 @@ export function ReferralsSettingsPage() {
                     type="button"
                     className="text-sm text-rose-700 hover:underline"
                     onClick={() => {
-                      if (confirm("Delete this FAQ?")) delFaq.mutate(f.id);
+                      requestConfirm({ title: "Confirm action", consequence: "Delete this FAQ?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => delFaq.mutate(f.id) });
                     }}
                   >
                     Delete
@@ -216,6 +218,8 @@ export function ReferralsSettingsPage() {
           </ul>
         )}
       </div>
+      <ConfirmDialog />
+
     </div>
   );
 }

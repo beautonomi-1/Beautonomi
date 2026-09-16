@@ -2,7 +2,7 @@ import { useState } from "react";
 import { adminApi } from "@/lib/adminClient";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpField } from "../../cpShared";
-import { ConfirmModal } from "../ConfirmModal";
+import { AdminConfirmDialog } from "@/components/admin/AdminConfirmDialog";
 import { HARM_CATEGORIES, THRESHOLDS } from "../constants";
 import type { AiPlatformPayload } from "../types";
 
@@ -146,11 +146,11 @@ export function SafetyTab(props: {
         </dl>
       </AdminPanel>
 
-      <ConfirmModal
+      <AdminConfirmDialog
         open={confirm != null}
+        onClose={() => setConfirm(null)}
         title={`Confirm: ${confirm?.kind ?? ""}`}
-        body={<p className="text-sm">This takes effect immediately for {props.env}.</p>}
-        onCancel={() => setConfirm(null)}
+        consequence={`This takes effect immediately for ${props.env}.`}
         onConfirm={() => {
           confirm?.apply();
           setConfirm(null);

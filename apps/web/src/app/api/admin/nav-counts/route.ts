@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, getEffectiveAdminSectionRoles } from "@/lib/supabase/api-helpers";
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
@@ -9,7 +9,12 @@ import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
 import { countSupportTicketsForNav } from "@/lib/support/support-ticket-nav-count";
-import { countAgentProposalsForNav } from "@/lib/ai/agent-proposal-nav-count";
+import { countAgentProposalsBySection, countAgentProposalsForNav } from "@/lib/ai/agent-proposal-nav-count";
+import {
+  isStalledByThreshold,
+  loadProviderOpsStallSettings,
+} from "@/lib/provider-ops/stall-thresholds";
+import type { UserRole } from "@/types/beautonomi";
 
 /**
  * GET /api/admin/nav-counts
@@ -25,6 +30,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const tenantProviderIds = await fetchAllProviderIdsForTenant(supabase, tenantId);
+    const stallSettings = await loadProviderOpsStallSettings(supabase, tenantId);
 
     const [
       verificationsResult,
@@ -173,18 +179,23 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
-      // Provider Ops: stalled onboarding (no progress in 48h)
+      // Provider Ops: stalled onboarding (no progress past stall threshold)
       (async () => {
         try {
-          const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-          const { count, error } = await supabase
+          const { data: trackingRows, error } = await supabase
             .from("provider_onboarding_tracking")
-            .select("id", { count: "exact", head: true })
+            .select("last_progress_at, updated_at")
             .eq("tenant_id", tenantId)
-            .in("wizard_status", ["in_progress", "stalled"])
-            .lt("last_progress_at", cutoff);
+            .in("wizard_status", ["in_progress", "stalled"]);
           if (error) return { count: 0 };
-          return { count: count ?? 0 };
+          const stalledCount = (trackingRows ?? []).filter((row) =>
+            isStalledByThreshold(
+              (row.last_progress_at as string | null) ??
+                (row.updated_at as string | null),
+              stallSettings.stall_threshold_hours
+            )
+          ).length;
+          return { count: stalledCount };
         } catch {
           return { count: 0 };
         }
@@ -253,11 +264,26 @@ export async function GET(request: NextRequest) {
       })(),
     ]);
 
-    const agentProposalsPending = isSuperadmin
-      ? await countAgentProposalsForNav(supabase, { tenantId })
-      : 0;
+    const effectiveRoles = await getEffectiveAdminSectionRoles(request);
+    const agentCountParams = {
+      tenantId,
+      role: user.role as UserRole,
+      effectiveRoles,
+    };
+    const [agentProposalsPending, agentProposalsBySection, unreadNotificationsResult] = await Promise.all([
+      countAgentProposalsForNav(supabase, agentCountParams),
+      countAgentProposalsBySection(supabase, agentCountParams),
+      supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false),
+    ]);
 
     const counts: Record<string, number> = {
+      "/admin/notifications/inbox": unreadNotificationsResult.error
+        ? 0
+        : (unreadNotificationsResult.count ?? 0),
       "/admin/verifications": verificationsResult.count ?? 0,
       "/admin/payouts": payoutsResult.count ?? 0,
       "/admin/support-tickets": supportTicketsResult.count ?? 0,
@@ -283,8 +309,9 @@ export async function GET(request: NextRequest) {
       "/admin/paystack-terminal": paystackTerminalSetupResult.count ?? 0,
       "/admin/identity-trust/sessions": diditSessionsResult.count ?? 0,
       "/admin/commercial/terminal-onboarding": terminalMerchantOnboardingResult.count ?? 0,
-      "/admin/control-plane/modules/agents": agentProposalsPending,
-      "/admin/control-plane/integrations/ai": agentProposalsPending,
+      "/admin/control-plane/modules/agents": isSuperadmin ? agentProposalsPending : 0,
+      "/admin/control-plane/integrations/ai": isSuperadmin ? agentProposalsPending : 0,
+      ...agentProposalsBySection,
     };
 
     return successResponse(counts);

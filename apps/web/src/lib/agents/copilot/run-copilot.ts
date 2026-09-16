@@ -154,7 +154,11 @@ export async function runAdminCopilot(raw: unknown) {
     if (toolCalls >= MAX_TOOL_CALLS) break;
     const tool = getBoundTool(planned.name);
     if (!tool) continue;
-    if (!canAccessSection(input.adminRole as never, tool.requiredSection)) {
+    const sectionAllowed =
+      canAccessSection(input.adminRole as never, tool.requiredSection) &&
+      (input.allowedSections.length === 0 ||
+        input.allowedSections.includes(tool.requiredSection));
+    if (!sectionAllowed) {
       deniedTools.push(tool.name);
       continue;
     }

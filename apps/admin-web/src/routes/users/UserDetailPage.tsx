@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
@@ -20,6 +21,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -27,6 +29,8 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+import { Entity360CompactLink, Entity360PanelsGrid } from "@/components/admin/Entity360Layout";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 const SIGNUP_SOURCE_LABELS: Record<string, string> = {
   google: "Google",
@@ -228,10 +232,12 @@ function formatSavedAddress(a: Record<string, unknown>): string {
 export function UserDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const { bootstrap } = useAdminSession();
+  const { bootstrap, canAccess } = useAdminSession();
+  const canAccessProviderOps = canAccess(ADMIN_SECTION_PROVIDER_OPS);
   const isSuperadmin = bootstrap?.isSuperadmin === true;
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
   const [suspendReason, setSuspendReason] = useState("");
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [impersonateReason, setImpersonateReason] = useState("");
@@ -280,6 +286,7 @@ export function UserDetailPage() {
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+      invalidateAdminShellCounts(qc);
       if ("is_active" in vars) {
         adminToast.success((vars as Record<string, unknown>).is_active ? "User activated" : "User deactivated");
       } else {
@@ -348,7 +355,7 @@ export function UserDetailPage() {
           `Guest booking link copied${res.booking_number ? ` (booking ${res.booking_number})` : ""}`
         );
       } catch {
-        window.prompt("Copy the guest booking link:", url);
+        adminToast.info(`Copy guest booking link: ${url}`);
       }
     },
     onError: (e: Error) => adminToast.error(`Failed to create guest link: ${e.message}`),
@@ -387,6 +394,36 @@ export function UserDetailPage() {
     enabled: allowed && !!id,
   });
 
+  const fraudCasesQ = useQuery({
+    queryKey: [...adminQueryKeys.root, "user-fraud-cases-count", id],
+    queryFn: () =>
+      adminApi.getJson<{ total?: number }>(
+        `/api/admin/fraud-cases?subject_user_id=${encodeURIComponent(id)}&limit=1&offset=0`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!id,
+  });
+
+  const disputesQ = useQuery({
+    queryKey: [...adminQueryKeys.root, "user-disputes-count", id],
+    queryFn: () =>
+      adminApi.getJson<{ pagination?: { total?: number } }>(
+        `/api/admin/disputes?customer_id=${encodeURIComponent(id)}&limit=1&page=1`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!id,
+  });
+
+  const authorContentReportsQ = useQuery({
+    queryKey: [...adminQueryKeys.root, "user-content-reports-count", id],
+    queryFn: () =>
+      adminApi.getJson<{ total?: number }>(
+        `/api/admin/content-reports?author_user_id=${encodeURIComponent(id)}&limit=1&offset=0`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!id,
+  });
+
   const walletTopUp = useMutation({
     mutationFn: (payload: { amount: number; reason: string }) =>
       adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
@@ -410,6 +447,19 @@ export function UserDetailPage() {
     queryFn: () => adminApi.getJson<Record<string, unknown>>(`/api/admin/users/${encodeURIComponent(id)}/loyalty`, { timeoutMs: 30_000 }),
     enabled: allowed && !!id,
   });
+
+  const onboardingDraftQ = useQuery({
+    queryKey: ["admin", "provider-ops", "tracker", id, "draft-check"],
+    queryFn: () =>
+      adminApi.getJson<{ draft?: { id: string } | null }>(
+        `/api/admin/provider-ops/tracker/${encodeURIComponent(id)}`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!id && canAccessProviderOps,
+    retry: false,
+  });
+
+  const hasOnboardingDraft = Boolean(onboardingDraftQ.data?.draft?.id);
 
   const data = q.data;
   const stats = data?.stats ?? {};
@@ -486,12 +536,22 @@ export function UserDetailPage() {
         title={displayName}
         description={str(data.email)}
         actions={
-          <Link
-            to={adminSpaTo("/admin/users")}
-            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
-          >
-            ← Users
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {hasOnboardingDraft ? (
+              <Link
+                to={adminSpaTo(`/admin/provider-ops/tracker/${encodeURIComponent(id)}`)}
+                className="inline-flex min-h-11 items-center rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-medium text-violet-900 shadow-sm hover:bg-violet-100"
+              >
+                Onboarding tracker →
+              </Link>
+            ) : null}
+            <Link
+              to={adminSpaTo("/admin/users")}
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+            >
+              ← Users
+            </Link>
+          </div>
         }
       />
 
@@ -508,6 +568,34 @@ export function UserDetailPage() {
           loyaltyQ.error instanceof Error ? loyaltyQ.error : null,
           exportErr ? new Error(exportErr) : null,
         ]}
+      />
+
+      <Entity360PanelsGrid
+        panels={{
+          risk: (
+            <div className="space-y-2">
+              <Entity360CompactLink
+                href={adminSpaTo(`/admin/fraud-cases?subject_user_id=${encodeURIComponent(id)}`)}
+                label="Fraud cases"
+                count={fraudCasesQ.data?.total ?? 0}
+                hint="Subject user matches this account"
+              />
+              <Entity360CompactLink
+                href={adminSpaTo(`/admin/disputes?customer_id=${encodeURIComponent(id)}`)}
+                label="Disputes"
+                count={disputesQ.data?.pagination?.total ?? 0}
+                hint="Bookings where this user is the customer"
+              />
+              <Entity360CompactLink
+                href={adminSpaTo(`/admin/content-reports?author_user_id=${encodeURIComponent(id)}`)}
+                label="Content reports (as author)"
+                count={authorContentReportsQ.data?.total ?? 0}
+                hint="Reports on content this user posted"
+              />
+            </div>
+          ),
+          audit: <AdminAuditTrailLink entityType="user" entityId={id} label="Audit trail" />,
+        }}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -639,14 +727,15 @@ export function UserDetailPage() {
               className={adminToolbarButtonClass(identityResetPost.isPending)}
               disabled={identityResetPost.isPending}
               onClick={() => {
-                if (
-                  !window.confirm(
+                requestConfirm({
+                  title: "Reset identity verification",
+                  consequence:
                     "Reset identity verification for this user? They can submit new documents; history is kept.",
-                  )
-                ) {
-                  return;
-                }
-                void identityResetPost.mutateAsync();
+                  confirmLabel: "Reset verification",
+                  onConfirm: async () => {
+                    await identityResetPost.mutateAsync();
+                  },
+                });
               }}
             >
               {identityResetPost.isPending ? "Resetting…" : "Reset identity verification"}
@@ -841,14 +930,15 @@ export function UserDetailPage() {
                 disabled={warnPost.isPending || !warnReason.trim()}
                 onClick={() => {
                   const reason = warnReason.trim();
-                  if (
-                    !window.confirm(
+                  requestConfirm({
+                    title: "Issue formal warning",
+                    consequence:
                       "Issue a formal warning to this user? They will receive an in-app notification.",
-                    )
-                  ) {
-                    return;
-                  }
-                  void warnPost.mutateAsync(reason);
+                    confirmLabel: "Issue warning",
+                    onConfirm: async () => {
+                      await warnPost.mutateAsync(reason);
+                    },
+                  });
                 }}
               >
                 {warnPost.isPending ? "Sending…" : "Issue warning"}
@@ -1440,7 +1530,16 @@ export function UserDetailPage() {
               type="button"
               className={adminToolbarButtonClass(patch.isPending)}
               disabled={patch.isPending}
-              onClick={() => void patch.mutateAsync({ deactivated_at: null, deactivation_reason: null })}
+              onClick={() => {
+                requestConfirm({
+                  title: "Reactivate account",
+                  consequence: `Reactivate ${str(data.full_name) || str(data.email)}? They will regain access immediately.`,
+                  confirmLabel: "Reactivate",
+                  onConfirm: async () => {
+                    await patch.mutateAsync({ deactivated_at: null, deactivation_reason: null });
+                  },
+                });
+              }}
             >
               Reactivate account
             </button>
@@ -1458,18 +1557,35 @@ export function UserDetailPage() {
               type="button"
               className={adminToolbarButtonClass(patch.isPending)}
               disabled={patch.isPending}
-              onClick={() =>
-                void patch.mutateAsync({
-                  deactivated_at: new Date().toISOString(),
-                  deactivation_reason: suspendReason.trim() || null,
-                })
-              }
+              onClick={() => {
+                const label = str(data.full_name) || str(data.email);
+                requestConfirm({
+                  title: "Suspend account",
+                  consequence: `Suspend ${label}? They will lose access immediately.`,
+                  variant: "danger",
+                  confirmLabel: "Suspend account",
+                  preview: suspendReason.trim() ? (
+                    <p>
+                      <span className="font-medium text-gray-700">Reason: </span>
+                      {suspendReason.trim()}
+                    </p>
+                  ) : undefined,
+                  onConfirm: async () => {
+                    await patch.mutateAsync({
+                      deactivated_at: new Date().toISOString(),
+                      deactivation_reason: suspendReason.trim() || null,
+                    });
+                  },
+                });
+              }}
             >
               Suspend account
             </button>
           </div>
         )}
       </AdminPanel>
+
+      <ConfirmDialog />
     </div>
   );
 }

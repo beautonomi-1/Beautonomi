@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { getActiveProviderPayoutHold } from "@/lib/fraud/provider-payout-hold";
 
 export type AdminPayoutAccount = {
   id?: string;
@@ -81,6 +82,19 @@ export async function validateAdminPayoutReadiness(params: {
   requireAccount?: boolean;
 }): Promise<AdminPayoutReadinessResult> {
   const { supabase, providerId, tenantId, requestedAccountId, requireAccount = false } = params;
+
+  const adminHold = await getActiveProviderPayoutHold(supabase, providerId);
+  if (adminHold) {
+    return {
+      ok: false,
+      status: 409,
+      code: "PAYOUT_HELD",
+      message: adminHold.fraud_case_id
+        ? `Payouts are held for this provider (fraud case ${adminHold.fraud_case_id.slice(0, 8)}…). Release the hold in Trust → Fraud cases before processing payouts.`
+        : "Payouts are held for this provider by Trust & Safety. Release the hold before processing payouts.",
+    };
+  }
+
   const holdDays = await getPayoutHoldDays(supabase, tenantId);
   const { availableBalance, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
     supabase,

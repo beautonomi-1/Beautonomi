@@ -316,14 +316,15 @@ export function AuditLogsPage() {
   const search = sp.get("search") || "";
   const action = sp.get("action") || "";
   const entityType = sp.get("entity_type") || "";
+  const entityId = sp.get("entity_id") || "";
   const riskLevel = sp.get("risk_level") || "";
   const status = sp.get("status") || "";
   const startDate = sp.get("start_date") || "";
   const endDate = sp.get("end_date") || "";
 
   const qk = useMemo(
-    () => `${page}|${limit}|${search}|${action}|${entityType}|${riskLevel}|${status}|${startDate}|${endDate}`,
-    [page, limit, search, action, entityType, riskLevel, status, startDate, endDate]
+    () => `${page}|${limit}|${search}|${action}|${entityType}|${entityId}|${riskLevel}|${status}|${startDate}|${endDate}`,
+    [page, limit, search, action, entityType, entityId, riskLevel, status, startDate, endDate]
   );
 
   const q = useQuery({
@@ -335,6 +336,7 @@ export function AuditLogsPage() {
       if (search) p.set("search", search);
       if (action) p.set("action", action);
       if (entityType) p.set("entity_type", entityType);
+      if (entityId) p.set("entity_id", entityId);
       if (riskLevel) p.set("risk_level", riskLevel);
       if (status) p.set("status", status);
       if (startDate) p.set("start_date", startDate);
@@ -360,7 +362,7 @@ export function AuditLogsPage() {
     [sp, setSp]
   );
 
-  const hasFilters = !!(action || entityType || riskLevel || status || startDate || endDate || search);
+  const hasFilters = !!(action || entityType || entityId || riskLevel || status || startDate || endDate || search);
 
   const riskCounts = useMemo(() => {
     const counts: Record<string, number> = { low: 0, medium: 0, high: 0, critical: 0 };
@@ -485,6 +487,14 @@ export function AuditLogsPage() {
             onKeyDown={(e) => { if (e.key === "Enter") updateParams({ entity_type: (e.target as HTMLInputElement).value.trim() || null, page: "1" }); }}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
+          <input
+            type="text"
+            placeholder="Entity ID"
+            defaultValue={entityId}
+            onBlur={(e) => updateParams({ entity_id: e.target.value.trim() || null, page: "1" })}
+            onKeyDown={(e) => { if (e.key === "Enter") updateParams({ entity_id: (e.target as HTMLInputElement).value.trim() || null, page: "1" }); }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+          />
           <select
             value={riskLevel}
             onChange={(e) => updateParams({ risk_level: e.target.value || null, page: "1" })}
@@ -521,7 +531,7 @@ export function AuditLogsPage() {
               className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               onClick={() =>
                 updateParams({
-                  search: null, action: null, entity_type: null, risk_level: null, status: null, start_date: null, end_date: null, page: "1",
+                  search: null, action: null, entity_type: null, entity_id: null, risk_level: null, status: null, start_date: null, end_date: null, page: "1",
                 })
               }
             >

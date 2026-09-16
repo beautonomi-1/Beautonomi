@@ -8,6 +8,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpBack, CpField, EnvSelect } from "./cpShared";
 import { ProviderAiSubnav } from "./ProviderAiSubnav";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 export function CpModuleDistancePage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
@@ -871,6 +872,7 @@ const zar = (n: number) =>
 
 export function CpModuleAdsPage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1130,10 +1132,6 @@ export function CpModuleAdsPage() {
   };
 
   const moderateCampaign = async (id: string, next: "paused" | "ended") => {
-    if (next === "ended") {
-      const ok = window.confirm("End this campaign? It cannot be resumed.");
-      if (!ok) return;
-    }
     setModeratingId(id);
     setMsg(null);
     try {
@@ -1146,6 +1144,20 @@ export function CpModuleAdsPage() {
       setModeratingId(null);
     }
   };
+
+  function requestModerateCampaign(id: string, next: "paused" | "ended") {
+    if (next === "ended") {
+      requestConfirm({
+        title: "End campaign",
+        consequence: "End this campaign? It cannot be resumed.",
+        variant: "danger",
+        confirmLabel: "End campaign",
+        onConfirm: async () => moderateCampaign(id, next),
+      });
+      return;
+    }
+    void moderateCampaign(id, next);
+  }
 
   if (denied) return denied;
 
@@ -1287,7 +1299,7 @@ export function CpModuleAdsPage() {
                               type="button"
                               disabled={busy}
                               className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:opacity-50"
-                              onClick={() => void moderateCampaign(c.id, "paused")}
+                              onClick={() => requestModerateCampaign(c.id, "paused")}
                             >
                               {busy ? "…" : "Pause"}
                             </button>
@@ -1297,7 +1309,7 @@ export function CpModuleAdsPage() {
                               type="button"
                               disabled={busy}
                               className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-900 disabled:opacity-50"
-                              onClick={() => void moderateCampaign(c.id, "ended")}
+                              onClick={() => requestModerateCampaign(c.id, "ended")}
                             >
                               {busy ? "…" : "End"}
                             </button>
@@ -1651,6 +1663,8 @@ export function CpModuleAdsPage() {
           </AdminPanel>
         </>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }

@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     const search = searchParams.get("search");
     const action = searchParams.get("action");
     const entityType = searchParams.get("entity_type");
+    const entityId = searchParams.get("entity_id");
     const actorUserId = searchParams.get("actor_user_id");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
@@ -61,6 +62,9 @@ export async function GET(request: Request) {
     }
     if (entityType) {
       query = query.eq("entity_type", entityType);
+    }
+    if (entityId) {
+      query = query.eq("entity_id", entityId);
     }
     if (actorUserId) {
       query = query.eq("actor_user_id", actorUserId);

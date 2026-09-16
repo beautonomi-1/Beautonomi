@@ -20,6 +20,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type LoyaltyRule = {
   id: string;
@@ -60,6 +61,7 @@ function fmtTs(iso: string | null | undefined): string {
 }
 
 export function LoyaltyRulesPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const qc = useQueryClient();
 
@@ -571,7 +573,15 @@ export function LoyaltyRulesPage() {
                       className="text-sm text-red-700 underline disabled:opacity-50"
                       disabled={deleteMilestone.isPending || !m.id}
                       onClick={() => {
-                        if (m.id && window.confirm("Delete this milestone?")) deleteMilestone.mutate(m.id);
+                        if (m.id) {
+                          requestConfirm({
+                            title: "Delete milestone",
+                            consequence: "Delete this milestone?",
+                            variant: "danger",
+                            confirmLabel: "Delete",
+                            onConfirm: async () => deleteMilestone.mutate(m.id!),
+                          });
+                        }
                       }}
                     >
                       Delete
@@ -676,6 +686,8 @@ export function LoyaltyRulesPage() {
           {patchMileErr ? <p className="text-sm text-red-600">{patchMileErr}</p> : null}
         </div>
       </AdminModal>
+      <ConfirmDialog />
+
     </div>
   );
 }

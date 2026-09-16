@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
@@ -6,28 +6,33 @@ import { adminApi } from "@/lib/adminClient";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
-import { adminTabButtonClass } from "@/lib/adminUi";
+import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
+import { AdminSavedViewChips } from "@/components/admin/AdminSavedViewChips";
+import { AdminSortableTable } from "@/components/admin/AdminSortableTable";
+import {
+  matchRefundSavedView,
+  REFUND_SAVED_VIEWS,
+} from "@/lib/refundSavedViews";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
+import { useAdminListKeyboardNav } from "@/hooks/useAdminListKeyboardNav";
+import { AdminDataList, type AdminListColumn } from "@/components/admin/AdminDataList";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
-import {
-  AdminDataTable,
-  AdminTableBody,
-  AdminTableHead,
-  AdminTd,
-  AdminTh,
-} from "@/components/admin/AdminDataTable";
+import { AdminTd } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 import {
   REFUND_REASON_PRESETS,
   parseRefundAmount,
@@ -150,7 +155,9 @@ export function RefundsListPage() {
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const status = sp.get("status") || "needs_action";
-  const filters = useMemo(() => ({ page, status }), [page, status]);
+  const sortBy = sp.get("sort") || "created_at";
+  const sortDir = (sp.get("dir") === "asc" ? "asc" : "desc") as "asc" | "desc";
+  const filters = useMemo(() => ({ page, status, sortBy, sortDir }), [page, status, sortBy, sortDir]);
 
   const [processId, setProcessId] = useState<string | null>(null);
   const [processRow, setProcessRow] = useState<Record<string, unknown> | null>(null);
@@ -161,6 +168,9 @@ export function RefundsListPage() {
   const [walletConfirm, setWalletConfirm] = useState(false);
   const [providerWarning, setProviderWarning] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
 
   const modalSetters = {
     setProcessId,
@@ -185,6 +195,8 @@ export function RefundsListPage() {
       });
     },
     enabled: allowed,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const processRefund = useMutation({
@@ -256,6 +268,80 @@ export function RefundsListPage() {
   const rows = q.data?.refunds ?? [];
   const pag = q.data?.pagination;
   const stats = q.data?.statistics;
+
+  const keyboardItems = useMemo(
+    () =>
+      rows.map((r) => {
+        const row = r as Record<string, unknown>;
+        return { id: String(row.id ?? row.key ?? "") };
+      }),
+    [rows],
+  );
+
+  useEffect(() => {
+    if (!isDesktop || rows.length === 0) return;
+    const valid = focusedRowId && keyboardItems.some((t) => t.id === focusedRowId);
+    if (!valid) {
+      setFocusedRowId(keyboardItems[0]?.id ?? null);
+    }
+  }, [isDesktop, rows.length, keyboardItems, focusedRowId]);
+
+  useAdminListKeyboardNav({
+    items: keyboardItems,
+    selectedId: focusedRowId,
+    onSelect: setFocusedRowId,
+    onOpen: (id) => setExpandedId((prev) => (prev === id ? null : id)),
+    enabled: isDesktop && rows.length > 0,
+    containerRef: listRef,
+  });
+
+  const activeSavedViewId = useMemo(
+    () => matchRefundSavedView({ status, page }),
+    [status, page],
+  );
+
+  const sortedRows = useMemo(() => {
+    const copy = [...rows];
+    copy.sort((a, b) => {
+      const av =
+        sortBy === "amount"
+          ? parseRefundAmount(a.amount)
+          : new Date(String(a.created_at ?? 0)).getTime();
+      const bv =
+        sortBy === "amount"
+          ? parseRefundAmount(b.amount)
+          : new Date(String(b.created_at ?? 0)).getTime();
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+    return copy;
+  }, [rows, sortBy, sortDir]);
+
+  const applySavedView = useCallback(
+    (viewId: string) => {
+      const view = REFUND_SAVED_VIEWS.find((v) => v.id === viewId);
+      const n = new URLSearchParams(sp);
+      n.set("page", "1");
+      if (!view || view.params.status === "needs_action") n.delete("status");
+      else if (view.params.status === "all") n.set("status", "all");
+      else n.set("status", String(view.params.status));
+      setSp(n, { replace: true });
+    },
+    [sp, setSp],
+  );
+
+  const handleSort = useCallback(
+    (column: string) => {
+      const n = new URLSearchParams(sp);
+      if (sortBy === column) {
+        n.set("dir", sortDir === "asc" ? "desc" : "asc");
+      } else {
+        n.set("sort", column);
+        n.set("dir", "desc");
+      }
+      setSp(n, { replace: true });
+    },
+    [sp, setSp, sortBy, sortDir],
+  );
 
   const processRemaining = processRow
     ? parseRefundAmount(
@@ -330,28 +416,6 @@ export function RefundsListPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const tabs = [
-    "needs_action",
-    "explained",
-    "all",
-    "success",
-    "pending",
-    "failed",
-    "refunded",
-    "partially_refunded",
-  ] as const;
-
-  const TAB_LABELS: Record<string, string> = {
-    needs_action: "Needs action",
-    explained: "Explained",
-    all: "All",
-    success: "Paid (capture ok)",
-    pending: "Pending",
-    failed: "Failed",
-    refunded: "Fully refunded",
-    partially_refunded: "Partially refunded",
-  };
-
   const byStatus = stats?.by_status ?? {};
   const totalListed = stats?.total_transactions ?? stats?.total ?? 0;
   const actionableRefundable = stats?.actionable_refundable ?? byStatus.success ?? 0;
@@ -367,12 +431,134 @@ export function RefundsListPage() {
     ? parseRefundAmount(processRow.refund_amount)
     : 0;
 
+  const mobileRefundColumns: AdminListColumn<Record<string, unknown>>[] = [
+    {
+      id: "why",
+      header: "Why",
+      cell: (row) => {
+        const derived = deriveRefundRowState({
+          status: String(row.status ?? "pending"),
+          booking: row.booking,
+          is_processable: row.is_processable as boolean | undefined,
+          refund_state: row.refund_state as
+            | "not_refunded"
+            | "partially_refunded"
+            | "fully_refunded"
+            | "credited_elsewhere"
+            | "not_applicable"
+            | undefined,
+          effective_reason: row.effective_reason as string | null | undefined,
+          refund_reason: row.refund_reason as string | null | undefined,
+          credited_via: row.credited_via as
+            | "admin_refunds_page"
+            | "cancellation"
+            | "provider"
+            | "dispute"
+            | null
+            | undefined,
+          effective_refunded_total: row.effective_refunded_total as number | undefined,
+          refunded_at: row.refunded_at as string | null | undefined,
+          wallet_credited_at: row.wallet_credited_at as string | null | undefined,
+        });
+        const whyText =
+          String(row.queue_reason_detail ?? "") ||
+          String(row.queue_reason_label ?? "") ||
+          derived.reason ||
+          "—";
+        return (
+          <div>
+            <p className="text-sm text-gray-900">{whyText}</p>
+            <span
+              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${derived.badgeClass}`}
+            >
+              {derived.label}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "amounts",
+      header: "Amounts",
+      cell: (row) => {
+        const remaining = parseRefundAmount(
+          row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
+        );
+        return (
+          <p className="text-sm tabular-nums text-gray-700">
+            Collected {formatAdminCurrency(parseRefundAmount(row.amount))}
+            {" · "}
+            Remaining {remaining > 0 ? formatAdminCurrency(remaining) : "—"}
+          </p>
+        );
+      },
+    },
+    {
+      id: "booking",
+      header: "Booking",
+      cell: (row) => {
+        const booking = row.booking as BookingEmbed | null | undefined;
+        const customer = unwrapBookingCustomer(row.booking);
+        return (
+          <p className="text-sm text-gray-700">
+            {booking?.booking_number ?? "—"}
+            {" · "}
+            {customer?.full_name || customer?.email || "—"}
+          </p>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      compactMobile: true,
+      cell: (row) => {
+        const derived = deriveRefundRowState({
+          status: String(row.status ?? "pending"),
+          booking: row.booking,
+          is_processable: row.is_processable as boolean | undefined,
+          refund_state: row.refund_state as
+            | "not_refunded"
+            | "partially_refunded"
+            | "fully_refunded"
+            | "credited_elsewhere"
+            | "not_applicable"
+            | undefined,
+          effective_reason: row.effective_reason as string | null | undefined,
+          refund_reason: row.refund_reason as string | null | undefined,
+          credited_via: row.credited_via as
+            | "admin_refunds_page"
+            | "cancellation"
+            | "provider"
+            | "dispute"
+            | null
+            | undefined,
+          effective_refunded_total: row.effective_refunded_total as number | undefined,
+          refunded_at: row.refunded_at as string | null | undefined,
+          wallet_credited_at: row.wallet_credited_at as string | null | undefined,
+        });
+        return derived.canProcess ? (
+          <button
+            type="button"
+            className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
+            onClick={() => openProcessRefund(row)}
+          >
+            {derived.actionLabel ?? "Credit wallet"}
+          </button>
+        ) : (
+          "—"
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Refunds"
         description="Cancelled bookings are refunded to the customer wallet automatically. This queue shows exceptions and manual support credits — not every paid booking."
       />
+      <AgentAssistEntitySection targetType="refund" actionTypes={["refund.briefing"]} />
 
       <AdminPanel>
         <h3 className="text-sm font-semibold text-gray-900">How this page works</h3>
@@ -476,19 +662,39 @@ export function RefundsListPage() {
         </div>
       )}
 
+      <AdminSavedViewChips
+        views={REFUND_SAVED_VIEWS}
+        activeViewId={activeSavedViewId}
+        onSelect={applySavedView}
+      />
+
       <AdminPanel>
-        <div className="flex flex-wrap gap-2">
-          {tabs.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={adminTabButtonClass(status === t)}
-              onClick={() => setStatus(t)}
-            >
-              {TAB_LABELS[t] ?? t.replace(/_/g, " ")}
-            </button>
-          ))}
-        </div>
+        <AdminListToolbar
+          searchValue=""
+          onSearchChange={() => {}}
+          searchPlaceholder="Search refunds (booking #, customer)…"
+          hasActiveFilters={status !== "needs_action"}
+          onClearFilters={() => setStatus("needs_action")}
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              value: status,
+              onChange: setStatus,
+              options: [
+                { value: "needs_action", label: "Needs action" },
+                { value: "explained", label: "Explained" },
+                { value: "all", label: "All" },
+                { value: "success", label: "Paid (capture ok)" },
+                { value: "pending", label: "Pending" },
+                { value: "failed", label: "Failed" },
+                { value: "refunded", label: "Fully refunded" },
+                { value: "partially_refunded", label: "Partially refunded" },
+              ],
+            },
+          ]}
+        />
         {pag ? (
           <p className="mt-3 text-sm text-gray-600">
             Page {pag.page} of {Math.max(1, pag.total_pages)} · {pag.total} total
@@ -496,7 +702,7 @@ export function RefundsListPage() {
         ) : null}
       </AdminPanel>
 
-      {rows.length === 0 ? (
+      {sortedRows.length === 0 ? (
         <EmptyState
           title={
             status === "needs_action"
@@ -511,25 +717,37 @@ export function RefundsListPage() {
               : undefined
           }
         />
+      ) : !isDesktop ? (
+        <AdminDataList
+          columns={mobileRefundColumns}
+          rows={sortedRows as Record<string, unknown>[]}
+          rowKey={(row) => String(row.id ?? row.key ?? "")}
+          tableMinWidthClass="min-w-[680px]"
+        />
       ) : (
-        <AdminDataTable>
-          <AdminTableHead>
-            <tr>
-              <AdminTh>Paid with</AdminTh>
-              <AdminTh>Booking status</AdminTh>
-              <AdminTh>Why</AdminTh>
-              <AdminTh>Collected</AdminTh>
-              <AdminTh>Refunded</AdminTh>
-              <AdminTh>Remaining</AdminTh>
-              <AdminTh>Refund state</AdminTh>
-              <AdminTh>Booking</AdminTh>
-              <AdminTh>Customer</AdminTh>
-              <AdminTh>Date</AdminTh>
-              <AdminTh>Actions</AdminTh>
-            </tr>
-          </AdminTableHead>
-          <AdminTableBody>
-            {rows.map((r) => {
+        <div ref={listRef} tabIndex={0} className="outline-none">
+        <AdminSortableTable
+          stickyHeader
+          densityStorageKey="admin-refunds-table-density"
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSort={handleSort}
+          columns={[
+            { id: "tender", label: "Paid with" },
+            { id: "booking_status", label: "Booking status" },
+            { id: "why", label: "Why" },
+            { id: "amount", label: "Collected", sortKey: "amount" },
+            { id: "refunded", label: "Refunded" },
+            { id: "remaining", label: "Remaining" },
+            { id: "state", label: "Refund state" },
+            { id: "booking", label: "Booking" },
+            { id: "customer", label: "Customer" },
+            { id: "created_at", label: "Date", sortKey: "created_at" },
+            { id: "actions", label: "Actions" },
+          ]}
+          minWidthClass="min-w-[1100px]"
+        >
+            {sortedRows.map((r) => {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
               const booking = row.booking as BookingEmbed | null | undefined;
@@ -576,8 +794,11 @@ export function RefundsListPage() {
               return (
                 <Fragment key={id}>
                   <tr
-                    className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
-                    onClick={() => setExpandedId(isExpanded ? null : id)}
+                    className={`cursor-pointer hover:bg-gray-50/80 ${isExpanded ? "bg-gray-50" : ""} ${focusedRowId === id ? "ring-2 ring-inset ring-primary/40" : ""}`}
+                    onClick={() => {
+                      setFocusedRowId(id);
+                      setExpandedId(isExpanded ? null : id);
+                    }}
                   >
                     <AdminTd className="text-xs text-gray-700">
                       {String(row.tender_label ?? row.provider ?? "—")}
@@ -793,8 +1014,8 @@ export function RefundsListPage() {
                 </Fragment>
               );
             })}
-          </AdminTableBody>
-        </AdminDataTable>
+        </AdminSortableTable>
+        </div>
       )}
 
       <AdminModal
@@ -853,6 +1074,15 @@ export function RefundsListPage() {
           )
         }
       >
+        {processId ? (
+          <div className="mb-3">
+            <AdminAuditTrailLink
+              entityType="booking_payment"
+              entityId={processId}
+              label="View payment audit trail"
+            />
+          </div>
+        ) : null}
         {providerWarning ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <p className="font-semibold">Provider balance warning</p>

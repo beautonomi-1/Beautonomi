@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
+    const subjectUserId = searchParams.get("subject_user_id");
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
@@ -30,6 +31,9 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       query = query.eq("status", status);
+    }
+    if (subjectUserId) {
+      query = query.eq("subject_user_id", subjectUserId);
     }
 
     const { data: rows, error, count } = await query;

@@ -16,6 +16,10 @@ import {
   draftHasAddressLine,
   isOnboardingWizardUserRole,
 } from "@/lib/provider-ops/onboarding-wizard-roles";
+import {
+  computeStallStatus,
+  loadProviderOpsStallSettings,
+} from "@/lib/provider-ops/stall-thresholds";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -33,20 +37,6 @@ const STEP_NAMES: Record<number, string> = {
   13: "Review",
   14: "Plan Selection",
 };
-
-function computeStallStatus(
-  updatedAt: string | null,
-  stallThresholdHours: number,
-  dropOffThresholdHours: number
-): "active" | "slowing" | "stalled" | "dropped_off" {
-  if (!updatedAt) return "stalled";
-  const diff = Date.now() - new Date(updatedAt).getTime();
-  const hours = diff / (1000 * 60 * 60);
-  if (hours > dropOffThresholdHours) return "dropped_off";
-  if (hours > stallThresholdHours) return "stalled";
-  if (hours > stallThresholdHours / 2) return "slowing";
-  return "active";
-}
 
 function extractDraftSummary(
   draftData: Record<string, unknown> | null
@@ -82,8 +72,9 @@ export async function GET(request: NextRequest) {
     const stepFilter = searchParams.get("step");
     const search = searchParams.get("search")?.trim()?.toLowerCase();
     const { page, limit } = getPaginationParams(request);
-    const stallThresholdHours = 24;
-    const dropOffThresholdHours = 168;
+    const stallSettings = await loadProviderOpsStallSettings(supabase, tenantId);
+    const stallThresholdHours = stallSettings.stall_threshold_hours;
+    const dropOffThresholdHours = stallSettings.dropoff_threshold_hours;
 
     type DraftWithUser = {
       id: string;

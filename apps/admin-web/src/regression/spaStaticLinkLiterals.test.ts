@@ -70,6 +70,25 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
     expect(misses, `Unregistered static targets:\n${misses.join("\n")}`).toEqual([]);
   });
 
+  it('React Router Link does not use raw to="/admin/..." (basename double-prefix bug)', () => {
+    const files: string[] = [];
+    collectSourceFiles(srcRoot, files);
+    const re = /<Link[^>]*\sto=\{?\s*["'`]\/admin\//g;
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      if (re.test(src)) {
+        offenders.push(file.replace(/\\/g, "/"));
+      }
+    }
+
+    expect(
+      offenders,
+      `Use adminSpaTo("/admin/...") for Link targets (basename=/admin):\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it('every object literal to: "/admin/..." resolves to a registered route', () => {
     const files: string[] = [];
     collectSourceFiles(srcRoot, files);

@@ -56,6 +56,7 @@ import {
   type AssignableUser,
 } from "@/components/provider-ops/LeadAssigneeInline";
 import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
@@ -408,6 +409,7 @@ interface Activity {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function ProviderOpsLeadsPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -734,14 +736,8 @@ export function ProviderOpsLeadsPage() {
     onError: (e: Error) => adminToast.error(`Failed: ${e.message}`),
   });
 
-  const handleLeadCallClick = useCallback(
+  const executeLeadCall = useCallback(
     async (lead: Lead) => {
-      if (!hasLeadPhone(lead)) return;
-      if (lead.do_not_contact) {
-        const ok = window.confirm("This lead is marked Do Not Contact. Place the call anyway?");
-        if (!ok) return;
-      }
-
       const now = Date.now();
       const last = lastCallLogAtRef.current.get(lead.id) ?? 0;
       const shouldLog = now - last >= 2000;
@@ -782,6 +778,24 @@ export function ProviderOpsLeadsPage() {
       }
     },
     [qc, selectedLeadId],
+  );
+
+  const handleLeadCallClick = useCallback(
+    (lead: Lead) => {
+      if (!hasLeadPhone(lead)) return;
+      if (lead.do_not_contact) {
+        requestConfirm({
+          title: "Do Not Contact lead",
+          consequence: "This lead is marked Do Not Contact. Place the call anyway?",
+          variant: "danger",
+          confirmLabel: "Place call",
+          onConfirm: async () => executeLeadCall(lead),
+        });
+        return;
+      }
+      void executeLeadCall(lead);
+    },
+    [executeLeadCall, requestConfirm],
   );
 
   const updateLeadMut = useMutation({
@@ -859,12 +873,17 @@ export function ProviderOpsLeadsPage() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
     const n = ids.length;
-    const msg =
+    const consequence =
       n === 1
         ? "Delete this lead? This cannot be undone. If it is linked to a provider account, it will be skipped."
         : `Delete ${n} leads? This cannot be undone. Leads linked to a provider account will be skipped.`;
-    if (!confirm(msg)) return;
-    bulkDeleteMut.mutate(ids);
+    requestConfirm({
+      title: n === 1 ? "Delete lead" : "Delete leads",
+      consequence,
+      variant: "danger",
+      confirmLabel: "Delete",
+      onConfirm: async () => bulkDeleteMut.mutate(ids),
+    });
   }
 
   const handleImportFile = useCallback(async (file: File) => {
@@ -1625,8 +1644,8 @@ export function ProviderOpsLeadsPage() {
                   expected_updated_at: detail?.updated_at,
                 })
               }
-              onDelete={() => { if (confirm("Move this lead to trash?")) deleteMut.mutate(selectedLeadId); }}
-              onRestore={() => { if (confirm("Restore this lead?")) restoreMut.mutate(selectedLeadId); }}
+              onDelete={() => { requestConfirm({ title: "Confirm action", consequence: "Move this lead to trash?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(selectedLeadId) }); }}
+              onRestore={() => { requestConfirm({ title: "Confirm action", consequence: "Restore this lead?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => restoreMut.mutate(selectedLeadId) }); }}
               onClose={() => setSelectedLeadId(null)}
               isDeleting={deleteMut.isPending}
               isRestoring={restoreMut.isPending}
@@ -1671,10 +1690,10 @@ export function ProviderOpsLeadsPage() {
                 onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
                 onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s, detail?.updated_at)}
                 onDelete={() => {
-                  if (confirm("Move this lead to trash?")) deleteMut.mutate(selectedLeadId);
+                  requestConfirm({ title: "Confirm action", consequence: "Move this lead to trash?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(selectedLeadId) });
                 }}
                 onRestore={() => {
-                  if (confirm("Restore this lead?")) restoreMut.mutate(selectedLeadId);
+                  requestConfirm({ title: "Confirm action", consequence: "Restore this lead?", variant: "danger", confirmLabel: "Confirm", onConfirm: async () => restoreMut.mutate(selectedLeadId) });
                 }}
                 onClose={() => setSelectedLeadId(null)}
                 isDeleting={deleteMut.isPending}
@@ -1755,6 +1774,8 @@ export function ProviderOpsLeadsPage() {
         onClose={() => setShowBulkWhatsApp(false)}
         leads={rows.filter((r) => selectedIds.has(r.id))}
       />
+
+      <ConfirmDialog />
     </div>
   );
 }

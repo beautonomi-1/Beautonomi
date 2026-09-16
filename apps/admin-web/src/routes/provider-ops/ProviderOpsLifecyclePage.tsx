@@ -25,6 +25,8 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
+import { activationGateLabels } from "@/lib/providerOpsActivationGates";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 interface TimelineEvent {
   type: string;
@@ -84,6 +86,13 @@ interface LifecycleData {
     is_verified: boolean;
     status: string;
   };
+  activation_gates: {
+    has_location: boolean;
+    has_coordinates: boolean;
+    has_business_name: boolean;
+    is_verified: boolean;
+  };
+  ready_to_activate: boolean;
 }
 
 const KYC_BADGE: Record<string, string> = {
@@ -150,6 +159,14 @@ function CompletionItem({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
+function ActivationGateItem({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span className={`flex items-center gap-1 text-xs ${ok ? "text-green-600" : "text-red-500"}`}>
+      {ok ? "✓" : "✗"} {label}
+    </span>
+  );
+}
+
 export function ProviderOpsLifecyclePage() {
   const { providerId = "" } = useParams<{ providerId: string }>();
   const { allowed, denied } = useAdminSectionPage(
@@ -157,6 +174,7 @@ export function ProviderOpsLifecyclePage() {
     "Provider Ops access is required to view lifecycle."
   );
   const qc = useQueryClient();
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const lifecycleKey = adminQueryKeys.providerOps.providerLifecycle(providerId);
 
@@ -219,7 +237,8 @@ export function ProviderOpsLifecyclePage() {
     return <AdminRetryBlock message="Lifecycle data not found" onRetry={() => void q.refetch()} />;
   }
 
-  const { provider, user, kyc, identity_verification, lead, timeline, completeness, tracking } = data;
+  const { provider, user, kyc, identity_verification, lead, timeline, completeness, tracking, activation_gates, ready_to_activate } = data;
+  const missingActivationGates = activationGateLabels(activation_gates);
   const identityPlatformLabel =
     identity_verification?.platform === "didit"
       ? "Didit"
@@ -271,9 +290,13 @@ export function ProviderOpsLifecyclePage() {
           {provider.status !== "active" && (
             <button
               type="button"
-              disabled={statusBusy}
-              onClick={() => statusMut.mutate({ status: "active" })}
-              className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
+              disabled={statusBusy || !ready_to_activate}
+              title={!ready_to_activate ? `Missing: ${missingActivationGates.join(", ")}` : undefined}
+              onClick={() => {
+                if (!ready_to_activate) return;
+                statusMut.mutate({ status: "active" });
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Activate
             </button>
@@ -283,8 +306,19 @@ export function ProviderOpsLifecyclePage() {
               type="button"
               disabled={statusBusy}
               onClick={() => {
-                const reason = window.prompt("Reason for suspension (shown to provider):");
-                if (reason !== null) statusMut.mutate({ status: "suspended", reason });
+                requestConfirm({
+                  title: "Suspend provider",
+                  consequence: `Suspend ${provider.business_name ?? "this provider"}? They will lose marketplace access.`,
+                  variant: "danger",
+                  confirmLabel: "Suspend",
+                  reasonField: {
+                    label: "Reason for suspension (shown to provider)",
+                    placeholder: "Explain why this provider is being suspended",
+                  },
+                  onConfirm: async ({ reason }) => {
+                    statusMut.mutate({ status: "suspended", reason: reason ?? "" });
+                  },
+                });
               }}
               className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50"
             >
@@ -305,12 +339,15 @@ export function ProviderOpsLifecyclePage() {
               type="button"
               disabled={verificationBusy}
               onClick={() => {
-                if (
-                  typeof window === "undefined" ||
-                  window.confirm("Remove the marketplace verified badge for this provider?")
-                ) {
-                  verifyMut.mutate({ verified: false });
-                }
+                requestConfirm({
+                  title: "Remove verified badge",
+                  consequence: `Remove the marketplace verified badge for ${provider.business_name ?? "this provider"}?`,
+                  variant: "danger",
+                  confirmLabel: "Remove badge",
+                  onConfirm: async () => {
+                    verifyMut.mutate({ verified: false });
+                  },
+                });
               }}
               className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-50 disabled:opacity-50"
             >
@@ -333,6 +370,23 @@ export function ProviderOpsLifecyclePage() {
           )}
         </div>
       </div>
+
+      {!ready_to_activate && provider.status !== "active" ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">Activation blocked</p>
+          <p className="mt-1 text-xs text-amber-700">
+            Resolve before activating: {missingActivationGates.join(", ")}.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            <ActivationGateItem label="Business Name" ok={activation_gates.has_business_name} />
+            <ActivationGateItem label="Location" ok={activation_gates.has_location} />
+            <ActivationGateItem label="Verified" ok={activation_gates.is_verified} />
+            {activation_gates.has_location && !activation_gates.has_coordinates ? (
+              <span className="text-xs text-amber-600">⚠ Coordinates not pinned</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left column */}
@@ -379,12 +433,15 @@ export function ProviderOpsLifecyclePage() {
                       type="button"
                       disabled={verificationBusy}
                       onClick={() => {
-                        if (
-                          typeof window === "undefined" ||
-                          window.confirm("Remove the marketplace verified badge for this provider?")
-                        ) {
-                          verifyMut.mutate({ verified: false });
-                        }
+                        requestConfirm({
+                          title: "Remove verified badge",
+                          consequence: `Remove the marketplace verified badge for ${provider.business_name ?? "this provider"}?`,
+                          variant: "danger",
+                          confirmLabel: "Remove badge",
+                          onConfirm: async () => {
+                            verifyMut.mutate({ verified: false });
+                          },
+                        });
                       }}
                       className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
                     >
@@ -430,6 +487,16 @@ export function ProviderOpsLifecyclePage() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                   <StatusBadge value={kyc?.status ?? "pending"} palette={KYC_BADGE} />
+                  {identity_verification?.didit_session_id ? (
+                    <Link
+                      to={adminSpaTo(
+                        `/admin/identity-trust/sessions?q=${encodeURIComponent(identity_verification.didit_session_id)}#verification`
+                      )}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Open KYC session
+                    </Link>
+                  ) : null}
                   <Link
                     to={adminSpaTo("/admin/identity-trust/sessions?status=pending_review#verification")}
                     className="text-xs font-medium text-primary hover:underline"
@@ -576,6 +643,8 @@ export function ProviderOpsLifecyclePage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog />
     </div>
   );
 }

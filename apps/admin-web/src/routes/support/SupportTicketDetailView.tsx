@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
@@ -16,6 +16,16 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { AdminModal } from "@/components/admin/AdminModal";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
+import {
+  REFUND_REASON_PRESETS,
+  computeBookingAvailableRefund,
+  canShowBookingRefund,
+  normalizeRefundReason,
+  isRefundReasonValid,
+  type RefundReasonPreset,
+} from "@/lib/refunds/refundUiHelpers";
 import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
 import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedResponses";
 import { adminSpaTo } from "@/lib/adminSpaPath";
@@ -26,6 +36,9 @@ import { LearningArticlePicker } from "@/components/learning/LearningArticlePick
 import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
 import { adminSupportContextActionLabel, adminSupportContextHref } from "@/lib/adminSupportContextHref";
 import { AlertTriangle, ArrowRight, Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
+import { AgentAssistPanel } from "@/components/agent-assist/AgentAssistPanel";
+import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
+import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -187,18 +200,54 @@ function formatDateTime(value?: string | null): string {
   return Number.isFinite(d.getTime()) ? d.toLocaleString() : "—";
 }
 
+function toDatetimeLocalValue(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToIso(value: string): string | null {
+  if (!value.trim()) return null;
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+type BookingContextRow = {
+  id: string;
+  status: string;
+  currency: string;
+  total_amount?: number | null;
+  total_paid?: number | null;
+  total_refunded?: number | null;
+  wallet_amount?: number | null;
+  gift_card_amount?: number | null;
+};
+
+type ThreadItem =
+  | { kind: "message"; id: string; created_at?: string; row: MessageRow }
+  | { kind: "note"; id: string; created_at?: string; row: NoteRow };
+
 export type SupportTicketDetailVariant = "page" | "panel";
 
 type SupportTicketDetailViewProps = {
   id: string;
   variant?: SupportTicketDetailVariant;
+  /** Panel mode: navigate to next ticket in queue without leaving split view. */
+  onNavigateNext?: (nextId: string | null) => void;
 };
 
-export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketDetailViewProps) {
+export function SupportTicketDetailView({
+  id,
+  variant = "page",
+  onNavigateNext,
+}: SupportTicketDetailViewProps) {
   const isPanel = variant === "panel";
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
+  const { shadowMode } = useAgentShadowMode();
   const { bootstrap } = useAdminSession();
   const myStaffUserId = bootstrap?.userId ?? "";
 
@@ -208,10 +257,18 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [noteBody, setNoteBody] = useState("");
+  const [searchParams] = useSearchParams();
+  const assistId = searchParams.get("assist");
   const [patchError, setPatchError] = useState<string | null>(null);
   const [tagsInput, setTagsInput] = useState("");
+  const [slaDueInput, setSlaDueInput] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [showCancelBooking, setShowCancelBooking] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [showRefundBooking, setShowRefundBooking] = useState(false);
+  const [refundAmount, setRefundAmount] = useState(0);
+  const [refundReasonPreset, setRefundReasonPreset] = useState<RefundReasonPreset | "">("");
+  const [refundReasonOther, setRefundReasonOther] = useState("");
 
   const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
@@ -268,12 +325,16 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
     return list[idx + 1]?.id ?? null;
   })();
   const handleNextInQueue = useCallback(() => {
+    if (isPanel && onNavigateNext) {
+      onNavigateNext(nextTicketId);
+      return;
+    }
     if (nextTicketId) {
       navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(nextTicketId)}`));
     } else {
       navigate(adminSpaTo("/admin/support-tickets?saved_view=needs_response"));
     }
-  }, [nextTicketId, navigate]);
+  }, [isPanel, onNavigateNext, nextTicketId, navigate]);
 
   // Realtime: refresh the ticket detail + list when this ticket or its messages change.
   const rtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -416,25 +477,85 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
     }
   }
 
-  const addNote = useMutation({
-    mutationFn: () =>
-      adminApi.postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/notes`, {
-        note: noteBody.trim(),
-        is_private: true,
+  const syncedTicket = detailQ.data?.ticket;
+  const bookingContextId =
+    syncedTicket && str(syncedTicket.support_context_type) === "booking" && syncedTicket.support_context_id
+      ? str(syncedTicket.support_context_id)
+      : null;
+
+  const bookingQ = useQuery({
+    queryKey: adminQueryKeys.bookings.detail(bookingContextId ?? ""),
+    queryFn: () =>
+      adminApi.getJson<BookingContextRow>(`/api/admin/bookings/${encodeURIComponent(bookingContextId!)}`, {
+        timeoutMs: 45_000,
       }),
-    onSuccess: () => {
-      setNoteBody("");
-      invalidateTicket();
-      adminToast.success("Note added");
-    },
-    onError: (e: Error) => adminToast.error(e.message),
+    enabled: allowed && !!bookingContextId,
   });
 
-  const syncedTicket = detailQ.data?.ticket;
+  const cancelBookingMut = useMutation({
+    mutationFn: (reason: string | undefined) =>
+      adminApi.postJson(`/api/admin/bookings/${encodeURIComponent(bookingContextId!)}/cancel`, { reason }),
+    onSuccess: () => {
+      void bookingQ.refetch();
+      invalidateTicket();
+      setShowCancelBooking(false);
+      setCancelReason("");
+      adminToast.success("Booking cancelled");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to cancel booking: ${e.message}`),
+  });
+
+  const refundBookingMut = useMutation({
+    mutationFn: (payload: { amount: number; reason: string }) =>
+      adminApi.postJson(`/api/admin/bookings/${encodeURIComponent(bookingContextId!)}/refund`, payload),
+    onSuccess: () => {
+      void bookingQ.refetch();
+      invalidateTicket();
+      setShowRefundBooking(false);
+      setRefundReasonPreset("");
+      setRefundReasonOther("");
+      adminToast.success("Refund credited to customer wallet");
+    },
+    onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
+  });
+
   useEffect(() => {
     if (!syncedTicket?.id) return;
     setTagsInput(((syncedTicket.tags as string[] | null | undefined) ?? []).join(", "));
-  }, [syncedTicket?.id, syncedTicket?.tags]);
+    setSlaDueInput(toDatetimeLocalValue(syncedTicket.sla_resolution_due_at as string | null | undefined));
+  }, [syncedTicket?.id, syncedTicket?.tags, syncedTicket?.sla_resolution_due_at]);
+
+  useEffect(() => {
+    if (!assistId || detailQ.isLoading) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`agent-assist-${assistId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [assistId, detailQ.isLoading, detailQ.dataUpdatedAt]);
+
+  const threadMessages = detailQ.data?.messages ?? [];
+  const threadNotes = detailQ.data?.notes ?? [];
+  const threadItems = useMemo((): ThreadItem[] => {
+    const items: ThreadItem[] = [
+      ...threadMessages.map((m) => ({
+        kind: "message" as const,
+        id: str(m.id) || `msg-${str(m.created_at)}`,
+        created_at: m.created_at ? str(m.created_at) : undefined,
+        row: m,
+      })),
+      ...threadNotes.map((n) => ({
+        kind: "note" as const,
+        id: str(n.id) || `note-${str(n.created_at)}`,
+        created_at: n.created_at ? str(n.created_at) : undefined,
+        row: n,
+      })),
+    ];
+    return items.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return ta - tb;
+    });
+  }, [threadMessages, threadNotes]);
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
@@ -470,8 +591,12 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
   }
 
   const messages = bundle?.messages ?? [];
-  const notes = bundle?.notes ?? [];
   const assignees = assigneesQ.data?.assignees ?? [];
+  const contextBooking = bookingQ.data;
+  const availableRefund = contextBooking ? computeBookingAvailableRefund(contextBooking) : 0;
+  const showRefundAction = contextBooking ? canShowBookingRefund(contextBooking) : false;
+  const resolvedRefundReason = normalizeRefundReason(refundReasonPreset, refundReasonOther);
+  const refundReasonValid = isRefundReasonValid(refundReasonPreset, refundReasonOther);
   const assignedId = ticket.assigned_to == null ? "" : str(ticket.assigned_to);
   const assigneeInList = assignedId && assignees.some((a) => a.id === assignedId);
   const customerUserId = ticket.user_id == null ? null : str(ticket.user_id);
@@ -553,7 +678,7 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span className="flex-1">{banner.text}</span>
-          {!isPanel && nextTicketId !== undefined ? (
+          {nextTicketId !== undefined ? (
             <button
               type="button"
               onClick={handleNextInQueue}
@@ -570,16 +695,14 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
         description={`#${str(ticket.ticket_number)} · ${str(ticket.status).replace(/_/g, " ")}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {!isPanel && (
-              <button
-                type="button"
-                onClick={handleNextInQueue}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
-                title={nextTicketId ? "Open next needs-response ticket" : "Return to queue"}
-              >
-                Next in queue <ArrowRight className="h-4 w-4" aria-hidden />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleNextInQueue}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+              title={nextTicketId ? "Open next needs-response ticket" : "Return to queue"}
+            >
+              Next in queue <ArrowRight className="h-4 w-4" aria-hidden />
+            </button>
             <button
               type="button"
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
@@ -696,9 +819,29 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
       <AdminMutationAlert
         errors={[
           sendMessage.error instanceof Error ? sendMessage.error : null,
-          addNote.error instanceof Error ? addNote.error : null,
+          cancelBookingMut.error instanceof Error ? cancelBookingMut.error : null,
+          refundBookingMut.error instanceof Error ? refundBookingMut.error : null,
         ]}
       />
+
+      <AdminPanel id="agent-assist-panel" title="AI suggestion">
+        <AgentAssistPanel
+          targetType="support_ticket"
+          targetId={id}
+          actionTypes={["support.reply", "support.assign", "support.resolve"]}
+          entityLabel={`#${str(ticket.ticket_number)}`}
+          shadowMode={shadowMode}
+          emptyTitle="No AI draft for this ticket"
+          emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
+        />
+        <div className="mt-4">
+          <DomainCopilotDock
+            section={ADMIN_SECTION_SUPPORT}
+            contextHint={`Support ticket ${id}. Read-only answers about this ticket.`}
+            starters={[`What is the status of ticket ${id}?`]}
+          />
+        </div>
+      </AdminPanel>
 
       <div className={`grid gap-6 ${isPanel ? "grid-cols-1" : "lg:grid-cols-3"}`}>
         <AdminPanel className={isPanel ? "" : "lg:col-span-2"}>
@@ -727,10 +870,44 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
             ))}
           </div>
           <ul className="mt-6 space-y-3 border-t border-gray-100 pt-4">
-            {messages.length === 0 ? (
+            {threadItems.length === 0 ? (
               <li className="text-sm text-gray-500">No messages yet.</li>
             ) : (
-              messages.map((m, idx) => {
+              threadItems.map((item, idx) => {
+                const dayLabel = messageDayLabel(item.created_at);
+                const prevDayLabel = idx > 0 ? messageDayLabel(threadItems[idx - 1]?.created_at) : "";
+
+                if (item.kind === "note") {
+                  const n = item.row;
+                  return (
+                    <Fragment key={item.id}>
+                      {dayLabel && dayLabel !== prevDayLabel ? (
+                        <li className="flex justify-center">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
+                            {dayLabel}
+                          </span>
+                        </li>
+                      ) : null}
+                      <li id={`note-${item.id}`} className="flex w-full justify-end">
+                        <div className="max-w-[min(100%,42rem)] rounded-xl border border-amber-300 bg-amber-50/90 p-3 shadow-sm">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                            <span className="font-medium text-amber-950">Team note</span>
+                            <span>·</span>
+                            <span>{n.user?.full_name || n.user?.email || "Staff"}</span>
+                            <span>·</span>
+                            <span>{n.created_at ? new Date(String(n.created_at)).toLocaleString() : "—"}</span>
+                            <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-amber-950">
+                              Legacy note · staff only
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm whitespace-pre-wrap text-gray-800">{str(n.note)}</p>
+                        </div>
+                      </li>
+                    </Fragment>
+                  );
+                }
+
+                const m = item.row;
                 const internal = Boolean(m.is_internal);
                 const uid = m.user_id == null ? null : str(m.user_id);
                 const fromCustomer = !internal && customerUserId !== null && uid === customerUserId;
@@ -742,12 +919,10 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                       ? "border-blue-200 bg-blue-50/90"
                       : "border-gray-200 bg-gray-50/90";
                 const atts = attachmentsFromRow(m.attachments);
-                const roleLabel = internal ? "Internal" : fromCustomer ? "Customer" : "Support";
-                const dayLabel = messageDayLabel(str(m.created_at));
-                const prevDayLabel = idx > 0 ? messageDayLabel(str(messages[idx - 1]?.created_at)) : "";
+                const roleLabel = internal ? "Internal note" : fromCustomer ? "Customer" : "Support";
                 const messageId = str(m.id);
                 return (
-                  <Fragment key={messageId}>
+                  <Fragment key={item.id}>
                     {dayLabel && dayLabel !== prevDayLabel ? (
                       <li className="flex justify-center">
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
@@ -755,7 +930,7 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                         </span>
                       </li>
                     ) : null}
-                  <li id={`message-${messageId}`} className={`flex w-full ${fromStaff ? "justify-end" : "justify-start"}`}>
+                  <li id={`message-${messageId}`} className={`flex w-full ${fromStaff || internal ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[min(100%,42rem)] rounded-xl border p-3 shadow-sm ${bubble}`}>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span className="font-medium text-gray-700">{roleLabel}</span>
@@ -815,6 +990,15 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
           </ul>
 
           <div className="mt-6 space-y-3 border-t border-gray-100 pt-4">
+            {replyInternal ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <p className="font-medium">Team note mode</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  This reply is saved as an internal note — only staff can see it. New team notes belong here; the
+                  separate notes panel has been retired.
+                </p>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 text-sm">
                 <button
@@ -1118,6 +1302,23 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                   placeholder="billing, vip, follow-up"
                 />
               </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">SLA resolution due</label>
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={slaDueInput}
+                  disabled={patchTicket.isPending}
+                  onChange={(e) => setSlaDueInput(e.target.value)}
+                  onBlur={() => {
+                    const nextIso = datetimeLocalToIso(slaDueInput);
+                    const prevIso = ticket.sla_resolution_due_at ? String(ticket.sla_resolution_due_at) : null;
+                    if (nextIso === prevIso || (!nextIso && !prevIso)) return;
+                    void patchTicket.mutateAsync({ sla_resolution_due_at: nextIso });
+                  }}
+                />
+                <p className="mt-1 text-xs text-gray-500">Clear the field and blur to remove the SLA deadline.</p>
+              </div>
             </div>
           </AdminPanel>
 
@@ -1275,6 +1476,33 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                       <ExternalLink className="h-4 w-4" aria-hidden />
                     </Link>
                   ) : null}
+                  {bookingContextId && contextBooking ? (
+                    <>
+                      {contextBooking.status !== "cancelled" && contextBooking.status !== "completed" ? (
+                        <button
+                          type="button"
+                          className="inline-flex min-h-10 items-center rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-800 hover:bg-red-100"
+                          onClick={() => setShowCancelBooking(true)}
+                        >
+                          Cancel booking
+                        </button>
+                      ) : null}
+                      {showRefundAction ? (
+                        <button
+                          type="button"
+                          className="inline-flex min-h-10 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                          onClick={() => {
+                            setRefundAmount(availableRefund);
+                            setRefundReasonPreset("");
+                            setRefundReasonOther("");
+                            setShowRefundBooking(true);
+                          }}
+                        >
+                          Issue refund
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
                   {ticket.support_context_label ? (
                     <button
                       type="button"
@@ -1387,36 +1615,134 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
             </div>
           </AdminPanel>
 
-          <AdminPanel>
-            <h2 className="text-lg font-semibold text-gray-900">Team notes</h2>
-            <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-sm">
-              {notes.length === 0 ? <li className="text-gray-500">No notes.</li> : null}
-              {notes.map((n) => (
-                <li key={str(n.id)} className="rounded-lg bg-gray-50 p-2">
-                  <div className="text-xs text-gray-500">
-                    {n.user?.full_name || n.user?.email} · {n.created_at ? new Date(String(n.created_at)).toLocaleString() : ""}
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap text-gray-800">{str(n.note)}</p>
-                </li>
-              ))}
-            </ul>
-            <textarea
-              className="mt-3 w-full min-h-[72px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={noteBody}
-              onChange={(e) => setNoteBody(e.target.value)}
-              placeholder="Add internal note…"
-            />
-            <button
-              type="button"
-              className={`mt-2 ${adminToolbarButtonClass(!noteBody.trim() || addNote.isPending)}`}
-              disabled={!noteBody.trim() || addNote.isPending}
-              onClick={() => void addNote.mutate()}
-            >
-              {addNote.isPending ? "Saving…" : "Add note"}
-            </button>
-          </AdminPanel>
         </div>
       </div>
+
+      <AdminModal
+        open={showCancelBooking}
+        onClose={() => setShowCancelBooking(false)}
+        title="Cancel booking"
+        description="This cannot be undone."
+        labelledBy="ticket-booking-cancel-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-3 py-2 text-sm"
+              onClick={() => setShowCancelBooking(false)}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="rounded bg-red-700 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={cancelBookingMut.isPending}
+              onClick={() => cancelBookingMut.mutate(cancelReason || undefined)}
+            >
+              Confirm cancel
+            </button>
+          </>
+        }
+      >
+        <textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="Reason (optional)"
+          rows={3}
+          className="w-full rounded border border-gray-300 p-2 text-sm"
+        />
+        <AdminMutationAlert errors={[cancelBookingMut.error]} />
+      </AdminModal>
+
+      <AdminModal
+        open={showRefundBooking}
+        onClose={() => setShowRefundBooking(false)}
+        title="Process refund"
+        labelledBy="ticket-booking-refund-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-3 py-2 text-sm"
+              onClick={() => setShowRefundBooking(false)}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="rounded bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={
+                refundBookingMut.isPending ||
+                !refundReasonValid ||
+                refundAmount <= 0 ||
+                refundAmount > availableRefund + 0.001
+              }
+              onClick={() =>
+                refundBookingMut.mutate({ amount: refundAmount, reason: resolvedRefundReason })
+              }
+            >
+              Process refund
+            </button>
+          </>
+        }
+      >
+        {contextBooking ? (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+              {(contextBooking.total_refunded ?? 0) > 0 ? (
+                <p>
+                  <span className="font-medium">Already refunded:</span>{" "}
+                  {formatAdminCurrency(contextBooking.total_refunded ?? 0, contextBooking.currency)}
+                </p>
+              ) : null}
+              <p>
+                <span className="font-medium">Available to refund:</span>{" "}
+                {formatAdminCurrency(availableRefund, contextBooking.currency)}
+              </p>
+            </div>
+            <label className="block text-sm">
+              Amount
+              <input
+                type="number"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
+                className="mt-1 w-full rounded border border-gray-300 p-2"
+                min={0.01}
+                max={availableRefund}
+                step="0.01"
+              />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Reason *
+              <select
+                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                value={refundReasonPreset}
+                onChange={(e) => setRefundReasonPreset(e.target.value as RefundReasonPreset | "")}
+              >
+                <option value="">Select a reason…</option>
+                {REFUND_REASON_PRESETS.map((preset) => (
+                  <option key={preset} value={preset}>
+                    {preset}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {refundReasonPreset === "Other" || refundReasonPreset === "" ? (
+              <label className="block text-sm font-medium text-gray-700">
+                {refundReasonPreset === "Other" ? "Describe reason *" : "Or enter reason *"}
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                  value={refundReasonOther}
+                  onChange={(e) => setRefundReasonOther(e.target.value)}
+                  placeholder="Reason for refund…"
+                />
+              </label>
+            ) : null}
+            <AdminMutationAlert errors={[refundBookingMut.error]} />
+          </div>
+        ) : null}
+      </AdminModal>
     </div>
   );
 }

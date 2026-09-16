@@ -8,7 +8,7 @@ import {
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminSpaTo } from "@/lib/adminSpaPath";
-import { NAV_GROUPS } from "@/config/nav";
+import { flattenNavItems, NAV_GROUPS } from "@/config/nav";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 
@@ -23,13 +23,7 @@ const QUICK_LINKS: { to: string; label: string; section?: AdminSection; superadm
 ];
 
 function sidebarSpaPaths(): string[] {
-  const out: string[] = [];
-  for (const g of NAV_GROUPS) {
-    for (const item of g.items) {
-      out.push(adminSpaTo(item.href));
-    }
-  }
-  return out;
+  return flattenNavItems(NAV_GROUPS).map((item) => adminSpaTo(item.href));
 }
 
 export function AdminNotFoundPage() {

@@ -34,7 +34,11 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
 
   // Operations
   "support-tickets": { label: "Support Tickets", parentHref: null },
+  "support-tickets/ai-drafts": { label: "AI drafts", parentHref: "/admin/support-tickets" },
   "support-tickets/[id]": { label: "Ticket", parentHref: "/admin/support-tickets" },
+  "finance/ai-queue": { label: "Finance AI queue", parentHref: "/admin/finance" },
+  "trust-safety-ops/ai-queue": { label: "Trust AI queue", parentHref: "/admin/trust-safety-ops" },
+  "provider-ops/ai-queue": { label: "Provider AI queue", parentHref: "/admin/provider-ops" },
   bookings: { label: "Bookings", parentHref: null },
   "bookings/[id]": { label: "Booking", parentHref: "/admin/bookings" },
   "group-bookings": { label: "Group Bookings", parentHref: null },

@@ -8,6 +8,7 @@ import {
 import { loadAgentEmergencyControls } from "../config-loader";
 import { slackNotifyAgentActionProposed } from "@/lib/integrations/slack/agent-triggers";
 import { getAgentApprovalPolicy } from "@/lib/agents/actions/approval-policy";
+import { agentActionDeepLink, presentAgentAction } from "@/lib/agents/actions/present-action";
 import { notifyAdminOps } from "@/lib/notifications/notify-admin-ops";
 import { isWorkflowFamilyEnabled } from "@/workflows/config";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -103,12 +104,13 @@ export async function proposeAgentAction(input: ProposeActionInput) {
 
   const policy = getAgentApprovalPolicy(input.actionType);
   if (policy) {
+    const presented = presentAgentAction(input.actionType);
     void notifyAdminOps({
       roles: policy.approverRoles,
       type: "agent_proposal",
-      title: "Agent action awaiting approval",
-      message: `${input.actionType} on ${input.targetType} (risk ${input.riskLevel})`,
-      link: `/admin/control-plane/modules/agents?action=${encodeURIComponent(data.id)}`,
+      title: presented.title,
+      message: input.reasoningSummary ?? presented.consequenceLine,
+      link: agentActionDeepLink(input.actionType, input.targetType, input.targetId, data.id),
       data: {
         action_id: data.id,
         action_type: input.actionType,

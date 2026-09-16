@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -16,17 +17,13 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
-import {
-  AdminDataTable,
-  AdminTableBody,
-  AdminTableHead,
-  AdminTd,
-  AdminTh,
-} from "@/components/admin/AdminDataTable";
+import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
+import { AdminDataList, type AdminListColumn } from "@/components/admin/AdminDataList";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { CompliancePurgeUserModal } from "@/components/admin/CompliancePurgeUserModal";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
 const SIGNUP_SOURCE_LABELS: Record<string, string> = {
@@ -168,6 +165,7 @@ export function UsersListPage() {
   const [draftSearch, setDraftSearch] = useDebouncedUrlParam(search, setSp, { param: "search" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [purgeUser, setPurgeUser] = useState<{ id: string; email: string } | null>(null);
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const [showCreate, setShowCreate] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -220,6 +218,7 @@ export function UsersListPage() {
               : `${vars.action} completed`;
       setSelectedIds(new Set());
       invalidateUsers();
+      invalidateAdminShellCounts(qc);
       adminToast.success(`${count} user${count !== 1 ? "s" : ""} ${actionLabel}`);
     },
     onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
@@ -230,6 +229,7 @@ export function UsersListPage() {
       adminApi.patchJson(`/api/admin/users/${encodeURIComponent(id)}`, body),
     onSuccess: (_data, vars) => {
       invalidateUsers();
+      invalidateAdminShellCounts(qc);
       if ("is_active" in vars.body) {
         adminToast.success(vars.body.is_active ? "User activated" : "User deactivated");
       } else {
@@ -318,29 +318,226 @@ export function UsersListPage() {
     }
   }
 
-  async function runBulk(action: "activate" | "deactivate" | "delete") {
+  function runBulk(action: "activate" | "deactivate" | "delete") {
     const user_ids = [...selectedIds];
     if (user_ids.length === 0) return;
 
     if (action === "activate") {
-      if (!window.confirm(`Activate ${user_ids.length} user(s)?`)) return;
-      await bulkPost.mutateAsync({ user_ids, action: "activate" });
+      requestConfirm({
+        title: "Activate users",
+        consequence: `Activate ${user_ids.length} selected user(s)? They will regain access immediately.`,
+        confirmLabel: "Activate",
+        onConfirm: async () => {
+          await bulkPost.mutateAsync({ user_ids, action: "activate" });
+        },
+      });
       return;
     }
     if (action === "deactivate") {
-      if (!window.confirm(`Deactivate ${user_ids.length} user(s)?`)) return;
-      const reason = window.prompt("Reason (optional):") ?? "";
-      await bulkPost.mutateAsync({ user_ids, action: "deactivate", reason: reason.trim() || null });
+      requestConfirm({
+        title: "Deactivate users",
+        consequence: `Deactivate ${user_ids.length} selected user(s)? They will lose access immediately.`,
+        variant: "danger",
+        confirmLabel: "Deactivate",
+        reasonField: true,
+        onConfirm: async ({ reason }) => {
+          await bulkPost.mutateAsync({ user_ids, action: "deactivate", reason: reason ?? null });
+        },
+      });
       return;
     }
-    if (action === "delete") {
-      const confirmation = window.prompt(
-        `WARNING: Permanently delete ${user_ids.length} user(s). Type DELETE to confirm:`
-      );
-      if (confirmation !== "DELETE") return;
-      await bulkPost.mutateAsync({ user_ids, action: "delete" });
-    }
+    requestConfirm({
+      title: "Delete users permanently",
+      consequence: `Permanently delete ${user_ids.length} selected user(s). This cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete permanently",
+      requireTypedConfirm: "DELETE",
+      onConfirm: async () => {
+        await bulkPost.mutateAsync({ user_ids, action: "delete" });
+      },
+    });
   }
+
+  const userColumns: AdminListColumn<UserRow>[] = [
+    {
+      id: "select",
+      header: (
+        <input
+          type="checkbox"
+          checked={allPageSelected}
+          onChange={(e) => selectAllOnPage(e.target.checked)}
+          aria-label="Select all on page"
+        />
+      ),
+      cell: (u) => {
+        const uid = str(u.id);
+        return (
+          <input
+            type="checkbox"
+            checked={selectedIds.has(uid)}
+            onChange={(e) => toggleSelect(uid, e.target.checked)}
+            aria-label={`Select ${str(u.email)}`}
+          />
+        );
+      },
+      compactMobile: true,
+    },
+    {
+      id: "user",
+      header: "User",
+      cell: (u) => {
+        const uid = str(u.id);
+        return (
+          <div className="flex items-center gap-2">
+            {u.avatar_url ? (
+              <img src={str(u.avatar_url)} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500">
+                {(str(u.full_name) || str(u.email)).slice(0, 1).toUpperCase() || "?"}
+              </div>
+            )}
+            <div>
+              <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/users/${uid}`)}>
+                {str(u.full_name) || "No name"}
+              </Link>
+              <div className="break-all text-xs text-gray-600">{str(u.email)}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "phone",
+      header: "Phone",
+      cell: (u) => str(u.phone) || "—",
+    },
+    {
+      id: "role",
+      header: "Role / status",
+      cell: (u) => {
+        const suspended = u.deactivated_at != null && String(u.deactivated_at).length > 0;
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="inline-flex w-fit rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs">
+              {str(u.role) || "—"}
+            </span>
+            {suspended ? (
+              <span className="w-fit rounded-md bg-red-100 px-2 py-0.5 text-xs text-red-800">Suspended</span>
+            ) : null}
+            {u.is_shadow ? (
+              <span className="w-fit rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-900">Guest (unclaimed)</span>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
+      id: "verification",
+      header: "Verification",
+      cell: (u) => <VerificationBadges v={u.verification} />,
+    },
+    {
+      id: "signup",
+      header: "Signup",
+      cell: (u) =>
+        u.signup_source ? SIGNUP_SOURCE_LABELS[str(u.signup_source)] ?? str(u.signup_source) : "—",
+    },
+    {
+      id: "active",
+      header: "Last active",
+      cell: (u) =>
+        formatWhen(str(u.last_active_at) || str(u.last_sign_in_at) || str(u.last_login_at) || null),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: (u) => {
+        const uid = str(u.id);
+        if (!uid) return null;
+        const suspended = u.deactivated_at != null && String(u.deactivated_at).length > 0;
+        const isTargetSuperadmin = str(u.role) === "superadmin";
+        return (
+          <div className="flex flex-col items-end gap-1">
+            {!isTargetSuperadmin ? (
+              <button
+                type="button"
+                className="text-xs font-medium text-primary underline"
+                disabled={patchUser.isPending}
+                onClick={() => {
+                  const label = str(u.full_name) || str(u.email);
+                  if (suspended) {
+                    requestConfirm({
+                      title: "Reactivate user",
+                      consequence: `Reactivate ${label}? They will regain access immediately.`,
+                      confirmLabel: "Reactivate",
+                      onConfirm: async () => {
+                        await patchUser.mutateAsync({
+                          id: uid,
+                          body: { deactivated_at: null, deactivation_reason: null },
+                        });
+                      },
+                    });
+                  } else {
+                    requestConfirm({
+                      title: "Suspend user",
+                      consequence: `Suspend ${label}? They will lose access immediately.`,
+                      variant: "danger",
+                      confirmLabel: "Suspend",
+                      reasonField: { label: "Reason (optional)", placeholder: "Shown in audit log" },
+                      onConfirm: async ({ reason }) => {
+                        await patchUser.mutateAsync({
+                          id: uid,
+                          body: { deactivated_at: new Date().toISOString(), deactivation_reason: reason ?? null },
+                        });
+                      },
+                    });
+                  }
+                }}
+              >
+                {suspended ? "Reactivate" : "Suspend"}
+              </button>
+            ) : null}
+            {isSuperadmin && !isTargetSuperadmin ? (
+              <select
+                className="max-w-[11rem] rounded border border-gray-200 px-1 py-1 text-xs"
+                value=""
+                disabled={rolePut.isPending}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  requestConfirm({
+                    title: "Change user role",
+                    consequence: `Change ${str(u.full_name) || str(u.email)} role to ${next}?`,
+                    confirmLabel: "Change role",
+                    onConfirm: async () => {
+                      await rolePut.mutateAsync({ id: uid, role: next });
+                    },
+                  });
+                  e.target.value = "";
+                }}
+              >
+                <option value="">Change role…</option>
+                {MANAGEABLE_USER_ROLES.map((r) => (
+                  <option key={r} value={r} disabled={r === str(u.role)}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {isSuperadmin && !isTargetSuperadmin ? (
+              <button
+                type="button"
+                className="text-xs text-red-700 underline"
+                onClick={() => setPurgeUser({ id: uid, email: str(u.email) || "" })}
+              >
+                Purge…
+              </button>
+            ) : null}
+          </div>
+        );
+      },
+    },
+  ];
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -463,75 +660,66 @@ export function UsersListPage() {
       ) : null}
 
       <AdminPanel>
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-          <label className="block min-w-[200px] flex-1 text-sm">
-            <span className="text-gray-600">Search</span>
-            <input
-              type="search"
-              placeholder="Name, email, phone, or user ID"
-              value={draftSearch}
-              onChange={(e) => setDraftSearch(e.target.value)}
-              className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm"
-            />
-          </label>
-          <label className="block w-full min-w-[160px] text-sm lg:w-auto">
-            <span className="text-gray-600">Role</span>
-            <select
-              className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm lg:w-52"
-              value={role}
-              onChange={(e) => updateParams({ role: e.target.value || null, page: "1" })}
+        <AdminListToolbar
+          searchValue={draftSearch}
+          onSearchChange={setDraftSearch}
+          searchPlaceholder="Name, email, phone, or user ID"
+          hasActiveFilters={Boolean(role || signupSource || isShadow)}
+          onClearFilters={() =>
+            updateParams({ role: null, signup_source: null, is_shadow: null, page: "1" })
+          }
+          filters={[
+            {
+              key: "role",
+              label: "Role",
+              type: "select",
+              value: role,
+              onChange: (v) => updateParams({ role: v || null, page: "1" }),
+              options: [
+                { value: "", label: "All roles" },
+                ...MANAGEABLE_USER_ROLES.map((r) => ({ value: r, label: r })),
+              ],
+            },
+            {
+              key: "signup_source",
+              label: "Signup source",
+              type: "select",
+              value: signupSource,
+              onChange: (v) => updateParams({ signup_source: v || null, page: "1" }),
+              options: [
+                { value: "", label: "All sources" },
+                ...Object.entries(SIGNUP_SOURCE_LABELS).map(([k, label]) => ({ value: k, label })),
+              ],
+            },
+            {
+              key: "is_shadow",
+              label: "Guest accounts",
+              type: "select",
+              value: isShadow,
+              onChange: (v) => updateParams({ is_shadow: v || null, page: "1" }),
+              options: [
+                { value: "", label: "All" },
+                { value: "true", label: "Guest (unclaimed)" },
+                { value: "false", label: "Registered" },
+              ],
+            },
+          ]}
+          actions={
+            <button
+              type="button"
+              className={adminToolbarButtonClass(isExporting)}
+              disabled={isExporting}
+              onClick={() => void handleExportCsv()}
             >
-              <option value="">All roles</option>
-              {MANAGEABLE_USER_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block w-full min-w-[160px] text-sm lg:w-auto">
-            <span className="text-gray-600">Signup source</span>
-            <select
-              className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm lg:w-52"
-              value={signupSource}
-              onChange={(e) => updateParams({ signup_source: e.target.value || null, page: "1" })}
-            >
-              <option value="">All sources</option>
-              {Object.entries(SIGNUP_SOURCE_LABELS).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block w-full min-w-[160px] text-sm lg:w-auto">
-            <span className="text-gray-600">Guest accounts</span>
-            <select
-              className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm lg:w-52"
-              value={isShadow}
-              onChange={(e) => updateParams({ is_shadow: e.target.value || null, page: "1" })}
-            >
-              <option value="">All</option>
-              <option value="true">Guest (unclaimed)</option>
-              <option value="false">Registered</option>
-            </select>
-          </label>
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            className={adminToolbarButtonClass(isExporting)}
-            disabled={isExporting}
-            onClick={() => void handleExportCsv()}
-          >
-            {isExporting ? "Preparing CSV…" : "Download CSV"}
-          </button>
-          {meta ? (
-            <p className="text-sm text-gray-600">
-              Page {meta.page} of {Math.max(1, Math.ceil(meta.total / meta.limit))} · {meta.total} users
-            </p>
-          ) : null}
-        </div>
+              {isExporting ? "Preparing CSV…" : "Download CSV"}
+            </button>
+          }
+        />
+        {meta ? (
+          <p className="mt-3 text-sm text-gray-600">
+            Page {meta.page} of {Math.max(1, Math.ceil(meta.total / meta.limit))} · {meta.total} users
+          </p>
+        ) : null}
         {meta?.shadow_stats ? (
           <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-3">
             <button
@@ -606,175 +794,13 @@ export function UsersListPage() {
         </AdminPanel>
       ) : null}
 
-      {rows.length === 0 ? (
-        <EmptyState title="No users" description="Try different filters or search." />
-      ) : (
-        <AdminDataTable>
-          <AdminTableHead>
-            <tr>
-              <AdminTh className="w-10">
-                <input
-                  type="checkbox"
-                  checked={allPageSelected}
-                  onChange={(e) => selectAllOnPage(e.target.checked)}
-                  aria-label="Select all on page"
-                />
-              </AdminTh>
-              <AdminTh>User</AdminTh>
-              <AdminTh>Phone</AdminTh>
-              <AdminTh>Role / status</AdminTh>
-              <AdminTh>Verification</AdminTh>
-              <AdminTh>Signup</AdminTh>
-              <AdminTh>Last active</AdminTh>
-              <AdminTh>Stats</AdminTh>
-              <AdminTh className="text-right">Actions</AdminTh>
-            </tr>
-          </AdminTableHead>
-          <AdminTableBody>
-            {rows.map((u) => {
-              const uid = str(u.id);
-              if (!uid) return null;
-              const suspended = u.deactivated_at != null && String(u.deactivated_at).length > 0;
-              const isTargetSuperadmin = str(u.role) === "superadmin";
-              return (
-                <tr key={uid}>
-                  <AdminTd>
-                    <div className="flex items-center pt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(uid)}
-                        onChange={(e) => toggleSelect(uid, e.target.checked)}
-                        aria-label={`Select ${str(u.email)}`}
-                      />
-                    </div>
-                  </AdminTd>
-                  <AdminTd>
-                    <div className="flex items-center gap-2">
-                      {u.avatar_url ? (
-                        <img src={str(u.avatar_url)} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
-                      ) : (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500">
-                          {(str(u.full_name) || str(u.email)).slice(0, 1).toUpperCase() || "?"}
-                        </div>
-                      )}
-                      <div>
-                        <Link
-                          className="font-medium text-primary underline"
-                          to={adminSpaTo(`/admin/users/${uid}`)}
-                        >
-                          {str(u.full_name) || "No name"}
-                        </Link>
-                        <div className="text-xs text-gray-600 break-all">{str(u.email)}</div>
-                      </div>
-                    </div>
-                  </AdminTd>
-                  <AdminTd className="text-sm text-gray-700">{str(u.phone) || "—"}</AdminTd>
-                  <AdminTd>
-                    <div className="flex flex-col gap-1">
-                      <span className="inline-flex w-fit rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs">
-                        {str(u.role) || "—"}
-                      </span>
-                      {suspended ? (
-                        <span className="w-fit rounded-md bg-red-100 px-2 py-0.5 text-xs text-red-800">Suspended</span>
-                      ) : null}
-                      {u.is_shadow ? (
-                        <span className="w-fit rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
-                          Guest (unclaimed)
-                        </span>
-                      ) : null}
-                    </div>
-                  </AdminTd>
-                  <AdminTd>
-                    <VerificationBadges v={u.verification} />
-                  </AdminTd>
-                  <AdminTd className="text-sm text-gray-600">
-                    {u.signup_source ? SIGNUP_SOURCE_LABELS[str(u.signup_source)] ?? str(u.signup_source) : "—"}
-                  </AdminTd>
-                  <AdminTd className="text-xs text-gray-600 whitespace-nowrap">
-                    {formatWhen(
-                      str(u.last_active_at) ||
-                        str(u.last_sign_in_at) ||
-                        str(u.last_login_at) ||
-                        null,
-                    )}
-                  </AdminTd>
-                  <AdminTd className="text-xs text-gray-600">
-                    {u.stats?.booking_count != null ? <div>Bookings: {String(u.stats.booking_count)}</div> : null}
-                    {u.stats?.provider_count != null ? <div>Providers: {String(u.stats.provider_count)}</div> : null}
-                    {u.stats?.booking_count == null && u.stats?.provider_count == null ? "—" : null}
-                  </AdminTd>
-                  <AdminTd className="text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      {!isTargetSuperadmin ? (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-primary underline"
-                          disabled={patchUser.isPending}
-                          onClick={() => {
-                            const label = str(u.full_name) || str(u.email);
-                            if (suspended) {
-                              if (!window.confirm(`Reactivate ${label}?`)) return;
-                              void patchUser.mutateAsync({
-                                id: uid,
-                                body: { deactivated_at: null, deactivation_reason: null },
-                              });
-                            } else {
-                              const r = window.prompt(`Suspend ${label} — reason (optional):`);
-                              if (r === null) return;
-                              if (!window.confirm(`Suspend ${label}?`)) return;
-                              void patchUser.mutateAsync({
-                                id: uid,
-                                body: { deactivated_at: new Date().toISOString(), deactivation_reason: r.trim() || null },
-                              });
-                            }
-                          }}
-                        >
-                          {suspended ? "Reactivate" : "Suspend"}
-                        </button>
-                      ) : null}
-                      {isSuperadmin && !isTargetSuperadmin ? (
-                        <select
-                          className="max-w-[11rem] rounded border border-gray-200 px-1 py-1 text-xs"
-                          value=""
-                          disabled={rolePut.isPending}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            if (!next) return;
-                            if (!window.confirm(`Change role to ${next}?`)) {
-                              e.target.value = "";
-                              return;
-                            }
-                            void rolePut.mutateAsync({ id: uid, role: next });
-                            e.target.value = "";
-                          }}
-                        >
-                          <option value="">Change role…</option>
-                          {MANAGEABLE_USER_ROLES.map((r) => (
-                            <option key={r} value={r} disabled={r === str(u.role)}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
-                      {isSuperadmin && !isTargetSuperadmin ? (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-red-700 underline"
-                          onClick={() =>
-                            setPurgeUser({ id: uid, email: str(u.email) || "" })
-                          }
-                        >
-                          Purge…
-                        </button>
-                      ) : null}
-                    </div>
-                  </AdminTd>
-                </tr>
-              );
-            })}
-          </AdminTableBody>
-        </AdminDataTable>
-      )}
+      <AdminDataList
+        columns={userColumns}
+        rows={rows.filter((u) => Boolean(str(u.id)))}
+        rowKey={(u) => str(u.id)}
+        empty={<EmptyState title="No users" description="Try different filters or search." />}
+        tableMinWidthClass="min-w-[960px]"
+      />
 
       {meta && meta.total > meta.limit ? (
         <div className="flex flex-wrap gap-2">
@@ -806,6 +832,8 @@ export function UsersListPage() {
           onComplete={invalidateUsers}
         />
       ) : null}
+
+      <ConfirmDialog />
     </div>
   );
 }

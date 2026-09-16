@@ -6,6 +6,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -19,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 import { adminToast } from "@/lib/adminToast";
 import { cn } from "@/lib/cn";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
@@ -117,6 +119,10 @@ export function ReconciliationExceptionsPage() {
         title="Reconciliation exceptions"
         description="Open mismatches from ledger vs PSP. Assign a maker, then a different admin resolves (matched, written off, or escalated)."
       />
+      <AgentAssistEntitySection
+        targetType="reconciliation_exception"
+        actionTypes={["reconciliation.investigate"]}
+      />
       <AdminPanel>
         <div className="mb-4 flex flex-wrap gap-2">
           <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -213,7 +219,14 @@ export function ReconciliationExceptionsPage() {
 
       {resolveId ? (
         <AdminPanel>
-          <h3 className="mb-3 text-sm font-semibold">Resolve exception</h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Resolve exception</h3>
+            <AdminAuditTrailLink
+              entityType="reconciliation_exception"
+              entityId={resolveId}
+              label="View exception audit trail"
+            />
+          </div>
           <p className="mb-3 text-xs text-gray-600">Maker and checker must be different admins. Assign first if you will check.</p>
           <div className="flex flex-wrap gap-2">
             <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={resolution} onChange={(e) => setResolution(e.target.value)}>

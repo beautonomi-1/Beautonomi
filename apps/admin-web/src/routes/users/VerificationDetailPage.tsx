@@ -16,6 +16,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { isUserVerificationQueueStatus } from "@/lib/verificationQueueStatuses";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type VerificationDetail = Record<string, unknown> & {
   id?: string;
@@ -65,6 +66,7 @@ function formatCountryDisplay(raw: string): string {
 }
 
 export function VerificationDetailPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
@@ -260,15 +262,13 @@ export function VerificationDetailPage() {
               className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
               disabled={resetIdentity.isPending}
               onClick={() => {
-                if (
-                  typeof window !== "undefined" &&
-                  !window.confirm(
+                requestConfirm({
+                  title: "Reset identity verification",
+                  consequence:
                     "Reset this user's identity verification state? They will be able to upload or run Didit again.",
-                  )
-                ) {
-                  return;
-                }
-                resetIdentity.mutate(subjectUserId);
+                  confirmLabel: "Reset verification",
+                  onConfirm: async () => resetIdentity.mutate(subjectUserId),
+                });
               }}
             >
               {resetIdentity.isPending ? "Resetting…" : "Reset identity verification"}
@@ -312,6 +312,8 @@ export function VerificationDetailPage() {
           </div>
         ) : null}
       </AdminPanel>
+      <ConfirmDialog />
+
     </div>
   );
 }

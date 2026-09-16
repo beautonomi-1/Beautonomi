@@ -5,5 +5,6 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 export function invalidateAdminShellCounts(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
   void qc.invalidateQueries({ queryKey: adminQueryKeys.activity() });
-  void qc.invalidateQueries({ queryKey: adminQueryKeys.adminNotifications() });
+  // Prefix match so bell ("bell") and inbox pages all refresh after read/unread/delete.
+  void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "admin-notifications"] });
 }

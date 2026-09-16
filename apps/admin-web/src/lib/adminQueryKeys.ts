@@ -35,7 +35,8 @@ export const adminQueryKeys = {
 
   disputes: {
     all: () => [...adminQueryKeys.root, "disputes"] as const,
-    list: (filters: { statusFilter: string; page?: number }) => [...adminQueryKeys.disputes.all(), "list", filters] as const,
+    list: (filters: { statusFilter: string; page?: number; customerId?: string }) =>
+      [...adminQueryKeys.disputes.all(), "list", filters] as const,
   },
 
   supportTickets: {
@@ -86,6 +87,11 @@ export const adminQueryKeys = {
   refunds: (filters: { page: number; status: string }) => [...adminQueryKeys.root, "refunds", "list", filters] as const,
 
   supportTicketDetail: (id: string) => [...adminQueryKeys.root, "support-tickets", "detail", id] as const,
+  agentActionsForTarget: (targetType: string, targetId: string) =>
+    [...adminQueryKeys.root, "agent-actions", targetType, targetId] as const,
+  agentActionsQueue: (section: string, status: string) =>
+    [...adminQueryKeys.root, "agent-actions-queue", section, status] as const,
+  agentActionById: (id: string) => [...adminQueryKeys.root, "agent-action", id] as const,
 
   supportTicketAssignees: () => [...adminQueryKeys.root, "support-ticket-assignees"] as const,
 

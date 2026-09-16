@@ -10,6 +10,10 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
 import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
 import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
+import {
+  computeStallStatus,
+  loadProviderOpsStallSettings,
+} from "@/lib/provider-ops/stall-thresholds";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,8 +22,9 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
 
     const now = Date.now();
-    const stallThresholdMs = 24 * 60 * 60 * 1000;
-    const dropOffThresholdMs = 7 * 24 * 60 * 60 * 1000;
+    const stallSettings = await loadProviderOpsStallSettings(supabase, tenantId);
+    const stallThresholdHours = stallSettings.stall_threshold_hours;
+    const dropOffThresholdHours = stallSettings.dropoff_threshold_hours;
     const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const rawDrafts = await fetchProviderOnboardingDraftsForTenantScope(
@@ -139,9 +144,13 @@ export async function GET(request: NextRequest) {
     for (const draft of drafts) {
       const d = draft as { user_id: string; updated_at: string };
       if (completedUserIds.has(String(d.user_id))) continue;
-      const diff = now - new Date(d.updated_at).getTime();
-      if (diff > dropOffThresholdMs) droppedOffCount++;
-      else if (diff > stallThresholdMs) stalledCount++;
+      const stallStatus = computeStallStatus(
+        d.updated_at,
+        stallThresholdHours,
+        dropOffThresholdHours
+      );
+      if (stallStatus === "dropped_off") droppedOffCount++;
+      else if (stallStatus === "stalled") stalledCount++;
     }
 
     for (const draft of drafts) {

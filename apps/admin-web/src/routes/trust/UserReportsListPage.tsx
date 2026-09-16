@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -9,6 +9,7 @@ import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPageAny } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { AgentAssistEntitySection } from "@/components/agent-assist/AgentAssistEntitySection";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -24,6 +25,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
 import { TrustReportsTabNav } from "@/routes/trust/TrustReportsTabNav";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type UserReportsPayload = {
   data: Record<string, unknown>[];
@@ -160,6 +162,7 @@ export function UserReportsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="User reports" description="Manage user-submitted reports. Resolve or dismiss with notes." />
+      <AgentAssistEntitySection targetType="user_report" actionTypes={["report.briefing"]} />
       {reportedUserId ? (
         <AdminPanel>
           <p className="text-sm text-gray-600">
@@ -218,8 +221,9 @@ export function UserReportsListPage() {
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
-              const rep = row.reporter as { full_name?: string; email?: string } | null;
-              const reported = row.reported as { full_name?: string; email?: string } | null;
+              const rep = row.reporter as { id?: string; full_name?: string; email?: string } | null;
+              const reported = row.reported as { id?: string; full_name?: string; email?: string } | null;
+              const bookingId = row.booking_id ? String(row.booking_id) : "";
               const isPending = String(row.status ?? "") === "pending";
               const isExpanded = expandedId === id;
               const statusStr = String(row.status ?? "pending");
@@ -246,8 +250,32 @@ export function UserReportsListPage() {
                         <span className="text-xs text-gray-400">—</span>
                       )}
                     </AdminTd>
-                    <AdminTd className="text-xs">{String(rep?.full_name ?? rep?.email ?? "")}</AdminTd>
-                    <AdminTd className="text-xs">{String(reported?.full_name ?? reported?.email ?? "")}</AdminTd>
+                    <AdminTd className="text-xs">
+                      {rep?.id ? (
+                        <Link
+                          to={adminSpaTo(`/admin/users/${rep.id}`)}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {rep.full_name || rep.email || rep.id}
+                        </Link>
+                      ) : (
+                        String(rep?.full_name ?? rep?.email ?? "")
+                      )}
+                    </AdminTd>
+                    <AdminTd className="text-xs">
+                      {reported?.id ? (
+                        <Link
+                          to={adminSpaTo(`/admin/users/${reported.id}`)}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {reported.full_name || reported.email || reported.id}
+                        </Link>
+                      ) : (
+                        String(reported?.full_name ?? reported?.email ?? "")
+                      )}
+                    </AdminTd>
                     <AdminTd className="max-w-xs truncate text-xs">{String(row.description ?? "")}</AdminTd>
                     <AdminTd className="text-xs text-gray-500 whitespace-nowrap">
                       {row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : ""}
@@ -282,9 +310,15 @@ export function UserReportsListPage() {
                             <p className="text-gray-600">{String(row.description ?? "No description")}</p>
                           </div>
                           <div>
-                            {Boolean(row.booking_id) ? (
+                            {bookingId ? (
                               <p className="text-xs text-gray-500 mb-1">
-                                Booking: <span className="font-mono">{String(row.booking_id)}</span>
+                                Booking:{" "}
+                                <Link
+                                  to={adminSpaTo(`/admin/bookings/${bookingId}`)}
+                                  className="font-mono text-primary hover:underline"
+                                >
+                                  {bookingId}
+                                </Link>
                               </p>
                             ) : null}
                             {Boolean(row.resolution_notes) ? (

@@ -118,20 +118,38 @@ export async function resolveAiRuntime(
         };
       });
 
+    const { data: globalRows } = await supabase
+      .from("ai_model_catalog")
+      .select("model_id, provider, tier, gateway, enabled, capability")
+      .eq("environment", environment)
+      .is("tenant_id", null);
+
+    const globalMapped = mapRows(globalRows ?? []);
+    const byModelId = new Map(globalMapped.map((r) => [r.model_id, r]));
+
     if (tenantId) {
       const { data: tenantRows } = await supabase
         .from("ai_model_catalog")
         .select("model_id, provider, tier, gateway, enabled, capability")
         .eq("environment", environment)
         .eq("tenant_id", tenantId);
-      if (tenantRows?.length) return mapRows(tenantRows);
+      if (tenantRows?.length) {
+        for (const row of tenantRows) {
+          const r = row as Record<string, unknown>;
+          const modelId = String(r.model_id);
+          byModelId.set(modelId, {
+            model_id: modelId,
+            provider: r.provider as string | undefined,
+            tier: r.tier as string | undefined,
+            capability: r.capability as string | undefined,
+            gateway: r.gateway as boolean | undefined,
+            enabled: r.enabled as boolean | undefined,
+          });
+        }
+        return [...byModelId.values()];
+      }
     }
-    const { data: globalRows } = await supabase
-      .from("ai_model_catalog")
-      .select("model_id, provider, tier, gateway, enabled, capability")
-      .eq("environment", environment)
-      .is("tenant_id", null);
-    return mapRows(globalRows ?? []);
+    return globalMapped;
   }
 
   const runtimeRow = await loadRuntimeRow();

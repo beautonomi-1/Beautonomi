@@ -22,6 +22,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type DomainRow = Record<string, unknown> & {
   id?: string;
@@ -45,6 +46,7 @@ type EditForm = {
 };
 
 export function TenantDomainsListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   useAdminDocumentTitle("Tenant domains");
   const { allowed, denied } = useSuperadminPage("Tenant domains are superadmin-only (matches API + nav).");
   const qc = useQueryClient();
@@ -481,14 +483,13 @@ export function TenantDomainsListPage() {
                         className={adminToolbarButtonClass(busy)}
                         disabled={busy || !id}
                         onClick={() => {
-                          if (
-                            !window.confirm(
-                              `Remove mapping for ${String(d.hostname ?? "this host")}? This cannot be undone.`
-                            )
-                          ) {
-                            return;
-                          }
-                          void deleteMut.mutate(id);
+                          requestConfirm({
+                            title: "Remove domain mapping",
+                            consequence: `Remove mapping for ${String(d.hostname ?? "this host")}? This cannot be undone.`,
+                            variant: "danger",
+                            confirmLabel: "Remove mapping",
+                            onConfirm: async () => deleteMut.mutate(id),
+                          });
                         }}
                       >
                         Remove
@@ -501,6 +502,8 @@ export function TenantDomainsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+      <ConfirmDialog />
+
     </div>
   );
 }

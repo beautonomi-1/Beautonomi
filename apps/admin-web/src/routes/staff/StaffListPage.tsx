@@ -24,6 +24,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
 type StaffStatistics = {
   total: number;
@@ -71,6 +72,7 @@ function formatAccountRoleLabel(m: Pick<StaffMember, "user_id" | "user_role">): 
 }
 
 export function StaffListPage() {
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
@@ -356,8 +358,14 @@ export function StaffListPage() {
                         className="text-xs font-medium text-primary underline"
                         disabled={resetPwd.isPending}
                         onClick={() => {
-                          if (!window.confirm(`Send password reset email for ${m.name}?`)) return;
-                          void resetPwd.mutateAsync(m.id);
+                          requestConfirm({
+                            title: "Send password reset",
+                            consequence: `Send password reset email for ${m.name}?`,
+                            confirmLabel: "Send email",
+                            onConfirm: async () => {
+                              await resetPwd.mutateAsync(m.id);
+                            },
+                          });
                         }}
                       >
                         Reset password
@@ -465,6 +473,8 @@ export function StaffListPage() {
           </div>
         </AdminModal>
       ) : null}
+      <ConfirmDialog />
+
     </div>
   );
 }

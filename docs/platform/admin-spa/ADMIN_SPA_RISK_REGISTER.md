@@ -24,7 +24,6 @@
 | R6 | Performance regression (bundle size, TTI) | M | M | **Lazy routes** + **`manualChunks`** + **`gcTime`** — [`ADMIN_PERFORMANCE_OPTIMIZATION_REPORT.md`](./ADMIN_PERFORMANCE_OPTIMIZATION_REPORT.md); Lighthouse CI on SPA | Further lazy + virtualize tables | FE | Open |
 | R7 | Nav counts / dashboard permission bugs persist | M | M | Wave 0 fixes; matrix documents behavior | Remove badges temporarily | FE | Open |
 | R8 | Rollback procedure fails (infra) | L | H | Drill twice before cutover; document RTO | Revert DNS / edge to previous config | DevOps | Open |
-| R9 | Inconsistent UX across 96 pages | H | M | `ADMIN_SPA_UI_CONVENTIONS`; reference pages; design QA | Wave-level UI freeze | Design | Open |
 | R10 | Backend API drift during freeze | M | M | Governance: API change triage; matrix changelog | Versioned endpoints | BE lead | Open |
 | R11 | Stakeholder confusion (wrong URL, training) | M | L | Support macros; changelog; internal demo | Office hours | PM Ops | Open |
 | R12 | Observability blind spot (SPA errors) | M | H | Sentry SPA project; **`beforeSend`** drops **AdminApiError** 401/403; **`VITE_SENTRY_ENVIRONMENT`**; **`tracesSampleRate` 0.1** — see [`ADMIN_PRODUCTION_STABILIZATION_REPORT.md`](./ADMIN_PRODUCTION_STABILIZATION_REPORT.md) | Synthetic checks; pause cutover | Platform | Open |
@@ -48,7 +47,7 @@
 
 | ID | Closed date | Outcome |
 |----|-------------|---------|
-| | | |
+| R9 | 2026-09-16 | **Mitigated.** Shared primitives (`AdminDataList`, `AdminListToolbar`, `AdminRetryBlock`, `AdminMutationAlert`) rolled out to high-traffic queues; CI regression guards in `apps/admin-web/src/regression/` (`loadingStateRegression`, `nativeDialogRegression`, `urlFilterStateRegression`, `navModelSnapshot`, `authGuardRegression`) block new drift. Residual variance on low-traffic CMS/settings pages is accepted technical debt per `ADMIN_POST_MIGRATION_REVIEW.md`. |
 
 ---
 

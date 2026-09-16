@@ -98,6 +98,39 @@ describe("/api/admin/notifications", () => {
     expect(body.data.has_more).toBe(false);
   });
 
+  it("PATCH can mark a notification unread (clears read_at)", async () => {
+    const updatePayload = vi.fn();
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: () => ({
+        update: (payload: unknown) => {
+          updatePayload(payload);
+          return {
+            eq: () => ({
+              eq: () => ({
+                select: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: "n1", is_read: false, read_at: null, created_at: "2026-01-01T00:00:00Z" },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        },
+      }),
+    });
+    const { PATCH } = await import("../[id]/route");
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/admin/notifications/n1", {
+        method: "PATCH",
+        body: JSON.stringify({ is_read: false }),
+      }),
+      { params: Promise.resolve({ id: "n1" }) },
+    );
+    expect(res.status).toBe(200);
+    expect(updatePayload).toHaveBeenCalledWith({ is_read: false, read_at: null });
+  });
+
   it("PATCH scopes update to caller user_id", async () => {
     const supabase = makeListChain([], 0, 0);
     mockGetSupabaseAdmin.mockReturnValue(supabase);

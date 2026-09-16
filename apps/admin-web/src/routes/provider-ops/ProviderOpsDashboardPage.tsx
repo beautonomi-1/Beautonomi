@@ -78,7 +78,7 @@ export function ProviderOpsDashboardPage() {
 
       {urgentTotal > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <UrgentCard label="Stalled Signups" count={data.urgent.stalled_signups} color="red" href="/admin/provider-ops/tracker?status=stalled" desc="No progress for 24+ hours" />
+          <UrgentCard label="Stalled Signups" count={data.urgent.stalled_signups} color="red" href="/admin/provider-ops/tracker?status=stalled" desc="No progress past stall threshold" />
           <UrgentCard label="Dropped Off" count={data.urgent.dropped_off} color="red" href="/admin/provider-ops/tracker?status=dropped_off" desc="No progress for 7+ days" />
           <UrgentCard label="Pending Approval" count={data.urgent.pending_approval} color="amber" href="/admin/provider-ops/activation" desc="Ready for review" />
           {duplicateGroups > 0 && (
