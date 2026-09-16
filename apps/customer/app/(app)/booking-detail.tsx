@@ -226,7 +226,13 @@ type BookingReviewSummary = {
 
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
-  const bookingParams = useLocalSearchParams<{ id?: string | string[]; charge_id?: string; focus?: string }>();
+  const bookingParams = useLocalSearchParams<{
+    id?: string | string[];
+    charge_id?: string;
+    focus?: string;
+    refund_confirm?: string | string[];
+    refund_dispute?: string | string[];
+  }>();
   /** Expo Router may pass `id` as a string[]; cancel/PDF must use the real UUID. */
   const id = useMemo(() => {
     const raw = bookingParams.id;
@@ -245,6 +251,18 @@ export default function BookingDetailScreen() {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return typeof v === "string" ? v.trim() : "";
   }, [bookingParams.focus]);
+  const refundConfirmParam = useMemo(() => {
+    const raw = bookingParams.refund_confirm;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === "string" ? v.trim() : "";
+  }, [bookingParams.refund_confirm]);
+  const refundDisputeParam = useMemo(() => {
+    const raw = bookingParams.refund_dispute;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === "string" ? v.trim() : "";
+  }, [bookingParams.refund_dispute]);
+  const cashRefundRespondedRef = useRef(false);
+  const [cashRefundActionLoading, setCashRefundActionLoading] = useState(false);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
@@ -368,6 +386,40 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     load();
   }, [id, load]);
+
+  const respondCashRefund = useCallback(
+    async (refundId: string, action: "confirm" | "dispute") => {
+      if (!id || cashRefundActionLoading) return;
+      setCashRefundActionLoading(true);
+      try {
+        const res = await api.post(`/api/me/bookings/${id}/refunds/${refundId}/respond`, {
+          action,
+        });
+        if (res.error) {
+          Alert.alert(errTitle, getApiErrorMessage(res.error, bd("loadFailed")));
+          return;
+        }
+        Alert.alert(
+          bd("cashRefundTitle"),
+          action === "dispute" ? bd("cashRefundDisputed") : bd("cashRefundConfirmed"),
+        );
+        await load({ silent: true });
+      } finally {
+        setCashRefundActionLoading(false);
+      }
+    },
+    [id, cashRefundActionLoading, errTitle, bd, load],
+  );
+
+  useEffect(() => {
+    const refundId = refundDisputeParam || refundConfirmParam;
+    if (!id || !refundId || cashRefundRespondedRef.current) return;
+    cashRefundRespondedRef.current = true;
+    const action = refundDisputeParam ? ("dispute" as const) : ("confirm" as const);
+    void respondCashRefund(refundId, action).finally(() => {
+      router.setParams({ refund_confirm: undefined, refund_dispute: undefined });
+    });
+  }, [id, refundConfirmParam, refundDisputeParam, respondCashRefund]);
 
   useEffect(() => {
     const groupId = booking?.group_booking_id;
@@ -2156,6 +2208,59 @@ export default function BookingDetailScreen() {
             });
           }}
         />
+        {(Array.isArray(booking.pending_cash_refunds) ? booking.pending_cash_refunds : []).map(
+          (ref: { id: string; amount?: number }) => (
+            <View
+              key={ref.id}
+              style={{
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: "#FFFBEB",
+                borderWidth: 1,
+                borderColor: "#FDE68A",
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>
+                {bd("cashRefundTitle")}
+              </Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[700], marginBottom: 12 }}>
+                {bd("cashRefundPrompt", {
+                  amount: formatMoney(Number(ref.amount ?? 0), booking.currency ?? getTenantDefaultCurrency()),
+                })}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => void respondCashRefund(ref.id, "confirm")}
+                  disabled={cashRefundActionLoading}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: Colors.primary,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: Colors.white, fontWeight: "600" }}>{bd("cashRefundConfirm")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void respondCashRefund(ref.id, "dispute")}
+                  disabled={cashRefundActionLoading}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[300],
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: Colors.gray[800], fontWeight: "600" }}>{bd("cashRefundDispute")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ),
+        )}
         {(() => {
           const runningLateBanner =
             lifecycleBanner ??
