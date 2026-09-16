@@ -80,6 +80,9 @@ function buildSupabaseMock(booking: Record<string, unknown> | null) {
           error: booking ? null : { message: "not found" },
         });
       }
+      if (table === "booking_refunds") {
+        return chainableQuery({ data: [], error: null });
+      }
       return chainableQuery({ data: {}, error: null });
     }),
   };
