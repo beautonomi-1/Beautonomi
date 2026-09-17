@@ -10,7 +10,9 @@ import { canAccessSection } from "@beautonomi/admin-access";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
   ADMIN_SECTION_FINANCE,
+  ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_PROVIDER_OPS,
   ADMIN_SECTION_PROVIDERS_OPERATIONS,
   ADMIN_SECTION_SUPPORT,
   ADMIN_SECTION_USERS_TRUST,
@@ -25,6 +27,8 @@ const ALL_SECTIONS: AdminSection[] = [
   ADMIN_SECTION_FINANCE,
   ADMIN_SECTION_USERS_TRUST,
   ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  ADMIN_SECTION_OPERATIONS,
+  ADMIN_SECTION_PROVIDER_OPS,
 ];
 
 function effectiveAllowedSections(
@@ -54,6 +58,11 @@ export async function POST(request: NextRequest) {
       adminRole: user.role ?? "admin_support",
       adminUserId: user.id,
       allowedSections,
+      pageContext: body.pageContext,
+      selectedEntity: body.selectedEntity,
+      conversationId: body.conversationId,
+      messages: body.messages,
+      resolvedEntities: body.resolvedEntities,
     });
 
     return successResponse(result);

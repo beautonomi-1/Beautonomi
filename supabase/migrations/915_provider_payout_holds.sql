@@ -24,6 +24,8 @@ CREATE INDEX IF NOT EXISTS idx_provider_payout_holds_tenant_provider
 
 ALTER TABLE public.provider_payout_holds ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS provider_payout_holds_admin ON public.provider_payout_holds;
+
 CREATE POLICY provider_payout_holds_admin
   ON public.provider_payout_holds
   FOR ALL

@@ -837,8 +837,12 @@ export function SupportTicketDetailView({
         <div className="mt-4">
           <DomainCopilotDock
             section={ADMIN_SECTION_SUPPORT}
-            contextHint={`Support ticket ${id}. Read-only answers about this ticket.`}
-            starters={[`What is the status of ticket ${id}?`]}
+            pageContext={{
+              entityType: "support_ticket",
+              entityId: id,
+              label: str(ticket.ticket_number) || str(ticket.subject) || undefined,
+            }}
+            starters={["Summarize this ticket", "Draft a reply to the customer"]}
           />
         </div>
       </AdminPanel>

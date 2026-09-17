@@ -1,50 +1,30 @@
 import { useState } from "react";
 import { Bot } from "lucide-react";
+import { Link } from "react-router";
 import type { AdminSection } from "@beautonomi/admin-access";
-import { adminApi } from "@/lib/adminClient";
 import { AdminPanel } from "@/components/ui/AdminPanel";
-import { adminToast } from "@/lib/adminToast";
+import { useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 export function DomainCopilotDock({
   section: _section,
   starters,
-  contextHint,
+  pageContext,
 }: {
   section: AdminSection;
   starters?: string[];
-  contextHint?: string;
+  pageContext?: CopilotPageContext;
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [answer, setAnswer] = useState<{
-    text: string;
-    toolCalls?: number;
-    deniedTools?: string[];
-  } | null>(null);
+  const { ask, messages, busy, disambiguation, proposedAction, pickDisambiguation, resetConversation } =
+    useAdminCopilot(pageContext);
 
-  const ask = async (q: string) => {
-    const trimmed = q.trim();
-    if (!trimmed) return;
-    const question = contextHint ? `${contextHint}\n\n${trimmed}` : trimmed;
-    setBusy(true);
-    setAnswer(null);
-    try {
-      const res = await adminApi.postJson<{
-        answer?: string;
-        toolCalls?: number;
-        deniedTools?: string[];
-      }>("/api/admin/copilot", { question });
-      setAnswer({
-        text: res.answer ?? "No answer returned.",
-        toolCalls: res.toolCalls,
-        deniedTools: res.deniedTools,
-      });
-    } catch (e) {
-      adminToast.error(e instanceof Error ? e.message : "Copilot failed");
-    } finally {
-      setBusy(false);
-    }
+  const lastUserQuestion = [...messages].reverse().find((m) => m.role === "user")?.content ?? question;
+
+  const submit = () => {
+    void ask(question);
+    setQuestion("");
   };
 
   if (!open) {
@@ -62,61 +42,93 @@ export function DomainCopilotDock({
 
   return (
     <AdminPanel title="Copilot (read-only)" className="border-primary/20">
-      {contextHint ? <p className="mb-3 text-sm text-gray-600">{contextHint}</p> : null}
-      <div className="flex flex-wrap gap-2">
+      {pageContext?.label ? (
+        <p className="mb-3 text-sm text-gray-600">Context: {pageContext.label}</p>
+      ) : null}
+
+      {messages.length > 0 ? (
+        <div className="mb-3 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+          {messages.map((m, i) => (
+            <div
+              key={`${m.role}-${i}`}
+              className={`text-sm ${m.role === "user" ? "text-gray-900" : "text-gray-700"}`}
+            >
+              <span className="font-medium">{m.role === "user" ? "You" : "Copilot"}:</span> {m.content}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mb-3 flex flex-wrap gap-2">
         {(starters ?? []).map((s) => (
           <button
             key={s}
             type="button"
             className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-            onClick={() => {
-              setQuestion(s);
-              void ask(s);
-            }}
+            disabled={busy}
+            onClick={() => void ask(s)}
           >
             {s}
           </button>
         ))}
       </div>
-      <label htmlFor="copilot-question" className="sr-only">
-        Ask Copilot
-      </label>
-      <textarea
-        id="copilot-question"
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        rows={2}
-        placeholder="Ask about this item…"
-        className="mt-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-      />
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
+
+      {disambiguation?.length ? (
+        <div className="mb-3 space-y-2">
+          <p className="text-sm font-medium text-gray-800">Pick one:</p>
+          {disambiguation.map((opt) => (
+            <button
+              key={`${opt.entityType}-${opt.entityId}`}
+              type="button"
+              className="block w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm hover:bg-amber-100"
+              disabled={busy}
+              onClick={() => pickDisambiguation(opt, lastUserQuestion)}
+            >
+              <span className="font-medium">{opt.label}</span>
+              {opt.subtitle ? <span className="ml-2 text-gray-600">{opt.subtitle}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          className="min-h-11 flex-1 rounded-lg border border-gray-200 px-3 text-sm"
+          placeholder="Ask about this record…"
+          value={question}
           disabled={busy}
-          className="inline-flex min-h-11 items-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-50"
-          onClick={() => void ask(question)}
-        >
-          {busy ? "Thinking…" : "Ask"}
-        </button>
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
         <button
           type="button"
-          className="inline-flex min-h-11 items-center rounded-xl border border-gray-300 px-4 text-sm text-gray-700"
-          onClick={() => setOpen(false)}
+          className="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-white disabled:opacity-50"
+          disabled={busy || !question.trim()}
+          onClick={submit}
         >
+          {busy ? "…" : "Ask"}
+        </button>
+      </div>
+
+      {proposedAction ? (
+        <p className="mt-3 text-sm">
+          <Link to={adminSpaTo(proposedAction.assistDeepLink)} className="font-medium text-primary underline">
+            Review draft in AI suggestion
+          </Link>
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex gap-3 text-xs text-gray-500">
+        <button type="button" className="underline" onClick={() => resetConversation()}>
+          New conversation
+        </button>
+        <button type="button" className="underline" onClick={() => setOpen(false)}>
           Close
         </button>
       </div>
-      {answer ? (
-        <div className="mt-4 space-y-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-800" role="status" aria-live="polite">
-          <p className="whitespace-pre-line">{answer.text}</p>
-          {answer.toolCalls != null ? (
-            <p className="text-xs text-gray-500">Based on {answer.toolCalls} authorized read(s)</p>
-          ) : null}
-          {answer.deniedTools?.length ? (
-            <p className="text-xs text-amber-800">Could not access: {answer.deniedTools.join(", ")}</p>
-          ) : null}
-        </div>
-      ) : null}
     </AdminPanel>
   );
 }

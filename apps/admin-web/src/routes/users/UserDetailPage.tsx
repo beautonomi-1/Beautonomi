@@ -22,6 +22,7 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -569,6 +570,23 @@ export function UserDetailPage() {
           exportErr ? new Error(exportErr) : null,
         ]}
       />
+
+      <AdminPanel title="Copilot">
+        <DomainCopilotDock
+          section={ADMIN_SECTION_USERS_TRUST}
+          pageContext={{
+            entityType: "user",
+            entityId: id,
+            label: typeof q.data?.full_name === "string" ? q.data.full_name : undefined,
+          }}
+          starters={[
+            "How is this customer doing?",
+            "How much have they spent?",
+            "What are their recent bookings?",
+            "Any open support tickets or fraud flags?",
+          ]}
+        />
+      </AdminPanel>
 
       <Entity360PanelsGrid
         panels={{

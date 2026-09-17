@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       shadow_mode: agentModule.shadowMode,
       mutations_allowed: mutationGate.allowed,
       master_enabled: agentModule.masterEnabled,
+      blockers: mutationGate.blockers ?? [],
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to load assist status");

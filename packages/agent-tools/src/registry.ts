@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { ADMIN_SECTION_OPERATIONS, ADMIN_SECTION_SUPPORT, ADMIN_SECTION_FINANCE, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
+import {
+  ADMIN_SECTION_OPERATIONS,
+  ADMIN_SECTION_SUPPORT,
+  ADMIN_SECTION_FINANCE,
+  ADMIN_SECTION_USERS_TRUST,
+  ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  ADMIN_SECTION_PROVIDER_OPS,
+} from "@beautonomi/admin-access";
 import type { AgentToolDefinition } from "./types";
 
 const ticketViewSchema = z.object({
@@ -183,7 +191,7 @@ export const providerReadHealthSnapshotTool: AgentToolDefinition<
   name: "provider.readHealthSnapshot",
   version: "1",
   description: "Read provider booking health snapshot",
-  requiredSection: ADMIN_SECTION_OPERATIONS,
+  requiredSection: ADMIN_SECTION_PROVIDERS_OPERATIONS,
   mode: "read",
   baseRiskTier: 1,
   inputSchema: z.object({ providerId: z.string().uuid() }),
@@ -231,6 +239,242 @@ export const safetyReadContentReportTool: AgentToolDefinition<
   },
 };
 
+export const adminSearchEntitiesTool: AgentToolDefinition<
+  { query: string; kinds?: ("provider" | "booking" | "user")[] },
+  { matches: Array<{ kind: string; id: string; label: string; subtitle?: string }> }
+> = {
+  name: "admin.searchEntities",
+  version: "1",
+  description: "Search users, providers, and bookings by name, email, phone, or booking number",
+  requiredSection: ADMIN_SECTION_OVERVIEW,
+  mode: "read",
+  baseRiskTier: 0,
+  inputSchema: z.object({
+    query: z.string().min(2).max(200),
+    kinds: z.array(z.enum(["provider", "booking", "user"])).optional(),
+  }),
+  outputSchema: z.object({
+    matches: z.array(
+      z.object({
+        kind: z.string(),
+        id: z.string(),
+        label: z.string(),
+        subtitle: z.string().optional(),
+      }),
+    ),
+  }),
+  maxRows: 15,
+  maxOutputBytes: 16384,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("admin.searchEntities wired in apps/web");
+  },
+};
+
+export const bookingReadSummaryTool: AgentToolDefinition<
+  { bookingId: string },
+  Record<string, unknown>
+> = {
+  name: "booking.readSummary",
+  version: "1",
+  description: "Read booking summary (tenant-scoped, field-allowlisted)",
+  requiredSection: ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ bookingId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 1,
+  maxOutputBytes: 8192,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 120,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("booking.readSummary wired in apps/web");
+  },
+};
+
+export const userReadProfileSummaryTool: AgentToolDefinition<
+  { userId: string },
+  Record<string, unknown>
+> = {
+  name: "user.readProfileSummary",
+  version: "1",
+  description: "Read customer/user profile summary for admin copilot",
+  requiredSection: ADMIN_SECTION_USERS_TRUST,
+  mode: "read",
+  baseRiskTier: 2,
+  inputSchema: z.object({ userId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 1,
+  maxOutputBytes: 16384,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("user.readProfileSummary wired in apps/web");
+  },
+};
+
+export const userReadRecentBookingsTool: AgentToolDefinition<
+  { userId: string },
+  Record<string, unknown>
+> = {
+  name: "user.readRecentBookings",
+  version: "1",
+  description: "Read recent bookings for a customer user",
+  requiredSection: ADMIN_SECTION_USERS_TRUST,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ userId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 5,
+  maxOutputBytes: 8192,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("user.readRecentBookings wired in apps/web");
+  },
+};
+
+export const financeReadProviderSummaryTool: AgentToolDefinition<
+  { providerId: string; startDate?: string; endDate?: string },
+  Record<string, unknown>
+> = {
+  name: "finance.readProviderSummary",
+  version: "1",
+  description: "Provider earnings, payouts, hold, and subscription summary",
+  requiredSection: ADMIN_SECTION_FINANCE,
+  mode: "read",
+  baseRiskTier: 2,
+  inputSchema: z.object({
+    providerId: z.string().uuid(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 1,
+  maxOutputBytes: 16384,
+  timeoutMs: 20_000,
+  rateLimitPerMin: 30,
+  retentionClass: "A",
+  execute: async () => {
+    throw new Error("finance.readProviderSummary wired in apps/web");
+  },
+};
+
+export const providerReadProfileSummaryTool: AgentToolDefinition<
+  { providerId: string },
+  Record<string, unknown>
+> = {
+  name: "provider.readProfileSummary",
+  version: "1",
+  description: "Provider profile, verification, Yoco flags, recent bookings",
+  requiredSection: ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ providerId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 1,
+  maxOutputBytes: 16384,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("provider.readProfileSummary wired in apps/web");
+  },
+};
+
+export const providerReadOnboardingProgressTool: AgentToolDefinition<
+  { providerId: string },
+  Record<string, unknown>
+> = {
+  name: "provider.readOnboardingProgress",
+  version: "1",
+  description: "Provider onboarding draft progress",
+  requiredSection: ADMIN_SECTION_PROVIDER_OPS,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ providerId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 1,
+  maxOutputBytes: 8192,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("provider.readOnboardingProgress wired in apps/web");
+  },
+};
+
+export const supportListOpenTicketsForProviderTool: AgentToolDefinition<
+  { providerId: string },
+  Record<string, unknown>
+> = {
+  name: "support.listOpenTicketsForProvider",
+  version: "1",
+  description: "List open support tickets for a provider",
+  requiredSection: ADMIN_SECTION_SUPPORT,
+  mode: "read",
+  baseRiskTier: 1,
+  inputSchema: z.object({ providerId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 10,
+  maxOutputBytes: 16384,
+  timeoutMs: 10_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("support.listOpenTicketsForProvider wired in apps/web");
+  },
+};
+
+export const trustReadProviderRiskSummaryTool: AgentToolDefinition<
+  { providerId: string },
+  Record<string, unknown>
+> = {
+  name: "trust.readProviderRiskSummary",
+  version: "1",
+  description: "Open fraud cases and disputes linked to a provider",
+  requiredSection: ADMIN_SECTION_USERS_TRUST,
+  mode: "read",
+  baseRiskTier: 3,
+  inputSchema: z.object({ providerId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 20,
+  maxOutputBytes: 8192,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 30,
+  retentionClass: "A",
+  execute: async () => {
+    throw new Error("trust.readProviderRiskSummary wired in apps/web");
+  },
+};
+
+export const trustReadUserRiskSummaryTool: AgentToolDefinition<
+  { userId: string },
+  Record<string, unknown>
+> = {
+  name: "trust.readUserRiskSummary",
+  version: "1",
+  description: "Open fraud cases and disputes for a user",
+  requiredSection: ADMIN_SECTION_USERS_TRUST,
+  mode: "read",
+  baseRiskTier: 3,
+  inputSchema: z.object({ userId: z.string().uuid() }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  maxRows: 20,
+  maxOutputBytes: 8192,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 30,
+  retentionClass: "A",
+  execute: async () => {
+    throw new Error("trust.readUserRiskSummary wired in apps/web");
+  },
+};
+
 export const TOOL_REGISTRY = [
   supportReadTicketTool,
   supportClassifyTicketTool,
@@ -240,6 +484,16 @@ export const TOOL_REGISTRY = [
   providerReadHealthSnapshotTool,
   trustReadFraudCaseTool,
   safetyReadContentReportTool,
+  adminSearchEntitiesTool,
+  bookingReadSummaryTool,
+  userReadProfileSummaryTool,
+  userReadRecentBookingsTool,
+  financeReadProviderSummaryTool,
+  providerReadProfileSummaryTool,
+  providerReadOnboardingProgressTool,
+  supportListOpenTicketsForProviderTool,
+  trustReadProviderRiskSummaryTool,
+  trustReadUserRiskSummaryTool,
 ] as const;
 
 export function getTool(name: string, version = "1") {

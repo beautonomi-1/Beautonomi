@@ -307,8 +307,18 @@ export function ProviderDetailPage() {
         <div className="mt-4">
           <DomainCopilotDock
             section={ADMIN_SECTION_PROVIDERS_OPERATIONS}
-            contextHint={`Provider ${id}. Read-only provider health and ops context.`}
-            starters={[`How is provider ${id} doing?`]}
+            pageContext={{
+              entityType: "provider",
+              entityId: providerCanonicalId || id,
+              label: business,
+            }}
+            starters={[
+              "How is this provider doing?",
+              ...(hasFinanceAccess ? ["How much has this provider earned this month?", "Any pending payouts or a payout hold?"] : []),
+              "Are they verified? Is Yoco connected?",
+              ...(canOpenLifecycle ? ["Any onboarding blockers?"] : []),
+              "Open support tickets for this provider?",
+            ]}
           />
         </div>
       </AdminPanel>

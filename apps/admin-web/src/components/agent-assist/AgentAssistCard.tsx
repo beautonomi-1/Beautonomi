@@ -173,7 +173,11 @@ export function AgentAssistCard({
 
       {shadowMode && ACTIONABLE_AGENT_STATUSES.has(action.status) ? (
         <p className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900" role="status">
-          Preview only. Approved replies will not send until the platform enables sending.
+          Preview only. Approved actions will not send until shadow mode is off and agent execution gates pass. See{" "}
+          <a href="/admin/control-plane/modules/agents" className="font-medium underline">
+            Agentic Console
+          </a>{" "}
+          or <code className="text-xs">docs/AGENT_ENABLEMENT_RUNBOOK.md</code> in the repo.
         </p>
       ) : null}
 

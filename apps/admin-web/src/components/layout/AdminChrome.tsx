@@ -33,6 +33,7 @@ import { AdminBreadcrumbProvider } from "@/providers/AdminBreadcrumbProvider";
 import { AdminNotificationBell } from "@/components/layout/AdminNotificationBell";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
+import { GlobalFloatingCopilot } from "@/components/agent-assist/GlobalFloatingCopilot";
 
 export function AdminChrome() {
   const qc = useQueryClient();
@@ -818,6 +819,7 @@ export function AdminChrome() {
           navMatches={navMatches}
         />
       ) : null}
+      <GlobalFloatingCopilot />
     </div>
   );
 }
