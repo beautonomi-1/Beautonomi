@@ -17,6 +17,8 @@ export async function runCopilotPropose(params: {
   conversationId: string;
   agentDefinitionId: string;
   policyVersion: string;
+  draftReplyText?: string;
+  draftProviderText?: string;
 }): Promise<{ message: string; proposedAction?: { actionId: string; actionType: string; assistDeepLink: string } } | null> {
   if (!PROPOSE_PATTERNS.test(params.question)) return null;
 
@@ -27,7 +29,8 @@ export async function runCopilotPropose(params: {
     if (ticket && /\breply\b/i.test(params.question)) {
       const proposedPayload = {
         ticketId: ticket.entityId,
-        draftReply: "Draft reply — review and edit before sending.",
+        draftReply:
+          params.draftReplyText?.trim() || "Draft reply — review and edit before sending.",
         source: "admin-copilot",
       };
       const action = await proposeAgentAction({
@@ -64,7 +67,7 @@ export async function runCopilotPropose(params: {
       const actionType = /\bdigest\b/i.test(params.question) ? "provider.digest" : "provider.outreach";
       const proposedPayload = {
         providerId: provider.entityId,
-        draft: "Draft message — review before sending.",
+        draft: params.draftProviderText?.trim() || "Draft message — review before sending.",
         source: "admin-copilot",
       };
       const action = await proposeAgentAction({

@@ -25,18 +25,28 @@ type CopilotResponse = {
   proposedAction?: { actionId: string; actionType: string; assistDeepLink: string };
   toolCalls?: number;
   deniedTools?: string[];
+  suggestedPrompts?: string[];
 };
+
+const GLOBAL_COPILOT_STARTERS = [
+  "What can you help me with?",
+  "Find a provider by business name",
+  "Look up a booking (BTN-…)",
+];
 
 function newConversationId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `conv-${Date.now()}`;
+  return "00000000-0000-4000-8000-000000000001";
 }
+
+export { GLOBAL_COPILOT_STARTERS };
 
 export function useAdminCopilot(pageContext?: CopilotPageContext) {
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [disambiguation, setDisambiguation] = useState<CopilotDisambiguationOption[] | null>(null);
   const [proposedAction, setProposedAction] = useState<CopilotResponse["proposedAction"]>();
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[] | null>(null);
   const conversationIdRef = useRef<string>(newConversationId());
   const resolvedEntitiesRef = useRef<CopilotResponse["resolvedEntities"]>({});
 
@@ -47,6 +57,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
       setBusy(true);
       setDisambiguation(null);
       setProposedAction(undefined);
+      setSuggestedPrompts(null);
 
       const userMsg: CopilotMessage = { role: "user", content: trimmed };
       setMessages((prev) => [...prev, userMsg].slice(-16));
@@ -86,6 +97,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
         };
         setMessages((prev) => [...prev, assistantMsg].slice(-16));
         if (res.proposedAction) setProposedAction(res.proposedAction);
+        if (res.suggestedPrompts?.length) setSuggestedPrompts(res.suggestedPrompts);
       } catch (e) {
         const err = e instanceof Error ? e.message : "Copilot failed";
         setMessages((prev) => [...prev, { role: "assistant" as const, content: err }].slice(-16));
@@ -109,6 +121,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
     setMessages([]);
     setDisambiguation(null);
     setProposedAction(undefined);
+    setSuggestedPrompts(null);
   }, []);
 
   return {
@@ -117,6 +130,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
     busy,
     disambiguation,
     proposedAction,
+    suggestedPrompts,
     pickDisambiguation,
     resetConversation,
     conversationId: conversationIdRef.current,

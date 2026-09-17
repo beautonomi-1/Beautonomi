@@ -7,6 +7,12 @@ import type {
 import { runAdminGlobalSearch, type AdminSearchKind } from "@/lib/admin/global-search";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { canonicalizeEntityRef, isUuid } from "./canonicalize-entity";
+import {
+  DEFAULT_SUGGESTED_PROMPTS,
+  hasHardLookupSignal,
+  isMetaOrHelpQuestion,
+  isWeakSearchPhrase,
+} from "./copilot-capabilities";
 
 export type CopilotIntent =
   | "provider.health"
@@ -24,6 +30,7 @@ export type CopilotIntent =
   | "ticket.summary"
   | "ops.health"
   | "report.deeplink"
+  | "copilot.help"
   | "unknown";
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -52,6 +59,16 @@ export type ResolveCopilotResult =
       status: "not_found";
       message: string;
       resolvedEntities: CopilotResolvedEntities;
+    }
+  | {
+      status: "help";
+      resolvedEntities: CopilotResolvedEntities;
+    }
+  | {
+      status: "clarify";
+      message: string;
+      suggestedPrompts: string[];
+      resolvedEntities: CopilotResolvedEntities;
     };
 
 function mergeResolved(
@@ -61,7 +78,7 @@ function mergeResolved(
   return { ...(base ?? {}), ...patch };
 }
 
-function inferIntent(question: string, entityType?: CopilotEntityType): CopilotIntent {
+export function inferIntent(question: string, entityType?: CopilotEntityType): CopilotIntent {
   const q = question.toLowerCase();
   if (/platform|system health|is the platform|ops health|service down/.test(q)) return "ops.health";
   if (/report|breakdown|trend|compare|analytics/.test(q)) return "report.deeplink";
@@ -212,6 +229,13 @@ export async function resolveCopilotQuestion(input: CopilotInput): Promise<Resol
       );
       if (canon) bind(key, input.pageContext.entityType, canon.entityId, input.pageContext.label ?? canon.label);
     }
+  } else if (usesPronoun && !input.pageContext) {
+    for (const [key, ref] of Object.entries(input.resolvedEntities ?? {})) {
+      if (!resolved[key]) {
+        const canon = await canonicalizeEntityRef(input.tenantId, ref.entityType, ref.entityId);
+        if (canon) bind(key, ref.entityType, canon.entityId, ref.label ?? canon.label);
+      }
+    }
   }
 
   const uuidInQ = UUID_RE.exec(question)?.[0];
@@ -230,17 +254,37 @@ export async function resolveCopilotQuestion(input: CopilotInput): Promise<Resol
   const hasPrimary =
     resolved.provider || resolved.user || resolved.booking || resolved.ticket || input.pageContext;
 
+  if (isMetaOrHelpQuestion(question) && !hasHardLookupSignal(question) && !wantsDifferentEntity(question)) {
+    return { status: "help", resolvedEntities: resolved };
+  }
+
   if (!hasPrimary || wantsDifferentEntity(question)) {
     const phrase = extractSearchPhrase(question);
-    if (phrase && phrase.length >= 2) {
+    const hard = hasHardLookupSignal(question);
+    const maySearch =
+      phrase &&
+      phrase.length >= 2 &&
+      (hard || !isWeakSearchPhrase(phrase)) &&
+      !(isMetaOrHelpQuestion(question) && !hard);
+
+    if (maySearch) {
       const admin = getSupabaseAdmin();
       const kinds = searchKindsForQuestion(question);
       const results = await runAdminGlobalSearch(admin, input.tenantId, phrase, kinds);
       const options = flattenSearchMatches(results).slice(0, 5);
       if (options.length === 0) {
+        if (hard) {
+          return {
+            status: "not_found",
+            message: `I couldn't find anyone or anything matching "${phrase}" in this tenant. Try a full email, phone, BTN- booking ref, or open the record in admin.`,
+            resolvedEntities: resolved,
+          };
+        }
         return {
-          status: "not_found",
-          message: `I couldn't find anyone or anything matching "${phrase}" in this tenant.`,
+          status: "clarify",
+          message:
+            "I didn't find a match for that. Tell me a provider or customer name, email, phone number, or booking ref (BTN-…), or open their detail page and ask again.",
+          suggestedPrompts: DEFAULT_SUGGESTED_PROMPTS,
           resolvedEntities: resolved,
         };
       }
@@ -276,9 +320,10 @@ export async function resolveCopilotQuestion(input: CopilotInput): Promise<Resol
 
   if (intent === "unknown" && !primary) {
     return {
-      status: "not_found",
+      status: "clarify",
       message:
-        "I need a provider, customer, or booking to look up. Try a name, email, phone, or open a detail page and ask again.",
+        "I need to know which provider, customer, or booking you mean. Try a name, email, phone, BTN- ref, or open a detail page and ask again.",
+      suggestedPrompts: DEFAULT_SUGGESTED_PROMPTS,
       resolvedEntities: resolved,
     };
   }

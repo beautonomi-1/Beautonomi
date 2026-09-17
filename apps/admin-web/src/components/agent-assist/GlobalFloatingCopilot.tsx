@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Bot, X } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import { useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
+import { GLOBAL_COPILOT_STARTERS, useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
@@ -24,8 +24,16 @@ export function GlobalFloatingCopilot() {
   const { masterEnabled } = useAgentShadowMode();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
-  const { ask, messages, busy, disambiguation, proposedAction, pickDisambiguation, resetConversation } =
-    useAdminCopilot(pageContext);
+  const {
+    ask,
+    messages,
+    busy,
+    disambiguation,
+    proposedAction,
+    suggestedPrompts,
+    pickDisambiguation,
+    resetConversation,
+  } = useAdminCopilot(pageContext);
 
   if (!masterEnabled) return null;
 
@@ -52,7 +60,25 @@ export function GlobalFloatingCopilot() {
           </div>
           <div className="max-h-72 flex-1 space-y-2 overflow-y-auto p-3">
             {messages.length === 0 ? (
-              <p className="text-sm text-gray-500">Ask about a provider, customer, or booking.</p>
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Ask in plain language — no special format. I look up providers, customers, and bookings from
+                  platform data.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {GLOBAL_COPILOT_STARTERS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                      disabled={busy}
+                      onClick={() => void ask(s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : (
               messages.map((m, i) => (
                 <div key={`${m.role}-${i}`} className="text-sm text-gray-800">
@@ -61,6 +87,21 @@ export function GlobalFloatingCopilot() {
               ))
             )}
           </div>
+          {suggestedPrompts?.length ? (
+            <div className="flex flex-wrap gap-2 border-t border-gray-100 p-2">
+              {suggestedPrompts.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                  disabled={busy}
+                  onClick={() => void ask(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {disambiguation?.length ? (
             <div className="space-y-1 border-t border-gray-100 p-2">
               {disambiguation.map((opt) => (
