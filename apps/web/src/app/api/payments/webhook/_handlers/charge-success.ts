@@ -58,6 +58,14 @@ import {
   reverseAdsBudgetOrderPayment,
 } from "@/lib/ads/ads-budget-order-payment";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
+import {
+  computePaidPeriodExpiresAt,
+  loadProviderSubscriptionByPaystackCode,
+  loadProviderSubscriptionByProviderId,
+  paystackActivationFields,
+  refundPaystackReferenceIfNeeded,
+  shouldIgnorePaystackEventForRow,
+} from "@/lib/subscriptions/provider-billing-merchant";
 import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/api/payments/webhook/_handlers/subscription-events";
 import { slackNotifyPaymentFailed } from "@/lib/integrations/slack/ops-triggers";
 
@@ -2557,6 +2565,26 @@ async function handleProviderSubscriptionOrderSuccess(
   const planId = orderData.plan_id as string;
   const billingPeriod = (orderData.billing_period ?? "monthly") as "monthly" | "yearly";
 
+  const merchantRow = await loadProviderSubscriptionByProviderId(supabase, providerId);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    await refundPaystackReferenceIfNeeded(reference, { providerId });
+    await supabase
+      .from("provider_subscription_orders")
+      .update({
+        status: "failed",
+        paystack_reference: reference,
+        failed_at: new Date().toISOString(),
+        failure_reason: "apple_billing_active",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("status", "pending");
+    console.warn(
+      `[provider_subscription_order] refunded charge.success — Apple is merchant for provider ${providerId}`,
+    );
+    return;
+  }
+
   const providerSubOrderFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
     provider_id: providerId,
@@ -2567,19 +2595,27 @@ async function handleProviderSubscriptionOrderSuccess(
     feesInCurrency,
   } = await resolvePaystackChargeFees(supabase, amount, fees);
 
-  await supabase.from("provider_subscription_orders")
+  const { data: claimedPaidOrder } = await supabase
+    .from("provider_subscription_orders")
     .update({
       status: "paid",
       paystack_reference: reference,
       paid_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedPaidOrder?.length ?? 0) === 0) {
+    console.log(
+      `[provider_subscription_order] skip activation — order ${orderId} no longer pending`,
+    );
+    return;
+  }
 
   const now = new Date();
-  const expiresAt = new Date(now);
-  if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-  else expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const expiresAtIso = computePaidPeriodExpiresAt(billingPeriod, now);
 
   await supabase.from("provider_subscriptions").upsert(
     {
@@ -2588,11 +2624,11 @@ async function handleProviderSubscriptionOrderSuccess(
       plan_id: planId,
       status: "active",
       started_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
+      expires_at: expiresAtIso,
       cancelled_at: null,
       billing_period: billingPeriod,
       auto_renew: false,
-      updated_at: new Date().toISOString(),
+      ...paystackActivationFields(),
     },
     { onConflict: "provider_id" },
   );
@@ -2647,12 +2683,14 @@ async function handleSubscriptionRenewalChargeSuccess(
   supabase: SupabaseClient,
 ) {
   const { reference, subscriptionCode, amount, fees, data } = payload;
-  const { data: sub } = await supabase
-    .from("provider_subscriptions")
-    .select("provider_id")
-    .eq("paystack_subscription_code", subscriptionCode)
-    .maybeSingle();
-  const providerId = (sub as { provider_id?: string } | null)?.provider_id;
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    console.log(
+      `[subscription] renewal charge.success ignored — Apple is merchant for ${subscriptionCode}`,
+    );
+    return;
+  }
+  const providerId = merchantRow?.provider_id;
   if (!providerId) {
     console.log(
       `[subscription] renewal charge.success for unknown subscription_code ${subscriptionCode}; deferring to invoice.update`,
@@ -2884,6 +2922,26 @@ async function handleSubscriptionAuthorizationSuccess(
     return;
   }
 
+  const merchantRow = await loadProviderSubscriptionByProviderId(supabase, providerId);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    await refundPaystackReferenceIfNeeded(reference, { providerId });
+    await supabase
+      .from("provider_subscription_orders")
+      .update({
+        status: "failed",
+        paystack_reference: reference,
+        failed_at: new Date().toISOString(),
+        failure_reason: "apple_billing_active",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("status", "pending");
+    console.warn(
+      `[subscription_auth] refunded authorization — Apple is merchant for provider ${providerId}`,
+    );
+    return;
+  }
+
   // Idempotency: verify + charge.success both call this path. If the order is
   // already paid (or the Paystack subscription was already created), do not call
   // createSubscription again — that would register a second Paystack subscription
@@ -3061,10 +3119,7 @@ async function handleSubscriptionAuthorizationSuccess(
         plan_id: planId,
         billing_period: billingPeriod,
         status: "active",
-        paystack_sync_pending: false,
-        paystack_sync_note: null,
-        updated_at: new Date().toISOString(),
-        ...extra,
+        ...paystackActivationFields(extra),
       })
       .eq("id", subscriptionRowId);
   };
@@ -3075,9 +3130,10 @@ async function handleSubscriptionAuthorizationSuccess(
       .update({
         plan_id: planId,
         billing_period: billingPeriod,
-        status: "pending",
+        status: "active",
         paystack_sync_pending: true,
         paystack_sync_note: message,
+        billing_provider: "paystack",
         updated_at: new Date().toISOString(),
       })
       .eq("id", subscriptionRowId);
@@ -3110,15 +3166,13 @@ async function handleSubscriptionAuthorizationSuccess(
     syncNote: string | null,
   ): Promise<void> => {
     const now = new Date();
-    const expiresAt = new Date(now);
-    if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-    else expiresAt.setMonth(expiresAt.getMonth() + 1);
+    const expiresAtIso = computePaidPeriodExpiresAt(billingPeriod, now);
 
     await applyActiveSubscriptionUpdate({
       started_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
+      expires_at: expiresAtIso,
       auto_renew: false,
-      ...(syncNote ? { paystack_sync_note: syncNote } : {}),
+      ...(syncNote ? { paystack_sync_note: syncNote, paystack_sync_pending: true } : {}),
     });
   };
 
@@ -3167,6 +3221,7 @@ async function handleSubscriptionAuthorizationSuccess(
         paystack_subscription_code: existingCodeOnRow,
         auto_renew: true,
         started_at: new Date().toISOString(),
+        expires_at: computePaidPeriodExpiresAt(billingPeriod),
       });
       await notifySubscriptionActivated();
       return;
@@ -3205,6 +3260,7 @@ async function handleSubscriptionAuthorizationSuccess(
           ? new Date(paystackSubscription.next_payment_date).toISOString()
           : null,
         started_at: new Date().toISOString(),
+        expires_at: computePaidPeriodExpiresAt(billingPeriod),
         auto_renew: true,
       });
     } else {
@@ -3216,7 +3272,7 @@ async function handleSubscriptionAuthorizationSuccess(
     const msg = err instanceof Error ? err.message : String(err);
     console.error("Failed to create Paystack subscription after authorization:", err);
     await applyPendingSyncFailure(
-      `Paystack subscription setup failed: ${msg}. Payment was recorded — use admin Activate to complete.`,
+      `We could not finish setting up automatic billing (${msg}). Payment was recorded — if your plan does not activate soon, contact support.`,
     );
   }
 }

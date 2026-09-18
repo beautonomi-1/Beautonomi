@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { processAppleSignedTransaction } from "@/lib/iap/apple/entitlement-bridge";
 import { resolveIosPurchaseEligibility } from "@/lib/iap/apple/ios-eligibility";
+import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
 
 const bodySchema = z.object({
   signed_transaction: z.string().min(10),
@@ -101,6 +102,10 @@ export async function POST(request: NextRequest) {
         422,
         { transaction_id: result.transactionId, product_id: result.productId },
       );
+    }
+
+    if (isSubscriptionProduct && result.kind === "subscription") {
+      await failPendingProviderSubscriptionOrders(supabase, providerId, "apple_verified");
     }
 
     const { data: subscription } = await supabase

@@ -713,9 +713,14 @@ export default function SubscriptionPage() {
   const expiresAt = subscription?.expires_at ? new Date(subscription.expires_at) : null;
   const isPaidPlan = Boolean(subscription && isPaidCurrentPlan(currentPlan));
   const billingLabel = subscription ? billingActionLabel(subscription, isPaidPlan, tx) : null;
-  const visibleBillingIssue = isPaidPlan ? subscription?.billing_issue : null;
+  const visibleBillingIssue = subscription?.billing_issue ?? null;
+  const appleLocked = isAppleBilled(subscription);
   const showCancel = Boolean(
-    subscription && subscription.status === "active" && !subscription.cancelled_at && isPaidPlan
+    subscription &&
+      subscription.status === "active" &&
+      !subscription.cancelled_at &&
+      isPaidPlan &&
+      !appleLocked
   );
 
   return (
@@ -1091,6 +1096,16 @@ export default function SubscriptionPage() {
                               ) : null}
                             </ul>
                             {!isCurrent || needsReactivate ? (
+                              appleLocked && !plan.is_free ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="mt-auto w-full rounded-xl py-5 text-base font-semibold"
+                                  disabled
+                                >
+                                  {tx("manageInAppStore")}
+                                </Button>
+                              ) : (
                               <Button
                                 className={`mt-auto w-full rounded-xl py-5 text-base font-semibold ${
                                   plan.is_popular
@@ -1098,9 +1113,11 @@ export default function SubscriptionPage() {
                                     : "bg-gray-900 text-white hover:bg-gray-800"
                                 }`}
                                 onClick={() => handleUpgrade(plan.id)}
+                                disabled={appleLocked && !plan.is_free}
                               >
                                 {planUpgradeButtonLabel(subscription, plan, tx)}
                               </Button>
+                              )
                             ) : (
                               <div className="mt-auto rounded-xl bg-gray-50 py-3 text-center text-sm font-medium text-gray-500">
                                 {tx("activeSelection")}
@@ -1139,12 +1156,19 @@ export default function SubscriptionPage() {
                         <h4 className="text-lg font-bold text-gray-900">{plan.name}</h4>
                         <p className="mt-3 text-3xl font-bold">{formatPlanPriceMain(plan, tx)}</p>
                         {!isCurrent || needsReactivate ? (
-                          <Button
-                            className="mt-6 w-full rounded-xl bg-primary py-5 text-white hover:bg-primary-hover"
-                            onClick={() => handleUpgrade(plan.id)}
-                          >
-                            {planUpgradeButtonLabel(subscription, plan, tx)}
-                          </Button>
+                          appleLocked && !plan.is_free ? (
+                            <Button type="button" variant="outline" className="mt-6 w-full rounded-xl py-5" disabled>
+                              {tx("manageInAppStore")}
+                            </Button>
+                          ) : (
+                            <Button
+                              className="mt-6 w-full rounded-xl bg-primary py-5 text-white hover:bg-primary-hover"
+                              onClick={() => handleUpgrade(plan.id)}
+                              disabled={appleLocked && !plan.is_free}
+                            >
+                              {planUpgradeButtonLabel(subscription, plan, tx)}
+                            </Button>
+                          )
                         ) : null}
                       </div>
                     );
@@ -1173,6 +1197,7 @@ export default function SubscriptionPage() {
           onClose={() => setShowUpgradeDialog(false)}
           plans={plans}
           onUpgrade={handleUpgrade}
+          appleLocked={appleLocked}
         />
 
         <SubscriptionReviewDialog
@@ -1299,11 +1324,13 @@ function UpgradeDialog({
   onClose,
   plans,
   onUpgrade,
+  appleLocked,
 }: {
   open: boolean;
   onClose: () => void;
   plans: SubscriptionPlan[];
   onUpgrade: (planId: string) => void;
+  appleLocked: boolean;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, opts?: Record<string, unknown>) =>
@@ -1367,9 +1394,9 @@ function UpgradeDialog({
                   onUpgrade(selectedPlan);
                 }
               }}
-              disabled={!selectedPlan}
+              disabled={!selectedPlan || appleLocked}
             >
-              {tx("upgrade")}
+              {appleLocked ? tx("manageInAppStore") : tx("upgrade")}
             </Button>
           </div>
         </div>

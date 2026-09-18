@@ -89,6 +89,7 @@ export async function startAppleSubscriptionCheckout(options: {
       ok: false,
       cancelled: purchase.cancelled,
       error: purchase.error,
+      errorCode: purchase.errorCode,
     };
   }
 

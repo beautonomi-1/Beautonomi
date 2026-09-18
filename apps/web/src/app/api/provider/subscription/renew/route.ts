@@ -17,6 +17,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { addMonths, addYears } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
+import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
 
 /**
  * POST /api/provider/subscription/renew
@@ -118,6 +119,12 @@ export async function POST(request: NextRequest) {
         is_free: true,
       });
     }
+
+    await failPendingProviderSubscriptionOrders(
+      supabase,
+      providerId,
+      "superseded_by_new_checkout",
+    );
 
     const { data: order, error: orderError } = await supabase
       .from("provider_subscription_orders")

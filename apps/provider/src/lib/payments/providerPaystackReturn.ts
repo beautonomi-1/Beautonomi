@@ -434,7 +434,7 @@ export function subscriptionSuccessCopy(sub: SubscriptionSnapshot): Subscription
 export function subscriptionPendingCopy(): SubscriptionSuccessCopy {
   return {
     title: "Payment received",
-    body: "Your plan will activate within a few minutes once Paystack confirms with your bank.",
+    body: "Your plan will activate within a few minutes once your bank confirms the payment.",
   };
 }
 

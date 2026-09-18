@@ -22,6 +22,14 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
+import {
+  computePaidPeriodExpiresAt,
+  loadProviderSubscriptionByPaystackCode,
+  loadProviderSubscriptionByProviderId,
+  paystackActivationFields,
+  shouldIgnorePaystackEventForRow,
+} from "@/lib/subscriptions/provider-billing-merchant";
+import { disableSubscriptionByCode } from "@/lib/payments/paystack-complete";
 
 /** Map Paystack subscription status to provider_subscriptions status (active | cancelled | expired | past_due). */
 function mapPaystackStatusToDb(status: string): "active" | "past_due" {
@@ -146,6 +154,20 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
 
   const dbStatus = mapPaystackStatusToDb(status || "active");
 
+  const merchantRow = await loadProviderSubscriptionByProviderId(supabase, provider.id);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    try {
+      await disableSubscriptionByCode(subscriptionCode, { tenantId: subscriptionTenantId });
+    } catch (e) {
+      console.warn("[subscription.create] disable inbound Paystack sub while Apple MoR:", e);
+    }
+    return;
+  }
+
+  const startedAt = payload.createdAt
+    ? new Date(payload.createdAt).toISOString()
+    : new Date().toISOString();
+
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: provider.id,
@@ -157,13 +179,12 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
       paystack_authorization_code: payload.authorization?.authorization_code,
       billing_period: billingPeriod,
       auto_renew: true,
+      expires_at: computePaidPeriodExpiresAt(billingPeriod),
       next_payment_date: nextPaymentDate
         ? new Date(nextPaymentDate).toISOString()
         : null,
-      started_at: payload.createdAt
-        ? new Date(payload.createdAt).toISOString()
-        : new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      started_at: startedAt,
+      ...paystackActivationFields(),
     },
     { onConflict: "provider_id" },
   );
@@ -177,16 +198,25 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
     return;
   }
 
-  const { data: row } = await supabase
-    .from("provider_subscriptions")
-    .select("id, status, cancelled_at, expires_at")
-    .eq("paystack_subscription_code", subscriptionCode)
-    .maybeSingle();
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    console.log(
+      `[subscription] subscription.disable ignored — Apple is merchant for ${subscriptionCode}`,
+    );
+    return;
+  }
 
-  if (!row) {
+  if (!merchantRow) {
     console.warn("subscription.disable: no local subscription row for", subscriptionCode);
     return;
   }
+
+  const row = merchantRow as {
+    id?: string;
+    status?: string;
+    cancelled_at?: string | null;
+    expires_at?: string | null;
+  };
 
   const now = new Date();
   const expiresAt = row.expires_at ? new Date(row.expires_at as string) : null;
@@ -233,6 +263,9 @@ async function handleSubscriptionEnable(payload: any, supabase: SupabaseClient) 
     return;
   }
 
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) return;
+
   await supabase.from("provider_subscriptions")
     .update({
       status: "active",
@@ -241,7 +274,7 @@ async function handleSubscriptionEnable(payload: any, supabase: SupabaseClient) 
         ? new Date(nextPaymentDate).toISOString()
         : null,
       cancelled_at: null,
-      updated_at: new Date().toISOString(),
+      ...paystackActivationFields(),
     })
     .eq("paystack_subscription_code", subscriptionCode);
 }
@@ -253,6 +286,9 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
     console.error("Missing subscription_code in subscription.not_renew event");
     return;
   }
+
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) return;
 
   await supabase.from("provider_subscriptions")
     .update({
@@ -282,6 +318,15 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
   },
 ): Promise<void> {
   const { subscriptionCode, invoiceCode, amount, fees, paidAt, payload, providerId } = args;
+
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    console.log(
+      `[subscription] renewal invoice ignored — Apple is merchant for ${subscriptionCode}`,
+    );
+    return;
+  }
+
   // Prefer the underlying Paystack transaction reference so a renewal that
   // surfaces as BOTH charge.success and invoice.update is recognized exactly
   // once (both events carry the same transaction reference). Fall back to the
@@ -358,7 +403,7 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
       last_payment_date: new Date(paidAt).toISOString(),
       expires_at: expiresAt.toISOString(),
       next_payment_date: nextPaymentDate ? new Date(nextPaymentDate as string | Date).toISOString() : null,
-      updated_at: new Date().toISOString(),
+      ...paystackActivationFields(),
     })
     .eq("paystack_subscription_code", subscriptionCode);
 
@@ -502,6 +547,9 @@ async function handleSubscriptionInvoice(
 
   type SubRow = { provider_id: string; plan_id?: string };
   const providerId = (subscription as SubRow).provider_id;
+
+  const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(merchantRow)) return;
 
   if (eventType === "invoice.create") {
     const dueDate = payload.due_date || payload.period_end;

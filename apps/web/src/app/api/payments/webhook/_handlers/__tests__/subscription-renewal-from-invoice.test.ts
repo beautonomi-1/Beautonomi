@@ -40,16 +40,23 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
         };
       }
       if (table === "provider_subscriptions") {
+        const subRow = {
+          id: "sub-row-1",
+          billing_period: "monthly",
+          plan_id: "11111111-1111-4111-8111-111111111111",
+          provider_id: "22222222-2222-4222-8222-222222222222",
+          tenant_id: "tenant-za",
+          billing_provider: "paystack",
+          status: "active",
+          paystack_subscription_code: "SUB_testcode",
+          plan: { is_free: false },
+        };
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: subRow, error: null })),
               single: vi.fn(async () => ({
-                data: {
-                  billing_period: "monthly",
-                  plan_id: "11111111-1111-4111-8111-111111111111",
-                  provider_id: "22222222-2222-4222-8222-222222222222",
-                  tenant_id: "tenant-za",
-                },
+                data: subRow,
                 error: null,
               })),
             })),

@@ -495,6 +495,26 @@ export async function finalizeOnboardingSuccess(options: {
       return;
     }
 
+    if (shouldUseAppleIap()) {
+      Alert.alert(
+        "Checkout unavailable",
+        "Complete your subscription from Subscription in the app. Web checkout is not available on iPhone.",
+        [
+          {
+            text: "Open subscription",
+            onPress: () =>
+              router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+          },
+          {
+            text: "Skip for now",
+            style: "cancel",
+            onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+          },
+        ],
+      );
+      return;
+    }
+
     // Fallback: open the web checkout page via WebView. Only reached when
     // waitForCheckout is not passed (e.g. in unit tests / non-React contexts).
     const base = (getBackendUrl() || "").replace(/\/$/, "");

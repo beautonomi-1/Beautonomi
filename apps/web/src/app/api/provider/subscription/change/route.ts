@@ -13,6 +13,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
+import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
 
 export async function POST(request: NextRequest) {
   try {
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
       paystack_sync_note: null,
       paystack_subscription_code: null,
       next_payment_date: null,
-      updated_at: new Date().toISOString(),
+      ...clearAppleMerchantOnFree(),
     };
 
     const { error: updateError } = await supabaseAdmin

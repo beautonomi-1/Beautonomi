@@ -19,6 +19,14 @@ import {
 } from "@/lib/iap/apple/registry";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import { recordAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
+import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
+import {
+  clearAppleMerchantOnFree,
+  disablePaystackSubscriptionForProvider,
+  failPendingProviderSubscriptionOrders,
+  isLivePaystackSubscription,
+  loadProviderSubscriptionByProviderId,
+} from "@/lib/subscriptions/provider-billing-merchant";
 
 export type ProcessAppleTransactionResult = {
   ok: boolean;
@@ -110,6 +118,46 @@ async function applySubscriptionEntitlement(
     : expiresIso && new Date(expiresIso) < new Date()
       ? "expired"
       : "active";
+
+  const existingRow = await loadProviderSubscriptionByProviderId(supabase, providerId);
+  const tenantId =
+    (existingRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
+  if (status !== "active") {
+    if (isLivePaystackSubscription(existingRow)) {
+      return;
+    }
+    if (isAppleBillingActive(existingRow?.billing_provider, existingRow?.status)) {
+      return;
+    }
+    const isFreePlan = existingRow?.plan?.is_free === true;
+    if (isFreePlan) {
+      if (existingRow?.billing_provider === "apple") {
+        await supabase
+          .from("provider_subscriptions")
+          .update({
+            apple_auto_renew_status: false,
+            ...clearAppleMerchantOnFree(),
+          })
+          .eq("provider_id", providerId);
+      }
+      return;
+    }
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        status: "expired",
+        auto_renew: false,
+        expires_at: expiresIso,
+        apple_auto_renew_status: false,
+        ...clearAppleMerchantOnFree(),
+      })
+      .eq("provider_id", providerId);
+    return;
+  }
+
+  await disablePaystackSubscriptionForProvider(supabase, providerId, tenantId);
+  await failPendingProviderSubscriptionOrders(supabase, providerId, "switched_to_apple");
 
   await supabase.from("provider_subscriptions").upsert(
     {
@@ -419,11 +467,11 @@ export async function applyAppleRenewalInfo(params: {
 
   const { data: sub } = await supabase
     .from("provider_subscriptions")
-    .select("provider_id, status")
+    .select("provider_id, status, cancelled_at")
     .eq("apple_original_transaction_id", renewal.originalTransactionId)
     .eq("billing_provider", "apple")
     .maybeSingle();
-  const row = sub as { provider_id: string; status: string } | null;
+  const row = sub as { provider_id: string; status: string; cancelled_at?: string | null } | null;
   if (!row) return;
 
   const graceIso = appleMillisToIso(renewal.gracePeriodExpiresDate);
@@ -433,6 +481,13 @@ export async function applyAppleRenewalInfo(params: {
   if (autoRenew !== null) {
     update.apple_auto_renew_status = autoRenew;
     update.auto_renew = autoRenew;
+    if (!autoRenew) {
+      if (!row.cancelled_at?.trim()) {
+        update.cancelled_at = new Date().toISOString();
+      }
+    } else {
+      update.cancelled_at = null;
+    }
   }
   if (graceIso) {
     update.apple_grace_period_expires_at = graceIso;
@@ -500,7 +555,7 @@ export async function handleAppleSubscriptionExpired(
       plan_id: freePlanId,
       auto_renew: false,
       apple_auto_renew_status: false,
-      updated_at: new Date().toISOString(),
+      ...clearAppleMerchantOnFree(),
     })
     .eq("provider_id", (sub as { provider_id: string }).provider_id);
 }

@@ -168,6 +168,24 @@
           "custom": "Custom",
           "customPlaceholder": "Minutes (1–240)",
           "apply": "Apply"
+        },
+        "subscriptionSettings": {
+          "iapNotAvailableBody": "This subscription is billed on Android or the website. Manage it there so you are not charged twice.",
+          "iapDisabledBody": "App Store subscriptions are temporarily unavailable. Try again later or contact support.",
+          "appleProductNotMappedBody": "This plan is not available as an iPhone purchase yet. Contact support.",
+          "introPlansMatchRegion": "Choose Monthly or Yearly to compare plans and prices for your region.",
+          "billingSyncNeededBody": "Your plan was updated but card billing still needs confirmation. Complete payment or update your card.",
+          "autoRenewableSubscriptionBody": "Payment is charged to your Apple ID. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. Manage, cancel, or accept a price change anytime in Apple ID → Subscriptions. Any introductory offer on this plan is applied automatically when you subscribe. Redeem a promotional or win-back offer code with Redeem App Store offer code. Any unused portion of a free trial, if offered, is forfeited when you purchase."
+        },
+        "subscriptionHub": {
+          "intro": "Manage your plan, billing period, and renewals from the subscription screen.",
+          "noSubscriptionBody": "Tap the button above to choose a plan or activate the free tier."
+        },
+        "upgradeInfo": {
+          "compareBody": "Compare plans in the app and continue to secure checkout from the subscription screen."
+        },
+        "inAppBrowser": {
+          "subscriptionPaymentPending": "Your payment was received and confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment."
         }
       }
     }
@@ -1352,6 +1370,20 @@
     "search": {
       "distanceAway": "a {{km}} km",
       "distanceUnder1km": "< 1 km"
+    },
+    "provider": {
+      "subscription": {
+        "pageSubtitle": "Choose a plan and billing period for your business.",
+        "freeTierNote": "You are on the free tier. Upgrade below when you need premium tools such as team features, automations, or calendar sync.",
+        "changePlanWebNote": "Plans shown match what is available for your region.",
+        "noPlansForPeriod": "No {{period}} options are published for your region. Try the other billing period or ask an admin to enable pricing for this market.",
+        "noPurchasablePlans": "No paid plans are available for your region right now. Contact support or try again later.",
+        "checkout": {
+          "paystackRedirect": "You'll be redirected to a secure payment page to complete checkout.",
+          "paidNext": "You'll enter your card on a secure payment page, then return here when checkout is complete.",
+          "planNotLinkedPaystack": "This plan is not available for card checkout yet. Contact support or choose another plan."
+        }
+      }
     }
   },
   "customer": {

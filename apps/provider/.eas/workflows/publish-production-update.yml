@@ -1,11 +1,12 @@
-name: Publish Customer Production OTA
+name: Publish Provider Production OTA
 
 on:
   push:
     branches:
       - main
     paths:
-      - apps/customer/**
+      - apps/provider/**
+      - packages/i18n/**
       - package.json
       - pnpm-lock.yaml
 
@@ -17,11 +18,11 @@ jobs:
     hooks:
       after_install_node_modules:
         - name: Ensure babel-preset-expo resolves for Metro (monorepo)
-          run: pnpm install --filter customer... --prefer-offline
+          run: pnpm install --filter provider... --prefer-offline
     params:
       channel: production
       platform: ios
-      message: Production OTA (EAS workflow)
+      message: Provider production OTA (build 286 / fingerprint runtime)
   update_android:
     name: Production OTA (Android)
     type: update
@@ -29,8 +30,8 @@ jobs:
     hooks:
       after_install_node_modules:
         - name: Ensure babel-preset-expo resolves for Metro (monorepo)
-          run: pnpm install --filter customer... --prefer-offline
+          run: pnpm install --filter provider... --prefer-offline
     params:
       channel: production
       platform: android
-      message: Production OTA (EAS workflow)
+      message: Provider production OTA (build 286 / fingerprint runtime)

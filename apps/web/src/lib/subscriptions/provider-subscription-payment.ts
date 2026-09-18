@@ -26,6 +26,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
+import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
 import { buildProviderSubscriptionReceiptUrl } from "@/lib/receipts/receipt-download-token";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -752,7 +753,7 @@ export async function reverseProviderSubscriptionPayment(params: {
       auto_renew: false,
       paystack_subscription_code: null,
       paystack_authorization_code: null,
-      updated_at: nowIso,
+      ...clearAppleMerchantOnFree(),
     };
     if (freePlanId) update.plan_id = freePlanId;
     await supabase.from("provider_subscriptions").update(update).eq("id", subscription.id);

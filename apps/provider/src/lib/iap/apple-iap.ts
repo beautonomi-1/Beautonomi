@@ -5,7 +5,7 @@
 
 import { Linking } from "react-native";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api-error";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 
 export type AppleStoreOffer = {
@@ -27,7 +27,7 @@ export type AppleStoreProduct = {
 
 export type ApplePurchaseResult =
   | { ok: true; transactionId?: string; productId: string }
-  | { ok: false; cancelled?: boolean; error: string };
+  | { ok: false; cancelled?: boolean; error: string; errorCode?: string | null };
 
 type ExpoIapModule = typeof import("expo-iap");
 
@@ -140,13 +140,17 @@ function extractSignedTransaction(purchase: unknown): string | null {
 async function verifyPurchaseWithServer(opts: {
   signedTransaction: string;
   appAccountToken?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; errorCode?: string | null }> {
   const res = await api.post<{ transaction_id?: string }>("/api/provider/iap/verify", {
     signed_transaction: opts.signedTransaction,
     app_account_token: opts.appAccountToken,
   });
   if (res.error) {
-    return { ok: false, error: getApiErrorMessage(res.error, "Apple purchase verification failed") };
+    return {
+      ok: false,
+      error: getApiErrorMessage(res.error, "Apple purchase verification failed"),
+      errorCode: getApiErrorCode(res.error),
+    };
   }
   return { ok: true };
 }
@@ -205,7 +209,11 @@ export async function purchaseAppleProduct(opts: {
       appAccountToken: opts.appAccountToken,
     });
     if (!verified.ok) {
-      return { ok: false, error: verified.error ?? "Server verification failed" };
+      return {
+        ok: false,
+        error: verified.error ?? "Server verification failed",
+        errorCode: verified.errorCode,
+      };
     }
 
     try {

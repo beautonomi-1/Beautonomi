@@ -137,7 +137,7 @@ export function SubscriptionContent() {
   // The API already nulls billing_issue for free-tier providers; the
   // isPaidSubscriber check here is a defensive belt-and-suspenders guard so
   // this screen never surfaces a billing issue to someone on the free plan.
-  const visibleBillingIssue = isPaidSubscriber ? sub?.billing_issue ?? null : null;
+  const visibleBillingIssue = sub?.billing_issue ?? null;
   const isUrgentIssue =
     status === "past_due" || visibleBillingIssue?.type === "payment_failed";
 

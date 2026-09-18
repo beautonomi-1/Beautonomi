@@ -248,18 +248,22 @@ describe("subscription renewal failed-then-success", () => {
           };
         }
         if (table === "provider_subscriptions") {
+          const subRow = {
+            id: "sub-row-1",
+            billing_period: "monthly",
+            plan_id: "plan-1",
+            provider_id: "provider-1",
+            tenant_id: "tenant-1",
+            billing_provider: "paystack",
+            status: "active",
+            paystack_subscription_code: "SUB_abc",
+            plan: { is_free: false },
+          };
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                single: vi.fn(async () => ({
-                  data: {
-                    billing_period: "monthly",
-                    plan_id: "plan-1",
-                    provider_id: "provider-1",
-                    tenant_id: "tenant-1",
-                  },
-                  error: null,
-                })),
+                maybeSingle: vi.fn(async () => ({ data: subRow, error: null })),
+                single: vi.fn(async () => ({ data: subRow, error: null })),
               })),
             })),
             update: vi.fn((values: Record<string, unknown>) => {

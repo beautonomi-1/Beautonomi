@@ -22,6 +22,11 @@ import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
 import { isPaidToPaidDowngrade } from "@/lib/subscriptions/trial";
+import {
+  clearAppleMerchantOnFree,
+  computePaidPeriodExpiresAt,
+  paystackActivationFields,
+} from "@/lib/subscriptions/provider-billing-merchant";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -161,7 +166,7 @@ export async function POST(request: NextRequest) {
             paystack_sync_note: null,
             paystack_subscription_code: null,
             next_payment_date: null,
-            updated_at: now.toISOString(),
+            ...clearAppleMerchantOnFree(),
           },
           { onConflict: "provider_id" },
         )
@@ -372,15 +377,14 @@ export async function POST(request: NextRequest) {
           plan_id,
           status: "active",
           started_at: now.toISOString(),
+          expires_at: computePaidPeriodExpiresAt(billing_period, now),
           billing_period,
           auto_renew: true,
           paystack_subscription_code: paystackSubscription?.subscription_code,
           paystack_authorization_code: authorizationCode,
           paystack_customer_code: customerCode,
           next_payment_date: paystackSubscription?.next_payment_date,
-          paystack_sync_pending: false,
-          paystack_sync_note: null,
-          updated_at: new Date().toISOString(),
+          ...paystackActivationFields(),
         }, { onConflict: "provider_id" })
         .select()
         .single();

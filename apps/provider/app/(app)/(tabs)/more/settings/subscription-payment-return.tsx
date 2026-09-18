@@ -154,11 +154,11 @@ export default function SubscriptionPaymentReturnScreen() {
               : isFailed
                 ? "If you were charged, your plan will activate once the payment lands. Otherwise please try again."
                 : isPending
-                  ? "We'll activate your plan within a few minutes once Paystack confirms with your bank."
+                  ? "We'll activate your plan within a few minutes once your bank confirms the payment."
                   : isCancel
                     ? "No charge was made. You can try again from the subscription dashboard."
                     : isVerifying
-                      ? "Confirming your payment with Paystack…"
+                      ? "Confirming your payment…"
                       : "Returning to your subscription settings."}
           </Text>
         </View>

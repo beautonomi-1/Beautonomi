@@ -180,7 +180,10 @@ function getPlanCtaLabel(plan: Plan, sub: Subscription | null, subFn: (key: stri
     }
     return "";
   }
-  if (plan.is_free || plan.amount === 0) return subFn("ctaActivateFree");
+  if (plan.is_free || plan.amount === 0) {
+    if (sub && isAppleBillingActive(sub.billing_provider, sub.status)) return "";
+    return subFn("ctaActivateFree");
+  }
   if (isFreeTierSubscription(sub)) return subFn("ctaUpgrade");
   if (sub && sub.plan_id === plan.plan_id && sub.billing_period !== plan.billing_period) {
     return plan.billing_period === "yearly" ? subFn("ctaSwitchToYearly") : subFn("ctaSwitchToMonthly");
@@ -208,14 +211,15 @@ function billingActionLabel(sub: Subscription | null, subFn: (key: string, opts?
     if (sub.status === "past_due") return subFn("billingActionUpdateInAppStore");
     return null;
   }
+  if (sub.billing_issue?.action === "retry_payment") return subFn("billingActionRetryPayment");
+  if (sub.billing_issue?.action === "complete_payment") return subFn("billingActionCompletePayment");
   if (isFreeTierSubscription(sub) && subscriptionNeedsReactivation(sub)) {
+    if (isAppleBillingActive(sub.billing_provider, sub.status)) return null;
     return subFn("ctaReactivateFree");
   }
   if (isFreeTierSubscription(sub)) return null;
   if (sub.status === "past_due") return subFn("billingActionPayNowUpdateCard");
   if (sub.paystack_sync_pending) return subFn("billingActionCompleteBilling");
-  if (sub.billing_issue?.action === "retry_payment") return subFn("billingActionRetryPayment");
-  if (sub.billing_issue?.action === "complete_payment") return subFn("billingActionCompletePayment");
   if (sub.cancelled_at) return subFn("billingActionResumeBilling");
   if (sub.status === "expired" || sub.status === "cancelled" || sub.status === "inactive") return subFn("billingActionReactivatePlan");
   if (sub.status === "active" && sub.auto_renew === false) return subFn("billingActionExtendPlan");
@@ -789,6 +793,10 @@ export default function SubscriptionScreen() {
     setUpgradingId(planId);
     try {
       if (selectedPlan.is_free || selectedPlan.amount === 0) {
+        if (isAppleBillingActive(subscription?.billing_provider, subscription?.status)) {
+          openAppleSubscriptionManagement();
+          return;
+        }
         const { error: err, data } = await postAction("/api/provider/subscription/upgrade", {
           plan_id: barePlanId,
           billing_period: billingPeriod,
@@ -836,7 +844,11 @@ export default function SubscriptionScreen() {
         });
         if (!checkoutStart.ok) {
           if (!checkoutStart.cancelled) {
-            Alert.alert(sub("errorAlertTitle"), checkoutStart.error);
+            const msg =
+              checkoutStart.errorCode === "IAP_DISABLED"
+                ? sub("iapDisabledBody")
+                : checkoutStart.error;
+            Alert.alert(sub("errorAlertTitle"), msg);
           }
           return;
         }
@@ -900,7 +912,11 @@ export default function SubscriptionScreen() {
   const paidSubscriber = subscription && !isFreeTierSubscription(subscription);
   const billingCta = billingActionLabel(subscription, sub);
   const showCancel =
-    subscription && subscription.status === "active" && !subscription.cancelled_at && paidSubscriber;
+    subscription &&
+    subscription.status === "active" &&
+    !subscription.cancelled_at &&
+    paidSubscriber &&
+    !isAppleBillingActive(subscription.billing_provider, subscription.status);
   const statusPill = subscription ? statusPillClasses(subscription) : null;
 
   return (
@@ -912,9 +928,6 @@ export default function SubscriptionScreen() {
       <View style={{ marginBottom: 8, marginTop: 4 }}>
         <Text style={twStyle("text-base leading-6 text-gray-600")}>
           {sub("introPlansMatchRegion")}
-        </Text>
-        <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
-          {sub("introMarketingLinesNote")}
         </Text>
         {shouldUseAppleIap() ? (
           <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
@@ -1125,7 +1138,7 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {paidSubscriber && subscription.billing_issue ? (
+          {subscription.billing_issue ? (
             <View style={twStyle("mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
               <Text style={twStyle("text-sm font-semibold text-amber-900")}>
                 {subscription.billing_issue.type === "payment_failed"

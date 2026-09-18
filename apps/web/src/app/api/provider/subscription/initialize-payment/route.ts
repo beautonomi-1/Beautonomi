@@ -18,6 +18,7 @@ import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
+import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -137,6 +138,12 @@ export async function POST(request: NextRequest) {
         throw new Error(`Failed to create Paystack customer: ${err.message}`);
       }
     }
+
+    await failPendingProviderSubscriptionOrders(
+      supabase,
+      providerId,
+      "superseded_by_new_checkout",
+    );
 
     // Create order for tracking
     const { data: order, error: orderError } = await (supabase.from("provider_subscription_orders") as any)

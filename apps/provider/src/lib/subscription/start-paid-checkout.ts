@@ -116,7 +116,7 @@ export async function startPaidSubscriptionCheckout(options: {
   if (!url) {
     return {
       ok: false,
-      error: "Paystack did not return a checkout URL. Please try again or contact support.",
+      error: "Checkout did not return a payment link. Please try again or contact support.",
     };
   }
 

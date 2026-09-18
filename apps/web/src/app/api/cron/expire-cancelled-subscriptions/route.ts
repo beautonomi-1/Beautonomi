@@ -21,6 +21,7 @@ import { insertNotification } from "@/lib/notifications/insert-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { repairSubscriptionPlanFromPayments } from "@/lib/subscriptions/repair-subscription-plan-from-payments";
+import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
 import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
@@ -70,7 +71,7 @@ async function runJob(request: NextRequest) {
       paystack_subscription_code: null,
       next_payment_date: null,
       ...(freePlanId ? { plan_id: freePlanId } : {}),
-      updated_at: now,
+      ...clearAppleMerchantOnFree(),
       ...(extra ?? {}),
     });
 

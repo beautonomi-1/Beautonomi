@@ -120,7 +120,26 @@ export async function GET(request: NextRequest) {
       !sub.paystack_sync_pending;
     const effectiveOrder = hasCleanActivePaidPlan && order?.plan_id === sub.plan_id ? null : order;
 
-    const billingIssue = currentPlanIsFree
+    const checkoutIssueOnFree =
+      currentPlanIsFree &&
+      (effectiveOrder?.status === "pending" || effectiveOrder?.status === "failed");
+
+    const billingIssue = checkoutIssueOnFree
+      ? effectiveOrder?.status === "failed"
+        ? {
+            type: "payment_failed",
+            message:
+              effectiveOrder.failure_reason?.trim() ||
+              "Your subscription payment was not completed. This can happen when the card has insufficient funds or the bank declines the charge.",
+            action: "retry_payment",
+          }
+        : {
+            type: "payment_pending",
+            message:
+              "Your subscription checkout is still pending. Complete payment to activate the selected plan.",
+            action: "complete_payment",
+          }
+      : currentPlanIsFree
       ? null
       : isAppleBillingActive(sub.billing_provider, sub.status) &&
           sub.apple_price_increase_status === "pending"
@@ -182,6 +201,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const { appleIapEnabledFromEnv } = await import("@/lib/iap/apple/config");
+
     return successResponse({
       ...(subscription as any),
       status: sub.status,
@@ -190,7 +211,8 @@ export async function GET(request: NextRequest) {
       scheduled_plan,
       ios_purchase_eligible: iosPurchaseEligible.eligible,
       ios_purchase_eligible_reason: iosPurchaseEligible.reason,
-      billing_provider: iosPurchaseEligible.billing_provider,
+      billing_provider: sub.billing_provider ?? "paystack",
+      apple_iap_enabled: appleIapEnabledFromEnv(),
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch subscription");

@@ -156,4 +156,30 @@ describe("finalizeOnboardingSuccess iOS IAP", () => {
       expect.any(Array),
     );
   });
+
+  it("does not open Paystack WebView fallback on iOS when waitForCheckout is missing", async () => {
+    const mockReplaceLocal = jest.fn();
+    await finalizeOnboardingSuccess({
+      data: {
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplaceLocal } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+    });
+
+    expect(startPaidSubscriptionCheckout).not.toHaveBeenCalled();
+    expect(mockReplaceLocal).not.toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: expect.stringContaining("in-app-browser") }),
+    );
+    expect(mockAlert).toHaveBeenCalledWith(
+      "Checkout unavailable",
+      expect.stringMatching(/Web checkout is not available on iPhone/i),
+      expect.any(Array),
+    );
+  });
 });

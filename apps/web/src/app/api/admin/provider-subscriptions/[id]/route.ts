@@ -14,6 +14,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getMergedSubscriptionPlanIdsForTenant } from "@/lib/subscription/admin-merged-plan-ids";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeTrialEndsAt, DEFAULT_PROVIDER_TRIAL_DAYS } from "@/lib/subscriptions/trial";
+import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
 
 const patchSchema = z.object({
   plan_id: z.string().uuid().optional(),
@@ -47,6 +48,7 @@ function applyFreeTierClears(update: Record<string, unknown>): void {
   update.next_payment_date = null;
   update.paystack_sync_pending = false;
   update.paystack_sync_note = null;
+  Object.assign(update, clearAppleMerchantOnFree());
 }
 
 function applyReactivationClears(update: Record<string, unknown>): void {
@@ -177,6 +179,8 @@ export async function PATCH(
       applyReactivationClears(update);
       if (planIsFree(targetPlan)) {
         applyFreeTierClears(update);
+      } else if (targetPlan) {
+        update.billing_provider = "manual";
       }
     }
 
@@ -216,7 +220,7 @@ export async function PATCH(
           const msg = e instanceof Error ? e.message : String(e);
           console.error("[admin provider-subscriptions] Paystack disable on cancel failed:", e);
           update.paystack_sync_pending = true;
-          update.paystack_sync_note = `Paystack disable failed (${msg}). Cancel manually in Paystack if needed.`;
+          update.paystack_sync_note = `We could not stop automatic billing (${msg}). Contact support if charges continue.`;
         }
       }
     } else if (status !== undefined && status !== "active") {
@@ -242,12 +246,12 @@ export async function PATCH(
           update.next_payment_date = null;
           update.paystack_sync_pending = true;
           update.paystack_sync_note =
-            "Paystack subscription was cancelled because an admin changed the plan. If the new tier is paid, the provider should complete billing in the app.";
+            "Your plan was updated and automatic billing was stopped. If your new plan is paid, complete billing in the app.";
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error("[admin provider-subscriptions] Paystack disable failed:", e);
           update.paystack_sync_pending = true;
-          update.paystack_sync_note = `Paystack disable failed (${msg}). Cancel the subscription in the Paystack dashboard or retry.`;
+          update.paystack_sync_note = `We could not stop automatic billing (${msg}). Contact support if charges continue.`;
         }
       } else if (!planIsFree(targetPlan)) {
         update.paystack_sync_pending = false;

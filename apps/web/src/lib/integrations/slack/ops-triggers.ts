@@ -675,6 +675,33 @@ export async function slackNotifyHighValueRefund(params: {
   return { notified: true, thresholdMajor };
 }
 
+/** Paystack captured a subscription charge but Apple is MoR and automatic refund failed. */
+export function slackNotifyProviderSubscriptionAppleRefundFailed(params: {
+  tenantId?: string | null;
+  providerId?: string | null;
+  reference?: string | null;
+  reason?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? null,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.SUBSCRIPTION_APPLE_REFUND_FAILED,
+    dedupeKey: `subscription:apple_refund_failed:${params.reference ?? "unknown"}`,
+    entityType: "provider_subscription",
+    entityId: params.providerId ?? params.reference ?? "unknown",
+    title: "Subscription Paystack refund failed (Apple is merchant)",
+    detailLines: [
+      params.providerId ? `Provider: ${params.providerId}` : null,
+      params.reference ? `Paystack ref: ${params.reference}` : null,
+      params.reason ? `Error: ${params.reason}` : null,
+      "Action: refund manually in Paystack and confirm the provider was not double-charged.",
+    ].filter(Boolean) as string[],
+    actionUrl: params.providerId ? `/providers/${params.providerId}` : "/provider-subscriptions",
+  }).catch((err) => {
+    console.error("[slack] subscription apple refund failed notify error", err);
+  });
+}
+
 /**
  * A provider subscription churned (cancelled and expired, dunning exhausted, or
  * downgraded to free after failed retries). Dedupe: one alert per subscription per reason.
