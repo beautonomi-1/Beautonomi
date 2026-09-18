@@ -2,12 +2,12 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, StyleSheet } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import { useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
-import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { useSafetyStackBack } from "@/lib/customer-safety-navigation";
 import {
   SUPPORT_TICKET_DEFAULT_CATEGORY,
@@ -35,6 +35,22 @@ const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["va
   high: "priorityHigh",
   urgent: "priorityUrgent",
 };
+
+function NewTicketBackButton() {
+  const { t } = useTranslation();
+  const handleBack = useSafetyStackBack();
+  return (
+    <TouchableOpacity
+      onPress={handleBack}
+      hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
+      accessibilityLabel={t("common.back")}
+      accessibilityRole="button"
+      style={{ marginStart: Platform.OS === "ios" ? 8 : 4, padding: 4 }}
+    >
+      <DirectionalIcon name="chevron-back" size={26} color={Colors.primary} />
+    </TouchableOpacity>
+  );
+}
 
 export default function NewSupportTicketScreen() {
   useScreenTracking("New support ticket");
@@ -140,16 +156,19 @@ export default function NewSupportTicketScreen() {
       behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: sn("screenTitle"),
+          headerLeft: () => <NewTicketBackButton />,
+        }}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <TrustScreenShell
-          title={sn("screenTitle")}
-          breadcrumbSegment={sn("breadcrumb")}
-        />
         <View style={styles.fieldGap}>
           <Text style={styles.label}>{sn("aboutLabel")}</Text>
           <View style={styles.contextRow}>

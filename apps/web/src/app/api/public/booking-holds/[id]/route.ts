@@ -101,38 +101,48 @@ async function handleGet(
         : undefined;
     const providerSlug = (hold.providers as { slug?: string } | null)?.slug ?? null;
 
-    const { data: obSettings } = await supabase
-      .from("provider_online_booking_settings")
-      .select("on_demand_accept_enabled")
-      .eq("provider_id", hold.provider_id)
-      .maybeSingle();
-    const requestNow = await getRequestNowAvailability({
-      tenantId,
-      role: "customer",
-      surface: "customer",
-    });
+    const locationType = (hold.location_type === "at_home" ? "at_home" : "at_salon") as "at_salon" | "at_home";
+
+    const [
+      { data: obSettings },
+      requestNow,
+      { data: providerRow },
+      tenantRegion,
+      cancellationPolicyRow,
+      paymentFlags,
+    ] = await Promise.all([
+      supabase
+        .from("provider_online_booking_settings")
+        .select("on_demand_accept_enabled")
+        .eq("provider_id", hold.provider_id)
+        .maybeSingle(),
+      getRequestNowAvailability({
+        tenantId,
+        role: "customer",
+        surface: "customer",
+      }),
+      supabase
+        .from("providers")
+        .select(
+          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id",
+        )
+        .eq("id", hold.provider_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle(),
+      getTenantRegionConfig(tenantId),
+      getCancellationPolicy(supabase, hold.provider_id, locationType),
+      getPaymentFeatureFlagsForTenant(tenantId),
+    ]);
+
     const provider_on_demand_accept_enabled = Boolean(
       requestNow.enabled && obSettings?.on_demand_accept_enabled,
     );
 
-    const { data: providerRow } = await supabase
-      .from("providers")
-      .select(
-        "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id"
-      )
-      .eq("id", hold.provider_id)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-
-    const tenantRegion = await getTenantRegionConfig(tenantId);
     const tenantDefaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const tips_enabled = Boolean((providerRow as any)?.tips_enabled ?? true);
     const tip_presets = Array.isArray((providerRow as any)?.tip_presets)
       ? (providerRow as any).tip_presets.map((p: unknown) => Number(p)).filter((n: number) => !Number.isNaN(n) && n >= 0)
       : [10, 15, 20, 25];
-
-    const locationType = (hold.location_type === "at_home" ? "at_home" : "at_salon") as "at_salon" | "at_home";
-    const cancellationPolicyRow = await getCancellationPolicy(supabase, hold.provider_id, locationType);
     const prov = providerRow as {
       currency?: string;
       no_show_fee_enabled?: boolean;
@@ -150,7 +160,6 @@ async function handleGet(
           ? 30
           : 0;
 
-    const paymentFlags = await getPaymentFeatureFlagsForTenant(tenantId);
     const lateRefundPct =
       cancellationPolicyRow.refund_percentage !== undefined &&
       cancellationPolicyRow.refund_percentage !== null

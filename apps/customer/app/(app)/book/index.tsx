@@ -51,6 +51,7 @@ import {
   toHouseCallTranslate,
 } from "@/components/booking/HouseCallPricingNotes";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
+import { setCheckoutHandoffSnapshot } from "@/lib/book-flow-checkout-snapshot";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { Skeleton } from "@/components/Skeleton";
@@ -2124,6 +2125,34 @@ export default function BookScreen() {
       trackBookingHoldCreated(holdId);
       setExcludeHoldIdForSlots(holdId);
       await setPendingExcludeHoldId(holdId, slug);
+      if (user?.id) {
+        setCheckoutHandoffSnapshot(user.id, {
+          hold_id: holdId,
+          provider_id: provider.id,
+          provider_name: provider.business_name,
+          provider_thumbnail: provider.thumbnail_url ?? undefined,
+          slug: provider.slug,
+          start_at: startAt,
+          end_at: endAt,
+          location_type: locationType,
+          location_id: locationType === "at_salon" ? selectedLocation?.id ?? null : null,
+          location_name: locationType === "at_salon" ? selectedLocation?.name : undefined,
+          staff_id: holdStaffId,
+          staff_name: selectedStaff?.name,
+          booking_services_snapshot: servicesForHold
+            .filter((s): s is typeof s & { offeringId: string } => Boolean(s.offeringId))
+            .map((s) => ({
+              offering_id: s.offeringId,
+              staff_id: holdStaffId,
+              duration_minutes: s.duration_minutes,
+              price: s.price,
+              currency: s.currency,
+              service_name: s.title,
+              title: s.title,
+            })),
+          ...(packageIdForCheckout ? { package_id: packageIdForCheckout } : {}),
+        });
+      }
       const params: Record<string, string> = {
         hold_id: holdId,
         slug: provider.slug,

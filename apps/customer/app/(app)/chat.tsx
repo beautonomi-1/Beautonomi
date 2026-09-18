@@ -27,6 +27,11 @@ import { useSocialCapability } from "@/hooks/useSafetySettings";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 import { getTenantLocaleTag } from "@/lib/locale";
+import {
+  getCachedConversations,
+  getCachedMessagesPage,
+  setCachedMessagesPage,
+} from "@/lib/messaging-cache";
 
 interface MessageReplyTo {
   id: string;
@@ -241,10 +246,17 @@ export default function ChatScreen() {
   // height on iOS; adding `insets.top` reproduces `useHeaderHeight`
   // closely without pulling in `@react-navigation/elements`.
   const headerHeight = insets.top + 44;
-  const params = useLocalSearchParams<{ id?: string; provider_id?: string; provider_name?: string; booking_id?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    provider_id?: string;
+    provider_name?: string;
+    provider_slug?: string;
+    booking_id?: string;
+  }>();
   const id = params.id;
   const providerId = params.provider_id;
   const providerName = params.provider_name;
+  const providerSlugParam = params.provider_slug;
   const bookingIdParam = params.booking_id;
 
   // Track which conversation is active so NotificationBannerListener can suppress banners.
@@ -375,7 +387,12 @@ export default function ChatScreen() {
         return;
       }
       if (cursor) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        const cached =
+          user?.id && id ? getCachedMessagesPage<Message>(user.id, id) : null;
+        if (!cached?.length) setLoading(true);
+        else setLoading(false);
+      }
       setResolveError(null);
 
       try {
@@ -397,6 +414,9 @@ export default function ChatScreen() {
           setMessages((prev) => [...newMessages, ...prev]);
         } else {
           setMessages(newMessages);
+          if (user?.id && id) {
+            setCachedMessagesPage(user.id, id, newMessages);
+          }
         }
 
         setNextCursor(next_cursor);
@@ -406,7 +426,9 @@ export default function ChatScreen() {
         // cleared messages with no error UI, so the customer saw an
         // empty thread on network failures. Surface a retryable error.
         if (!cursor) {
-          setMessages([]);
+          const cached =
+            user?.id && id ? getCachedMessagesPage<Message>(user.id, id) : null;
+          if (!cached?.length) setMessages([]);
           setResolveError(err instanceof Error ? err.message : t("customer.chatScreen.loadMessagesFailed"));
         }
       } finally {
@@ -414,7 +436,7 @@ export default function ChatScreen() {
         setLoadingMore(false);
       }
     },
-    [id, t]
+    [id, t, user?.id]
   );
 
   const bumpInitialScrollToLatest = useCallback(() => {
@@ -488,8 +510,15 @@ export default function ChatScreen() {
   // first-scroll flag so the user never briefly sees the OLD thread
   // while the new payload is in flight.
   useEffect(() => {
-    if (!id) return;
-    setMessages([]);
+    if (!id || !user?.id) return;
+    const cached = getCachedMessagesPage<Message>(user.id, id);
+    if (cached?.length) {
+      setMessages(cached);
+      setLoading(false);
+    } else {
+      setMessages([]);
+      setLoading(true);
+    }
     setNextCursor(undefined);
     setHasMore(false);
     setOfferStatusById({});
@@ -500,7 +529,7 @@ export default function ChatScreen() {
       initialScrollIdleTimerRef.current = null;
     }
     loadMessages();
-  }, [id, loadMessages]);
+  }, [id, user?.id, loadMessages]);
 
   // No conversation id and no provider to resolve: invalid navigation
   useEffect(() => {
@@ -613,6 +642,16 @@ export default function ChatScreen() {
     if (!id || providerId) return;
     let cancelled = false;
     (async () => {
+      if (user?.id) {
+        const list = getCachedConversations<ConversationSummary>(user.id);
+        const fromCache = list?.find((c) => c.id === id) ?? null;
+        if (fromCache && !cancelled) setConversationMeta(fromCache);
+      }
+      const byId = await api.get<ConversationSummary>(`/api/me/conversations/${encodeURIComponent(id)}`);
+      if (!cancelled && !byId.error && byId.data) {
+        setConversationMeta(byId.data);
+        return;
+      }
       const res = await api.get<ConversationSummary[] | { data?: ConversationSummary[] }>("/api/me/conversations");
       if (cancelled || res.error) return;
       const list = Array.isArray(res.data)
@@ -624,7 +663,7 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, providerId]);
+  }, [id, providerId, user?.id]);
 
   // Realtime subscription
   useEffect(() => {
@@ -657,7 +696,11 @@ export default function ChatScreen() {
                 };
               }
             }
-            return [...prev, { ...newMsg, reply_to }];
+            const next = [...prev, { ...newMsg, reply_to }];
+            if (user?.id && id) {
+              setCachedMessagesPage(user.id, id, next);
+            }
+            return next;
           });
           // WhatsApp-style: only follow the new message if the user is already
           // at the bottom. Otherwise leave their scroll position untouched —
@@ -1187,7 +1230,7 @@ export default function ChatScreen() {
   const partnerFromMessages =
     messages.find((m) => m.sender_id && user?.id && m.sender_id !== user.id)?.sender_name ?? null;
   const resolvedProviderId = providerId || conversationMeta?.provider_id || null;
-  const resolvedProviderSlug = conversationMeta?.provider_slug || null;
+  const resolvedProviderSlug = providerSlugParam || conversationMeta?.provider_slug || null;
   const chatTitle =
     providerName ||
     conversationMeta?.provider_name ||
@@ -1377,7 +1420,7 @@ export default function ChatScreen() {
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
-        {loading ? (
+        {loading && messages.length === 0 ? (
           <View style={{ flex: 1 }}>
             <MessageSkeleton />
             <MessageSkeleton isMe />

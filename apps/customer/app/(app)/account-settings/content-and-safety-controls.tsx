@@ -156,11 +156,13 @@ export default function ContentAndSafetyControlsScreen() {
   const toggleDesc = (key: SafetySettingKey) => cs(`toggle_${key}_desc`);
 
   const showAgeBandNote = age_band === "13_17";
+  const trustHeader = (
+    <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+  );
 
   if (loading) {
     return (
-      <ScreenFrame loading error={null} onRetry={refresh}>
-        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+      <ScreenFrame loading error={null} onRetry={refresh} header={trustHeader}>
         <View />
       </ScreenFrame>
     );
@@ -168,8 +170,7 @@ export default function ContentAndSafetyControlsScreen() {
 
   if (error) {
     return (
-      <ScreenFrame loading={false} error={error} onRetry={refresh}>
-        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+      <ScreenFrame loading={false} error={error} onRetry={refresh} header={trustHeader}>
         <View />
       </ScreenFrame>
     );
@@ -177,8 +178,7 @@ export default function ContentAndSafetyControlsScreen() {
 
   if (!authUnlocked && settings.require_device_auth) {
     return (
-      <ScreenFrame loading={false} error={null}>
-        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+      <ScreenFrame loading={false} error={null} header={trustHeader}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
           <View
             style={{
@@ -225,8 +225,13 @@ export default function ContentAndSafetyControlsScreen() {
   }
 
   return (
-    <ScreenFrame loading={false} error={null}>
-      <TrustScreenShell title={screenTitle} subtitle={screenDesc} breadcrumbSegment={breadcrumbSegment} />
+    <ScreenFrame
+      loading={false}
+      error={null}
+      header={
+        <TrustScreenShell title={screenTitle} subtitle={screenDesc} breadcrumbSegment={breadcrumbSegment} />
+      }
+    >
       <View>
         {showAgeBandNote ? (
           <View

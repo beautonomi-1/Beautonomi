@@ -29,12 +29,13 @@ import { ConversationSkeleton } from "@/components/Skeleton";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { getCachedConversations, setCachedConversations } from "@/lib/messaging-cache";
 
 interface Conversation {
   id: string;
   provider_id?: string | null;
   booking_id?: string | null;
-  provider?: { business_name?: string; thumbnail_url?: string | null };
+  provider?: { business_name?: string; thumbnail_url?: string | null; slug?: string | null };
   provider_slug?: string | null;
   last_message_preview?: string | null;
   last_message_at?: string | null;
@@ -74,7 +75,10 @@ export default function ChatsScreen() {
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else {
+      const cached = user?.id ? getCachedConversations<Conversation>(user.id) : null;
+      if (!cached?.length) setLoading(true);
+    }
     setError(null);
     try {
       const res = await api.get<Conversation[] | { data?: Conversation[] }>("/api/me/conversations");
@@ -117,6 +121,7 @@ export default function ChatsScreen() {
           );
         });
         setConversations(onePerProvider);
+        if (user?.id) setCachedConversations(user.id, onePerProvider);
       }
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
@@ -124,7 +129,16 @@ export default function ChatsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const cached = getCachedConversations<Conversation>(user.id);
+    if (cached?.length) {
+      setConversations(cached);
+      setLoading(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) load();
@@ -256,9 +270,24 @@ export default function ChatsScreen() {
         // Prefer navigating by conversation id — avoids a redundant get-or-create round-trip.
         // Fall back to provider_id (triggers get-or-create) only when id is missing.
         if (item.id) {
-          router.push({ pathname: "/(app)/chat", params: { id: item.id, provider_name: name } });
+          router.push({
+            pathname: "/(app)/chat",
+            params: {
+              id: item.id,
+              provider_name: name,
+              provider_id: item.provider_id ?? undefined,
+              provider_slug: item.provider_slug ?? item.provider?.slug ?? undefined,
+            },
+          });
         } else if (item.provider_id) {
-          router.push({ pathname: "/(app)/chat", params: { provider_id: item.provider_id, provider_name: name } });
+          router.push({
+            pathname: "/(app)/chat",
+            params: {
+              provider_id: item.provider_id,
+              provider_name: name,
+              provider_slug: item.provider_slug ?? item.provider?.slug ?? undefined,
+            },
+          });
         }
       };
       const openActions = () => {

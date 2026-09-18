@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         provider:providers(id, user_id, slug, business_name, thumbnail_url, avatar_url, phone, email),
         booking:bookings(id, booking_number)
       `,
-        { count: "exact" }
+        wantsPaginated ? { count: "exact" } : undefined,
       )
       .eq("customer_id", user.id)
       .not("last_message_at", "is", null)

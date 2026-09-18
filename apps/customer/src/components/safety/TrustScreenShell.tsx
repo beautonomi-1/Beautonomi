@@ -1,4 +1,5 @@
 import { useTranslation } from "@beautonomi/i18n";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { useFromSafetyHub, useSafetyStackBack } from "@/lib/customer-safety-navigation";
 
@@ -31,12 +32,14 @@ export function TrustScreenShell({
     fromSafety && breadcrumbSegment ? `${hubLabel} › ${breadcrumbSegment}` : subtitle;
 
   return (
-    <ScreenHeader
-      title={title}
-      subtitle={breadcrumbSubtitle}
-      showBack
-      onBack={handleBack}
-      rightAction={rightAction}
-    />
+    <SafeAreaView edges={["top"]}>
+      <ScreenHeader
+        title={title}
+        subtitle={breadcrumbSubtitle}
+        showBack
+        onBack={handleBack}
+        rightAction={rightAction}
+      />
+    </SafeAreaView>
   );
 }

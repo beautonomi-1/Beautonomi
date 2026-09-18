@@ -33,6 +33,8 @@ import {
 import { clearApiCache } from "@/lib/api-response-cache";
 import { api, invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
+import { clearMessagingCache } from "@/lib/messaging-cache";
+import { clearCheckoutHandoffCache } from "@/lib/book-flow-checkout-snapshot";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
   clearBiometricPromptPending,
@@ -233,6 +235,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if ((prevUserId && prevUserId !== nextUserId) || event === "SIGNED_OUT") {
         clearApiCache();
         clearPortalCache();
+        clearMessagingCache();
+        clearCheckoutHandoffCache();
       }
       lastUserIdRef.current = nextUserId;
       updateSession(newSession);
@@ -589,6 +593,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateSession(null);
     clearApiCache();
     clearPortalCache();
+    clearMessagingCache();
+    clearCheckoutHandoffCache();
 
     const SIGN_OUT_NETWORK_MS = 2800;
     try {

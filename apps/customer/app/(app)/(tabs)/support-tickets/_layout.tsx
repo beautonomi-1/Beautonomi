@@ -31,12 +31,23 @@ export default function SupportTicketsLayout() {
         headerShown: true,
         headerTintColor: Colors.primary,
         headerBackTitle: "",
-        headerLeft: () => <BackButton />,
       }}
     >
-      <Stack.Screen name="index" options={{ title: t("customer.mobile.stackTitles.support") }} />
-      <Stack.Screen name="new" options={{ title: t("customer.mobile.stackTitles.newTicket"), headerShown: false }} />
-      <Stack.Screen name="[id]" options={{ title: t("customer.mobile.stackTitles.ticket") }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          title: t("customer.mobile.stackTitles.support"),
+          headerLeft: () => <BackButton />,
+        }}
+      />
+      <Stack.Screen name="new" options={{ title: t("customer.mobile.stackTitles.newTicket"), headerShown: true }} />
+      <Stack.Screen
+        name="[id]"
+        options={{
+          title: t("customer.mobile.stackTitles.ticket"),
+          headerLeft: () => <BackButton />,
+        }}
+      />
     </Stack>
   );
 }

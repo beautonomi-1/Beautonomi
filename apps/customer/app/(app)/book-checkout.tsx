@@ -58,6 +58,7 @@ import { pollBookingPaymentSettled } from "@/hooks/usePaystackPayment";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { hydrateCheckoutHandoffSnapshot } from "@/lib/book-flow-checkout-snapshot";
 
 /** Unwrap nested API envelope from GET /api/paystack/verify (booking path). */
 function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
@@ -751,6 +752,8 @@ function CollapsibleCheckoutSection({
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
   const bc = useBookCheckoutI18n();
   const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -811,6 +814,9 @@ export default function BookCheckoutScreen() {
     undefined;
   const { user, refreshSession } = useAuth();
   const [hold, setHold] = useState<HoldData | null>(null);
+  const holdRef = useRef<HoldData | null>(null);
+  holdRef.current = hold;
+  const [holdServerReady, setHoldServerReady] = useState(false);
   // Derive effective provider slug for API calls: prefer the route param (always a real slug),
   // fall back to hold.provider_id (UUID) since all public provider routes now accept UUIDs.
   // This fixes deep-link / on-demand flows where only hold_id is passed with no slug param.
@@ -1045,8 +1051,44 @@ export default function BookCheckoutScreen() {
   }, [hold_id]);
 
   useEffect(() => {
+    setHoldServerReady(false);
+  }, [normalizedHoldId]);
+
+  useEffect(() => {
+    if (!normalizedHoldId || !user?.id) return;
+    let cancelled = false;
+    void (async () => {
+      const snap = await hydrateCheckoutHandoffSnapshot(user.id, normalizedHoldId);
+      if (cancelled || !snap) return;
+      setHold((prev) =>
+        prev ??
+        ({
+          hold_id: snap.hold_id,
+          provider_id: snap.provider_id,
+          provider_name: snap.provider_name,
+          provider_thumbnail: snap.provider_thumbnail,
+          booking_services_snapshot: snap.booking_services_snapshot,
+          start_at: snap.start_at,
+          end_at: snap.end_at,
+          location_type: snap.location_type,
+          location_id: snap.location_id,
+          location_name: snap.location_name,
+          staff_id: snap.staff_id,
+          staff_name: snap.staff_name,
+          expires_at: snap.expires_at,
+          ...(snap.package_id ? { package_id: snap.package_id } : {}),
+        } as HoldData),
+      );
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedHoldId, user?.id]);
+
+  useEffect(() => {
     if (!normalizedHoldId) {
-      setError(t("checkout.missingBooking"));
+      setError(tRef.current("checkout.missingBooking"));
       setLoading(false);
       return;
     }
@@ -1061,12 +1103,14 @@ export default function BookCheckoutScreen() {
         if (cancelled) return;
 
         if (res.error) {
-          throw new Error((res.error as any)?.message || t("checkout.invalidOrExpiredHold"));
+          throw new Error(
+            (res.error as { message?: string })?.message || tRef.current("checkout.invalidOrExpiredHold"),
+          );
         }
 
         const data = (res.data ?? {}) as Record<string, unknown>;
         if (!data.hold_id && !data.booking_services_snapshot) {
-          throw new Error(t("checkout.invalidOrExpiredHold"));
+          throw new Error(tRef.current("checkout.invalidOrExpiredHold"));
         }
 
         const meta = (data.metadata as Record<string, unknown> | undefined) ?? {};
@@ -1132,51 +1176,63 @@ export default function BookCheckoutScreen() {
         };
         setHold(holdData);
         holdLoadedRef.current = true;
-        // Read platform payment policy (cash optional on-platform) as fallback when hold payload is older.
-        try {
-          const feeRes = await api.get<{ cash_enabled_on_platform?: boolean }>(
-            "/api/public/platform-fees"
-          );
-          setCashEnabledOnPlatform((feeRes.data as any)?.cash_enabled_on_platform === true);
-        } catch {
-          setCashEnabledOnPlatform(false);
-        }
+        setHoldServerReady(true);
+        setLoading(false);
         if (packageIdFromHold) {
           setSelectedPackageId((prev) => prev ?? packageIdFromHold);
         }
-        try {
-          const saved = await AsyncStorage.getItem("beautonomi_booking_addons");
-          if (saved) {
-            const parsed = JSON.parse(saved) as unknown;
-            if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-              setSelectedAddonIds(parsed);
+        void (async () => {
+          try {
+            const feeRes = await api.get<{ cash_enabled_on_platform?: boolean }>(
+              "/api/public/platform-fees",
+            );
+            if (!cancelled) {
+              setCashEnabledOnPlatform((feeRes.data as { cash_enabled_on_platform?: boolean })?.cash_enabled_on_platform === true);
             }
+          } catch {
+            if (!cancelled) setCashEnabledOnPlatform(false);
           }
-          const savedPromo = await AsyncStorage.getItem("beautonomi_booking_promotion_code");
-          if (savedPromo?.trim()) setPromotionCode(savedPromo.trim());
-          const promoPrefillFlag = await AsyncStorage.getItem(
-            "beautonomi_booking_promotion_prefill"
-          );
-          if (promoPrefillFlag === "1" && savedPromo?.trim()) setPromoNeedsAutoValidate(true);
-          const savedGift = await AsyncStorage.getItem("beautonomi_booking_gift_card_code");
-          if (savedGift?.trim()) setGiftCardCode(savedGift.trim());
-          const hci = await AsyncStorage.getItem("beautonomi_booking_house_call_instructions");
-          if (hci?.trim()) setHouseCallInstructionsPrefill(hci.trim());
-        } catch {
-          // ignore parse or get errors
-        }
+          try {
+            const saved = await AsyncStorage.getItem("beautonomi_booking_addons");
+            if (saved) {
+              const parsed = JSON.parse(saved) as unknown;
+              if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+                if (!cancelled) setSelectedAddonIds(parsed);
+              }
+            }
+            const savedPromo = await AsyncStorage.getItem("beautonomi_booking_promotion_code");
+            if (savedPromo?.trim() && !cancelled) setPromotionCode(savedPromo.trim());
+            const promoPrefillFlag = await AsyncStorage.getItem(
+              "beautonomi_booking_promotion_prefill",
+            );
+            if (promoPrefillFlag === "1" && savedPromo?.trim() && !cancelled) {
+              setPromoNeedsAutoValidate(true);
+            }
+            const savedGift = await AsyncStorage.getItem("beautonomi_booking_gift_card_code");
+            if (savedGift?.trim() && !cancelled) setGiftCardCode(savedGift.trim());
+            const hci = await AsyncStorage.getItem("beautonomi_booking_house_call_instructions");
+            if (hci?.trim() && !cancelled) setHouseCallInstructionsPrefill(hci.trim());
+          } catch {
+            // ignore parse or get errors
+          }
+        })();
       } catch (e) {
-        if (!cancelled) setError(getApiErrorMessage(e, t("checkout.holdExpiredFallback")));
+        if (!cancelled) setError(getApiErrorMessage(e, tRef.current("checkout.holdExpiredFallback")));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        } else if (holdRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     load();
     return () => {
       cancelled = true;
+      if (holdRef.current) setLoading(false);
     };
-  }, [hold_id, t, routeProviderName, routeProviderThumbnail]);
+  }, [normalizedHoldId, routeProviderName, routeProviderThumbnail]);
 
   const checkoutTrackedRef = useRef(false);
   const productPrefillFromLinkAppliedRef = useRef(false);
@@ -2217,6 +2273,7 @@ export default function BookCheckoutScreen() {
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
+    if (!holdServerReady) return;
     if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setError(t("checkout.slotExpiredMessage"));
       return;
@@ -2285,11 +2342,12 @@ export default function BookCheckoutScreen() {
     } finally {
       setRequestingNow(false);
     }
-  }, [hold_id, hold, user, cancellationPolicyAccepted, t, serverClockOffsetMs]);
+  }, [hold_id, hold, holdServerReady, user, cancellationPolicyAccepted, t, serverClockOffsetMs]);
 
   const handleComplete = useCallback(async () => {
     if (consumeInFlightRef.current) return;
     if (!hold_id || !hold) return;
+    if (!holdServerReady) return;
 
     if (!user) {
       router.replace({
@@ -2819,6 +2877,7 @@ export default function BookCheckoutScreen() {
   }, [
     hold_id,
     hold,
+    holdServerReady,
     user,
     bookContinueReturnTo,
     paymentMethod,
@@ -2863,7 +2922,7 @@ export default function BookCheckoutScreen() {
   ]);
 
   /* ─── Loading skeleton ─── */
-  if (loading) {
+  if (loading && !hold) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
@@ -5327,6 +5386,22 @@ export default function BookCheckoutScreen() {
               </Text>
             ) : null}
 
+            {!holdServerReady && !error ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 12,
+                  paddingHorizontal: 4,
+                }}
+              >
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={{ fontSize: 13, color: "#6B7280", flex: 1, marginStart: 8 }}>
+                  {t("common.loading")}
+                </Text>
+              </View>
+            ) : null}
+
             {/* Error banner */}
             {error &&
               (() => {
@@ -5409,6 +5484,7 @@ export default function BookCheckoutScreen() {
                   handleRequestNow();
                 }}
                 disabled={
+                  !holdServerReady ||
                   requestingNow ||
                   isExpired ||
                   policyAckBlocksCheckout ||
@@ -5427,6 +5503,7 @@ export default function BookCheckoutScreen() {
                   borderWidth: 1.5,
                   borderColor: "#E5E7EB",
                   opacity:
+                    !holdServerReady ||
                     requestingNow ||
                     isExpired ||
                     policyAckBlocksCheckout ||
@@ -5460,6 +5537,7 @@ export default function BookCheckoutScreen() {
                 handleComplete();
               }}
               disabled={
+                !holdServerReady ||
                 consuming ||
                 isExpired ||
                 policyAckBlocksCheckout ||
@@ -5480,7 +5558,8 @@ export default function BookCheckoutScreen() {
                 justifyContent: "center",
                 opacity:
                   !consuming &&
-                  (policyAckBlocksCheckout ||
+                  (!holdServerReady ||
+                    policyAckBlocksCheckout ||
                     loyaltyValidating ||
                     promoValidating ||
                     giftCardValidating)
@@ -5502,6 +5581,7 @@ export default function BookCheckoutScreen() {
               }
               accessibilityState={{
                 disabled:
+                  !holdServerReady ||
                   consuming ||
                   isExpired ||
                   policyAckBlocksCheckout ||

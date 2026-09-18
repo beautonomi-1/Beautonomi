@@ -14,6 +14,11 @@ import { api } from "@/lib/api-client";
 import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useTranslation } from "@beautonomi/i18n";
 import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
+import {
+  shouldOpenInSystemBrowser,
+  shouldCancelInAppNavigation,
+  HIDE_VERCEL_LIVE_IFRAMES_JS,
+} from "@/lib/webview-navigation";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function InAppBrowserScreen() {
@@ -64,6 +69,7 @@ export default function InAppBrowserScreen() {
 
   useEffect(() => {
     if (!rawUrl || !isValid || isAllowlisted || redirectedRef.current) return;
+    if (!shouldOpenInSystemBrowser(rawUrl)) return;
     redirectedRef.current = true;
     Linking.openURL(rawUrl).catch(() => {});
     router.back();
@@ -155,12 +161,16 @@ export default function InAppBrowserScreen() {
               Linking.openURL(u).catch(() => {});
               return false;
             }
-            if (!isAllowedInAppWebViewUrl(u)) {
+            if (shouldCancelInAppNavigation(u)) {
+              return false;
+            }
+            if (shouldOpenInSystemBrowser(u)) {
               Linking.openURL(u).catch(() => {});
               return false;
             }
             return true;
           }}
+          injectedJavaScript={HIDE_VERCEL_LIVE_IFRAMES_JS}
           onMessage={(e: any) => {
             try {
               const msg = JSON.parse(e.nativeEvent.data);

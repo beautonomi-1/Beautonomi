@@ -144,6 +144,27 @@ export async function createMessageAttachmentSignedUrl(
   return data.signedUrl;
 }
 
+const SIGN_URL_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Attach signed URLs for API responses (private bucket). Leaves non-storage payloads unchanged.
  */
@@ -156,30 +177,25 @@ export async function signMessageAttachmentsForResponse(
   const sanitized = sanitizeMessageAttachmentsForResponse(attachments, messageCreatedAt, nowMs);
   if (!Array.isArray(sanitized)) return [];
 
-  const signed: unknown[] = [];
-  for (const item of sanitized) {
+  return mapWithConcurrency(sanitized, SIGN_URL_CONCURRENCY, async (item) => {
     if (!item || typeof item !== "object") {
-      signed.push(item);
-      continue;
+      return item;
     }
     const o = item as Record<string, unknown>;
     if (!isStorageBackedChatAttachment(o) || o.expired === true) {
-      signed.push(item);
-      continue;
+      return item;
     }
     const path = resolveMessageAttachmentStoragePath(o);
     if (!path) {
-      signed.push(item);
-      continue;
+      return item;
     }
     const signedUrl = await createMessageAttachmentSignedUrl(storageClient, path);
-    signed.push({
+    return {
       ...o,
       url: signedUrl ?? "",
       storage_path: path,
-    });
-  }
-  return signed;
+    };
+  });
 }
 
 /**
