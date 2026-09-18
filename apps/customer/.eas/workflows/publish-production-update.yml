@@ -1,0 +1,27 @@
+name: Publish Customer Production OTA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/customer/**
+  workflow_dispatch:
+
+jobs:
+  update_ios:
+    name: Production OTA (iOS)
+    type: update
+    environment: production
+    params:
+      channel: production
+      platform: ios
+      message: Production OTA (EAS workflow)
+  update_android:
+    name: Production OTA (Android)
+    type: update
+    environment: production
+    params:
+      channel: production
+      platform: android
+      message: Production OTA (EAS workflow)
