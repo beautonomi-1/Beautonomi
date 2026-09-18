@@ -3119,6 +3119,7 @@
           "subscriptionActivatedAppStore": "Subscription activated through the App Store.",
           "restoreComplete": "Restore kamilisha",
           "restoreCompleteBody": "Your App Store purchases were synced.",
+          "restoreResyncBody": "Your subscription was synced from your App Store billing records.",
           "restoreFailed": "Restore imeshindwa",
           "restoreFailedBody": "Imeshindwa restore purchases.",
           "offerCodeTitle": "Msimbo wa ofa",

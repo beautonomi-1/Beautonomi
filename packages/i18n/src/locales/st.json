@@ -3119,6 +3119,7 @@
           "subscriptionActivatedAppStore": "Subscription activated through the App Store.",
           "restoreComplete": "Restore complete",
           "restoreCompleteBody": "Your App Store purchases were synced.",
+          "restoreResyncBody": "Your subscription was synced from your App Store billing records.",
           "restoreFailed": "Restore failed",
           "restoreFailedBody": "Could not restore purchases.",
           "offerCodeTitle": "Offer code",
