@@ -95,7 +95,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "286",
+    buildNumber: "287",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -173,7 +173,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 286,
+    versionCode: 287,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
