@@ -15,6 +15,7 @@ import { getMergedSubscriptionPlanIdsForTenant } from "@/lib/subscription/admin-
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeTrialEndsAt, DEFAULT_PROVIDER_TRIAL_DAYS } from "@/lib/subscriptions/trial";
 import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import { providerHasEntitledAppleSubscriptionInLog } from "@/lib/iap/apple/resync-subscription-from-log";
 
 const patchSchema = z.object({
   plan_id: z.string().uuid().optional(),
@@ -170,6 +171,19 @@ export async function PATCH(
       );
     }
 
+    const providerIdForApple = existingRow.provider_id?.trim() ?? null;
+
+    async function blockFreeWhenAppleEntitled(): Promise<Response | null> {
+      if (!providerIdForApple) return null;
+      const entitled = await providerHasEntitledAppleSubscriptionInLog(supabase, providerIdForApple);
+      if (!entitled) return null;
+      return errorResponse(
+        "This business has an active App Store subscription on file. Cancel in the App Store or have the owner use Restore in the app before setting the Free plan.",
+        "APPLE_SUBSCRIPTION_ACTIVE",
+        409,
+      );
+    }
+
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (plan_id !== undefined) update.plan_id = plan_id;
     if (billing_period !== undefined) update.billing_period = billing_period;
@@ -178,6 +192,8 @@ export async function PATCH(
     if (plan_id !== undefined) {
       applyReactivationClears(update);
       if (planIsFree(targetPlan)) {
+        const blocked = await blockFreeWhenAppleEntitled();
+        if (blocked) return blocked;
         applyFreeTierClears(update);
       } else if (targetPlan) {
         update.billing_provider = "manual";
@@ -187,6 +203,8 @@ export async function PATCH(
     if (status === "active") {
       applyReactivationClears(update);
       if (planIsFree(effectivePlan)) {
+        const blocked = await blockFreeWhenAppleEntitled();
+        if (blocked) return blocked;
         applyFreeTierClears(update);
       }
     }

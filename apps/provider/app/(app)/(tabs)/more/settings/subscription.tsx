@@ -995,7 +995,12 @@ export default function SubscriptionScreen() {
               try {
                 const result = await restoreApplePurchases(provider.id);
                 if (result.ok) {
-                  Alert.alert(sub("restoreComplete"), sub("restoreCompleteBody"));
+                  Alert.alert(
+                    sub("restoreComplete"),
+                    result.syncedFromServer
+                      ? sub("restoreResyncBody")
+                      : sub("restoreCompleteBody"),
+                  );
                   refresh();
                 } else {
                   Alert.alert(sub("restoreFailed"), result.error ?? sub("restoreFailedBody"));

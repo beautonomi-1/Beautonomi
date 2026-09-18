@@ -26,7 +26,7 @@ export type AppleStoreProduct = {
 };
 
 export type ApplePurchaseResult =
-  | { ok: true; transactionId?: string; productId: string }
+  | { ok: true; transactionId?: string; productId: string; syncedExisting?: boolean }
   | { ok: false; cancelled?: boolean; error: string; errorCode?: string | null };
 
 type ExpoIapModule = typeof import("expo-iap");
@@ -232,6 +232,21 @@ export async function purchaseAppleProduct(opts: {
     if (isUserCancellation(e)) {
       return { ok: false, cancelled: true, error: "Purchase cancelled" };
     }
+    if (opts.kind === "subscription" && isItemAlreadyOwnedError(e)) {
+      const synced = await syncExistingSubscriptionPurchase({
+        productId: opts.productId,
+        providerId: opts.appAccountToken,
+      });
+      if (synced.ok) {
+        return {
+          ok: true,
+          productId: opts.productId,
+          transactionId: synced.transactionId,
+          syncedExisting: true,
+        };
+      }
+      return { ok: false, error: synced.error };
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg || "Purchase failed" };
   }
@@ -242,6 +257,86 @@ export async function purchaseAppleProduct(opts: {
  * for those. Matching loosely (for example on the word "user") would turn real
  * StoreKit failures into a button that appears to do nothing.
  */
+/** StoreKit / expo-iap when the Apple ID already holds this subscription SKU. */
+export function isItemAlreadyOwnedError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  const code = String((error as { code?: unknown })?.code ?? "").toLowerCase();
+  return (
+    message.includes("already owned") ||
+    message.includes("item already owned") ||
+    message.includes("already_owned") ||
+    code.includes("already_owned") ||
+    code.includes("already-owned") ||
+    code === "e_already_owned"
+  );
+}
+
+function purchaseProductId(purchase: unknown): string {
+  const record = asPurchaseRecord(purchase);
+  return String(record.productId ?? record.id ?? "").trim();
+}
+
+/**
+ * When StoreKit already entitles this SKU, verify with our server instead of
+ * calling requestPurchase again (which throws "item already owned").
+ */
+async function syncExistingSubscriptionPurchase(opts: {
+  productId: string;
+  providerId: string;
+}): Promise<{ ok: true; transactionId?: string } | { ok: false; error: string }> {
+  const mod = await loadIapModule();
+  if (!mod) {
+    return { ok: false, error: "In-app purchases are only available on iOS." };
+  }
+  await connectAppleIap();
+
+  const tryPurchases = async (): Promise<unknown[]> => {
+    const purchases = await mod.getAvailablePurchases();
+    return Array.isArray(purchases) ? purchases : [];
+  };
+
+  let list = await tryPurchases();
+  if (list.length === 0) {
+    const syncIos = (mod as { syncIOS?: () => Promise<unknown> }).syncIOS;
+    if (typeof syncIos === "function") {
+      try {
+        await syncIos();
+      } catch {
+        /* best-effort */
+      }
+      list = await tryPurchases();
+    }
+  }
+
+  const matches = list.filter((p) => purchaseProductId(p) === opts.productId);
+  const subscriptionCandidates =
+    matches.length > 0
+      ? matches
+      : list.filter((p) => purchaseProductId(p).includes(".sub."));
+
+  if (subscriptionCandidates.length === 0) {
+    return {
+      ok: false,
+      error:
+        "This plan is already on your Apple ID but could not be synced. Tap Restore purchases or manage the subscription in the App Store, then try again.",
+    };
+  }
+
+  let lastError: string | undefined;
+  for (const purchase of subscriptionCandidates) {
+    const result = await verifyAndFinishPurchase(purchase, opts.providerId);
+    if (result.ok) {
+      const txId =
+        typeof (purchase as { transactionId?: string }).transactionId === "string"
+          ? (purchase as { transactionId: string }).transactionId
+          : undefined;
+      return { ok: true, transactionId: txId };
+    }
+    lastError = result.error;
+  }
+  return { ok: false, error: lastError ?? "Could not sync existing App Store subscription." };
+}
+
 function isUserCancellation(error: unknown): boolean {
   const code = String(
     (error as { code?: unknown })?.code ?? (error as { userCancelled?: unknown })?.userCancelled ?? "",
@@ -290,14 +385,37 @@ async function verifyAndFinishPurchase(
   return { ok: true };
 }
 
-export async function restoreApplePurchases(providerId: string): Promise<{ ok: boolean; error?: string }> {
+async function resyncSubscriptionFromServer(): Promise<{ ok: boolean; error?: string }> {
+  const res = await api.post<{ applied?: boolean }>("/api/provider/iap/resync", {});
+  if (res.error) {
+    return {
+      ok: false,
+      error: getApiErrorMessage(
+        res.error,
+        "Could not sync subscription from server records",
+      ),
+    };
+  }
+  return { ok: true };
+}
+
+export async function restoreApplePurchases(
+  providerId: string,
+): Promise<{ ok: boolean; error?: string; syncedFromServer?: boolean }> {
   const mod = await loadIapModule();
   if (!mod) return { ok: false, error: "Restore is only available on iOS." };
   await connectAppleIap();
   try {
     const purchases = await mod.getAvailablePurchases();
     if (!Array.isArray(purchases) || purchases.length === 0) {
-      return { ok: true };
+      const server = await resyncSubscriptionFromServer();
+      if (server.ok) return { ok: true, syncedFromServer: true };
+      return {
+        ok: false,
+        error:
+          server.error ??
+          "No App Store purchases were found on this device. Use the Apple ID that subscribed, or open Subscriptions in Settings.",
+      };
     }
     let lastError: string | undefined;
     let anyOk = false;
@@ -307,8 +425,13 @@ export async function restoreApplePurchases(providerId: string): Promise<{ ok: b
       else if (result.error) lastError = result.error;
     }
     if (anyOk) return { ok: true };
+    const server = await resyncSubscriptionFromServer();
+    if (server.ok) return { ok: true, syncedFromServer: true };
     if (lastError) return { ok: false, error: lastError };
-    return { ok: true };
+    return {
+      ok: false,
+      error: server.error ?? "Could not restore purchases.",
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Restore failed" };
   }

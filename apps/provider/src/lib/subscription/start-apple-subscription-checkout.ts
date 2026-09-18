@@ -93,5 +93,5 @@ export async function startAppleSubscriptionCheckout(options: {
     };
   }
 
-  return { ok: true };
+  return { ok: true, alreadyActive: purchase.syncedExisting === true };
 }
