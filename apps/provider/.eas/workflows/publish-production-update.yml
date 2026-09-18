@@ -22,7 +22,7 @@ jobs:
     params:
       channel: production
       platform: ios
-      message: Provider production OTA (build 286 / fingerprint runtime)
+      message: Provider production OTA (iOS)
   update_android:
     name: Production OTA (Android)
     type: update
@@ -34,4 +34,4 @@ jobs:
     params:
       channel: production
       platform: android
-      message: Provider production OTA (build 286 / fingerprint runtime)
+      message: Provider production OTA (Android)
