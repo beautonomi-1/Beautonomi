@@ -6,12 +6,18 @@ on:
       - main
     paths:
       - apps/customer/**
+      - package.json
+      - pnpm-lock.yaml
 
 jobs:
   update_ios:
     name: Production OTA (iOS)
     type: update
     environment: production
+    hooks:
+      after_install_node_modules:
+        - name: Ensure babel-preset-expo resolves for Metro (monorepo)
+          run: pnpm install --filter customer... --prefer-offline
     params:
       channel: production
       platform: ios
