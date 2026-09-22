@@ -1,0 +1,1212 @@
+{
+  "Max": {
+    "fr": "Max",
+    "ar": "الحد الأقصى",
+    "sw": "Upeo"
+  },
+  "Min": {
+    "fr": "Min",
+    "ar": "الحد الأدنى",
+    "sw": "Chini"
+  },
+  "Spa": {
+    "fr": "Spa",
+    "ar": "سبا",
+    "sw": "Spa"
+  },
+  "Note": {
+    "fr": "Note",
+    "ar": "ملاحظة",
+    "sw": "Dokezo"
+  },
+  "1950s": {
+    "fr": "Années 1950",
+    "ar": "خمسينيات القرن",
+    "sw": "Miaka ya 1950"
+  },
+  "1960s": {
+    "fr": "Années 1960",
+    "ar": "ستينيات القرن",
+    "sw": "Miaka ya 1960"
+  },
+  "1970s": {
+    "fr": "Années 1970",
+    "ar": "سبعينيات القرن",
+    "sw": "Miaka ya 1970"
+  },
+  "1980s": {
+    "fr": "Années 1980",
+    "ar": "ثمانينيات القرن",
+    "sw": "Miaka ya 1980"
+  },
+  "1990s": {
+    "fr": "Années 1990",
+    "ar": "تسعينيات القرن",
+    "sw": "Miaka ya 1990"
+  },
+  "2000s": {
+    "fr": "Années 2000",
+    "ar": "سنوات 2000",
+    "sw": "Miaka ya 2000"
+  },
+  "2010s": {
+    "fr": "Années 2010",
+    "ar": "سنوات 2010",
+    "sw": "Miaka ya 2010"
+  },
+  "Latex": {
+    "fr": "Latex",
+    "ar": "لاتكس",
+    "sw": "Lateksi"
+  },
+  "Pause": {
+    "fr": "Pause",
+    "ar": "إيقاف مؤقت",
+    "sw": "Sitisha"
+  },
+  "Taxes": {
+    "fr": "Taxes",
+    "ar": "الضرائب",
+    "sw": "Kodi"
+  },
+  "Total": {
+    "fr": "Total",
+    "ar": "الإجمالي",
+    "sw": "Jumla"
+  },
+  "Coupon": {
+    "fr": "Coupon",
+    "ar": "قسيمة",
+    "sw": "Kuponi"
+  },
+  "e.g. 3": {
+    "fr": "ex. 3",
+    "ar": "مثال: 3",
+    "sw": "k.m. 3"
+  },
+  "Mature": {
+    "fr": "Mature",
+    "ar": "ناضج",
+    "sw": "Ukomavu"
+  },
+  "minute": {
+    "fr": "minute",
+    "ar": "دقيقة",
+    "sw": "dakika"
+  },
+  "Nickel": {
+    "fr": "Nickel",
+    "ar": "نيكل",
+    "sw": "Nikeli"
+  },
+  "Normal": {
+    "fr": "Normal",
+    "ar": "عادي",
+    "sw": "Kawaida"
+  },
+  "Option": {
+    "fr": "Option",
+    "ar": "خيار",
+    "sw": "Chaguo"
+  },
+  "Photos": {
+    "fr": "Photos",
+    "ar": "صور",
+    "sw": "Picha"
+  },
+  "Renews": {
+    "fr": "Renouvelle",
+    "ar": "يتجدد",
+    "sw": "Inasasisha"
+  },
+  "urgent": {
+    "fr": "urgent",
+    "ar": "عاجل",
+    "sw": "haraka"
+  },
+  "Urgent": {
+    "fr": "Urgent",
+    "ar": "عاجل",
+    "sw": "Haraka"
+  },
+  "Alcohol": {
+    "fr": "Alcool",
+    "ar": "كحول",
+    "sw": "Pombe"
+  },
+  "Approve": {
+    "fr": "Approuver",
+    "ar": "موافقة",
+    "sw": "Idhinisha"
+  },
+  "At home": {
+    "fr": "À domicile",
+    "ar": "في المنزل",
+    "sw": "Nyumbani"
+  },
+  "At Home": {
+    "fr": "À domicile",
+    "ar": "في المنزل",
+    "sw": "Nyumbani"
+  },
+  "Comment": {
+    "fr": "Commentaire",
+    "ar": "تعليق",
+    "sw": "Maoni"
+  },
+  "Cookies": {
+    "fr": "Cookies",
+    "ar": "ملفات الارتباط",
+    "sw": "Vidakuzi"
+  },
+  "Cooking": {
+    "fr": "Cuisine",
+    "ar": "الطبخ",
+    "sw": "Upishi"
+  },
+  "Copy ID": {
+    "fr": "Copier l’ID",
+    "ar": "نسخ المعرف",
+    "sw": "Nakili kitambulisho"
+  },
+  "Coupons": {
+    "fr": "Coupons",
+    "ar": "قسائم",
+    "sw": "Kuponi"
+  },
+  "Decline": {
+    "fr": "Refuser",
+    "ar": "رفض",
+    "sw": "Kataa"
+  },
+  "DEFAULT": {
+    "fr": "PAR DÉFAUT",
+    "ar": "افتراضي",
+    "sw": "CHAGUO-MSINGI"
+  },
+  "Deposit": {
+    "fr": "Acompte",
+    "ar": "عربون",
+    "sw": "Depositi"
+  },
+  "e.g. 5B": {
+    "fr": "ex. 5B",
+    "ar": "مثال: 5B",
+    "sw": "k.m. 5B"
+  },
+  "Expires": {
+    "fr": "Expire",
+    "ar": "تنتهي",
+    "sw": "Inaisha"
+  },
+  "For You": {
+    "fr": "Pour vous",
+    "ar": "لك",
+    "sw": "Kwa ajili yako"
+  },
+  "Gauteng": {
+    "fr": "Gauteng",
+    "ar": "غاوتينغ",
+    "sw": "Gauteng"
+  },
+  "Get app": {
+    "fr": "Télécharger l’app",
+    "ar": "تنزيل التطبيق",
+    "sw": "Pata programu"
+  },
+  "History": {
+    "fr": "Historique",
+    "ar": "السجل",
+    "sw": "Historia"
+  },
+  "Loyalty": {
+    "fr": "Fidélité",
+    "ar": "الولاء",
+    "sw": "Uaminifu"
+  },
+  "Massage": {
+    "fr": "Massage",
+    "ar": "مساج",
+    "sw": "Massage"
+  },
+  "Message": {
+    "fr": "Message",
+    "ar": "رسالة",
+    "sw": "Ujumbe"
+  },
+  "minutes": {
+    "fr": "minutes",
+    "ar": "دقائق",
+    "sw": "dakika"
+  },
+  "Natural": {
+    "fr": "Naturel",
+    "ar": "طبيعي",
+    "sw": "Asili"
+  },
+  "Near me": {
+    "fr": "Près de moi",
+    "ar": "بالقرب مني",
+    "sw": "Karibu nami"
+  },
+  "Options": {
+    "fr": "Options",
+    "ar": "خيارات",
+    "sw": "Chaguo"
+  },
+  "Outlook": {
+    "fr": "Outlook",
+    "ar": "Outlook",
+    "sw": "Outlook"
+  },
+  "Package": {
+    "fr": "Forfait",
+    "ar": "باقة",
+    "sw": "Kifurushi"
+  },
+  "Parking": {
+    "fr": "Parking",
+    "ar": "موقف سيارات",
+    "sw": "Maegesho"
+  },
+  "Privacy": {
+    "fr": "Confidentialité",
+    "ar": "الخصوصية",
+    "sw": "Faragha"
+  },
+  "Reason:": {
+    "fr": "Motif :",
+    "ar": "السبب:",
+    "sw": "Sababu:"
+  },
+  "Receipt": {
+    "fr": "Reçu",
+    "ar": "إيصال",
+    "sw": "Risiti"
+  },
+  "Relaxed": {
+    "fr": "Décontracté",
+    "ar": "مسترخٍ",
+    "sw": "Tulivu"
+  },
+  "service": {
+    "fr": "service",
+    "ar": "خدمة",
+    "sw": "huduma"
+  },
+  "Service": {
+    "fr": "Service",
+    "ar": "الخدمة",
+    "sw": "Huduma"
+  },
+  "Shipped": {
+    "fr": "Expédié",
+    "ar": "تم الشحن",
+    "sw": "Imesafirishwa"
+  },
+  "Sold by": {
+    "fr": "Vendu par",
+    "ar": "يُباع بواسطة",
+    "sw": "Inauzwa na"
+  },
+  "Subject": {
+    "fr": "Objet",
+    "ar": "الموضوع",
+    "sw": "Mada"
+  },
+  "Unblock": {
+    "fr": "Débloquer",
+    "ar": "إلغاء الحظر",
+    "sw": "Ondoa kizuizi"
+  },
+  "Waiting": {
+    "fr": "En attente",
+    "ar": "قيد الانتظار",
+    "sw": "Inasubiri"
+  },
+  "Walk-in": {
+    "fr": "Sans rendez-vous",
+    "ar": "بدون موعد",
+    "sw": "Bila nafasi"
+  },
+  " instead": {
+    "fr": " à la place",
+    "ar": " بدلًا من ذلك",
+    "sw": " badala yake"
+  },
+  "About me": {
+    "fr": "À propos de moi",
+    "ar": "نبذة عني",
+    "sw": "Kuhusu mimi"
+  },
+  "About Us": {
+    "fr": "À propos",
+    "ar": "من نحن",
+    "sw": "Kuhusu sisi"
+  },
+  "App lock": {
+    "fr": "Verrouillage de l’app",
+    "ar": "قفل التطبيق",
+    "sw": "Kufuli ya programu"
+  },
+  "Approved": {
+    "fr": "Approuvé",
+    "ar": "موافق عليه",
+    "sw": "Imeidhinishwa"
+  },
+  "At salon": {
+    "fr": "Au salon",
+    "ar": "في الصالون",
+    "sw": "Saluni"
+  },
+  "At Salon": {
+    "fr": "Au salon",
+    "ar": "في الصالون",
+    "sw": "Saluni"
+  },
+  "Benefits": {
+    "fr": "Avantages",
+    "ar": "المزايا",
+    "sw": "Manufaa"
+  },
+  "Booked ✓": {
+    "fr": "Réservé ✓",
+    "ar": "محجوز ✓",
+    "sw": "Imewekwa ✓"
+  },
+  "Call 112": {
+    "fr": "Appeler le 112",
+    "ar": "الاتصال بـ 112",
+    "sw": "Piga 112"
+  },
+  "category": {
+    "fr": "catégorie",
+    "ar": "فئة",
+    "sw": "kategoria"
+  },
+  "CATEGORY": {
+    "fr": "CATÉGORIE",
+    "ar": "الفئة",
+    "sw": "KATEGORIA"
+  },
+  "Collapse": {
+    "fr": "Réduire",
+    "ar": "طي",
+    "sw": "Kunja"
+  },
+  "Coloured": {
+    "fr": "Coloré",
+    "ar": "ملوّن",
+    "sw": "Rangi"
+  },
+  "Comments": {
+    "fr": "Commentaires",
+    "ar": "التعليقات",
+    "sw": "Maoni"
+  },
+  "Currency": {
+    "fr": "Devise",
+    "ar": "العملة",
+    "sw": "Sarafu"
+  },
+  "Declined": {
+    "fr": "Refusé",
+    "ar": "مرفوض",
+    "sw": "Imekataliwa"
+  },
+  "Details:": {
+    "fr": "Détails :",
+    "ar": "التفاصيل:",
+    "sw": "Maelezo:"
+  },
+  "Distance": {
+    "fr": "Distance",
+    "ar": "المسافة",
+    "sw": "Umbali"
+  },
+  "Document": {
+    "fr": "Document",
+    "ar": "مستند",
+    "sw": "Hati"
+  },
+  "Download": {
+    "fr": "Télécharger",
+    "ar": "تنزيل",
+    "sw": "Pakua"
+  },
+  "e.g. 350": {
+    "fr": "ex. 350",
+    "ar": "مثال: 350",
+    "sw": "k.m. 350"
+  },
+  "End date": {
+    "fr": "Date de fin",
+    "ar": "تاريخ الانتهاء",
+    "sw": "Tarehe ya mwisho"
+  },
+  "Escalate": {
+    "fr": "Escalader",
+    "ar": "تصعيد",
+    "sw": "Peleka juu"
+  },
+  "Featured": {
+    "fr": "À la une",
+    "ar": "مميز",
+    "sw": "Imeangaziwa"
+  },
+  "Flexible": {
+    "fr": "Flexible",
+    "ar": "مرن",
+    "sw": "Rahisi"
+  },
+  "Giftcard": {
+    "fr": "Carte cadeau",
+    "ar": "بطاقة هدايا",
+    "sw": "Kadi ya zawadi"
+  },
+  "Home tab": {
+    "fr": "Onglet Accueil",
+    "ar": "تبويب الرئيسية",
+    "sw": "Kichupo cha nyumbani"
+  },
+  "Identity": {
+    "fr": "Identité",
+    "ar": "الهوية",
+    "sw": "Utambulisho"
+  },
+  "Manicure": {
+    "fr": "Manucure",
+    "ar": "مانيكير",
+    "sw": "Manicure"
+  },
+  "Messages": {
+    "fr": "Messages",
+    "ar": "الرسائل",
+    "sw": "Ujumbe"
+  },
+  "Near you": {
+    "fr": "Près de vous",
+    "ar": "بالقرب منك",
+    "sw": "Karibu nawe"
+  },
+  "out of 5": {
+    "fr": "sur 5",
+    "ar": "من 5",
+    "sw": "kati ya 5"
+  },
+  "Overview": {
+    "fr": "Aperçu",
+    "ar": "نظرة عامة",
+    "sw": "Muhtasari"
+  },
+  "Parabens": {
+    "fr": "Parabènes",
+    "ar": "بارابين",
+    "sw": "Parabeni"
+  },
+  "Passport": {
+    "fr": "Passeport",
+    "ar": "جواز سفر",
+    "sw": "Pasipoti"
+  },
+  "Pedicure": {
+    "fr": "Pédicure",
+    "ar": "بديكير",
+    "sw": "Pedicure"
+  },
+  "Pin chat": {
+    "fr": "Épingler la discussion",
+    "ar": "تثبيت المحادثة",
+    "sw": "Bandika soga"
+  },
+  "Position": {
+    "fr": "Poste",
+    "ar": "المنصب",
+    "sw": "Nafasi"
+  },
+  "Priority": {
+    "fr": "Priorité",
+    "ar": "الأولوية",
+    "sw": "Kipaumbele"
+  },
+  "Province": {
+    "fr": "Province",
+    "ar": "المقاطعة",
+    "sw": "Mkoa"
+  },
+  "Read all": {
+    "fr": "Tout lire",
+    "ar": "قراءة الكل",
+    "sw": "Soma zote"
+  },
+  "Rejected": {
+    "fr": "Rejeté",
+    "ar": "مرفوض",
+    "sw": "Imekataliwa"
+  },
+  "resolved": {
+    "fr": "résolu",
+    "ar": "تم الحل",
+    "sw": "imetatuliwa"
+  },
+  "Resolved": {
+    "fr": "Résolu",
+    "ar": "تم الحل",
+    "sw": "Imetatuliwa"
+  },
+  "Selected": {
+    "fr": "Sélectionné",
+    "ar": "محدد",
+    "sw": "Imechaguliwa"
+  },
+  "Sending…": {
+    "fr": "Envoi…",
+    "ar": "جارٍ الإرسال…",
+    "sw": "Inatuma…"
+  },
+  "Services": {
+    "fr": "Services",
+    "ar": "الخدمات",
+    "sw": "Huduma"
+  },
+  "Skincare": {
+    "fr": "Soins de la peau",
+    "ar": "العناية بالبشرة",
+    "sw": "Utunzaji wa ngozi"
+  },
+  "Sold Out": {
+    "fr": "Épuisé",
+    "ar": "نفدت الكمية",
+    "sw": "Imeisha"
+  },
+  "Straight": {
+    "fr": "Lisse",
+    "ar": "أملس",
+    "sw": "Nyofu"
+  },
+  "Sulfates": {
+    "fr": "Sulfates",
+    "ar": "كبريتات",
+    "sw": "Salfati"
+  },
+  "Tracking": {
+    "fr": "Suivi",
+    "ar": "التتبع",
+    "sw": "Ufuatiliaji"
+  },
+  "Trending": {
+    "fr": "Tendances",
+    "ar": "رائج",
+    "sw": "Zinazovuma"
+  },
+  "Under 13": {
+    "fr": "Moins de 13 ans",
+    "ar": "أقل من 13",
+    "sw": "Chini ya 13"
+  },
+  "Waitlist": {
+    "fr": "Liste d’attente",
+    "ar": "قائمة الانتظار",
+    "sw": "Orodha ya kusubiri"
+  },
+  "Wishlist": {
+    "fr": "Liste de souhaits",
+    "ar": "قائمة الأمنيات",
+    "sw": "Orodha ya matamanio"
+  },
+  "{{km}} km": {
+    "fr": "{{km}} km",
+    "ar": "{{km}} كم",
+    "sw": "km {{km}}"
+  },
+  "• Default": {
+    "fr": "• Par défaut",
+    "ar": "• افتراضي",
+    "sw": "• Chaguo-msingi"
+  },
+  "Collected": {
+    "fr": "Retiré",
+    "ar": "تم الاستلام",
+    "sw": "Imekusanywa"
+  },
+  "Copy link": {
+    "fr": "Copier le lien",
+    "ar": "نسخ الرابط",
+    "sw": "Nakili kiungo"
+  },
+  "Escalated": {
+    "fr": "Escaladé",
+    "ar": "تم التصعيد",
+    "sw": "Imepelekwa juu"
+  },
+  "Favorites": {
+    "fr": "Favoris",
+    "ar": "المفضلة",
+    "sw": "Vipendwa"
+  },
+  "Fragrance": {
+    "fr": "Parfum",
+    "ar": "عطر",
+    "sw": "Harufu"
+  },
+  "Frequency": {
+    "fr": "Fréquence",
+    "ar": "التكرار",
+    "sw": "Mzunguko"
+  },
+  "Hair type": {
+    "fr": "Type de cheveux",
+    "ar": "نوع الشعر",
+    "sw": "Aina ya nywele"
+  },
+  "Interests": {
+    "fr": "Centres d’intérêt",
+    "ar": "الاهتمامات",
+    "sw": "Mapendeleo"
+  },
+  "Join Plan": {
+    "fr": "Rejoindre l’offre",
+    "ar": "الانضمام إلى الخطة",
+    "sw": "Jiunge na mpango"
+  },
+  "Landmarks": {
+    "fr": "Points de repère",
+    "ar": "معالم",
+    "sw": "Alama za eneo"
+  },
+  "New board": {
+    "fr": "Nouveau tableau",
+    "ar": "لوحة جديدة",
+    "sw": "Bodi mpya"
+  },
+  "New reply": {
+    "fr": "Nouvelle réponse",
+    "ar": "رد جديد",
+    "sw": "Jibu jipya"
+  },
+  "Organiser": {
+    "fr": "Organisateur",
+    "ar": "المنظم",
+    "sw": "Mpangaji"
+  },
+  "Promotion": {
+    "fr": "Promotion",
+    "ar": "عرض ترويجي",
+    "sw": "Promosheni"
+  },
+  "Recurring": {
+    "fr": "Récurrent",
+    "ar": "متكرر",
+    "sw": "Inayojirudia"
+  },
+  "Referrals": {
+    "fr": "Parrainages",
+    "ar": "الإحالات",
+    "sw": "Marejeleo"
+  },
+  "Saving...": {
+    "fr": "Enregistrement…",
+    "ar": "جارٍ الحفظ...",
+    "sw": "Inahifadhi..."
+  },
+  "Selected:": {
+    "fr": "Sélection :",
+    "ar": "المحدد:",
+    "sw": "Imechaguliwa:"
+  },
+  "Sensitive": {
+    "fr": "Sensible",
+    "ar": "حساس",
+    "sw": "Nyeti"
+  },
+  "Skin type": {
+    "fr": "Type de peau",
+    "ar": "نوع البشرة",
+    "sw": "Aina ya ngozi"
+  },
+  "Sponsored": {
+    "fr": "Sponsorisé",
+    "ar": "مموّل",
+    "sw": "Imedhaminiwa"
+  },
+  "Subscribe": {
+    "fr": "S’abonner",
+    "ar": "اشتراك",
+    "sw": "Jisajili"
+  },
+  "technical": {
+    "fr": "technique",
+    "ar": "تقني",
+    "sw": "kiufundi"
+  },
+  "Technical": {
+    "fr": "Technique",
+    "ar": "تقني",
+    "sw": "Kiufundi"
+  },
+  "this user": {
+    "fr": "cet utilisateur",
+    "ar": "هذا المستخدم",
+    "sw": "mtumiaji huyu"
+  },
+  "Top rated": {
+    "fr": "Mieux notés",
+    "ar": "الأعلى تقييمًا",
+    "sw": "Yenye alama juu"
+  },
+  "Top Rated": {
+    "fr": "Mieux notés",
+    "ar": "الأعلى تقييمًا",
+    "sw": "Yenye alama juu"
+  },
+  "Withdrawn": {
+    "fr": "Retiré",
+    "ar": "مسحوب",
+    "sw": "Imeondolewa"
+  },
+  "Wrong app": {
+    "fr": "Mauvaise app",
+    "ar": "تطبيق خاطئ",
+    "sw": "Programu si sahihi"
+  },
+  " · default": {
+    "fr": " · par défaut",
+    "ar": " · افتراضي",
+    "sw": " · chaguo-msingi"
+  },
+  " (current)": {
+    "fr": " (actuel)",
+    "ar": " (الحالي)",
+    "sw": " (sasa)"
+  },
+  "{{hours}}h": {
+    "fr": "{{hours}} h",
+    "ar": "{{hours}} س",
+    "sw": "saa {{hours}}"
+  },
+  "Ages 13–17": {
+    "fr": "13–17 ans",
+    "ar": "13–17 سنة",
+    "sw": "Umri 13–17"
+  },
+  "Appearance": {
+    "fr": "Apparence",
+    "ar": "المظهر",
+    "sw": "Mwonekano"
+  },
+  "Auto-renew": {
+    "fr": "Renouvellement auto",
+    "ar": "تجديد تلقائي",
+    "sw": "Sasisha kiotomatiki"
+  },
+  "Basic info": {
+    "fr": "Infos de base",
+    "ar": "معلومات أساسية",
+    "sw": "Taarifa za msingi"
+  },
+  "Book again": {
+    "fr": "Réserver à nouveau",
+    "ar": "احجز مرة أخرى",
+    "sw": "Weka tena"
+  },
+  "Book Again": {
+    "fr": "Réserver à nouveau",
+    "ar": "احجز مرة أخرى",
+    "sw": "Weka tena"
+  },
+  "Categories": {
+    "fr": "Catégories",
+    "ar": "الفئات",
+    "sw": "Kategoria"
+  },
+  "Checked in": {
+    "fr": "Enregistré",
+    "ar": "تم تسجيل الوصول",
+    "sw": "Ameingia"
+  },
+  "Deactivate": {
+    "fr": "Désactiver",
+    "ar": "تعطيل",
+    "sw": "Zima"
+  },
+  "Declining…": {
+    "fr": "Refus…",
+    "ar": "جارٍ الرفض…",
+    "sw": "Inakataa…"
+  },
+  "Directions": {
+    "fr": "Itinéraire",
+    "ar": "الاتجاهات",
+    "sw": "Maelekezo"
+  },
+  "Drop a pin": {
+    "fr": "Placer une épingle",
+    "ar": "إسقاط دبوس",
+    "sw": "Weka pini"
+  },
+  "End series": {
+    "fr": "Terminer la série",
+    "ar": "إنهاء السلسلة",
+    "sw": "Maliza mfululizo"
+  },
+  "For myself": {
+    "fr": "Pour moi",
+    "ar": "لنفسي",
+    "sw": "Kwa ajili yangu"
+  },
+  "Freelancer": {
+    "fr": "Freelance",
+    "ar": "مستقل",
+    "sw": "Mtaalamu huru"
+  },
+  "Go to Chat": {
+    "fr": "Aller à la discussion",
+    "ar": "الانتقال إلى المحادثة",
+    "sw": "Nenda kwenye soga"
+  },
+  "Harassment": {
+    "fr": "Harcèlement",
+    "ar": "تحرش",
+    "sw": "Unyanyasaji"
+  },
+  "House call": {
+    "fr": "Visite à domicile",
+    "ar": "زيارة منزلية",
+    "sw": "Huduma nyumbani"
+  },
+  "House Call": {
+    "fr": "Visite à domicile",
+    "ar": "زيارة منزلية",
+    "sw": "Huduma nyumbani"
+  },
+  "Keep offer": {
+    "fr": "Conserver l’offre",
+    "ar": "الإبقاء على العرض",
+    "sw": "Weka ofa"
+  },
+  "Message...": {
+    "fr": "Message…",
+    "ar": "رسالة...",
+    "sw": "Ujumbe..."
+  },
+  "Milestones": {
+    "fr": "Étapes",
+    "ar": "الإنجازات",
+    "sw": "Hatua"
+  },
+  "My tickets": {
+    "fr": "Mes tickets",
+    "ar": "تذاكري",
+    "sw": "Tiketi zangu"
+  },
+  "Pay Online": {
+    "fr": "Payer en ligne",
+    "ar": "الدفع عبر الإنترنت",
+    "sw": "Lipa mtandaoni"
+  },
+  "QR expired": {
+    "fr": "QR expiré",
+    "ar": "انتهت صلاحية QR",
+    "sw": "QR imeisha"
+  },
+  "Rate staff": {
+    "fr": "Noter l’équipe",
+    "ar": "تقييم الفريق",
+    "sw": "Kadiria wafanyakazi"
+  },
+  "Reschedule": {
+    "fr": "Reprogrammer",
+    "ar": "إعادة الجدولة",
+    "sw": "Panga upya"
+  },
+  "Returning…": {
+    "fr": "Retour…",
+    "ar": "جارٍ الإرجاع…",
+    "sw": "Inarejesha…"
+  },
+  "Send reply": {
+    "fr": "Envoyer la réponse",
+    "ar": "إرسال الرد",
+    "sw": "Tuma jibu"
+  },
+  "Series end": {
+    "fr": "Fin de série",
+    "ar": "نهاية السلسلة",
+    "sw": "Mwisho wa mfululizo"
+  },
+  "Share link": {
+    "fr": "Partager le lien",
+    "ar": "مشاركة الرابط",
+    "sw": "Shiriki kiungo"
+  },
+  "Share post": {
+    "fr": "Partager la publication",
+    "ar": "مشاركة المنشور",
+    "sw": "Shiriki chapisho"
+  },
+  "SMS offers": {
+    "fr": "Offres SMS",
+    "ar": "عروض SMS",
+    "sw": "Ofa za SMS"
+  },
+  "Take photo": {
+    "fr": "Prendre une photo",
+    "ar": "التقاط صورة",
+    "sw": "Piga picha"
+  },
+  "Unpin chat": {
+    "fr": "Désépingler",
+    "ar": "إلغاء تثبيت المحادثة",
+    "sw": "Ondoa bandiko la soga"
+  },
+  "Visit type": {
+    "fr": "Type de visite",
+    "ar": "نوع الزيارة",
+    "sw": "Aina ya ziara"
+  },
+  "Your stats": {
+    "fr": "Vos statistiques",
+    "ar": "إحصاءاتك",
+    "sw": "Takwimu zako"
+  },
+  " · Sold out": {
+    "fr": " · Épuisé",
+    "ar": " · نفدت الكمية",
+    "sw": " · Imeisha"
+  },
+  " field via ": {
+    "fr": " champ via ",
+    "ar": " حقل عبر ",
+    "sw": " uga kupitia "
+  },
+  "18 and over": {
+    "fr": "18 ans et plus",
+    "ar": "18 فما فوق",
+    "sw": "Miaka 18 na zaidi"
+  },
+  "at {{name}}": {
+    "fr": "chez {{name}}",
+    "ar": "لدى {{name}}",
+    "sw": "kwa {{name}}"
+  },
+  "Browse shop": {
+    "fr": "Parcourir la boutique",
+    "ar": "تصفح المتجر",
+    "sw": "Vinjari duka"
+  },
+  "Change date": {
+    "fr": "Changer la date",
+    "ar": "تغيير التاريخ",
+    "sw": "Badilisha tarehe"
+  },
+  "Change plan": {
+    "fr": "Changer d’offre",
+    "ar": "تغيير الخطة",
+    "sw": "Badilisha mpango"
+  },
+  "Combination": {
+    "fr": "Mixte",
+    "ar": "مختلط",
+    "sw": "Mchanganyiko"
+  },
+  "Copy number": {
+    "fr": "Copier le numéro",
+    "ar": "نسخ الرقم",
+    "sw": "Nakili nambari"
+  },
+  "Coupon code": {
+    "fr": "Code promo",
+    "ar": "رمز القسيمة",
+    "sw": "Msimbo wa kuponi"
+  },
+  "Description": {
+    "fr": "Description",
+    "ar": "الوصف",
+    "sw": "Maelezo"
+  },
+  "e.g. Thandi": {
+    "fr": "ex. Thandi",
+    "ar": "مثال: Thandi",
+    "sw": "k.m. Thandi"
+  },
+  "Every 2 wks": {
+    "fr": "Toutes les 2 sem.",
+    "ar": "كل أسبوعين",
+    "sw": "Kila wiki 2"
+  },
+  "Explore tab": {
+    "fr": "Onglet Explorer",
+    "ar": "تبويب استكشف",
+    "sw": "Kichupo cha Gundua"
+  },
+  "Hair colour": {
+    "fr": "Couleur des cheveux",
+    "ar": "لون الشعر",
+    "sw": "Rangi ya nywele"
+  },
+  "House Calls": {
+    "fr": "Visites à domicile",
+    "ar": "زيارات منزلية",
+    "sw": "Huduma nyumbani"
+  },
+  "In progress": {
+    "fr": "En cours",
+    "ar": "قيد التنفيذ",
+    "sw": "Inaendelea"
+  },
+  "In Progress": {
+    "fr": "En cours",
+    "ar": "قيد التنفيذ",
+    "sw": "Inaendelea"
+  },
+  "Keep active": {
+    "fr": "Rester actif",
+    "ar": "الإبقاء نشطًا",
+    "sw": "Weka hai"
+  },
+  "Link copied": {
+    "fr": "Lien copié",
+    "ar": "تم نسخ الرابط",
+    "sw": "Kiungo kimenakiliwa"
+  },
+  "Maybe later": {
+    "fr": "Peut-être plus tard",
+    "ar": "ربما لاحقًا",
+    "sw": "Labda baadaye"
+  },
+  "Memberships": {
+    "fr": "Abonnements",
+    "ar": "العضويات",
+    "sw": "Uanachama"
+  },
+  "Message SMS": {
+    "fr": "Message SMS",
+    "ar": "رسالة SMS",
+    "sw": "Ujumbe wa SMS"
+  },
+  "My Requests": {
+    "fr": "Mes demandes",
+    "ar": "طلباتي",
+    "sw": "Maombi yangu"
+  },
+  "New Request": {
+    "fr": "Nouvelle demande",
+    "ar": "طلب جديد",
+    "sw": "Ombi jipya"
+  },
+  "Participant": {
+    "fr": "Participant",
+    "ar": "مشارك",
+    "sw": "Mshiriki"
+  },
+  "Pay deposit": {
+    "fr": "Payer l’acompte",
+    "ar": "دفع العربون",
+    "sw": "Lipa depositi"
+  },
+  "Pay Deposit": {
+    "fr": "Payer l’acompte",
+    "ar": "دفع العربون",
+    "sw": "Lipa depositi"
+  },
+  "Pay in full": {
+    "fr": "Payer la totalité",
+    "ar": "الدفع بالكامل",
+    "sw": "Lipa kamili"
+  },
+  "Pay in Full": {
+    "fr": "Payer la totalité",
+    "ar": "الدفع بالكامل",
+    "sw": "Lipa kamili"
+  },
+  "Photography": {
+    "fr": "Photographie",
+    "ar": "التصوير",
+    "sw": "Upigaji picha"
+  },
+  "Pickup only": {
+    "fr": "Retrait uniquement",
+    "ar": "استلام فقط",
+    "sw": "Kuchukua tu"
+  },
+  "Please wait": {
+    "fr": "Veuillez patienter",
+    "ar": "يرجى الانتظار",
+    "sw": "Tafadhali subiri"
+  },
+  "Postal code": {
+    "fr": "Code postal",
+    "ar": "الرمز البريدي",
+    "sw": "Msimbo wa posta"
+  },
+  "Preferences": {
+    "fr": "Préférences",
+    "ar": "التفضيلات",
+    "sw": "Mapendeleo"
+  },
+  "Recommended": {
+    "fr": "Recommandé",
+    "ar": "موصى به",
+    "sw": "Inapendekezwa"
+  },
+  "Refreshing…": {
+    "fr": "Actualisation…",
+    "ar": "جارٍ التحديث…",
+    "sw": "Inasasisha…"
+  },
+  "Report post": {
+    "fr": "Signaler la publication",
+    "ar": "الإبلاغ عن المنشور",
+    "sw": "Ripoti chapisho"
+  },
+  "Report user": {
+    "fr": "Signaler l’utilisateur",
+    "ar": "الإبلاغ عن المستخدم",
+    "sw": "Ripoti mtumiaji"
+  },
+  "Resend code": {
+    "fr": "Renvoyer le code",
+    "ar": "إعادة إرسال الرمز",
+    "sw": "Tuma msimbo tena"
+  },
+  "Set default": {
+    "fr": "Définir par défaut",
+    "ar": "تعيين كافتراضي",
+    "sw": "Weka chaguo-msingi"
+  },
+  "Share photo": {
+    "fr": "Partager la photo",
+    "ar": "مشاركة الصورة",
+    "sw": "Shiriki picha"
+  },
+  "Share video": {
+    "fr": "Partager la vidéo",
+    "ar": "مشاركة الفيديو",
+    "sw": "Shiriki video"
+  },
+  "Specialties": {
+    "fr": "Spécialités",
+    "ar": "التخصصات",
+    "sw": "Umaalumu"
+  },
+  "Transaction": {
+    "fr": "Transaction",
+    "ar": "معاملة",
+    "sw": "Muamala"
+  },
+  "Updating...": {
+    "fr": "Mise à jour…",
+    "ar": "جارٍ التحديث...",
+    "sw": "Inasasisha..."
+  },
+  "Verify code": {
+    "fr": "Vérifier le code",
+    "ar": "التحقق من الرمز",
+    "sw": "Thibitisha msimbo"
+  },
+  "Your Points": {
+    "fr": "Vos points",
+    "ar": "نقاطك",
+    "sw": "Pointi zako"
+  }
+}

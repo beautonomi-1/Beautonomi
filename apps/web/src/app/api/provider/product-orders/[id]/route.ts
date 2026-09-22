@@ -342,6 +342,8 @@ export async function PATCH(
           cancellationReason: parsed.cancellation_reason,
           trackingNumber: parsed.tracking_number ?? (updated as { tracking_number?: string }).tracking_number,
           carrier: parsed.carrier ?? (updated as { carrier?: string }).carrier,
+          trackingUrl:
+            parsed.tracking_url ?? (updated as { tracking_url?: string | null }).tracking_url ?? null,
           estimatedDelivery:
             parsed.estimated_delivery_date ??
             (updated as { estimated_delivery_date?: string }).estimated_delivery_date,

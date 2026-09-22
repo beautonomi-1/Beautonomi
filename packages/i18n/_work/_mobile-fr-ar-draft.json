@@ -1,0 +1,6362 @@
+{
+  "to": {
+    "fr": "à",
+    "ar": "إلى"
+  },
+  "or": {
+    "fr": "ou",
+    "ar": "أو"
+  },
+  "Mo": {
+    "fr": "Lun",
+    "ar": "إثن"
+  },
+  "Tu": {
+    "fr": "Mar",
+    "ar": "ثلا"
+  },
+  "We": {
+    "fr": "Mer",
+    "ar": "أرب"
+  },
+  "Th": {
+    "fr": "Jeu",
+    "ar": "خمي"
+  },
+  "Fr": {
+    "fr": "Ven",
+    "ar": "جمعة"
+  },
+  "Sa": {
+    "fr": "Sam",
+    "ar": "سبت"
+  },
+  "Su": {
+    "fr": "Dim",
+    "ar": "أحد"
+  },
+  "On": {
+    "fr": "On",
+    "ar": "On"
+  },
+  "To": {
+    "fr": "To",
+    "ar": "To"
+  },
+  "km": {
+    "fr": "km",
+    "ar": "km"
+  },
+  "1h": {
+    "fr": "1h",
+    "ar": "1h"
+  },
+  "Me": {
+    "fr": "Moi",
+    "ar": "أنا"
+  },
+  "and": {
+    "fr": "et",
+    "ar": "و"
+  },
+  "sku": {
+    "fr": "sku",
+    "ar": "sku"
+  },
+  "App": {
+    "fr": "App",
+    "ar": "تطبيق"
+  },
+  "min": {
+    "fr": "min",
+    "ar": "د"
+  },
+  "POS": {
+    "fr": "POS",
+    "ar": "POS"
+  },
+  "ETA": {
+    "fr": "ETA",
+    "ar": "ETA"
+  },
+  "Net": {
+    "fr": "Net",
+    "ar": "صافي"
+  },
+  "Web": {
+    "fr": "Web",
+    "ar": "ويب"
+  },
+  "Max": {
+    "fr": "Max",
+    "ar": "الحد الأقصى"
+  },
+  "Any": {
+    "fr": "Any",
+    "ar": "Any"
+  },
+  "NPO": {
+    "fr": "NPO",
+    "ar": "NPO"
+  },
+  "LOW": {
+    "fr": "LOW",
+    "ar": "LOW"
+  },
+  "OUT": {
+    "fr": "OUT",
+    "ar": "OUT"
+  },
+  "24h": {
+    "fr": "24h",
+    "ar": "24h"
+  },
+  "48h": {
+    "fr": "48h",
+    "ar": "48h"
+  },
+  "You": {
+    "fr": "Vous",
+    "ar": "أنت"
+  },
+  "low": {
+    "fr": "faible",
+    "ar": "منخفض"
+  },
+  "Low": {
+    "fr": "Faible",
+    "ar": "منخفض"
+  },
+  "Jan": {
+    "fr": "Jan",
+    "ar": "Jan"
+  },
+  "Feb": {
+    "fr": "Feb",
+    "ar": "Feb"
+  },
+  "Mar": {
+    "fr": "Mar",
+    "ar": "Mar"
+  },
+  "Apr": {
+    "fr": "Apr",
+    "ar": "Apr"
+  },
+  "Jun": {
+    "fr": "Jun",
+    "ar": "Jun"
+  },
+  "Jul": {
+    "fr": "Jul",
+    "ar": "Jul"
+  },
+  "Aug": {
+    "fr": "Aug",
+    "ar": "Aug"
+  },
+  "Sep": {
+    "fr": "Sep",
+    "ar": "Sep"
+  },
+  "Oct": {
+    "fr": "Oct",
+    "ar": "Oct"
+  },
+  "Nov": {
+    "fr": "Nov",
+    "ar": "Nov"
+  },
+  "Dec": {
+    "fr": "Dec",
+    "ar": "Dec"
+  },
+  "Bio": {
+    "fr": "Bio",
+    "ar": "Bio"
+  },
+  "REC": {
+    "fr": "REC",
+    "ar": "REC"
+  },
+  "Hrs": {
+    "fr": "Hrs",
+    "ar": "Hrs"
+  },
+  "VAT": {
+    "fr": "VAT",
+    "ar": "VAT"
+  },
+  "Spa": {
+    "fr": "Spa",
+    "ar": "سبا"
+  },
+  "you": {
+    "fr": "vous",
+    "ar": "أنت"
+  },
+  "Dry": {
+    "fr": "Sec",
+    "ar": "جاف"
+  },
+  "Min": {
+    "fr": "Min",
+    "ar": "الحد الأدنى"
+  },
+  "<1h": {
+    "fr": "<1 h",
+    "ar": "<1 س"
+  },
+  "Pay": {
+    "fr": "Pay",
+    "ar": "Pay"
+  },
+  "Weak": {
+    "fr": "Faible",
+    "ar": "ضعيفة"
+  },
+  "Fair": {
+    "fr": "Correcte",
+    "ar": "متوسطة"
+  },
+  "Good": {
+    "fr": "Bonne",
+    "ar": "جيدة"
+  },
+  "Size": {
+    "fr": "Size",
+    "ar": "Size"
+  },
+  "Plan": {
+    "fr": "Offre",
+    "ar": "خطة"
+  },
+  "NEWS": {
+    "fr": "NEWS",
+    "ar": "NEWS"
+  },
+  "Past": {
+    "fr": "Passées",
+    "ar": "السابقة"
+  },
+  "Dark": {
+    "fr": "Sombre",
+    "ar": "داكن"
+  },
+  "Note": {
+    "fr": "Note",
+    "ar": "ملاحظة"
+  },
+  "Prev": {
+    "fr": "Préc.",
+    "ar": "السابق"
+  },
+  "Rate": {
+    "fr": "Taux",
+    "ar": "المعدل"
+  },
+  "open": {
+    "fr": "ouvert",
+    "ar": "مفتوح"
+  },
+  "Item": {
+    "fr": "Article",
+    "ar": "عنصر"
+  },
+  "Bank": {
+    "fr": "Banque",
+    "ar": "بنك"
+  },
+  "Deny": {
+    "fr": "Deny",
+    "ar": "Deny"
+  },
+  "Icon": {
+    "fr": "Icon",
+    "ar": "Icon"
+  },
+  "From": {
+    "fr": "From",
+    "ar": "From"
+  },
+  "File": {
+    "fr": "File",
+    "ar": "File"
+  },
+  "1 km": {
+    "fr": "1 km",
+    "ar": "1 km"
+  },
+  "km =": {
+    "fr": "km =",
+    "ar": "km ="
+  },
+  "high": {
+    "fr": "élevé",
+    "ar": "مرتفع"
+  },
+  "Chat": {
+    "fr": "Discussion",
+    "ar": "محادثة"
+  },
+  "Zone": {
+    "fr": "Zone",
+    "ar": "Zone"
+  },
+  "High": {
+    "fr": "Élevé",
+    "ar": "مرتفع"
+  },
+  "Stop": {
+    "fr": "Stop",
+    "ar": "Stop"
+  },
+  "Sync": {
+    "fr": "Sync",
+    "ar": "Sync"
+  },
+  "Rows": {
+    "fr": "Rows",
+    "ar": "Rows"
+  },
+  "from": {
+    "fr": "de",
+    "ar": "من"
+  },
+  "••••": {
+    "fr": "••••",
+    "ar": "••••"
+  },
+  "Room": {
+    "fr": "Salle",
+    "ar": "غرفة"
+  },
+  "Sold": {
+    "fr": "Sold",
+    "ar": "Sold"
+  },
+  "Work": {
+    "fr": "Travail",
+    "ar": "العمل"
+  },
+  "Body": {
+    "fr": "Corps",
+    "ar": "الجسم"
+  },
+  "For:": {
+    "fr": "Pour :",
+    "ar": "لـ:"
+  },
+  "Pets": {
+    "fr": "Animaux",
+    "ar": "حيوانات أليفة"
+  },
+  "Wavy": {
+    "fr": "Ondulé",
+    "ar": "مموج"
+  },
+  "Thin": {
+    "fr": "Fin",
+    "ar": "رفيع"
+  },
+  "Oily": {
+    "fr": "Gras",
+    "ar": "دهني"
+  },
+  "Dyes": {
+    "fr": "Colorations",
+    "ar": "صبغات"
+  },
+  "Stay": {
+    "fr": "Stay",
+    "ar": "Stay"
+  },
+  "Floor": {
+    "fr": "Étage",
+    "ar": "الطابق"
+  },
+  "Sarah": {
+    "fr": "Sarah",
+    "ar": "Sarah"
+  },
+  "Setup": {
+    "fr": "Setup",
+    "ar": "Setup"
+  },
+  "Admin": {
+    "fr": "Admin",
+    "ar": "Admin"
+  },
+  "EVENT": {
+    "fr": "EVENT",
+    "ar": "EVENT"
+  },
+  "Items": {
+    "fr": "Articles",
+    "ar": "العناصر"
+  },
+  "Impr.": {
+    "fr": "Impr.",
+    "ar": "ظهور"
+  },
+  "Light": {
+    "fr": "Clair",
+    "ar": "فاتح"
+  },
+  "Forms": {
+    "fr": "Formulaires",
+    "ar": "نماذج"
+  },
+  "Front": {
+    "fr": "Accueil",
+    "ar": "الاستقبال"
+  },
+  "Block": {
+    "fr": "Bloquer",
+    "ar": "حظر"
+  },
+  "Money": {
+    "fr": "Argent",
+    "ar": "مال"
+  },
+  "Embed": {
+    "fr": "Intégrer",
+    "ar": "تضمين"
+  },
+  "April": {
+    "fr": "Avril",
+    "ar": "أبريل"
+  },
+  "Mixed": {
+    "fr": "Mixte",
+    "ar": "مختلط"
+  },
+  "+ min": {
+    "fr": "+ min",
+    "ar": "+ د"
+  },
+  "Ghana": {
+    "fr": "Ghana",
+    "ar": "غانا"
+  },
+  "Kenya": {
+    "fr": "Kenya",
+    "ar": "كينيا"
+  },
+  "Scope": {
+    "fr": "Portée",
+    "ar": "النطاق"
+  },
+  "Lists": {
+    "fr": "Listes",
+    "ar": "قوائم"
+  },
+  "Break": {
+    "fr": "Pause",
+    "ar": "استراحة"
+  },
+  "Gross": {
+    "fr": "Brut",
+    "ar": "إجمالي"
+  },
+  "Facts": {
+    "fr": "Facts",
+    "ar": "Facts"
+  },
+  " and ": {
+    "fr": "et",
+    "ar": "و"
+  },
+  "Color": {
+    "fr": "Couleur",
+    "ar": "لون"
+  },
+  "Fixed": {
+    "fr": "Fixed",
+    "ar": "Fixed"
+  },
+  "Trust": {
+    "fr": "Trust",
+    "ar": "Trust"
+  },
+  "Tiers": {
+    "fr": "Tiers",
+    "ar": "Tiers"
+  },
+  "Video": {
+    "fr": "Vidéo",
+    "ar": "فيديو"
+  },
+  "Extra": {
+    "fr": "Extra",
+    "ar": "Extra"
+  },
+  "Zones": {
+    "fr": "Zones",
+    "ar": "Zones"
+  },
+  "entry": {
+    "fr": "entry",
+    "ar": "entry"
+  },
+  "Trips": {
+    "fr": "Trips",
+    "ar": "Trips"
+  },
+  "Basis": {
+    "fr": "Basis",
+    "ar": "Basis"
+  },
+  "Taxes": {
+    "fr": "Taxes",
+    "ar": "الضرائب"
+  },
+  "Loyal": {
+    "fr": "Fidèle",
+    "ar": "وفي"
+  },
+  "Chair": {
+    "fr": "Chair",
+    "ar": "Chair"
+  },
+  "Count": {
+    "fr": "Count",
+    "ar": "Count"
+  },
+  "Board": {
+    "fr": "Tableau",
+    "ar": "لوحة"
+  },
+  "Label": {
+    "fr": "Libellé",
+    "ar": "التسمية"
+  },
+  ", and": {
+    "fr": " et",
+    "ar": " و"
+  },
+  "Offer": {
+    "fr": "Offre",
+    "ar": "عرض"
+  },
+  "Taken": {
+    "fr": "Pris",
+    "ar": "محجوز"
+  },
+  "1950s": {
+    "fr": "Années 1950",
+    "ar": "خمسينيات القرن"
+  },
+  "1960s": {
+    "fr": "Années 1960",
+    "ar": "ستينيات القرن"
+  },
+  "1970s": {
+    "fr": "Années 1970",
+    "ar": "سبعينيات القرن"
+  },
+  "1980s": {
+    "fr": "Années 1980",
+    "ar": "ثمانينيات القرن"
+  },
+  "1990s": {
+    "fr": "Années 1990",
+    "ar": "تسعينيات القرن"
+  },
+  "2000s": {
+    "fr": "Années 2000",
+    "ar": "سنوات 2000"
+  },
+  "2010s": {
+    "fr": "Années 2010",
+    "ar": "سنوات 2010"
+  },
+  "Curly": {
+    "fr": "Bouclé",
+    "ar": "مجعد"
+  },
+  "Coily": {
+    "fr": "Très bouclé",
+    "ar": "حلزوني"
+  },
+  "Thick": {
+    "fr": "Épais",
+    "ar": "كثيف"
+  },
+  "Latex": {
+    "fr": "Latex",
+    "ar": "لاتكس"
+  },
+  "Vegan": {
+    "fr": "Végane",
+    "ar": "نباتي"
+  },
+  "Brows": {
+    "fr": "Sourcils",
+    "ar": "الحواجب"
+  },
+  "Leave": {
+    "fr": "Quitter",
+    "ar": "مغادرة"
+  },
+  "Filter": {
+    "fr": "Filtrer",
+    "ar": "تصفية"
+  },
+  "Strong": {
+    "fr": "Forte",
+    "ar": "قوية"
+  },
+  "Extras": {
+    "fr": "Extras",
+    "ar": "Extras"
+  },
+  "markup": {
+    "fr": "markup",
+    "ar": "markup"
+  },
+  "Rotate": {
+    "fr": "Pivoter",
+    "ar": "تدوير"
+  },
+  "e.g. 2": {
+    "fr": "ex. 2",
+    "ar": "مثال: 2"
+  },
+  "People": {
+    "fr": "Personnes",
+    "ar": "أشخاص"
+  },
+  "Earned": {
+    "fr": "Gagné",
+    "ar": "مكتسب"
+  },
+  "Detach": {
+    "fr": "Détacher",
+    "ar": "فصل"
+  },
+  "Assign": {
+    "fr": "Assigner",
+    "ar": "تعيين"
+  },
+  "Break:": {
+    "fr": "Pause :",
+    "ar": "استراحة:"
+  },
+  "Market": {
+    "fr": "Marché",
+    "ar": "السوق"
+  },
+  "expand": {
+    "fr": "développer",
+    "ar": "توسيع"
+  },
+  "TikTok": {
+    "fr": "TikTok",
+    "ar": "TikTok"
+  },
+  "e.g. 5": {
+    "fr": "ex. 5",
+    "ar": "مثال: 5"
+  },
+  "Status": {
+    "fr": "Statut",
+    "ar": "الحالة"
+  },
+  "Packed": {
+    "fr": "Emballé",
+    "ar": "مغلف"
+  },
+  "Manage": {
+    "fr": "Gérer",
+    "ar": "إدارة"
+  },
+  "Revoke": {
+    "fr": "Révoquer",
+    "ar": "إلغاء"
+  },
+  "Intake": {
+    "fr": "Accueil",
+    "ar": "الاستقبال"
+  },
+  "Waiver": {
+    "fr": "Décharge",
+    "ar": "إخلاء مسؤولية"
+  },
+  "Visits": {
+    "fr": "Visites",
+    "ar": "الزيارات"
+  },
+  "Public": {
+    "fr": "Public",
+    "ar": "Public"
+  },
+  "0 left": {
+    "fr": "0 left",
+    "ar": "0 left"
+  },
+  "Profit": {
+    "fr": "Profit",
+    "ar": "Profit"
+  },
+  "Items:": {
+    "fr": "Items:",
+    "ar": "Items:"
+  },
+  "Recent": {
+    "fr": "Recent",
+    "ar": "Recent"
+  },
+  "Ledger": {
+    "fr": "Ledger",
+    "ar": "Ledger"
+  },
+  "Suburb": {
+    "fr": "Suburb",
+    "ar": "Suburb"
+  },
+  "100 km": {
+    "fr": "100 km",
+    "ar": "100 km"
+  },
+  "Opened": {
+    "fr": "Opened",
+    "ar": "Opened"
+  },
+  "Per km": {
+    "fr": "Per km",
+    "ar": "Per km"
+  },
+  "medium": {
+    "fr": "moyen",
+    "ar": "متوسط"
+  },
+  "urgent": {
+    "fr": "urgent",
+    "ar": "عاجل"
+  },
+  "Attach": {
+    "fr": "Attach",
+    "ar": "Attach"
+  },
+  "Hourly": {
+    "fr": "Hourly",
+    "ar": "Hourly"
+  },
+  "Salary": {
+    "fr": "Salary",
+    "ar": "Salary"
+  },
+  "Unread": {
+    "fr": "Non lu",
+    "ar": "غير مقروء"
+  },
+  "Tiered": {
+    "fr": "Tiered",
+    "ar": "Tiered"
+  },
+  "Medium": {
+    "fr": "Moyen",
+    "ar": "متوسط"
+  },
+  "Urgent": {
+    "fr": "Urgent",
+    "ar": "عاجل"
+  },
+  "Period": {
+    "fr": "Period",
+    "ar": "Period"
+  },
+  "Return": {
+    "fr": "Return",
+    "ar": "Return"
+  },
+  "Detail": {
+    "fr": "Detail",
+    "ar": "Detail"
+  },
+  "Screen": {
+    "fr": "Screen",
+    "ar": "Screen"
+  },
+  "Growth": {
+    "fr": "Growth",
+    "ar": "Growth"
+  },
+  "Routes": {
+    "fr": "Routes",
+    "ar": "Routes"
+  },
+  "Source": {
+    "fr": "Source",
+    "ar": "Source"
+  },
+  "Synced": {
+    "fr": "Synced",
+    "ar": "Synced"
+  },
+  "Accept": {
+    "fr": "Accepter",
+    "ar": "قبول"
+  },
+  "Portal": {
+    "fr": "Portal",
+    "ar": "Portal"
+  },
+  "Badges": {
+    "fr": "Badges",
+    "ar": "Badges"
+  },
+  "Prefix": {
+    "fr": "Prefix",
+    "ar": "Prefix"
+  },
+  "Member": {
+    "fr": "Member",
+    "ar": "Member"
+  },
+  "Export": {
+    "fr": "Export",
+    "ar": "Export"
+  },
+  "Locked": {
+    "fr": "Verrouillé",
+    "ar": "مقفل"
+  },
+  "Result": {
+    "fr": "Résultat",
+    "ar": "النتيجة"
+  },
+  "Boards": {
+    "fr": "Tableaux",
+    "ar": "لوحات"
+  },
+  "Makeup": {
+    "fr": "Maquillage",
+    "ar": "مكياج"
+  },
+  "Lashes": {
+    "fr": "Cils",
+    "ar": "الرموش"
+  },
+  "Barber": {
+    "fr": "Barbier",
+    "ar": "حلاق"
+  },
+  "Newest": {
+    "fr": "Plus récent",
+    "ar": "الأحدث"
+  },
+  "Lowest": {
+    "fr": "Le plus bas",
+    "ar": "الأدنى"
+  },
+  "e.g. 3": {
+    "fr": "ex. 3",
+    "ar": "مثال: 3"
+  },
+  "Expand": {
+    "fr": "Développer",
+    "ar": "توسيع"
+  },
+  "Normal": {
+    "fr": "Normal",
+    "ar": "عادي"
+  },
+  "Mature": {
+    "fr": "Mature",
+    "ar": "ناضج"
+  },
+  "Nickel": {
+    "fr": "Nickel",
+    "ar": "نيكل"
+  },
+  "Luxury": {
+    "fr": "Luxe",
+    "ar": "فاخر"
+  },
+  "Facial": {
+    "fr": "Soin du visage",
+    "ar": "عناية بالوجه"
+  },
+  "Braids": {
+    "fr": "Tresses",
+    "ar": "ضفائر"
+  },
+  "Waxing": {
+    "fr": "Épilation",
+    "ar": "إزالة الشعر"
+  },
+  "Renews": {
+    "fr": "Renouvelle",
+    "ar": "يتجدد"
+  },
+  "Redeem": {
+    "fr": "Utiliser",
+    "ar": "استرداد"
+  },
+  "Welcome": {
+    "fr": "Bienvenue",
+    "ar": "مرحبًا"
+  },
+  "Morning": {
+    "fr": "Matin",
+    "ar": "صباح"
+  },
+  "Evening": {
+    "fr": "Soir",
+    "ar": "مساء"
+  },
+  "Repeats": {
+    "fr": "Se répète",
+    "ar": "يتكرر"
+  },
+  "Segment": {
+    "fr": "Segment",
+    "ar": "Segment"
+  },
+  "measure": {
+    "fr": "measure",
+    "ar": "measure"
+  },
+  "2:00 PM": {
+    "fr": "2:00 PM",
+    "ar": "2:00 PM"
+  },
+  "No rows": {
+    "fr": "Non rows",
+    "ar": "لا rows"
+  },
+  "e.g. 50": {
+    "fr": "ex. 50",
+    "ar": "مثال: 50"
+  },
+  "Metrics": {
+    "fr": "Indicateurs",
+    "ar": "المقاييس"
+  },
+  "Variant": {
+    "fr": "Variante",
+    "ar": "متغير"
+  },
+  "Started": {
+    "fr": "Commencé",
+    "ar": "بدأ"
+  },
+  "Blocked": {
+    "fr": "Bloqué",
+    "ar": "محظور"
+  },
+  "Created": {
+    "fr": "Créé",
+    "ar": "تم الإنشاء"
+  },
+  "Floor: ": {
+    "fr": "Étage : ",
+    "ar": "الطابق: "
+  },
+  "Settled": {
+    "fr": "Réglé",
+    "ar": "مسوّى"
+  },
+  "Web POS": {
+    "fr": "Caisse web",
+    "ar": "نقطة بيع ويب"
+  },
+  "Payroll": {
+    "fr": "Payroll",
+    "ar": "Payroll"
+  },
+  "Prefill": {
+    "fr": "Préremplir",
+    "ar": "تعبئة مسبقة"
+  },
+  "Someone": {
+    "fr": "Quelqu’un",
+    "ar": "شخص ما"
+  },
+  "e.g. 30": {
+    "fr": "ex. 30",
+    "ar": "مثال: 30"
+  },
+  "Nigeria": {
+    "fr": "Nigéria",
+    "ar": "نيجيريا"
+  },
+  "Pay run": {
+    "fr": "Paie",
+    "ar": "دورة الرواتب"
+  },
+  "Adding…": {
+    "fr": "Ajout…",
+    "ar": "جارٍ الإضافة…"
+  },
+  "Overdue": {
+    "fr": "Overdue",
+    "ar": "Overdue"
+  },
+  "Actions": {
+    "fr": "Actions",
+    "ar": "Actions"
+  },
+  "Damaged": {
+    "fr": "Damaged",
+    "ar": "Damaged"
+  },
+  "Initial": {
+    "fr": "Initial",
+    "ar": "Initial"
+  },
+  "Respond": {
+    "fr": "Respond",
+    "ar": "Respond"
+  },
+  "Thanks!": {
+    "fr": "Thanks!",
+    "ar": "Thanks!"
+  },
+  "Ratings": {
+    "fr": "Ratings",
+    "ar": "Ratings"
+  },
+  "Banking": {
+    "fr": "Banking",
+    "ar": "Banking"
+  },
+  "Savings": {
+    "fr": "Savings",
+    "ar": "Savings"
+  },
+  "Too far": {
+    "fr": "Too far",
+    "ar": "Too far"
+  },
+  "Returns": {
+    "fr": "Returns",
+    "ar": "Returns"
+  },
+  "Desktop": {
+    "fr": "Desktop",
+    "ar": "Desktop"
+  },
+  "Average": {
+    "fr": "Average",
+    "ar": "Average"
+  },
+  "Highest": {
+    "fr": "Le plus élevé",
+    "ar": "الأعلى"
+  },
+  "Subject": {
+    "fr": "Objet",
+    "ar": "الموضوع"
+  },
+  "Avg Tip": {
+    "fr": "Avg Tip",
+    "ar": "Avg Tip"
+  },
+  "Ranking": {
+    "fr": "Ranking",
+    "ar": "Ranking"
+  },
+  "Quarter": {
+    "fr": "Quarter",
+    "ar": "Quarter"
+  },
+  "By zone": {
+    "fr": "By zone",
+    "ar": "By zone"
+  },
+  "Avg LTV": {
+    "fr": "Avg LTV",
+    "ar": "Avg LTV"
+  },
+  "avg LTV": {
+    "fr": "avg LTV",
+    "ar": "avg LTV"
+  },
+  "Avg Fee": {
+    "fr": "Avg Fee",
+    "ar": "Avg Fee"
+  },
+  "Amounts": {
+    "fr": "Amounts",
+    "ar": "Amounts"
+  },
+  "Finance": {
+    "fr": "Finance",
+    "ar": "Finance"
+  },
+  "Feature": {
+    "fr": "Feature",
+    "ar": "Feature"
+  },
+  "SMS off": {
+    "fr": "SMS désactivé",
+    "ar": "SMS متوقف"
+  },
+  "Regular": {
+    "fr": "Standard",
+    "ar": "عادي"
+  },
+  "At risk": {
+    "fr": "À risque",
+    "ar": "معرّض للخطر"
+  },
+  "segment": {
+    "fr": "segment",
+    "ar": "شريحة"
+  },
+  "Starter": {
+    "fr": "Starter",
+    "ar": "Starter"
+  },
+  "Applied": {
+    "fr": "Applied",
+    "ar": "Applied"
+  },
+  "Get app": {
+    "fr": "Télécharger l’app",
+    "ar": "تنزيل التطبيق"
+  },
+  "For You": {
+    "fr": "Pour vous",
+    "ar": "لك"
+  },
+  "Near me": {
+    "fr": "Près de moi",
+    "ar": "بالقرب مني"
+  },
+  "Cookies": {
+    "fr": "Cookies",
+    "ar": "ملفات الارتباط"
+  },
+  "Sold by": {
+    "fr": "Vendu par",
+    "ar": "يُباع بواسطة"
+  },
+  "Dispute": {
+    "fr": "Dispute",
+    "ar": "Dispute"
+  },
+  "Outlook": {
+    "fr": "Outlook",
+    "ar": "Outlook"
+  },
+  "e.g. 5B": {
+    "fr": "ex. 5B",
+    "ar": "مثال: 5B"
+  },
+  "Unblock": {
+    "fr": "Débloquer",
+    "ar": "إلغاء الحظر"
+  },
+  "Natural": {
+    "fr": "Naturel",
+    "ar": "طبيعي"
+  },
+  "Relaxed": {
+    "fr": "Décontracté",
+    "ar": "مسترخٍ"
+  },
+  "Massage": {
+    "fr": "Massage",
+    "ar": "مساج"
+  },
+  "Cooking": {
+    "fr": "Cuisine",
+    "ar": "الطبخ"
+  },
+  "Alcohol": {
+    "fr": "Alcool",
+    "ar": "كحول"
+  },
+  "Gauteng": {
+    "fr": "Gauteng",
+    "ar": "غاوتينغ"
+  },
+  "Reserve": {
+    "fr": "Reserve",
+    "ar": "Reserve"
+  },
+  "Strength": {
+    "fr": "Robustesse",
+    "ar": "القوة"
+  },
+  "Joining…": {
+    "fr": "Joining…",
+    "ar": "Joining…"
+  },
+  "Not sure": {
+    "fr": "Pas sûr",
+    "ar": "غير متأكد"
+  },
+  "Audience": {
+    "fr": "Audience",
+    "ar": "Audience"
+  },
+  "Specific": {
+    "fr": "Specific",
+    "ar": "Specific"
+  },
+  "Variants": {
+    "fr": "Variantes",
+    "ar": "المتغيرات"
+  },
+  "BK-12345": {
+    "fr": "BK-12345",
+    "ar": "BK-12345"
+  },
+  "App lock": {
+    "fr": "Verrouillage de l’app",
+    "ar": "قفل التطبيق"
+  },
+  "Under 13": {
+    "fr": "Moins de 13 ans",
+    "ar": "أقل من 13"
+  },
+  "Attached": {
+    "fr": "Joint",
+    "ar": "مرفق"
+  },
+  "Conflict": {
+    "fr": "Conflit",
+    "ar": "تعارض"
+  },
+  "+ Assign": {
+    "fr": "+ Assigner",
+    "ar": "+ تعيين"
+  },
+  "Opening…": {
+    "fr": "Ouverture…",
+    "ar": "جارٍ الفتح…"
+  },
+  "collapse": {
+    "fr": "réduire",
+    "ar": "طي"
+  },
+  "Portable": {
+    "fr": "Portable",
+    "ar": "محمول"
+  },
+  "Linking…": {
+    "fr": "Liaison…",
+    "ar": "جارٍ الربط…"
+  },
+  "recently": {
+    "fr": "récemment",
+    "ar": "مؤخرًا"
+  },
+  "portable": {
+    "fr": "portable",
+    "ar": "محمول"
+  },
+  "No-Shows": {
+    "fr": "Non-Shows",
+    "ar": "لا-Shows"
+  },
+  "Working…": {
+    "fr": "Traitement…",
+    "ar": "جارٍ العمل…"
+  },
+  "November": {
+    "fr": "Novembre",
+    "ar": "نوفمبر"
+  },
+  "Max uses": {
+    "fr": "Utilisations max.",
+    "ar": "أقصى استخدامات"
+  },
+  "Comments": {
+    "fr": "Commentaires",
+    "ar": "التعليقات"
+  },
+  "At-salon": {
+    "fr": "Au salon",
+    "ar": "في الصالون"
+  },
+  "Checkbox": {
+    "fr": "Case à cocher",
+    "ar": "مربع اختيار"
+  },
+  "Withdraw": {
+    "fr": "Retirer",
+    "ar": "سحب"
+  },
+  "Expenses": {
+    "fr": "Expenses",
+    "ar": "Expenses"
+  },
+  "VARIANTS": {
+    "fr": "VARIANTES",
+    "ar": "المتغيرات"
+  },
+  "Returned": {
+    "fr": "Returned",
+    "ar": "Returned"
+  },
+  "Received": {
+    "fr": "Received",
+    "ar": "Received"
+  },
+  "No Shows": {
+    "fr": "Non Shows",
+    "ar": "لا Shows"
+  },
+  "Too long": {
+    "fr": "Too long",
+    "ar": "Too long"
+  },
+  "Internal": {
+    "fr": "Internal",
+    "ar": "Internal"
+  },
+  "Platform": {
+    "fr": "Platform",
+    "ar": "Platform"
+  },
+  "Seasonal": {
+    "fr": "Seasonal",
+    "ar": "Seasonal"
+  },
+  "Paystack": {
+    "fr": "Paystack",
+    "ar": "Paystack"
+  },
+  "In-salon": {
+    "fr": "In-salon",
+    "ar": "In-صالون"
+  },
+  "Passport": {
+    "fr": "Passeport",
+    "ar": "جواز سفر"
+  },
+  "Province": {
+    "fr": "Province",
+    "ar": "المحافظة"
+  },
+  "INTERNAL": {
+    "fr": "INTERNAL",
+    "ar": "INTERNAL"
+  },
+  "No limit": {
+    "fr": "Non limit",
+    "ar": "لا limit"
+  },
+  "••••••••": {
+    "fr": "••••••••",
+    "ar": "••••••••"
+  },
+  "Pin chat": {
+    "fr": "Épingler la discussion",
+    "ar": "تثبيت المحادثة"
+  },
+  "Pay runs": {
+    "fr": "Pay runs",
+    "ar": "Pay runs"
+  },
+  "No zones": {
+    "fr": "Non zones",
+    "ar": "لا zones"
+  },
+  "Rate (%)": {
+    "fr": "Rate (%)",
+    "ar": "Rate (%)"
+  },
+  "Deadline": {
+    "fr": "Deadline",
+    "ar": "Deadline"
+  },
+  "Remitted": {
+    "fr": "Remitted",
+    "ar": "Remitted"
+  },
+  "No rows.": {
+    "fr": "Non rows.",
+    "ar": "لا rows."
+  },
+  "Drop off": {
+    "fr": "Drop off",
+    "ar": "Drop off"
+  },
+  "Activity": {
+    "fr": "Activity",
+    "ar": "Activity"
+  },
+  "Everyone": {
+    "fr": "Tout le monde",
+    "ar": "الجميع"
+  },
+  "e.g. REC": {
+    "fr": "e.g. REC",
+    "ar": "e.g. REC"
+  },
+  "Events ·": {
+    "fr": "Events ·",
+    "ar": "Events ·"
+  },
+  "Avg rate": {
+    "fr": "Avg rate",
+    "ar": "Avg rate"
+  },
+  "Segments": {
+    "fr": "Segments",
+    "ar": "Segments"
+  },
+  "Optimize": {
+    "fr": "Optimize",
+    "ar": "Optimize"
+  },
+  "Jane Doe": {
+    "fr": "Jane Doe",
+    "ar": "Jane Doe"
+  },
+  "Accepted": {
+    "fr": "Accepted",
+    "ar": "Accepted"
+  },
+  " • Admin": {
+    "fr": " • Admin",
+    "ar": " • Admin"
+  },
+  "Skincare": {
+    "fr": "Soins de la peau",
+    "ar": "العناية بالبشرة"
+  },
+  "Training": {
+    "fr": "Formation",
+    "ar": "تدريب"
+  },
+  " instead": {
+    "fr": " à la place",
+    "ar": " بدلًا من ذلك"
+  },
+  "Clock In": {
+    "fr": "Clock In",
+    "ar": "Clock In"
+  },
+  "Earnings": {
+    "fr": "Earnings",
+    "ar": "Earnings"
+  },
+  "Exported": {
+    "fr": "Exported",
+    "ar": "Exported"
+  },
+  "Headline": {
+    "fr": "Headline",
+    "ar": "Headline"
+  },
+  "Redeemed": {
+    "fr": "Redeemed",
+    "ar": "Redeemed"
+  },
+  "Trending": {
+    "fr": "Tendances",
+    "ar": "رائج"
+  },
+  "Read all": {
+    "fr": "Tout lire",
+    "ar": "قراءة الكل"
+  },
+  "e.g. 350": {
+    "fr": "ex. 350",
+    "ar": "مثال: 350"
+  },
+  "Escalate": {
+    "fr": "Escalader",
+    "ar": "تصعيد"
+  },
+  "Collapse": {
+    "fr": "Réduire",
+    "ar": "طي"
+  },
+  "Straight": {
+    "fr": "Lisse",
+    "ar": "أملس"
+  },
+  "Coloured": {
+    "fr": "Coloré",
+    "ar": "ملوّن"
+  },
+  "Sulfates": {
+    "fr": "Sulfates",
+    "ar": "كبريتات"
+  },
+  "Parabens": {
+    "fr": "Parabènes",
+    "ar": "بارابين"
+  },
+  "Flexible": {
+    "fr": "Flexible",
+    "ar": "مرن"
+  },
+  "Pedicure": {
+    "fr": "Pédicure",
+    "ar": "بديكير"
+  },
+  "Manicure": {
+    "fr": "Manucure",
+    "ar": "مانيكير"
+  },
+  "Position": {
+    "fr": "Poste",
+    "ar": "المنصب"
+  },
+  "Notified": {
+    "fr": "Notifié",
+    "ar": "تم الإشعار"
+  },
+  "out of 5": {
+    "fr": "sur 5",
+    "ar": "من 5"
+  },
+  "Landmarks": {
+    "fr": "Points de repère",
+    "ar": "معالم"
+  },
+  "Afternoon": {
+    "fr": "Après-midi",
+    "ar": "بعد الظهر"
+  },
+  "Recurring": {
+    "fr": "Récurrent",
+    "ar": "متكرر"
+  },
+  "Wrong app": {
+    "fr": "Mauvaise app",
+    "ar": "تطبيق خاطئ"
+  },
+  "− On hold": {
+    "fr": "− On hold",
+    "ar": "− On hold"
+  },
+  "{{rate}}%": {
+    "fr": "{{rate}} %",
+    "ar": "{{rate}}٪"
+  },
+  "Creating…": {
+    "fr": "Création…",
+    "ar": "جارٍ الإنشاء…"
+  },
+  "Delivered": {
+    "fr": "Livré",
+    "ar": "تم التسليم"
+  },
+  "Sponsored": {
+    "fr": "Sponsorisé",
+    "ar": "مموّل"
+  },
+  "Check out": {
+    "fr": "Encaisser",
+    "ar": "تسجيل المغادرة"
+  },
+  "Locating…": {
+    "fr": "Localisation…",
+    "ar": "جارٍ تحديد الموقع…"
+  },
+  "Pay later": {
+    "fr": "Payer plus tard",
+    "ar": "ادفع لاحقًا"
+  },
+  "Resources": {
+    "fr": "Ressources",
+    "ar": "الموارد"
+  },
+  "This week": {
+    "fr": "This semaine",
+    "ar": "This أسبوع"
+  },
+  "Collected": {
+    "fr": "Retiré",
+    "ar": "تم الاستلام"
+  },
+  "Checking…": {
+    "fr": "Vérification…",
+    "ar": "جارٍ التحقق…"
+  },
+  "Promotion": {
+    "fr": "Promotion",
+    "ar": "عرض ترويجي"
+  },
+  "Reconnect": {
+    "fr": "Reconnecter",
+    "ar": "إعادة الربط"
+  },
+  "Returning": {
+    "fr": "Retour",
+    "ar": "راجع"
+  },
+  "Retention": {
+    "fr": "Rétention",
+    "ar": "الاحتفاظ"
+  },
+  "Starting…": {
+    "fr": "Démarrage…",
+    "ar": "جارٍ البدء…"
+  },
+  "September": {
+    "fr": "Septembre",
+    "ar": "سبتمبر"
+  },
+  "Repeating": {
+    "fr": "Récurrent",
+    "ar": "متكرر"
+  },
+  "Unlimited": {
+    "fr": "Illimité",
+    "ar": "غير محدود"
+  },
+  "Dashboard": {
+    "fr": "Tableau de bord",
+    "ar": "لوحة التحكم"
+  },
+  "this week": {
+    "fr": "this semaine",
+    "ar": "this أسبوع"
+  },
+  "Inherited": {
+    "fr": "Hérité",
+    "ar": "موروث"
+  },
+  "Duplicate": {
+    "fr": "Dupliquer",
+    "ar": "تكرار"
+  },
+  "Follow Up": {
+    "fr": "Suivi",
+    "ar": "متابعة"
+  },
+  "Marketing": {
+    "fr": "Marketing",
+    "ar": "التسويق"
+  },
+  "0 on hand": {
+    "fr": "0 en stock",
+    "ar": "0 متوفر"
+  },
+  "Signature": {
+    "fr": "Signature",
+    "ar": "التوقيع"
+  },
+  "Withdrawn": {
+    "fr": "Retiré",
+    "ar": "مسحوب"
+  },
+  "Embed URL": {
+    "fr": "URL d’intégration",
+    "ar": "رابط التضمين"
+  },
+  "Frequency": {
+    "fr": "Fréquence",
+    "ar": "التكرار"
+  },
+  "Analytics": {
+    "fr": "Analyses",
+    "ar": "التحليلات"
+  },
+  "No addons": {
+    "fr": "Non addons",
+    "ar": "لا addons"
+  },
+  "Manual in": {
+    "fr": "Manual in",
+    "ar": "Manual in"
+  },
+  "Responded": {
+    "fr": "Responded",
+    "ar": "Responded"
+  },
+  "Content *": {
+    "fr": "Content *",
+    "ar": "Content *"
+  },
+  "{{name}}:": {
+    "fr": "{{name}}:",
+    "ar": "{{name}}:"
+  },
+  "Not added": {
+    "fr": "Not added",
+    "ar": "Not added"
+  },
+  "Low / out": {
+    "fr": "Low / out",
+    "ar": "Low / out"
+  },
+  "{{km}} km": {
+    "fr": "{{km}} km",
+    "ar": "{{km}} كم"
+  },
+  "Mailchimp": {
+    "fr": "Mailchimp",
+    "ar": "Mailchimp"
+  },
+  "API Key *": {
+    "fr": "API Key *",
+    "ar": "API Key *"
+  },
+  "xxxxx-us1": {
+    "fr": "xxxxx-us1",
+    "ar": "xxxxx-us1"
+  },
+  "technical": {
+    "fr": "technique",
+    "ar": "تقني"
+  },
+  "Technical": {
+    "fr": "Technique",
+    "ar": "تقني"
+  },
+  "Line rows": {
+    "fr": "Line rows",
+    "ar": "Line rows"
+  },
+  "Redeemed:": {
+    "fr": "Redeemed:",
+    "ar": "Redeemed:"
+  },
+  "Offerings": {
+    "fr": "Offerings",
+    "ar": "Offerings"
+  },
+  "Avg Perms": {
+    "fr": "Avg Perms",
+    "ar": "Avg Perms"
+  },
+  "By method": {
+    "fr": "By method",
+    "ar": "By method"
+  },
+  "By bucket": {
+    "fr": "By bucket",
+    "ar": "By bucket"
+  },
+  "Avg / row": {
+    "fr": "Avg / row",
+    "ar": "Avg / row"
+  },
+  "AI studio": {
+    "fr": "AI studio",
+    "ar": "AI studio"
+  },
+  "Read only": {
+    "fr": "Read only",
+    "ar": "Read only"
+  },
+  "Removing…": {
+    "fr": "Suppression…",
+    "ar": "جارٍ الإزالة…"
+  },
+  "Equipment": {
+    "fr": "Équipement",
+    "ar": "المعدات"
+  },
+  "PIN Clock": {
+    "fr": "PIN Clock",
+    "ar": "PIN Clock"
+  },
+  "Clock Out": {
+    "fr": "Clock Out",
+    "ar": "Clock Out"
+  },
+  "Reference": {
+    "fr": "Reference",
+    "ar": "Reference"
+  },
+  "No groups": {
+    "fr": "Non groups",
+    "ar": "لا groups"
+  },
+  "Reminders": {
+    "fr": "Rappels",
+    "ar": "تذكيرات"
+  },
+  "Min Value": {
+    "fr": "Min Value",
+    "ar": "Min Value"
+  },
+  "Max Value": {
+    "fr": "Max Value",
+    "ar": "Max Value"
+  },
+  "Escalated": {
+    "fr": "Escaladé",
+    "ar": "تم التصعيد"
+  },
+  "Organiser": {
+    "fr": "Organisateur",
+    "ar": "المنظم"
+  },
+  "Interests": {
+    "fr": "Centres d’intérêt",
+    "ar": "الاهتمامات"
+  },
+  "Sensitive": {
+    "fr": "Sensible",
+    "ar": "حساس"
+  },
+  "Fragrance": {
+    "fr": "Parfum",
+    "ar": "عطر"
+  },
+  "Top Rated": {
+    "fr": "Mieux notés",
+    "ar": "الأعلى تقييمًا"
+  },
+  "e.g. Nolo": {
+    "fr": "e.g. Nolo",
+    "ar": "e.g. Nolo"
+  },
+  "Join Plan": {
+    "fr": "Rejoindre l’offre",
+    "ar": "الانضمام إلى الخطة"
+  },
+  "{{hours}}h": {
+    "fr": "{{hours}} h",
+    "ar": "{{hours}} س"
+  },
+  "Checked in": {
+    "fr": "Enregistré",
+    "ar": "تم تسجيل الوصول"
+  },
+  "this salon": {
+    "fr": "this salon",
+    "ar": "this صالون"
+  },
+  "Not needed": {
+    "fr": "Not needed",
+    "ar": "Not needed"
+  },
+  "No matches": {
+    "fr": "Non matches",
+    "ar": "لا matches"
+  },
+  "Ages 13–17": {
+    "fr": "13–17 ans",
+    "ar": "13–17 سنة"
+  },
+  "CPC budget": {
+    "fr": "Budget CPC",
+    "ar": "ميزانية CPC"
+  },
+  "Front Desk": {
+    "fr": "Accueil",
+    "ar": "الاستقبال"
+  },
+  "No results": {
+    "fr": "Non results",
+    "ar": "لا results"
+  },
+  "Per Person": {
+    "fr": "Par personne",
+    "ar": "لكل شخص"
+  },
+  "Financials": {
+    "fr": "Finances",
+    "ar": "المالية"
+  },
+  " × {{qty}}": {
+    "fr": " × {{qty}}",
+    "ar": " × {{qty}}"
+  },
+  "Preparing…": {
+    "fr": "Préparation…",
+    "ar": "جارٍ التحضير…"
+  },
+  "Appearance": {
+    "fr": "Apparence",
+    "ar": "المظهر"
+  },
+  "Scheduling": {
+    "fr": "Planification",
+    "ar": "الجدولة"
+  },
+  "Desk queue": {
+    "fr": "File d’accueil",
+    "ar": "طابور الاستقبال"
+  },
+  "Note Added": {
+    "fr": "Note Added",
+    "ar": "Note Added"
+  },
+  "Building: ": {
+    "fr": "Bâtiment : ",
+    "ar": "المبنى: "
+  },
+  "Restoring…": {
+    "fr": "Restauration…",
+    "ar": "جارٍ الاستعادة…"
+  },
+  "Operations": {
+    "fr": "Opérations",
+    "ar": "العمليات"
+  },
+  "Engagement": {
+    "fr": "Engagement",
+    "ar": "التفاعل"
+  },
+  " · {{env}}": {
+    "fr": " · {{env}}",
+    "ar": " · {{env}}"
+  },
+  "Acceptance": {
+    "fr": "Acceptation",
+    "ar": "القبول"
+  },
+  "Collection": {
+    "fr": "Retrait",
+    "ar": "الاستلام"
+  },
+  "Recording…": {
+    "fr": "Enregistrement…",
+    "ar": "جارٍ التسجيل…"
+  },
+  "Disconnect": {
+    "fr": "Déconnecter",
+    "ar": "قطع الاتصال"
+  },
+  "Commission": {
+    "fr": "Commission",
+    "ar": "العمولة"
+  },
+  "YYYY-MM-DD": {
+    "fr": "AAAA-MM-JJ",
+    "ar": "YYYY-MM-DD"
+  },
+  "Work setup": {
+    "fr": "Configuration du travail",
+    "ar": "إعداد العمل"
+  },
+  "~{{count}}": {
+    "fr": "~{{count}}",
+    "ar": "~{{count}}"
+  },
+  "Auth Token": {
+    "fr": "Jeton d’auth",
+    "ar": "رمز المصادقة"
+  },
+  "Auth token": {
+    "fr": "Jeton d’auth",
+    "ar": "رمز المصادقة"
+  },
+  "Attachment": {
+    "fr": "Pièce jointe",
+    "ar": "مرفق"
+  },
+  "Conv. Rate": {
+    "fr": "Conv. Rate",
+    "ar": "Conv. Rate"
+  },
+  "PAYE / Tax": {
+    "fr": "Impôt / Taxe",
+    "ar": "ضريبة الرواتب"
+  },
+  "Every week": {
+    "fr": "Every semaine",
+    "ar": "Every أسبوع"
+  },
+  "Working...": {
+    "fr": "Traitement…",
+    "ar": "جارٍ العمل..."
+  },
+  "Promotions": {
+    "fr": "Promotions",
+    "ar": "Promotions"
+  },
+  "Percentage": {
+    "fr": "Percentage",
+    "ar": "Percentage"
+  },
+  "Manual out": {
+    "fr": "Manual out",
+    "ar": "Manual out"
+  },
+  "To respond": {
+    "fr": "To respond",
+    "ar": "To respond"
+  },
+  "Ledger net": {
+    "fr": "Ledger net",
+    "ar": "Ledger net"
+  },
+  "Completion": {
+    "fr": "Completion",
+    "ar": "Completion"
+  },
+  "Applies to": {
+    "fr": "S’applique à",
+    "ar": "ينطبق على"
+  },
+  "Foreign ID": {
+    "fr": "Foreign ID",
+    "ar": "Foreign ID"
+  },
+  "Trust deed": {
+    "fr": "Trust deed",
+    "ar": "Trust deed"
+  },
+  "Checked In": {
+    "fr": "Checked In",
+    "ar": "Checked In"
+  },
+  "No maximum": {
+    "fr": "Non maximum",
+    "ar": "لا maximum"
+  },
+  "No reasons": {
+    "fr": "Non reasons",
+    "ar": "لا reasons"
+  },
+  "Unpin chat": {
+    "fr": "Désépingler",
+    "ar": "إلغاء تثبيت المحادثة"
+  },
+  "{{value}}%": {
+    "fr": "{{value}}%",
+    "ar": "{{value}}%"
+  },
+  "+ Add Tier": {
+    "fr": "+ Ajouter Tier",
+    "ar": "+ إضافة Tier"
+  },
+  "Onboarding": {
+    "fr": "Onboarding",
+    "ar": "Onboarding"
+  },
+  "Period End": {
+    "fr": "Period End",
+    "ar": "Period End"
+  },
+  "Setting...": {
+    "fr": "Réglage...",
+    "ar": "جارٍ الضبط..."
+  },
+  "Median LTV": {
+    "fr": "Median LTV",
+    "ar": "Median LTV"
+  },
+  "Avg visits": {
+    "fr": "Avg visits",
+    "ar": "Avg visits"
+  },
+  "In catalog": {
+    "fr": "In catalog",
+    "ar": "In catalog"
+  },
+  "Not synced": {
+    "fr": "Not synced",
+    "ar": "Not synced"
+  },
+  "Declining…": {
+    "fr": "Refus…",
+    "ar": "جارٍ الرفض…"
+  },
+  "Accepting…": {
+    "fr": "Accepting…",
+    "ar": "Accepting…"
+  },
+  "First Last": {
+    "fr": "Prénom Nom",
+    "ar": "الاسم الأول والأخير"
+  },
+  "4XXXXXXXXX": {
+    "fr": "4XXXXXXXXX",
+    "ar": "4XXXXXXXXX"
+  },
+  "Export CSV": {
+    "fr": "Export CSV",
+    "ar": "Export CSV"
+  },
+  "Net to you": {
+    "fr": "Net to you",
+    "ar": "Net to you"
+  },
+  "Milestones": {
+    "fr": "Étapes",
+    "ar": "الإنجازات"
+  },
+  "For myself": {
+    "fr": "Pour moi",
+    "ar": "لنفسي"
+  },
+  "End series": {
+    "fr": "Terminer la série",
+    "ar": "إنهاء السلسلة"
+  },
+  "Tax status": {
+    "fr": "Tax statut",
+    "ar": "Tax حالة"
+  },
+  "Basic info": {
+    "fr": "Infos de base",
+    "ar": "معلومات أساسية"
+  },
+  "Drop a pin": {
+    "fr": "Placer une épingle",
+    "ar": "إسقاط دبوس"
+  },
+  "Go to Chat": {
+    "fr": "Aller à la discussion",
+    "ar": "الانتقال إلى المحادثة"
+  },
+  "Returning…": {
+    "fr": "Retour…",
+    "ar": "جارٍ الإرجاع…"
+  },
+  "Freelancer": {
+    "fr": "Freelance",
+    "ar": "مستقل"
+  },
+  "Joining...": {
+    "fr": "Joining...",
+    "ar": "Joining..."
+  },
+  "Scroll left": {
+    "fr": "Défiler à gauche",
+    "ar": "تمرير لليسار"
+  },
+  "Money scope": {
+    "fr": "Money scope",
+    "ar": "Money scope"
+  },
+  "{{example}}": {
+    "fr": "{{example}}",
+    "ar": "{{example}}"
+  },
+  "Locating...": {
+    "fr": "Localisation…",
+    "ar": "جارٍ تحديد الموقع..."
+  },
+  "Allocating…": {
+    "fr": "Allocating…",
+    "ar": "Allocating…"
+  },
+  "18 and over": {
+    "fr": "18 ans et plus",
+    "ar": "18 فما فوق"
+  },
+  "Street line": {
+    "fr": "Rue",
+    "ar": "الشارع"
+  },
+  "Automations": {
+    "fr": "Automatisations",
+    "ar": "الأتمتة"
+  },
+  "Commissions": {
+    "fr": "Commissions",
+    "ar": "العمولات"
+  },
+  "Tip Presets": {
+    "fr": "Pourboires prédéfinis",
+    "ar": "إعدادات الإكرامية"
+  },
+  "Fulfillment": {
+    "fr": "Exécution",
+    "ar": "التنفيذ"
+  },
+  "Permissions": {
+    "fr": "Autorisations",
+    "ar": "الأذونات"
+  },
+  "Integration": {
+    "fr": "Intégration",
+    "ar": "التكامل"
+  },
+  " · {{name}}": {
+    "fr": " · {{name}}",
+    "ar": " · {{name}}"
+  },
+  "Maybe later": {
+    "fr": "Peut-être plus tard",
+    "ar": "ربما لاحقًا"
+  },
+  "marketplace": {
+    "fr": "marketplace",
+    "ar": "السوق"
+  },
+  " — {{name}}": {
+    "fr": " — {{name}}",
+    "ar": " — {{name}}"
+  },
+  "Subscribers": {
+    "fr": "Abonnés",
+    "ar": "المشتركون"
+  },
+  "Digits only": {
+    "fr": "Chiffres uniquement",
+    "ar": "أرقام فقط"
+  },
+  "Credentials": {
+    "fr": "Identifiants",
+    "ar": "بيانات الاعتماد"
+  },
+  "Definitions": {
+    "fr": "Définitions",
+    "ar": "التعريفات"
+  },
+  "Attachments": {
+    "fr": "Pièces jointes",
+    "ar": "المرفقات"
+  },
+  "Maintenance": {
+    "fr": "Maintenance",
+    "ar": "الصيانة"
+  },
+  "Every 2 wks": {
+    "fr": "Toutes les 2 sem.",
+    "ar": "كل أسبوعين"
+  },
+  "Requesting…": {
+    "fr": "Demande…",
+    "ar": "جارٍ الطلب…"
+  },
+  "This period": {
+    "fr": "This period",
+    "ar": "This period"
+  },
+  "Radius (km)": {
+    "fr": "Radius (km)",
+    "ar": "Radius (km)"
+  },
+  "Set Day Off": {
+    "fr": "Set Jour Off",
+    "ar": "Set يوم Off"
+  },
+  "e.g. SAVE20": {
+    "fr": "e.g. SAVE20",
+    "ar": "e.g. SAVE20"
+  },
+  "Outstanding": {
+    "fr": "Outstanding",
+    "ar": "Outstanding"
+  },
+  "SKU {{sku}}": {
+    "fr": "SKU {{sku}}",
+    "ar": "SKU {{sku}}"
+  },
+  "{{amount}}%": {
+    "fr": "{{amount}}%",
+    "ar": "{{amount}}%"
+  },
+  "National ID": {
+    "fr": "National ID",
+    "ar": "National ID"
+  },
+  "Partnership": {
+    "fr": "Partnership",
+    "ar": "Partnership"
+  },
+  "SG.xxxxx...": {
+    "fr": "SG.xxxxx...",
+    "ar": "SG.xxxxx..."
+  },
+  "No reasons.": {
+    "fr": "Non reasons.",
+    "ar": "لا reasons."
+  },
+  "Attach file": {
+    "fr": "Joindre un fichier",
+    "ar": "إرفاق ملف"
+  },
+  " · {{date}}": {
+    "fr": " · {{date}}",
+    "ar": " · {{date}}"
+  },
+  "Distributed": {
+    "fr": "Distributed",
+    "ar": "Distributed"
+  },
+  "Repeat (2+)": {
+    "fr": "Repeat (2+)",
+    "ar": "Repeat (2+)"
+  },
+  "Ledger rows": {
+    "fr": "Ledger rows",
+    "ar": "Ledger rows"
+  },
+  "Recent rows": {
+    "fr": "Recent rows",
+    "ar": "Recent rows"
+  },
+  "({{count}})": {
+    "fr": "({{count}})",
+    "ar": "({{count}})"
+  },
+  "Updating...": {
+    "fr": "Mise à jour…",
+    "ar": "جارٍ التحديث..."
+  },
+  "By {{name}}": {
+    "fr": "By {{name}}",
+    "ar": "By {{name}}"
+  },
+  " → {{name}}": {
+    "fr": " → {{name}}",
+    "ar": " → {{name}}"
+  },
+  "Max {{max}}": {
+    "fr": "Max {{max}}",
+    "ar": "Max {{max}}"
+  },
+  "My earnings": {
+    "fr": "My earnings",
+    "ar": "My earnings"
+  },
+  "Assigned To": {
+    "fr": "Assigné à",
+    "ar": "معيّن إلى"
+  },
+  "Lunch Break": {
+    "fr": "Pause déjeuner",
+    "ar": "استراحة الغداء"
+  },
+  "Creating...": {
+    "fr": "Création…",
+    "ar": "جارٍ الإنشاء..."
+  },
+  "To {{name}}": {
+    "fr": "À {{name}}",
+    "ar": "إلى {{name}}"
+  },
+  "e.g. Thandi": {
+    "fr": "ex. Thandi",
+    "ar": "مثال: Thandi"
+  },
+  "at {{name}}": {
+    "fr": "chez {{name}}",
+    "ar": "لدى {{name}}"
+  },
+  "Combination": {
+    "fr": "Mixte",
+    "ar": "مختلط"
+  },
+  "Photography": {
+    "fr": "Photographie",
+    "ar": "التصوير"
+  },
+  " field via ": {
+    "fr": " champ via ",
+    "ar": " حقل عبر "
+  },
+  "Specialties": {
+    "fr": "Spécialités",
+    "ar": "التخصصات"
+  },
+  " ×{{count}}": {
+    "fr": " ×{{count}}",
+    "ar": " ×{{count}}"
+  },
+  "this region": {
+    "fr": "this region",
+    "ar": "this region"
+  },
+  " ({{code}})": {
+    "fr": " ({{code}})",
+    "ar": " ({{code}})"
+  },
+  " ({{host}})": {
+    "fr": " ({{host}})",
+    "ar": " ({{host}})"
+  },
+  "{{count}} hr": {
+    "fr": "{{count}} h",
+    "ar": "{{count}} س"
+  },
+  "Scroll right": {
+    "fr": "Défiler à droite",
+    "ar": "تمرير لليمين"
+  },
+  "All branches": {
+    "fr": "All branches",
+    "ar": "All branches"
+  },
+  "Partner EULA": {
+    "fr": "CLUF partenaire",
+    "ar": "اتفاقية ترخيص الشريك"
+  },
+  "Subject line": {
+    "fr": "Subject line",
+    "ar": "Subject line"
+  },
+  "Hold steady…": {
+    "fr": "Hold steady…",
+    "ar": "Hold steady…"
+  },
+  "Relationship": {
+    "fr": "Lien",
+    "ar": "العلاقة"
+  },
+  "Needs action": {
+    "fr": "Action requise",
+    "ar": "يحتاج إلى إجراء"
+  },
+  " · {{km}} km": {
+    "fr": " · {{km}} km",
+    "ar": " · {{km}} كم"
+  },
+  "Instructions": {
+    "fr": "Instructions",
+    "ar": "التعليمات"
+  },
+  "Setup status": {
+    "fr": "Setup statut",
+    "ar": "Setup حالة"
+  },
+  "Integrations": {
+    "fr": "Intégrations",
+    "ar": "التكاملات"
+  },
+  "Mark arrived": {
+    "fr": "Marquer arrivé",
+    "ar": "وضع علامة وصل"
+  },
+  "All features": {
+    "fr": "Toutes les fonctionnalités",
+    "ar": "كل الميزات"
+  },
+  "Verification": {
+    "fr": "Vérification",
+    "ar": "التحقق"
+  },
+  "Due {{date}}": {
+    "fr": "Échéance {{date}}",
+    "ar": "مستحق {{date}}"
+  },
+  "Commission %": {
+    "fr": "Commission %",
+    "ar": "العمولة ٪"
+  },
+  "Yoco API key": {
+    "fr": "Clé API Yoco",
+    "ar": "مفتاح API لـ Yoco"
+  },
+  "Secret Key *": {
+    "fr": "Clé secrète *",
+    "ar": "المفتاح السري *"
+  },
+  "This Quarter": {
+    "fr": "Ce trimestre",
+    "ar": "هذا الربع"
+  },
+  " · {{model}}": {
+    "fr": " · {{model}}",
+    "ar": " · {{model}}"
+  },
+  "South Africa": {
+    "fr": "Afrique du Sud",
+    "ar": "جنوب أفريقيا"
+  },
+  "vs {{label}}": {
+    "fr": "vs {{label}}",
+    "ar": "مقابل {{label}}"
+  },
+  "Avatar added": {
+    "fr": "Avatar ajouté",
+    "ar": "تمت إضافة الصورة"
+  },
+  "{{percent}}%": {
+    "fr": "{{percent}} %",
+    "ar": "{{percent}}٪"
+  },
+  "{{label}} · ": {
+    "fr": "{{label}} · ",
+    "ar": "{{label}} · "
+  },
+  "Has variants": {
+    "fr": "A des variantes",
+    "ar": "له متغيرات"
+  },
+  "COVID Waiver": {
+    "fr": "Décharge COVID",
+    "ar": "إخلاء مسؤولية كوفيد"
+  },
+  "Setup needed": {
+    "fr": "Configuration requise",
+    "ar": "يلزم الإعداد"
+  },
+  "Not supplied": {
+    "fr": "Non fourni",
+    "ar": "غير مقدَّم"
+  },
+  "SKU: {{sku}}": {
+    "fr": "SKU : {{sku}}",
+    "ar": "SKU: {{sku}}"
+  },
+  "{{rating}}/5": {
+    "fr": "{{rating}}/5",
+    "ar": "{{rating}}/5"
+  },
+  "No templates": {
+    "fr": "Non templates",
+    "ar": "لا templates"
+  },
+  "Day {{date}}": {
+    "fr": "Jour {{date}}",
+    "ar": "يوم {{date}}"
+  },
+  "Transmission": {
+    "fr": "Transmission",
+    "ar": "Transmission"
+  },
+  "e.g. 5 or -2": {
+    "fr": "e.g. 5 or -2",
+    "ar": "e.g. 5 or -2"
+  },
+  "Require Note": {
+    "fr": "Require Note",
+    "ar": "Require Note"
+  },
+  "(attachment)": {
+    "fr": "(pièce jointe)",
+    "ar": "(مرفق)"
+  },
+  "Missing info": {
+    "fr": "Infos manquantes",
+    "ar": "معلومات ناقصة"
+  },
+  "Extra fields": {
+    "fr": "Extra fields",
+    "ar": "Extra fields"
+  },
+  "{{minutes}}m": {
+    "fr": "{{minutes}}m",
+    "ar": "{{minutes}}m"
+  },
+  "Single visit": {
+    "fr": "Single visit",
+    "ar": "Single visit"
+  },
+  "2+ in window": {
+    "fr": "2+ in window",
+    "ar": "2+ in window"
+  },
+  "Not included": {
+    "fr": "Not included",
+    "ar": "Not included"
+  },
+  "Net earnings": {
+    "fr": "Net earnings",
+    "ar": "Net earnings"
+  },
+  "(x{{count}})": {
+    "fr": "(x{{count}})",
+    "ar": "(x{{count}})"
+  },
+  "Usage events": {
+    "fr": "Usage events",
+    "ar": "Usage events"
+  },
+  "Avg / bucket": {
+    "fr": "Avg / bucket",
+    "ar": "Avg / bucket"
+  },
+  "Announcement": {
+    "fr": "Announcement",
+    "ar": "Announcement"
+  },
+  "Conversation": {
+    "fr": "Conversation",
+    "ar": "Conversation"
+  },
+  "Platform avg": {
+    "fr": "Moy. plateforme",
+    "ar": "متوسط المنصة"
+  },
+  "Clock In/Out": {
+    "fr": "Clock In/Out",
+    "ar": "Clock In/Out"
+  },
+  "Transactions": {
+    "fr": "Transactions",
+    "ar": "Transactions"
+  },
+  "No Selection": {
+    "fr": "Non Selection",
+    "ar": "لا Selection"
+  },
+  "No resources": {
+    "fr": "Non resources",
+    "ar": "لا resources"
+  },
+  "Tax (ledger)": {
+    "fr": "Tax (ledger)",
+    "ar": "Tax (ledger)"
+  },
+  "Mark as read": {
+    "fr": "Marquer comme lu",
+    "ar": "وضع علامة مقروء"
+  },
+  "Platform Fee": {
+    "fr": "Frais de plateforme",
+    "ar": "رسوم المنصة"
+  },
+  "Find a salon": {
+    "fr": "Trouver un salon",
+    "ar": "العثور على صالون"
+  },
+  "At the salon": {
+    "fr": "Au salon",
+    "ar": "في الصالون"
+  },
+  "On your way?": {
+    "fr": "Vous êtes en route ?",
+    "ar": "هل أنت في الطريق؟"
+  },
+  "✓ Checked in": {
+    "fr": "✓ Enregistré",
+    "ar": "✓ تم تسجيل الوصول"
+  },
+  "Reserving...": {
+    "fr": "Réservation…",
+    "ar": "جارٍ الحجز..."
+  },
+  "Formaldehyde": {
+    "fr": "Formaldéhyde",
+    "ar": "فورمالدهايد"
+  },
+  "VAT / Tax ID": {
+    "fr": "TVA / N° fiscal",
+    "ar": "ضريبة القيمة المضافة / الرقم الضريبي"
+  },
+  "Not provided": {
+    "fr": "Not provided",
+    "ar": "Not provided"
+  },
+  "Spam or scam": {
+    "fr": "Spam ou arnaque",
+    "ar": "رسائل مزعجة أو احتيال"
+  },
+  "How it works": {
+    "fr": "Comment ça marche",
+    "ar": "كيف يعمل"
+  },
+  "{{count}} min": {
+    "fr": "{{count}} min",
+    "ar": "{{count}} د"
+  },
+  "Switch market": {
+    "fr": "Changer de marché",
+    "ar": "تبديل السوق"
+  },
+  "As on your ID": {
+    "fr": "Comme sur votre pièce",
+    "ar": "كما في بطاقتك"
+  },
+  "Min spent (R)": {
+    "fr": "Min spent (R)",
+    "ar": "Min spent (R)"
+  },
+  "Mark all read": {
+    "fr": "Tout marquer comme lu",
+    "ar": "وضع الكل كمقروء"
+  },
+  "April 1, 2024": {
+    "fr": "April 1, 2024",
+    "ar": "April 1, 2024"
+  },
+  "Pay {{total}}": {
+    "fr": "Pay {{total}}",
+    "ar": "Pay {{total}}"
+  },
+  "From {{name}}": {
+    "fr": "De {{name}}",
+    "ar": "من {{name}}"
+  },
+  "Action needed": {
+    "fr": "Action needed",
+    "ar": "Action needed"
+  },
+  "Limit reached": {
+    "fr": "Limite atteinte",
+    "ar": "تم بلوغ الحد"
+  },
+  "Age assurance": {
+    "fr": "Vérification de l’âge",
+    "ar": "التحقق من العمر"
+  },
+  "Blocked users": {
+    "fr": "Utilisateurs bloqués",
+    "ar": "المستخدمون المحظورون"
+  },
+  "Not connected": {
+    "fr": "Non connecté",
+    "ar": "غير متصل"
+  },
+  "Journey steps": {
+    "fr": "Étapes du parcours",
+    "ar": "خطوات الرحلة"
+  },
+  "e.g. AB12CD34": {
+    "fr": "ex. AB12CD34",
+    "ar": "مثال: AB12CD34"
+  },
+  "Rescheduling…": {
+    "fr": "Reprogrammation…",
+    "ar": "جارٍ إعادة الجدولة…"
+  },
+  "ends {{date}}": {
+    "fr": "se termine le {{date}}",
+    "ar": "ينتهي في {{date}}"
+  },
+  "Pay with Yoco": {
+    "fr": "Payer avec Yoco",
+    "ar": "الدفع عبر Yoco"
+  },
+  "Plan renewed.": {
+    "fr": "Offre renouvelée.",
+    "ar": "تم تجديد الخطة."
+  },
+  "Pay {{price}}": {
+    "fr": "Payer {{price}}",
+    "ar": "ادفع {{price}}"
+  },
+  "Couldn't open": {
+    "fr": "Couldn't ouvrir",
+    "ar": "Couldn't فتح"
+  },
+  "Not accepting": {
+    "fr": "N’accepte pas",
+    "ar": "لا يقبل"
+  },
+  "Machine added": {
+    "fr": "Terminal ajouté",
+    "ar": "تمت إضافة الجهاز"
+  },
+  " · {{serial}}": {
+    "fr": " · {{serial}}",
+    "ar": " · {{serial}}"
+  },
+  "I am not sure": {
+    "fr": "Je ne suis pas sûr",
+    "ar": "لست متأكدًا"
+  },
+  "Payroll model": {
+    "fr": "Modèle de paie",
+    "ar": "نموذج الرواتب"
+  },
+  "Uncategorized": {
+    "fr": "Sans catégorie",
+    "ar": "غير مصنف"
+  },
+  "Express Links": {
+    "fr": "Liens express",
+    "ar": "روابط سريعة"
+  },
+  "Max {{count}}": {
+    "fr": "Max. {{count}}",
+    "ar": "الحد الأقصى {{count}}"
+  },
+  "{{count}}/200": {
+    "fr": "{{count}}/200",
+    "ar": "{{count}}/200"
+  },
+  "GRP · {{ref}}": {
+    "fr": "GRP · {{ref}}",
+    "ar": "GRP · {{ref}}"
+  },
+  "Communication": {
+    "fr": "Communication",
+    "ar": "التواصل"
+  },
+  "Top offerings": {
+    "fr": "Top offerings",
+    "ar": "Top offerings"
+  },
+  "Return to app": {
+    "fr": "Return to app",
+    "ar": "Return to app"
+  },
+  "Due: {{date}}": {
+    "fr": "Due: {{date}}",
+    "ar": "Due: {{date}}"
+  },
+  "Below minimum": {
+    "fr": "Below minimum",
+    "ar": "Below minimum"
+  },
+  "Untitled rule": {
+    "fr": "Untitled rule",
+    "ar": "Untitled rule"
+  },
+  "Unique visits": {
+    "fr": "Unique visits",
+    "ar": "Unique visits"
+  },
+  "Must be 0-100": {
+    "fr": "Must be 0-100",
+    "ar": "Must be 0-100"
+  },
+  "Same as above": {
+    "fr": "Same as above",
+    "ar": "Same as above"
+  },
+  "Configuration": {
+    "fr": "Configuration",
+    "ar": "الإعداد"
+  },
+  "Mix by status": {
+    "fr": "Mix by statut",
+    "ar": "Mix by حالة"
+  },
+  "{{amount}}/km": {
+    "fr": "{{amount}}/km",
+    "ar": "{{amount}}/km"
+  },
+  "No expiry set": {
+    "fr": "Non expiry set",
+    "ar": "لا expiry set"
+  },
+  "Mark remitted": {
+    "fr": "Mark remitted",
+    "ar": "Mark remitted"
+  },
+  "VAT Collected": {
+    "fr": "VAT Collected",
+    "ar": "VAT Collected"
+  },
+  "Return method": {
+    "fr": "Return method",
+    "ar": "Return method"
+  },
+  "({{growth}}%)": {
+    "fr": "({{growth}}%)",
+    "ar": "({{growth}}%)"
+  },
+  " · {{amount}}": {
+    "fr": " · {{amount}}",
+    "ar": " · {{amount}}"
+  },
+  "Optimizing...": {
+    "fr": "Optimizing...",
+    "ar": "Optimizing..."
+  },
+  "Payout center": {
+    "fr": "Payout center",
+    "ar": "Payout center"
+  },
+  "Join {{name}}": {
+    "fr": "Join {{name}}",
+    "ar": "Join {{name}}"
+  },
+  "Announcements": {
+    "fr": "Announcements",
+    "ar": "Announcements"
+  },
+  "with {{name}}": {
+    "fr": "avec {{name}}",
+    "ar": "مع {{name}}"
+  },
+  "No recipients": {
+    "fr": "Non recipients",
+    "ar": "لا recipients"
+  },
+  "{{count}} pts": {
+    "fr": "{{count}} pts",
+    "ar": "{{count}} pts"
+  },
+  "Badge journey": {
+    "fr": "Parcours des badges",
+    "ar": "رحلة الشارات"
+  },
+  "Smart replies": {
+    "fr": "Smart replies",
+    "ar": "Smart replies"
+  },
+  "Look describe": {
+    "fr": "Look describe",
+    "ar": "Look describe"
+  },
+  "Appt · newest": {
+    "fr": "Rdv · plus récent",
+    "ar": "الموعد · الأحدث"
+  },
+  "Missing offer": {
+    "fr": "Offre manquante",
+    "ar": "العرض غير موجود"
+  },
+  "Quality issue": {
+    "fr": "Problème de qualité",
+    "ar": "مشكلة في الجودة"
+  },
+  "Qty {{count}}": {
+    "fr": "Qté {{count}}",
+    "ar": "الكمية {{count}}"
+  },
+  "Item received": {
+    "fr": "Article reçu",
+    "ar": "تم استلام العنصر"
+  },
+  "Ends {{date}}": {
+    "fr": "Se termine le {{date}}",
+    "ar": "ينتهي في {{date}}"
+  },
+  "Item Received": {
+    "fr": "Article reçu",
+    "ar": "تم استلام العنصر"
+  },
+  "I received it": {
+    "fr": "I received it",
+    "ar": "I received it"
+  },
+  "No preference": {
+    "fr": "Non preference",
+    "ar": "لا preference"
+  },
+  "Not specified": {
+    "fr": "Not specified",
+    "ar": "Not specified"
+  },
+  "Tax documents": {
+    "fr": "Documents fiscaux",
+    "ar": "المستندات الضريبية"
+  },
+  "Hottest Picks": {
+    "fr": "Sélection du moment",
+    "ar": "الأكثر رواجًا"
+  },
+  "Response\nrate": {
+    "fr": "Taux de\nréponse",
+    "ar": "معدل\nالاستجابة"
+  },
+  "How they work": {
+    "fr": "Comment ils fonctionnent",
+    "ar": "كيف تعمل"
+  },
+  "Go to {{host}}": {
+    "fr": "Aller sur {{host}}",
+    "ar": "الانتقال إلى {{host}}"
+  },
+  "{{count}} open": {
+    "fr": "{{count}} ouvrir",
+    "ar": "{{count}} فتح"
+  },
+  "Resuming setup": {
+    "fr": "Resuming setup",
+    "ar": "Resuming setup"
+  },
+  "No one blocked": {
+    "fr": "Non one blocked",
+    "ar": "لا one blocked"
+  },
+  "{{count}} item": {
+    "fr": "{{count}} article",
+    "ar": "عنصر {{count}}"
+  },
+  "Ad performance": {
+    "fr": "Performance des pubs",
+    "ar": "أداء الإعلان"
+  },
+  "{{days}} boost": {
+    "fr": "boost {{days}} j",
+    "ar": "تعزيز {{days}} يوم"
+  },
+  "Check-in queue": {
+    "fr": "Check-in queue",
+    "ar": "Check-in queue"
+  },
+  "{{count}} left": {
+    "fr": "{{count}} restant(s)",
+    "ar": "تبقّى {{count}}"
+  },
+  "-{{discount}}%": {
+    "fr": "-{{discount}} %",
+    "ar": "-{{discount}}%"
+  },
+  "Note Templates": {
+    "fr": "Note Templates",
+    "ar": "Note Templates"
+  },
+  "SMS & WhatsApp": {
+    "fr": "SMS et WhatsApp",
+    "ar": "SMS وWhatsApp"
+  },
+  "Advance Notice": {
+    "fr": "Advance Notice",
+    "ar": "Advance Notice"
+  },
+  "VAT Registered": {
+    "fr": "VAT Registered",
+    "ar": "VAT Registered"
+  },
+  "OK, we'll wait": {
+    "fr": "OK, we'll wait",
+    "ar": "OK, we'll wait"
+  },
+  "Get directions": {
+    "fr": "Get directions",
+    "ar": "Get directions"
+  },
+  "Mark collected": {
+    "fr": "Marquer récupéré",
+    "ar": "تعيين كمستلم"
+  },
+  "Pasted QR JSON": {
+    "fr": "JSON QR collé",
+    "ar": "JSON لرمز QR ملصق"
+  },
+  "Renew securely": {
+    "fr": "Renouveler en toute sécurité",
+    "ar": "جدّد بأمان"
+  },
+  "Min {{amount}}": {
+    "fr": "Min. {{amount}}",
+    "ar": "الحد الأدنى {{amount}}"
+  },
+  "{{count}}m ago": {
+    "fr": "il y a {{count}} min",
+    "ar": "منذ {{count}} د"
+  },
+  "{{count}}h ago": {
+    "fr": "il y a {{count}} h",
+    "ar": "منذ {{count}} س"
+  },
+  "{{count}}d ago": {
+    "fr": "il y a {{count}} j",
+    "ar": "منذ {{count}} ي"
+  },
+  "Mark delivered": {
+    "fr": "Marquer livré",
+    "ar": "تعيين كمُسلَّم"
+  },
+  " below to fix.": {
+    "fr": " ci-dessous pour corriger.",
+    "ar": " أدناه للإصلاح."
+  },
+  "Reconnect Yoco": {
+    "fr": "Reconnecter Yoco",
+    "ar": "إعادة ربط Yoco"
+  },
+  "What you offer": {
+    "fr": "What you offer",
+    "ar": "What you offer"
+  },
+  "Proceed Anyway": {
+    "fr": "Continuer quand même",
+    "ar": "المتابعة على أي حال"
+  },
+  "{{km}} km away": {
+    "fr": "à {{km}} km",
+    "ar": "على بعد {{km}} كم"
+  },
+  "{{value}}% off": {
+    "fr": "{{value}} % de réduction",
+    "ar": "خصم {{value}}%"
+  },
+  "{{amount}} off": {
+    "fr": "{{amount}} de réduction",
+    "ar": "خصم {{amount}}"
+  },
+  "Too many media": {
+    "fr": "Trop de médias",
+    "ar": "وسائط أكثر من اللازم"
+  },
+  "Level {{name}}": {
+    "fr": "Niveau {{name}}",
+    "ar": "المستوى {{name}}"
+  },
+  "is_active true": {
+    "fr": "is_active true",
+    "ar": "is_active true"
+  },
+  "Withdraw offer": {
+    "fr": "Retirer l’offre",
+    "ar": "سحب العرض"
+  },
+  "Rule: {{rule}}": {
+    "fr": "Règle : {{rule}}",
+    "ar": "القاعدة: {{rule}}"
+  },
+  "Used {{count}}": {
+    "fr": "Used {{count}}",
+    "ar": "Used {{count}}"
+  },
+  "Needs action ⚡": {
+    "fr": "Needs action ⚡",
+    "ar": "Needs action ⚡"
+  },
+  "{{count}} sold": {
+    "fr": "{{count}} sold",
+    "ar": "{{count}} sold"
+  },
+  "After: {{qty}}": {
+    "fr": "After: {{qty}}",
+    "ar": "After: {{qty}}"
+  },
+  "{{count}}/1000": {
+    "fr": "{{count}}/1000",
+    "ar": "{{count}}/1000"
+  },
+  "Fresh {{name}}": {
+    "fr": "Fresh {{name}}",
+    "ar": "Fresh {{name}}"
+  },
+  "Seasonal rules": {
+    "fr": "Seasonal rules",
+    "ar": "Seasonal rules"
+  },
+  "Percentage (%)": {
+    "fr": "Percentage (%)",
+    "ar": "Percentage (%)"
+  },
+  "Drag to adjust": {
+    "fr": "Drag to adjust",
+    "ar": "Drag to adjust"
+  },
+  "min {{amount}}": {
+    "fr": "min {{amount}}",
+    "ar": "min {{amount}}"
+  },
+  "max {{amount}}": {
+    "fr": "max {{amount}}",
+    "ar": "max {{amount}}"
+  },
+  "Fee Calculator": {
+    "fr": "Fee Calculator",
+    "ar": "Fee Calculator"
+  },
+  "When (trigger)": {
+    "fr": "When (trigger)",
+    "ar": "When (trigger)"
+  },
+  "{{minutes}}min": {
+    "fr": "{{minutes}}min",
+    "ar": "{{minutes}}min"
+  },
+  "What to notify": {
+    "fr": "What to notify",
+    "ar": "What to notify"
+  },
+  "{{count}} rows": {
+    "fr": "{{count}} rows",
+    "ar": "{{count}} rows"
+  },
+  "Avg / offering": {
+    "fr": "Avg / offering",
+    "ar": "Avg / offering"
+  },
+  "Until {{date}}": {
+    "fr": "Until {{date}}",
+    "ar": "Until {{date}}"
+  },
+  "Zone analytics": {
+    "fr": "Zone analytics",
+    "ar": "Zone analytics"
+  },
+  "You're all set": {
+    "fr": "You're all set",
+    "ar": "You're all set"
+  },
+  "Rev {{amount}}": {
+    "fr": "Rev {{amount}}",
+    "ar": "Rev {{amount}}"
+  },
+  "Avg {{amount}}": {
+    "fr": "Avg {{amount}}",
+    "ar": "Avg {{amount}}"
+  },
+  "Δ prior bucket": {
+    "fr": "Δ prior bucket",
+    "ar": "Δ prior bucket"
+  },
+  "Redeemed value": {
+    "fr": "Redeemed value",
+    "ar": "Redeemed value"
+  },
+  "Note templates": {
+    "fr": "Note templates",
+    "ar": "Note templates"
+  },
+  "File too large": {
+    "fr": "Fichier trop volumineux",
+    "ar": "الملف كبير جدًا"
+  },
+  "State/Province": {
+    "fr": "Région / province",
+    "ar": "الولاية / المحافظة"
+  },
+  "Not clocked in": {
+    "fr": "Not clocked in",
+    "ar": "Not clocked in"
+  },
+  "Last: {{time}}": {
+    "fr": "Last: {{time}}",
+    "ar": "Last: {{time}}"
+  },
+  "Cap: {{count}}": {
+    "fr": "Cap: {{count}}",
+    "ar": "Cap: {{count}}"
+  },
+  "{{amount}} pts": {
+    "fr": "{{amount}} pts",
+    "ar": "{{amount}} pts"
+  },
+  "Content studio": {
+    "fr": "Content studio",
+    "ar": "Content studio"
+  },
+  "Missing fields": {
+    "fr": "Missing fields",
+    "ar": "Missing fields"
+  },
+  "•••• {{last4}}": {
+    "fr": "•••• {{last4}}",
+    "ar": "•••• {{last4}}"
+  },
+  "Track shipment": {
+    "fr": "Suivre l’envoi",
+    "ar": "تتبع الشحنة"
+  },
+  "Tel: {{phone}}": {
+    "fr": "Tél. : {{phone}}",
+    "ar": "هاتف: {{phone}}"
+  },
+  "In-salon visit": {
+    "fr": "Visite au salon",
+    "ar": "زيارة في الصالون"
+  },
+  "Not checked in": {
+    "fr": "Non enregistré",
+    "ar": "لم يُسجَّل الحضور"
+  },
+  "~{{count}} min": {
+    "fr": "~{{count}} min",
+    "ar": "~{{count}} د"
+  },
+  "What happened?": {
+    "fr": "Que s’est-il passé ?",
+    "ar": "ماذا حدث؟"
+  },
+  "Favourite song": {
+    "fr": "Chanson préférée",
+    "ar": "أغنيتك المفضلة"
+  },
+  "Hypoallergenic": {
+    "fr": "Hypoallergénique",
+    "ar": "منخفض الحساسية"
+  },
+  "Not yet issued": {
+    "fr": "Not yet issued",
+    "ar": "Not yet issued"
+  },
+  "Variant {{id}}": {
+    "fr": "Variante {{id}}",
+    "ar": "المتغير {{id}}"
+  },
+  "e.g. Cape Town": {
+    "fr": "ex. Le Cap",
+    "ar": "مثال: كيب تاون"
+  },
+  "Natural / Afro": {
+    "fr": "Naturel / Afro",
+    "ar": "طبيعي / أفرو"
+  },
+  "Refer a friend": {
+    "fr": "Parrainer un ami",
+    "ar": "إحالة صديق"
+  },
+  "Blog or article": {
+    "fr": "Blog ou article",
+    "ar": "مدونة أو مقال"
+  },
+  "{{minutes}} min": {
+    "fr": "{{minutes}} min",
+    "ar": "{{minutes}} د"
+  },
+  "Restricted mode": {
+    "fr": "Mode restreint",
+    "ar": "الوضع المقيد"
+  },
+  "How we use this": {
+    "fr": "Comment nous l’utilisons",
+    "ar": "كيف نستخدم هذا"
+  },
+  "{{count}} items": {
+    "fr": "{{count}} articles",
+    "ar": "{{count}} عناصر"
+  },
+  " Note: {{note}}": {
+    "fr": " Note : {{note}}",
+    "ar": " ملاحظة: {{note}}"
+  },
+  "Note: {{notes}}": {
+    "fr": "Note : {{notes}}",
+    "ar": "ملاحظة: {{notes}}"
+  },
+  "Yoco (recorded)": {
+    "fr": "Yoco (enregistré)",
+    "ar": "Yoco (مسجّل)"
+  },
+  "Setup checklist": {
+    "fr": "Liste de configuration",
+    "ar": "قائمة الإعداد"
+  },
+  "Running behind?": {
+    "fr": "Running behind?",
+    "ar": "Running behind?"
+  },
+  "Assign resource": {
+    "fr": "Assign resource",
+    "ar": "Assign resource"
+  },
+  "Repeating visit": {
+    "fr": "Visite récurrente",
+    "ar": "زيارة متكررة"
+  },
+  "Starts {{date}}": {
+    "fr": "Starts {{date}}",
+    "ar": "Starts {{date}}"
+  },
+  "Gate: {{value}}": {
+    "fr": "Portail : {{value}}",
+    "ar": "البوابة: {{value}}"
+  },
+  "Door: {{value}}": {
+    "fr": "Porte : {{value}}",
+    "ar": "الباب: {{value}}"
+  },
+  "What's included": {
+    "fr": "Ce qui est inclus",
+    "ar": "ما الذي يتضمنه"
+  },
+  "Needs attention": {
+    "fr": "Nécessite une attention",
+    "ar": "يحتاج انتباهًا"
+  },
+  "{{count}}mo ago": {
+    "fr": "il y a {{count}} mois",
+    "ar": "منذ {{count}} شهرًا"
+  },
+  "Line fulfilment": {
+    "fr": "Exécution de ligne",
+    "ar": "تنفيذ البند"
+  },
+  "Mark {{status}}": {
+    "fr": "Marquer {{status}}",
+    "ar": "تعيين {{status}}"
+  },
+  "Disconnect Yoco": {
+    "fr": "Déconnecter Yoco",
+    "ar": "فصل Yoco"
+  },
+  "Yoco secret key": {
+    "fr": "Clé secrète Yoco",
+    "ar": "المفتاح السري لـ Yoco"
+  },
+  "Vs prior window": {
+    "fr": "Vs période précédente",
+    "ar": "مقابل الفترة السابقة"
+  },
+  "Auto-reconciled": {
+    "fr": "Rapproché automatiquement",
+    "ar": "تمت التسوية تلقائيًا"
+  },
+  "you@example.com": {
+    "fr": "vous@exemple.com",
+    "ar": "you@example.com"
+  },
+  "Hourly / salary": {
+    "fr": "Horaire / salaire",
+    "ar": "بالساعة / راتب"
+  },
+  "{{count}} added": {
+    "fr": "{{count}} ajouté(s)",
+    "ar": "أُضيف {{count}}"
+  },
+  "Assign {{name}}": {
+    "fr": "Assigner {{name}}",
+    "ar": "تعيين {{name}}"
+  },
+  "Slug (URL-safe)": {
+    "fr": "Identifiant (URL)",
+    "ar": "المعرّف (آمن للرابط)"
+  },
+  "{{count}} click": {
+    "fr": "{{count}} clic",
+    "ar": "نقرة {{count}}"
+  },
+  "This {{period}}": {
+    "fr": "Ce {{period}}",
+    "ar": "هذا {{period}}"
+  },
+  "Completion rate": {
+    "fr": "Taux de réalisation",
+    "ar": "معدل الإنجاز"
+  },
+  "Getting Started": {
+    "fr": "Pour commencer",
+    "ar": "البدء"
+  },
+  "Recent activity": {
+    "fr": "Activité récente",
+    "ar": "النشاط الأخير"
+  },
+  "Partial failure": {
+    "fr": "Échec partiel",
+    "ar": "فشل جزئي"
+  },
+  "track not false": {
+    "fr": "track not false",
+    "ar": "track not false"
+  },
+  "From {{amount}}": {
+    "fr": "À partir de {{amount}}",
+    "ar": "من {{amount}}"
+  },
+  "· {{count}} min": {
+    "fr": "· {{count}} min",
+    "ar": "· {{count}} د"
+  },
+  "e.g. Main salon": {
+    "fr": "e.g. Main salon",
+    "ar": "e.g. Main صالون"
+  },
+  "Value (0–100) *": {
+    "fr": "Value (0–100) *",
+    "ar": "Value (0–100) *"
+  },
+  "I agree to the ": {
+    "fr": "I agree to the ",
+    "ar": "I agree to the "
+  },
+  "Go to dashboard": {
+    "fr": "Go to dashboard",
+    "ar": "Go to dashboard"
+  },
+  "{{count}} units": {
+    "fr": "{{count}} units",
+    "ar": "{{count}} units"
+  },
+  "Already settled": {
+    "fr": "Already settled",
+    "ar": "Already settled"
+  },
+  "Issued {{date}}": {
+    "fr": "Issued {{date}}",
+    "ar": "Issued {{date}}"
+  },
+  "Tax ({{rate}}%)": {
+    "fr": "Taxe ({{rate}} %)",
+    "ar": "الضريبة ({{rate}}٪)"
+  },
+  "Completion Rate": {
+    "fr": "Completion Rate",
+    "ar": "Completion Rate"
+  },
+  "{{label}} rules": {
+    "fr": "{{label}} rules",
+    "ar": "{{label}} rules"
+  },
+  "Rule {{number}}": {
+    "fr": "Rule {{number}}",
+    "ar": "Rule {{number}}"
+  },
+  "Sole proprietor": {
+    "fr": "Sole proprietor",
+    "ar": "Sole proprietor"
+  },
+  "{{amount}} each": {
+    "fr": "{{amount}} each",
+    "ar": "{{amount}} each"
+  },
+  "{{count}} field": {
+    "fr": "{{count}} field",
+    "ar": "{{count}} field"
+  },
+  "Visit milestone": {
+    "fr": "Visit milestone",
+    "ar": "Visit milestone"
+  },
+  "{{count}} types": {
+    "fr": "{{count}} types",
+    "ar": "{{count}} types"
+  },
+  "No recent rows.": {
+    "fr": "Non recent rows.",
+    "ar": "لا recent rows."
+  },
+  "Net: {{amount}}": {
+    "fr": "Net: {{amount}}",
+    "ar": "Net: {{amount}}"
+  },
+  "Reminder timing": {
+    "fr": "Reminder timing",
+    "ar": "Reminder timing"
+  },
+  "+{{count}} tier": {
+    "fr": "+{{count}} tier",
+    "ar": "+{{count}} tier"
+  },
+  "a short subject": {
+    "fr": "a short subject",
+    "ar": "a short subject"
+  },
+  "Period vs prior": {
+    "fr": "Period vs prior",
+    "ar": "Period vs prior"
+  },
+  " · ★ {{rating}}": {
+    "fr": " · ★ {{rating}}",
+    "ar": " · ★ {{rating}}"
+  },
+  "Earned {{date}}": {
+    "fr": "Earned {{date}}",
+    "ar": "Earned {{date}}"
+  },
+  "Avg: {{amount}}": {
+    "fr": "Avg: {{amount}}",
+    "ar": "Avg: {{amount}}"
+  },
+  "Ledger earnings": {
+    "fr": "Ledger earnings",
+    "ar": "Ledger earnings"
+  },
+  "Use YYYY-MM-DD.": {
+    "fr": "Use YYYY-MM-DD.",
+    "ar": "Use YYYY-MM-DD."
+  },
+  "{{count}} sales": {
+    "fr": "{{count}} sales",
+    "ar": "{{count}} sales"
+  },
+  "{{count}} visit": {
+    "fr": "{{count}} visit",
+    "ar": "{{count}} visit"
+  },
+  "Redemption rows": {
+    "fr": "Redemption rows",
+    "ar": "Redemption rows"
+  },
+  "Renews {{date}}": {
+    "fr": "Renouvelle le {{date}}",
+    "ar": "يتجدد في {{date}}"
+  },
+  "Missing subject": {
+    "fr": "Objet manquant",
+    "ar": "الموضوع مفقود"
+  },
+  "No transactions": {
+    "fr": "Non transactions",
+    "ar": "لا transactions"
+  },
+  "Color {{color}}": {
+    "fr": "Color {{color}}",
+    "ar": "Color {{color}}"
+  },
+  " · {{timezone}}": {
+    "fr": " · {{timezone}}",
+    "ar": " · {{timezone}}"
+  },
+  "Badge: {{name}}": {
+    "fr": "Badge: {{name}}",
+    "ar": "Badge: {{name}}"
+  },
+  "Header & Footer": {
+    "fr": "Header & Footer",
+    "ar": "Header & Footer"
+  },
+  "How to level up": {
+    "fr": "Comment monter de niveau",
+    "ar": "كيف ترتقي بالمستوى"
+  },
+  "Stay consistent": {
+    "fr": "Restez régulier",
+    "ar": "حافظ على الاستمرارية"
+  },
+  "Age suitability": {
+    "fr": "Tranches d’âge",
+    "ar": "الملاءمة العمرية"
+  },
+  "Changed my mind": {
+    "fr": "J’ai changé d’avis",
+    "ar": "غيرت رأيي"
+  },
+  "Escalate return": {
+    "fr": "Escalader le retour",
+    "ar": "تصعيد الإرجاع"
+  },
+  "Offer to accept": {
+    "fr": "Offre à accepter",
+    "ar": "عرض للقبول"
+  },
+  "Sumsub (legacy)": {
+    "fr": "Sumsub (ancien)",
+    "ar": "Sumsub (قديم)"
+  },
+  "e.g. {{region}}": {
+    "fr": "ex. {{region}}",
+    "ar": "مثال: {{region}}"
+  },
+  "In an emergency": {
+    "fr": "En cas d’urgence",
+    "ar": "في حالة الطوارئ"
+  },
+  "Learning Centre": {
+    "fr": "Centre d’apprentissage",
+    "ar": "مركز التعلم"
+  },
+  "Things to avoid": {
+    "fr": "À éviter",
+    "ar": "أمور يجب تجنبها"
+  },
+  "Social & chatty": {
+    "fr": "Sociable et bavard",
+    "ar": "اجتماعي وكثير الحديث"
+  },
+  "Quiet & minimal": {
+    "fr": "Calme et minimal",
+    "ar": "هادئ وبسيط"
+  },
+  "Budget-friendly": {
+    "fr": "Petit budget",
+    "ar": "مناسب للميزانية"
+  },
+  " until {{date}}": {
+    "fr": " jusqu’au {{date}}",
+    "ar": " حتى {{date}}"
+  },
+  "Braids / Weaves": {
+    "fr": "Tresses / Tissages",
+    "ar": "ضفائر / وصلات"
+  },
+  "Short / Tapered": {
+    "fr": "Court / Dégradé",
+    "ar": "قصير / مدرج"
+  },
+  "You're a member": {
+    "fr": "Vous êtes membre",
+    "ar": "أنت عضو"
+  },
+  "HTTP {{status}}": {
+    "fr": "HTTP {{status}}",
+    "ar": "HTTP {{status}}"
+  },
+  "Friend or family": {
+    "fr": "Ami ou famille",
+    "ar": "صديق أو عائلة"
+  },
+  " · with {{name}}": {
+    "fr": " · with {{name}}",
+    "ar": " · with {{name}}"
+  },
+  "Stay on {{host}}": {
+    "fr": "Rester sur {{host}}",
+    "ar": "البقاء على {{host}}"
+  },
+  "MARKETING CREDIT": {
+    "fr": "MARKETING CREDIT",
+    "ar": "MARKETING CREDIT"
+  },
+  "All controls off": {
+    "fr": "Tous les contrôles désactivés",
+    "ar": "جميع الضوابط متوقفة"
+  },
+  "Not yet declared": {
+    "fr": "Not yet declared",
+    "ar": "Not yet declared"
+  },
+  "Content controls": {
+    "fr": "Contrôles de contenu",
+    "ar": "ضوابط المحتوى"
+  },
+  "Budget exhausted": {
+    "fr": "Budget épuisé",
+    "ar": "استُنفدت الميزانية"
+  },
+  " · Ends {{date}}": {
+    "fr": " · Se termine le {{date}}",
+    "ar": " · ينتهي في {{date}}"
+  },
+  "Tip Distribution": {
+    "fr": "Tip Distribution",
+    "ar": "Tip Distribution"
+  },
+  "Repeating series": {
+    "fr": "Série récurrente",
+    "ar": "سلسلة متكررة"
+  },
+  "Rewards & badges": {
+    "fr": "Récompenses et badges",
+    "ar": "المكافآت والشارات"
+  },
+  "State / Province": {
+    "fr": "Région / province",
+    "ar": "الولاية / المحافظة"
+  },
+  "Commission Tiers": {
+    "fr": "Commission Tiers",
+    "ar": "Commission Tiers"
+  },
+  " · {{count}} txn": {
+    "fr": " · {{count}} op.",
+    "ar": " · {{count}} عملية"
+  },
+  "What this counts": {
+    "fr": "Ce que cela compte",
+    "ar": "ما يحصيه هذا"
+  },
+  "Gross recognized": {
+    "fr": "Brut reconnu",
+    "ar": "الإجمالي المعترف به"
+  },
+  "Province / state": {
+    "fr": "Province / région",
+    "ar": "المحافظة / الولاية"
+  },
+  "Pay by {{label}}": {
+    "fr": "Payer par {{label}}",
+    "ar": "ادفع عبر {{label}}"
+  },
+  "Within {{km}} km": {
+    "fr": "Dans un rayon de {{km}} km",
+    "ar": "ضمن {{km}} كم"
+  },
+  "e.g. Short, Long": {
+    "fr": "e.g. Short, Long",
+    "ar": "e.g. Short, Long"
+  },
+  "{{percent}}% off": {
+    "fr": "{{percent}} % de réduction",
+    "ar": "خصم {{percent}}%"
+  },
+  "Exclusive events": {
+    "fr": "Événements exclusifs",
+    "ar": "فعاليات حصرية"
+  },
+  "Expand {{title}}": {
+    "fr": "Développer {{title}}",
+    "ar": "توسيع {{title}}"
+  },
+  "{{count}} fields": {
+    "fr": "{{count}} champs",
+    "ar": "{{count}} حقول"
+  },
+  "No periods found": {
+    "fr": "Non periods found",
+    "ar": "لا periods found"
+  },
+  "UIF contribution": {
+    "fr": "Cotisation UIF",
+    "ar": "مساهمة UIF"
+  },
+  "{{count}} series": {
+    "fr": "{{count}} série(s)",
+    "ar": "{{count}} سلسلة"
+  },
+  "{{count}} member": {
+    "fr": "{{count}} membre",
+    "ar": "عضو {{count}}"
+  },
+  "Period {{label}}": {
+    "fr": "Period {{label}}",
+    "ar": "Period {{label}}"
+  },
+  "{{count}} addons": {
+    "fr": "{{count}} addons",
+    "ar": "{{count}} addons"
+  },
+  "VAT Registration": {
+    "fr": "VAT Registration",
+    "ar": "VAT Registration"
+  },
+  "({{count}} rows)": {
+    "fr": "({{count}} rows)",
+    "ar": "({{count}} rows)"
+  },
+  " · {{count}} max": {
+    "fr": " · {{count}} max",
+    "ar": " · {{count}} max"
+  },
+  "Driver's license": {
+    "fr": "Permis de conduire",
+    "ar": "رخصة القيادة"
+  },
+  " · {{amount}}/mo": {
+    "fr": " · {{amount}}/mo",
+    "ar": " · {{amount}}/mo"
+  },
+  "Started {{date}}": {
+    "fr": "Started {{date}}",
+    "ar": "Started {{date}}"
+  },
+  "Scroll to bottom": {
+    "fr": "Aller en bas",
+    "ar": "التمرير إلى الأسفل"
+  },
+  "{{count}} unread": {
+    "fr": "{{count}} unread",
+    "ar": "{{count}} unread"
+  },
+  "+{{count}} tiers": {
+    "fr": "+{{count}} tiers",
+    "ar": "+{{count}} tiers"
+  },
+  "Remitted to SARS": {
+    "fr": "Remitted to SARS",
+    "ar": "Remitted to SARS"
+  },
+  "Period occupancy": {
+    "fr": "Period occupancy",
+    "ar": "Period occupancy"
+  },
+  "Earnings per row": {
+    "fr": "Earnings per row",
+    "ar": "Earnings per row"
+  },
+  "By recorded path": {
+    "fr": "By recorded path",
+    "ar": "By recorded path"
+  },
+  "Ledger allocated": {
+    "fr": "Ledger allocated",
+    "ar": "Ledger allocated"
+  },
+  "{{count}} groups": {
+    "fr": "{{count}} groups",
+    "ar": "{{count}} groups"
+  },
+  "Use HH:MM (24h).": {
+    "fr": "Use HH:MM (24h).",
+    "ar": "Use HH:MM (24h)."
+  },
+  "{{count}} visits": {
+    "fr": "{{count}} visits",
+    "ar": "{{count}} visits"
+  },
+  "Recorded takings": {
+    "fr": "Recorded takings",
+    "ar": "Recorded takings"
+  },
+  "Yoco integration": {
+    "fr": "Yoco integration",
+    "ar": "Yoco integration"
+  },
+  "Commission rates": {
+    "fr": "Commission rates",
+    "ar": "Commission rates"
+  },
+  "SMS and WhatsApp": {
+    "fr": "SMS and WhatsApp",
+    "ar": "SMS and WhatsApp"
+  },
+  " · {{count}} min": {
+    "fr": "· {{count}} min",
+    "ar": "· {{count}} د"
+  },
+  "Mark as favorite": {
+    "fr": "Marquer comme favori",
+    "ar": "تعيين كمفضل"
+  },
+  " · ends {{date}}": {
+    "fr": " · se termine le {{date}}",
+    "ar": " · ينتهي في {{date}}"
+  },
+  "e.g. Lunch Break": {
+    "fr": "ex. Pause déjeuner",
+    "ar": "مثال: استراحة غداء"
+  },
+  "PIN Clock In/Out": {
+    "fr": "PIN Clock In/Out",
+    "ar": "PIN Clock In/Out"
+  },
+  "Toggle bulk mode": {
+    "fr": "Toggle bulk mode",
+    "ar": "Toggle bulk mode"
+  },
+  "Move {{name}} up": {
+    "fr": "Move {{name}} up",
+    "ar": "Move {{name}} up"
+  },
+  "No CSV returned.": {
+    "fr": "Non CSV returned.",
+    "ar": "لا CSV returned."
+  },
+  "/ {{amount}} pts": {
+    "fr": "/ {{amount}} pts",
+    "ar": "/ {{amount}} نقطة"
+  },
+  "Timing: {{note}}": {
+    "fr": "Timing: {{note}}",
+    "ar": "Timing: {{note}}"
+  },
+  "Reputation coach": {
+    "fr": "Reputation coach",
+    "ar": "Reputation coach"
+  },
+  "Mark all as read": {
+    "fr": "Tout marquer comme lu",
+    "ar": "وضع الكل كمقروء"
+  },
+  "Label: {{label}}": {
+    "fr": "Libellé : {{label}}",
+    "ar": "التسمية: {{label}}"
+  },
+  "Stay in the loop": {
+    "fr": "Restez informé",
+    "ar": "ابقَ على اطلاع"
+  },
+  "Collection Point": {
+    "fr": "Point de retrait",
+    "ar": "نقطة الاستلام"
+  },
+  "Who is this for?": {
+    "fr": "Pour qui est-ce ?",
+    "ar": "لمن هذا؟"
+  },
+  "YYYY-MM-DD HH:mm": {
+    "fr": "AAAA-MM-JJ HH:mm",
+    "ar": "YYYY-MM-DD HH:mm"
+  },
+  "Not as described": {
+    "fr": "Pas conforme à la description",
+    "ar": "ليس كما وُصف"
+  },
+  "Arrived too late": {
+    "fr": "Arrivé trop tard",
+    "ar": "وصل متأخرًا جدًا"
+  },
+  "Return Escalated": {
+    "fr": "Retour escaladé",
+    "ar": "تم تصعيد الإرجاع"
+  },
+  "Floor: {{value}}": {
+    "fr": "Étage : {{value}}",
+    "ar": "الطابق: {{value}}"
+  },
+  " · ✓ Checked out": {
+    "fr": " · ✓ Encaissé",
+    "ar": " · ✓ تم المغادرة"
+  },
+  "Common questions": {
+    "fr": "Questions fréquentes",
+    "ar": "أسئلة شائعة"
+  },
+  " before {{date}}": {
+    "fr": " avant le {{date}}",
+    "ar": " قبل {{date}}"
+  },
+  "Relaxed / Permed": {
+    "fr": "Défrisé / Permanenté",
+    "ar": "مفرد / مموّج دائم"
+  },
+  "{{count}} hr ago": {
+    "fr": "{{count}} hr ago",
+    "ar": "{{count}} hr ago"
+  },
+  "Prefer not to say": {
+    "fr": "Préfère ne pas dire",
+    "ar": "أفضل عدم الإفصاح"
+  },
+  "We'll come to you": {
+    "fr": "Nous venons chez vous",
+    "ar": "سنأتي إليك"
+  },
+  "Or enter manually": {
+    "fr": "Ou saisir manuellement",
+    "ar": "أو أدخل يدويًا"
+  },
+  "Buzzer / intercom": {
+    "fr": "Sonnette / interphone",
+    "ar": "جرس / إنتركم"
+  },
+  "Estimated arrival": {
+    "fr": "Arrivée estimée",
+    "ar": "الوصول المتوقع"
+  },
+  "Switch to ZA site": {
+    "fr": "Passer au site ZA",
+    "ar": "التبديل إلى موقع جنوب أفريقيا"
+  },
+  "Paystack Terminal": {
+    "fr": "Paystack Terminal",
+    "ar": "Paystack Terminal"
+  },
+  "{{phone}} on file": {
+    "fr": "{{phone}} enregistré",
+    "ar": "{{phone}} محفوظ"
+  },
+  "{{count}} blocked": {
+    "fr": "{{count}} bloqué(s)",
+    "ar": "{{count}} محظور"
+  },
+  "Tax Configuration": {
+    "fr": "Tax Configuration",
+    "ar": "Tax Configuration"
+  },
+  "Web POS connected": {
+    "fr": "Web POS connected",
+    "ar": "Web POS connected"
+  },
+  "Before completing": {
+    "fr": "Before completing",
+    "ar": "Before completing"
+  },
+  "Nothing to record": {
+    "fr": "Nothing to record",
+    "ar": "Nothing to record"
+  },
+  "Buzzer: {{value}}": {
+    "fr": "Sonnette : {{value}}",
+    "ar": "الجرس: {{value}}"
+  },
+  "Resources & forms": {
+    "fr": "Ressources et formulaires",
+    "ar": "الموارد والنماذج"
+  },
+  "Serial {{serial}}": {
+    "fr": "Série {{serial}}",
+    "ar": "تسلسلي {{serial}}"
+  },
+  "Carrier / courier": {
+    "fr": "Carrier / courier",
+    "ar": "Carrier / courier"
+  },
+  " · {{count}} txns": {
+    "fr": " · {{count}} txns",
+    "ar": " · {{count}} txns"
+  },
+  "Integration setup": {
+    "fr": "Integration setup",
+    "ar": "Integration setup"
+  },
+  "Rooms & equipment": {
+    "fr": "Rooms & equipment",
+    "ar": "Rooms & equipment"
+  },
+  "Province or state": {
+    "fr": "Province or state",
+    "ar": "Province or state"
+  },
+  " · {{minutes}}min": {
+    "fr": " · {{minutes}}min",
+    "ar": " · {{minutes}}min"
+  },
+  "How you earned it": {
+    "fr": "How you earned it",
+    "ar": "How you earned it"
+  },
+  "Bank * (Paystack)": {
+    "fr": "Bank * (Paystack)",
+    "ar": "Bank * (Paystack)"
+  },
+  "{{count}} on hand": {
+    "fr": "{{count}} on hand",
+    "ar": "{{count}} on hand"
+  },
+  "Holiday / Closure": {
+    "fr": "Holiday / Closure",
+    "ar": "Holiday / Closure"
+  },
+  "Hourly {{amount}}": {
+    "fr": "Hourly {{amount}}",
+    "ar": "Hourly {{amount}}"
+  },
+  "Salary {{amount}}": {
+    "fr": "Salary {{amount}}",
+    "ar": "Salary {{amount}}"
+  },
+  "Manual deductions": {
+    "fr": "Manual deductions",
+    "ar": "Manual deductions"
+  },
+  "Items ({{count}})": {
+    "fr": "Items ({{count}})",
+    "ar": "Items ({{count}})"
+  },
+  "Profit {{amount}}": {
+    "fr": "Profit {{amount}}",
+    "ar": "Profit {{amount}}"
+  },
+  "Reference or note": {
+    "fr": "Reference or note",
+    "ar": "Reference or note"
+  },
+  "No movements yet.": {
+    "fr": "Non movements yet.",
+    "ar": "لا movements yet."
+  },
+  "No seasonal rules": {
+    "fr": "Non seasonal rules",
+    "ar": "لا seasonal rules"
+  },
+  "Resolution letter": {
+    "fr": "Resolution letter",
+    "ar": "Resolution letter"
+  },
+  "{{count}} reasons": {
+    "fr": "{{count}} reasons",
+    "ar": "{{count}} reasons"
+  },
+  "e.g. Annual Leave": {
+    "fr": "e.g. Annual Leave",
+    "ar": "e.g. Annual Leave"
+  },
+  "Mark as remitted?": {
+    "fr": "Mark as remitted?",
+    "ar": "Mark as remitted?"
+  },
+  "Transaction Count": {
+    "fr": "Transaction Count",
+    "ar": "Transaction Count"
+  },
+  "Ledger {{amount}}": {
+    "fr": "Ledger {{amount}}",
+    "ar": "Ledger {{amount}}"
+  },
+  "Statuses included": {
+    "fr": "Statuses included",
+    "ar": "Statuses included"
+  },
+  "earnings (ledger)": {
+    "fr": "earnings (ledger)",
+    "ar": "earnings (ledger)"
+  },
+  "Range · {{range}}": {
+    "fr": "Range · {{range}}",
+    "ar": "Range · {{range}}"
+  },
+  "Top tier unlocked": {
+    "fr": "Niveau supérieur débloqué",
+    "ar": "تم فتح المستوى الأعلى"
+  },
+  "Platform Defaults": {
+    "fr": "Platform Defaults",
+    "ar": "Platform Defaults"
+  },
+  "e.g. Summer looks": {
+    "fr": "ex. Looks d’été",
+    "ar": "مثال: إطلالات صيفية"
+  },
+  "Min. 8 characters": {
+    "fr": "8 caractères min.",
+    "ar": "8 أحرف كحد أدنى"
+  },
+  "Pay at Collection": {
+    "fr": "Payer au retrait",
+    "ar": "الدفع عند الاستلام"
+  },
+  "Return {{status}}": {
+    "fr": "Retour {{status}}",
+    "ar": "الإرجاع {{status}}"
+  },
+  "e.g. South Africa": {
+    "fr": "ex. Afrique du Sud",
+    "ar": "مثال: جنوب أفريقيا"
+  },
+  "Work / profession": {
+    "fr": "Travail / profession",
+    "ar": "العمل / المهنة"
+  },
+  "Strong fragrances": {
+    "fr": "Parfums forts",
+    "ar": "عطور قوية"
+  },
+  "Quick & efficient": {
+    "fr": "Rapide et efficace",
+    "ar": "سريع وفعال"
+  },
+  "Natural / organic": {
+    "fr": "Naturel / bio",
+    "ar": "طبيعي / عضوي"
+  },
+  "Locs / Dreadlocks": {
+    "fr": "Locks / Dreadlocks",
+    "ar": "لوكس / دريدلوكس"
+  },
+  "News and programs": {
+    "fr": "Actualités et programmes",
+    "ar": "الأخبار والبرامج"
+  },
+  "Join {{planName}}": {
+    "fr": "Rejoindre {{planName}}",
+    "ar": "الانضمام إلى {{planName}}"
+  },
+  "You're subscribed": {
+    "fr": "Vous êtes abonné",
+    "ar": "أنت مشترك"
+  },
+  "Star distribution": {
+    "fr": "Répartition des étoiles",
+    "ar": "توزيع النجوم"
+  },
+  "{{count}} min ago": {
+    "fr": "{{count}} min ago",
+    "ar": "{{count}} min ago"
+  },
+  "Loving Beautonomi?": {
+    "fr": "Loving Beautonomi?",
+    "ar": "Loving Beautonomi?"
+  },
+  "Building / complex": {
+    "fr": "Immeuble / complexe",
+    "ar": "مبنى / مجمع"
+  },
+  "You're on the list": {
+    "fr": "Vous êtes sur la liste",
+    "ar": "أنت على القائمة"
+  },
+  "Map not configured": {
+    "fr": "Carte non configurée",
+    "ar": "الخريطة غير مهيأة"
+  },
+  "Purchase {{total}}": {
+    "fr": "Purchase {{total}}",
+    "ar": "Purchase {{total}}"
+  },
+  "Plan limit reached": {
+    "fr": "Plan limit reached",
+    "ar": "Plan limit reached"
+  },
+  "Source: {{source}}": {
+    "fr": "Source : {{source}}",
+    "ar": "المصدر: {{source}}"
+  },
+  "Measure, {{value}}": {
+    "fr": "Measure, {{value}}",
+    "ar": "Measure, {{value}}"
+  },
+  "Boost period ended": {
+    "fr": "Boost period ended",
+    "ar": "Boost period ended"
+  },
+  "Check out {{name}}": {
+    "fr": "Check out {{name}}",
+    "ar": "Check out {{name}}"
+  },
+  "Twilio integration": {
+    "fr": "Twilio integration",
+    "ar": "Twilio integration"
+  },
+  "Late arrival grace": {
+    "fr": "Late arrival grace",
+    "ar": "Late arrival grace"
+  },
+  "{{count}} in queue": {
+    "fr": "{{count}} in queue",
+    "ar": "{{count}} in queue"
+  },
+  "Last used {{when}}": {
+    "fr": "Dernière utilisation {{when}}",
+    "ar": "آخر استخدام {{when}}"
+  },
+  "Has Beautonomi app": {
+    "fr": "Has Beautonomi app",
+    "ar": "Has Beautonomi app"
+  },
+  "Repeat {{pattern}}": {
+    "fr": "Repeat {{pattern}}",
+    "ar": "Repeat {{pattern}}"
+  },
+  "VAT ({{percent}}%)": {
+    "fr": "VAT ({{percent}}%)",
+    "ar": "VAT ({{percent}}%)"
+  },
+  "No recent activity": {
+    "fr": "Non recent activity",
+    "ar": "لا recent activity"
+  },
+  "Twilio Integration": {
+    "fr": "Twilio Integration",
+    "ar": "Twilio Integration"
+  },
+  "is_active not true": {
+    "fr": "is_active not true",
+    "ar": "is_active not true"
+  },
+  " · line {{amount}}": {
+    "fr": " · line {{amount}}",
+    "ar": " · line {{amount}}"
+  },
+  "Collapse {{title}}": {
+    "fr": "Collapse {{title}}",
+    "ar": "Collapse {{title}}"
+  },
+  "Describe this form": {
+    "fr": "Describe this form",
+    "ar": "Describe this form"
+  },
+  "No confident match": {
+    "fr": "Non confident match",
+    "ar": "لا confident match"
+  },
+  "{{count}} variants": {
+    "fr": "{{count}} variants",
+    "ar": "{{count}} variants"
+  },
+  "Suite, floor, etc.": {
+    "fr": "Suite, floor, etc.",
+    "ar": "Suite, floor, etc."
+  },
+  "Requested {{date}}": {
+    "fr": "Demandé le {{date}}",
+    "ar": "طُلب في {{date}}"
+  },
+  "Supply: {{amount}}": {
+    "fr": "Supply: {{amount}}",
+    "ar": "Supply: {{amount}}"
+  },
+  "This week · ledger": {
+    "fr": "This semaine · ledger",
+    "ar": "This أسبوع · ledger"
+  },
+  "Cannot exceed 100%": {
+    "fr": "Cannot exceed 100%",
+    "ar": "Cannot exceed 100%"
+  },
+  "Yoco not connected": {
+    "fr": "Yoco not connected",
+    "ar": "Yoco not connected"
+  },
+  "Tiered Commissions": {
+    "fr": "Tiered Commissions",
+    "ar": "Tiered Commissions"
+  },
+  "VAT No. {{number}}": {
+    "fr": "VAT Non. {{number}}",
+    "ar": "VAT لا. {{number}}"
+  },
+  "Deadline: {{date}}": {
+    "fr": "Deadline: {{date}}",
+    "ar": "Deadline: {{date}}"
+  },
+  "No resource groups": {
+    "fr": "Non resource groups",
+    "ar": "لا resource groups"
+  },
+  "{{count}} resource": {
+    "fr": "{{count}} resource",
+    "ar": "{{count}} resource"
+  },
+  " · {{description}}": {
+    "fr": " · {{description}}",
+    "ar": " · {{description}}"
+  },
+  "What this compares": {
+    "fr": "What this compares",
+    "ar": "What this compares"
+  },
+  "Route for {{date}}": {
+    "fr": "Route for {{date}}",
+    "ar": "Route for {{date}}"
+  },
+  "{{month}} {{year}}": {
+    "fr": "{{month}} {{year}}",
+    "ar": "{{month}} {{year}}"
+  },
+  "Capture · {{date}}": {
+    "fr": "Capture · {{date}}",
+    "ar": "Capture · {{date}}"
+  },
+  "App not configured": {
+    "fr": "App non configurée",
+    "ar": "التطبيق غير مهيأ"
+  },
+  "Assign to {{name}}": {
+    "fr": "Assign to {{name}}",
+    "ar": "Assign to {{name}}"
+  },
+  "Tip ({{currency}})": {
+    "fr": "Tip ({{currency}})",
+    "ar": "Tip ({{currency}})"
+  },
+  "On file: {{value}}": {
+    "fr": "On file: {{value}}",
+    "ar": "On file: {{value}}"
+  },
+  "Move {{name}} down": {
+    "fr": "Move {{name}} down",
+    "ar": "Move {{name}} down"
+  },
+  "Conversations list": {
+    "fr": "Liste des conversations",
+    "ar": "قائمة المحادثات"
+  },
+  "Need 8+ characters": {
+    "fr": "8 caractères minimum",
+    "ar": "يلزم 8 أحرف على الأقل"
+  },
+  "Permanent deletion": {
+    "fr": "Suppression définitive",
+    "ar": "حذف نهائي"
+  },
+  "Visit instructions": {
+    "fr": "Instructions de visite",
+    "ar": "تعليمات الزيارة"
+  },
+  "e.g. Sunset Towers": {
+    "fr": "ex. Sunset Towers",
+    "ar": "مثال: Sunset Towers"
+  },
+  "Beauty preferences": {
+    "fr": "Préférences beauté",
+    "ar": "تفضيلات التجميل"
+  },
+  "School / education": {
+    "fr": "École / études",
+    "ar": "المدرسة / التعليم"
+  },
+  "Personal info form": {
+    "fr": "Formulaire d’infos personnelles",
+    "ar": "نموذج المعلومات الشخصية"
+  },
+  " · Renews {{date}}": {
+    "fr": " · Renouvelle le {{date}}",
+    "ar": " · يتجدد في {{date}}"
+  },
+  "Setting things up…": {
+    "fr": "Configuration en cours…",
+    "ar": "جارٍ الإعداد…"
+  },
+  "WhatsApp reminders": {
+    "fr": "Rappels WhatsApp",
+    "ar": "تذكيرات WhatsApp"
+  },
+  "Tax ({{percent}}%)": {
+    "fr": "Tax ({{percent}}%)",
+    "ar": "Tax ({{percent}}%)"
+  },
+  "Switch to {{host}}": {
+    "fr": "Switch to {{host}}",
+    "ar": "Switch to {{host}}"
+  },
+  "Get Beautonomi apps": {
+    "fr": "Get Beautonomi apps",
+    "ar": "Get Beautonomi apps"
+  },
+  "Included {{amount}}": {
+    "fr": "Included {{amount}}",
+    "ar": "Included {{amount}}"
+  },
+  "Ends in ~{{hours}}h": {
+    "fr": "Ends in ~{{hours}}h",
+    "ar": "Ends in ~{{hours}}h"
+  },
+  "Checked in {{time}}": {
+    "fr": "Checked in {{time}}",
+    "ar": "Checked in {{time}}"
+  },
+  "{{name}} · ×{{qty}}": {
+    "fr": "{{name}} · ×{{qty}}",
+    "ar": "{{name}} · ×{{qty}}"
+  },
+  "Prepare fulfillment": {
+    "fr": "Prepare fulfillment",
+    "ar": "Prepare fulfillment"
+  },
+  "Awaiting collection": {
+    "fr": "Awaiting collection",
+    "ar": "Awaiting collection"
+  },
+  "{{day}} open toggle": {
+    "fr": "{{day}} ouvrir toggle",
+    "ar": "{{day}} فتح toggle"
+  },
+  "Subscribe {{price}}": {
+    "fr": "Subscribe {{price}}",
+    "ar": "Subscribe {{price}}"
+  },
+  "e.g. Senior Stylist": {
+    "fr": "e.g. Senior Stylist",
+    "ar": "e.g. Senior Stylist"
+  },
+  "Landmarks: {{text}}": {
+    "fr": "Landmarks: {{text}}",
+    "ar": "Landmarks: {{text}}"
+  },
+  "Yoco webhook secret": {
+    "fr": "Yoco webhook secret",
+    "ar": "Yoco webhook secret"
+  },
+  "{{amount}} received": {
+    "fr": "{{amount}} received",
+    "ar": "{{amount}} received"
+  },
+  "{{amount}} captured": {
+    "fr": "{{amount}} captured",
+    "ar": "{{amount}} captured"
+  },
+  "{{vendor}}{{model}}": {
+    "fr": "{{vendor}}{{model}}",
+    "ar": "{{vendor}}{{model}}"
+  },
+  " · +{{minutes}} min": {
+    "fr": " · +{{minutes}} min",
+    "ar": " · +{{minutes}} min"
+  },
+  "{{day}} open switch": {
+    "fr": "{{day}} ouvrir switch",
+    "ar": "{{day}} فتح switch"
+  },
+  "Scheduling Conflict": {
+    "fr": "Scheduling Conflict",
+    "ar": "Scheduling Conflict"
+  },
+  "repeats {{pattern}}": {
+    "fr": "repeats {{pattern}}",
+    "ar": "repeats {{pattern}}"
+  },
+  "Contains {{parts}}.": {
+    "fr": "Contains {{parts}}.",
+    "ar": "Contains {{parts}}."
+  },
+  "Make this recurring": {
+    "fr": "Make this recurring",
+    "ar": "Make this recurring"
+  },
+  "Currently: {{time}}": {
+    "fr": "Currently: {{time}}",
+    "ar": "Currently: {{time}}"
+  },
+  "Nothing outstanding": {
+    "fr": "Nothing outstanding",
+    "ar": "Nothing outstanding"
+  },
+  "Commission Rate (%)": {
+    "fr": "Commission Rate (%)",
+    "ar": "Commission Rate (%)"
+  },
+  "{{start}} – {{end}}": {
+    "fr": "{{start}} – {{end}}",
+    "ar": "{{start}} – {{end}}"
+  },
+  "Facts & definitions": {
+    "fr": "Facts & definitions",
+    "ar": "Facts & definitions"
+  },
+  "Awaiting final sync": {
+    "fr": "Awaiting final sync",
+    "ar": "Awaiting final sync"
+  },
+  "In-store collection": {
+    "fr": "In-store collection",
+    "ar": "In-store collection"
+  },
+  "Sellable: {{value}}": {
+    "fr": "Sellable: {{value}}",
+    "ar": "Sellable: {{value}}"
+  },
+  "No Shows: {{count}}": {
+    "fr": "Non Shows: {{count}}",
+    "ar": "لا Shows: {{count}}"
+  },
+  "{{count}} templates": {
+    "fr": "{{count}} templates",
+    "ar": "{{count}} templates"
+  },
+  "Template content...": {
+    "fr": "Template content...",
+    "ar": "Template content..."
+  },
+  "Rooms and equipment": {
+    "fr": "Rooms and equipment",
+    "ar": "Rooms and equipment"
+  },
+  "{{name}} · {{plan}}": {
+    "fr": "{{name}} · {{plan}}",
+    "ar": "{{name}} · {{plan}}"
+  },
+  "Video — tap to open": {
+    "fr": "Video — tap to ouvrir",
+    "ar": "Video — tap to فتح"
+  },
+  "Avg ledger earnings": {
+    "fr": "Avg ledger earnings",
+    "ar": "Avg ledger earnings"
+  },
+  "Window · {{period}}": {
+    "fr": "Window · {{period}}",
+    "ar": "Window · {{period}}"
+  },
+  "All SKUs with lines": {
+    "fr": "All SKUs with lines",
+    "ar": "All SKUs with lines"
+  },
+  "{{count}} line rows": {
+    "fr": "{{count}} line rows",
+    "ar": "{{count}} line rows"
+  },
+  "{{count}} resources": {
+    "fr": "{{count}} resources",
+    "ar": "{{count}} resources"
+  },
+  "Recognized earnings": {
+    "fr": "Recognized earnings",
+    "ar": "Recognized earnings"
+  },
+  "e.g. Taking a break": {
+    "fr": "ex. Pause temporaire",
+    "ar": "مثال: أخذ استراحة"
+  },
+  "Row cap · {{limit}}": {
+    "fr": "Row cap · {{limit}}",
+    "ar": "Row cap · {{limit}}"
+  },
+  "{{count}}/{{limit}}": {
+    "fr": "{{count}}/{{limit}}",
+    "ar": "{{count}}/{{limit}}"
+  },
+  "Note: {{reference}}": {
+    "fr": "Note: {{reference}}",
+    "ar": "Note: {{reference}}"
+  },
+  "Use color {{color}}": {
+    "fr": "Use color {{color}}",
+    "ar": "Use color {{color}}"
+  },
+  "{{count}} recipient": {
+    "fr": "{{count}} recipient",
+    "ar": "{{count}} recipient"
+  },
+  "How this feed works": {
+    "fr": "How this feed works",
+    "ar": "How this feed works"
+  },
+  "Up to 20 characters": {
+    "fr": "Up to 20 characters",
+    "ar": "Up to 20 characters"
+  },
+  "Install Partner app": {
+    "fr": "Installer l’app partenaire",
+    "ar": "تثبيت تطبيق الشريك"
+  },
+  "Only {{count}} left": {
+    "fr": "Plus que {{count}}",
+    "ar": "تبقى {{count}} فقط"
+  },
+  "Scheduling conflict": {
+    "fr": "Conflit d’horaire",
+    "ar": "تعارض في المواعيد"
+  },
+  "Building: {{value}}": {
+    "fr": "Bâtiment : {{value}}",
+    "ar": "المبنى: {{value}}"
+  },
+  "e.g. Visitor bay 12": {
+    "fr": "ex. Place visiteur 12",
+    "ar": "مثال: موقف الزوار 12"
+  },
+  "No submissions yet.": {
+    "fr": "Non submissions yet.",
+    "ar": "لا submissions yet."
+  },
+  "Relaxed & unhurried": {
+    "fr": "Détendu et sans précipitation",
+    "ar": "مريح وغير مستعجل"
+  },
+  "e.g. Spouse, Parent": {
+    "fr": "ex. Conjoint, parent",
+    "ar": "مثال: زوج، والد"
+  },
+  "/api/me/preferences": {
+    "fr": "/api/me/preferences",
+    "ar": "/api/me/preferences"
+  },
+  "HTTP {{statusCode}}": {
+    "fr": "HTTP {{statusCode}}",
+    "ar": "HTTP {{statusCode}}"
+  },
+  "e.g. 12 Main Street": {
+    "fr": "ex. 12 rue Principale",
+    "ar": "مثال: 12 Main Street"
+  },
+  "Harassment or abuse": {
+    "fr": "Harcèlement ou abus",
+    "ar": "تحرش أو إساءة"
+  },
+  "{{min}}–{{max}} min": {
+    "fr": "{{min}}–{{max}} min",
+    "ar": "{{min}}–{{max}} د"
+  },
+  "Market availability": {
+    "fr": "Market availability",
+    "ar": "Market availability"
+  },
+  "Checking your setup…": {
+    "fr": "Checking your setup…",
+    "ar": "Checking your setup…"
+  },
+  "Fastest availability": {
+    "fr": "Disponibilité la plus rapide",
+    "ar": "أسرع توفر"
+  },
+  "You’re all caught up": {
+    "fr": "You’re all caught up",
+    "ar": "You’re all caught up"
+  },
+  "Purchased {{amount}}": {
+    "fr": "Purchased {{amount}}",
+    "ar": "Purchased {{amount}}"
+  },
+  "Resuming your setup…": {
+    "fr": "Resuming your setup…",
+    "ar": "Resuming your setup…"
+  },
+  "{{count}} control on": {
+    "fr": "{{count}} contrôle activé",
+    "ar": "ضابط واحد مفعّل ({{count}})"
+  },
+  "Budget top-up needed": {
+    "fr": "Budget top-up needed",
+    "ar": "Budget top-up needed"
+  },
+  "{{date}} at {{time}}": {
+    "fr": "{{date}} at {{time}}",
+    "ar": "{{date}} at {{time}}"
+  },
+  "{{amount}} × {{qty}}": {
+    "fr": "{{amount}} × {{qty}}",
+    "ar": "{{amount}} × {{qty}}"
+  },
+  "{{count}} of {{cap}}": {
+    "fr": "{{count}} of {{cap}}",
+    "ar": "{{count}} of {{cap}}"
+  },
+  "Yoco, methods, taxes": {
+    "fr": "Yoco, methods, taxes",
+    "ar": "Yoco, methods, taxes"
+  },
+  " · {{count}} blocked": {
+    "fr": " · {{count}} blocked",
+    "ar": " · {{count}} blocked"
+  },
+  "Arrival not recorded": {
+    "fr": "Arrival not recorded",
+    "ar": "Arrival not recorded"
+  },
+  "Billed through Apple": {
+    "fr": "Billed through Apple",
+    "ar": "Billed through Apple"
+  },
+  " to restore Web POS.": {
+    "fr": " to restore Web POS.",
+    "ar": " to restore Web POS."
+  },
+  "Signed in with Apple": {
+    "fr": "Connecté avec Apple",
+    "ar": "تم تسجيل الدخول عبر Apple"
+  },
+  "e.g. Payflex, Square": {
+    "fr": "e.g. Payflex, Square",
+    "ar": "e.g. Payflex, Square"
+  },
+  "Markup: {{percent}}%": {
+    "fr": "Markup: {{percent}}%",
+    "ar": "Markup: {{percent}}%"
+  },
+  "{{count}} ({{pct}}%)": {
+    "fr": "{{count}} ({{pct}}%)",
+    "ar": "{{count}} ({{pct}}%)"
+  },
+  "Company registration": {
+    "fr": "Company registration",
+    "ar": "Company registration"
+  },
+  "Ledger net by status": {
+    "fr": "Ledger net by statut",
+    "ar": "Ledger net by حالة"
+  },
+  "Attachment {{index}}": {
+    "fr": "Pièce jointe {{index}}",
+    "ar": "المرفق {{index}}"
+  },
+  "Commission: {{name}}": {
+    "fr": "Commission: {{name}}",
+    "ar": "Commission: {{name}}"
+  },
+  "{{staff}} · {{days}}": {
+    "fr": "{{staff}} · {{days}}",
+    "ar": "{{staff}} · {{days}}"
+  },
+  "Visible to all users": {
+    "fr": "Visible to all users",
+    "ar": "Visible to all users"
+  },
+  "e.g. Treatment Rooms": {
+    "fr": "e.g. Treatment Rooms",
+    "ar": "e.g. Treatment Rooms"
+  },
+  "{{count}} ({{rate}})": {
+    "fr": "{{count}} ({{rate}})",
+    "ar": "{{count}} ({{rate}})"
+  },
+  "First visit {{date}}": {
+    "fr": "First visit {{date}}",
+    "ar": "First visit {{date}}"
+  },
+  "Integrations and ads": {
+    "fr": "Integrations and ads",
+    "ar": "Integrations and ads"
+  },
+  " Note: {{reference}}": {
+    "fr": " Note: {{reference}}",
+    "ar": " Note: {{reference}}"
+  },
+  "Subject: {{subject}}": {
+    "fr": "Subject: {{subject}}",
+    "ar": "Subject: {{subject}}"
+  },
+  "{{count}} recipients": {
+    "fr": "{{count}} recipients",
+    "ar": "{{count}} recipients"
+  },
+  "Why are you leaving?": {
+    "fr": "Pourquoi partez-vous ?",
+    "ar": "لماذا تغادر؟"
+  },
+  "Conversation actions": {
+    "fr": "Actions de la conversation",
+    "ar": "إجراءات المحادثة"
+  },
+  "Item arrived damaged": {
+    "fr": "Article arrivé endommagé",
+    "ar": "وصل العنصر تالفًا"
+  },
+  "Decade you were born": {
+    "fr": "Décennie de naissance",
+    "ar": "العقد الذي وُلدت فيه"
+  },
+  "{{count}} characters": {
+    "fr": "{{count}} characters",
+    "ar": "{{count}} characters"
+  },
+  "Reserving your slot…": {
+    "fr": "Reserving your slot…",
+    "ar": "Reserving your slot…"
+  },
+  "Looks like you're in": {
+    "fr": "Looks like you're in",
+    "ar": "Looks like you're in"
+  },
+  "Variables: {{tokens}}": {
+    "fr": "Variables: {{tokens}}",
+    "ar": "Variables: {{tokens}}"
+  },
+  "Resource requirements": {
+    "fr": "Resource requirements",
+    "ar": "Resource requirements"
+  },
+  "{{count}} controls on": {
+    "fr": "{{count}} contrôles activés",
+    "ar": "{{count}} ضوابط مفعّلة"
+  },
+  "{{label}} ({{count}})": {
+    "fr": "{{label}} ({{count}})",
+    "ar": "{{label}} ({{count}})"
+  },
+  "{{name}} · {{amount}}": {
+    "fr": "{{name}} · {{amount}}",
+    "ar": "{{name}} · {{amount}}"
+  },
+  "Toggle VAT registered": {
+    "fr": "Basculer l’immatriculation TVA",
+    "ar": "تبديل التسجيل في الضريبة"
+  },
+  "No resources assigned": {
+    "fr": "Non resources assigned",
+    "ar": "لا resources assigned"
+  },
+  "{{title}} integration": {
+    "fr": "Intégration {{title}}",
+    "ar": "تكامل {{title}}"
+  },
+  "Couldn't check status": {
+    "fr": "Couldn't check statut",
+    "ar": "Couldn't check حالة"
+  },
+  "How to find your keys": {
+    "fr": "Où trouver vos clés",
+    "ar": "كيفية العثور على مفاتيحك"
+  },
+  "How to find Yoco keys": {
+    "fr": "Où trouver les clés Yoco",
+    "ar": "كيفية العثور على مفاتيح Yoco"
+  },
+  "Commission {{amount}}": {
+    "fr": "Commission {{amount}}",
+    "ar": "العمولة {{amount}}"
+  },
+  "Paystack ref: {{ref}}": {
+    "fr": "Réf. Paystack : {{ref}}",
+    "ar": "مرجع Paystack: {{ref}}"
+  },
+  "At least 8 characters": {
+    "fr": "Au moins 8 caractères",
+    "ar": "8 أحرف على الأقل"
+  },
+  "Go to setup checklist": {
+    "fr": "Go to setup checklist",
+    "ar": "Go to setup checklist"
+  },
+  "Quick in-person sales": {
+    "fr": "Quick in-person sales",
+    "ar": "Quick in-person sales"
+  },
+  "Shipping & collection": {
+    "fr": "Shipping & collection",
+    "ar": "Shipping & collection"
+  },
+  "Scheduling & controls": {
+    "fr": "Scheduling & controls",
+    "ar": "Scheduling & controls"
+  },
+  "{{amount}} recognized": {
+    "fr": "{{amount}} recognized",
+    "ar": "{{amount}} recognized"
+  },
+  "Try different filters": {
+    "fr": "Try different filters",
+    "ar": "Try different filters"
+  },
+  "Day {{date}} · {{tz}}": {
+    "fr": "Jour {{date}} · {{tz}}",
+    "ar": "يوم {{date}} · {{tz}}"
+  },
+  "Applies to: {{scope}}": {
+    "fr": "Applies to: {{scope}}",
+    "ar": "Applies to: {{scope}}"
+  },
+  "{{title}} · {{count}}": {
+    "fr": "{{title}} · {{count}}",
+    "ar": "{{title}} · {{count}}"
+  },
+  "Min {{amount}} per km": {
+    "fr": "Min {{amount}} per km",
+    "ar": "Min {{amount}} per km"
+  },
+  "Max {{amount}} per km": {
+    "fr": "Max {{amount}} per km",
+    "ar": "Max {{amount}} per km"
+  },
+  "Use Platform Defaults": {
+    "fr": "Use Platform Defaults",
+    "ar": "Use Platform Defaults"
+  },
+  "You're all caught up!": {
+    "fr": "You're all caught up!",
+    "ar": "You're all caught up!"
+  },
+  "{{count}} transaction": {
+    "fr": "{{count}} transaction",
+    "ar": "{{count}} transaction"
+  },
+  "Q{{quarter}} {{year}}": {
+    "fr": "Q{{quarter}} {{year}}",
+    "ar": "Q{{quarter}} {{year}}"
+  },
+  "Not visible to anyone": {
+    "fr": "Not visible to anyone",
+    "ar": "Not visible to anyone"
+  },
+  "Everything looks good": {
+    "fr": "Everything looks good",
+    "ar": "Everything looks good"
+  },
+  "Ledger net recognised": {
+    "fr": "Ledger net recognised",
+    "ar": "Ledger net recognised"
+  },
+  "Repeat offenders (2+)": {
+    "fr": "Repeat offenders (2+)",
+    "ar": "Repeat offenders (2+)"
+  },
+  "Ledger net (platform)": {
+    "fr": "Ledger net (platform)",
+    "ar": "Ledger net (platform)"
+  },
+  ". Note: {{reference}}": {
+    "fr": ". Note: {{reference}}",
+    "ar": ". Note: {{reference}}"
+  },
+  "Repeats every {{day}}": {
+    "fr": "Se répète chaque {{day}}",
+    "ar": "يتكرر كل {{day}}"
+  },
+  "Actions for {{title}}": {
+    "fr": "Actions for {{title}}",
+    "ar": "Actions for {{title}}"
+  },
+  "e.g. Treatment Room 1": {
+    "fr": "e.g. Treatment Room 1",
+    "ar": "e.g. Treatment Room 1"
+  },
+  "Requested on {{date}}": {
+    "fr": "Demandé le {{date}}",
+    "ar": "طُلب في {{date}}"
+  },
+  "{{count}} x {{price}}": {
+    "fr": "{{count}} × {{price}}",
+    "ar": "{{count}} × {{price}}"
+  },
+  "Running a little late": {
+    "fr": "Un peu en retard",
+    "ar": "متأخر قليلًا"
+  },
+  "e.g. Nickel, Latex...": {
+    "fr": "ex. Nickel, latex…",
+    "ar": "مثال: نيكل، لاتكس..."
+  },
+  "📍 {{name}}, {{city}}": {
+    "fr": "📍 {{name}}, {{city}}",
+    "ar": "📍 {{name}}، {{city}}"
+  },
+  "Inappropriate content": {
+    "fr": "Contenu inapproprié",
+    "ar": "محتوى غير لائق"
+  },
+  "Inspiration {{index}}": {
+    "fr": "Inspiration {{index}}",
+    "ar": "Inspiration {{index}}"
+  },
+  "Tell us how to improve": {
+    "fr": "Tell us how to improve",
+    "ar": "Tell us how to improve"
+  },
+  "App Store / Play Store": {
+    "fr": "App Store / Play Store",
+    "ar": "App Store / Play Store"
+  },
+  "Aspect ratio {{label}}": {
+    "fr": "Aspect ratio {{label}}",
+    "ar": "Aspect ratio {{label}}"
+  },
+  "No internet connection": {
+    "fr": "Non internet connection",
+    "ar": "لا internet connection"
+  },
+  " · {{count}} spot open": {
+    "fr": " · {{count}} spot ouvrir",
+    "ar": " · {{count}} spot فتح"
+  },
+  "Marketing integrations": {
+    "fr": "Marketing integrations",
+    "ar": "Marketing integrations"
+  },
+  "e.g. Aramex, DHL, Paxi": {
+    "fr": "e.g. Aramex, DHL, Paxi",
+    "ar": "e.g. Aramex, DHL, Paxi"
+  },
+  "• {{label}}: {{value}}": {
+    "fr": "• {{label}} : {{value}}",
+    "ar": "• {{label}}: {{value}}"
+  },
+  "~{{minutes}} min drive": {
+    "fr": "~{{minutes}} min de trajet",
+    "ar": "حوالي {{minutes}} د قيادة"
+  },
+  "e.g. Colour correction": {
+    "fr": "e.g. Colour correction",
+    "ar": "e.g. Colour correction"
+  },
+  "Try a different filter": {
+    "fr": "Try a different filtrer",
+    "ar": "Try a different تصفية"
+  },
+  "e.g. Christmas Holiday": {
+    "fr": "e.g. Christmas Holiday",
+    "ar": "e.g. Christmas Holiday"
+  },
+  "{{label}} · {{status}}": {
+    "fr": "{{label}} · {{status}}",
+    "ar": "{{label}} · {{status}}"
+  },
+  "Ledger net · {{label}}": {
+    "fr": "Ledger net · {{label}}",
+    "ar": "Ledger net · {{label}}"
+  },
+  "Value ({{currency}}) *": {
+    "fr": "Value ({{currency}}) *",
+    "ar": "Value ({{currency}}) *"
+  },
+  "Renews / ends {{date}}": {
+    "fr": "Renews / ends {{date}}",
+    "ar": "Renews / ends {{date}}"
+  },
+  "{{count}} conversation": {
+    "fr": "{{count}} conversation",
+    "ar": "{{count}} conversation"
+  },
+  "({{count}}) · {{pct}}%": {
+    "fr": "({{count}}) · {{pct}}%",
+    "ar": "({{count}}) · {{pct}}%"
+  },
+  "Control what's visible": {
+    "fr": "Control what's visible",
+    "ar": "Control what's visible"
+  },
+  "{{amount}} ({{count}})": {
+    "fr": "{{amount}} ({{count}})",
+    "ar": "{{amount}} ({{count}})"
+  },
+  "Requested {{datetime}}": {
+    "fr": "Requested {{datetime}}",
+    "ar": "Requested {{datetime}}"
+  },
+  "No sales in this range": {
+    "fr": "Non sales in this range",
+    "ar": "لا sales in this range"
+  },
+  "Clocked in at {{time}}": {
+    "fr": "Clocked in at {{time}}",
+    "ar": "Clocked in at {{time}}"
+  },
+  "{{count}} in {{range}}": {
+    "fr": "{{count}} in {{range}}",
+    "ar": "{{count}} in {{range}}"
+  },
+  "{{name}} x{{quantity}}": {
+    "fr": "{{name}} ×{{quantity}}",
+    "ar": "{{name}} ×{{quantity}}"
+  },
+  "{{name}} — {{service}}": {
+    "fr": "{{name}} — {{service}}",
+    "ar": "{{name}} — {{service}}"
+  },
+  "{{name}} ×{{quantity}}": {
+    "fr": "{{name}} ×{{quantity}}",
+    "ar": "{{name}} ×{{quantity}}"
+  },
+  "Automated verification": {
+    "fr": "Vérification automatisée",
+    "ar": "تحقق آلي"
+  },
+  "What should I include?": {
+    "fr": "Que dois-je inclure ?",
+    "ar": "ماذا يجب أن أضمّن؟"
+  },
+  "Minimum ({{currency}})": {
+    "fr": "Minimum ({{currency}})",
+    "ar": "Minimum ({{currency}})"
+  },
+  "Maximum ({{currency}})": {
+    "fr": "Maximum ({{currency}})",
+    "ar": "Maximum ({{currency}})"
+  },
+  "South Africa storefront": {
+    "fr": "Vitrine Afrique du Sud",
+    "ar": "واجهة جنوب أفريقيا"
+  },
+  " · Bid {{amount}}/click": {
+    "fr": " · Bid {{amount}}/click",
+    "ar": " · Bid {{amount}}/click"
+  },
+  "{{label}} ({{variant}})": {
+    "fr": "{{label}} ({{variant}})",
+    "ar": "{{label}} ({{variant}})"
+  },
+  " · {{count}} spots open": {
+    "fr": " · {{count}} spots ouvrir",
+    "ar": " · {{count}} spots فتح"
+  },
+  "{{action}} {{language}}": {
+    "fr": "{{action}} {{language}}",
+    "ar": "{{action}} {{language}}"
+  },
+  "SMS & WhatsApp (Twilio)": {
+    "fr": "SMS & WhatsApp (Twilio)",
+    "ar": "SMS & WhatsApp (Twilio)"
+  },
+  "e.g. 1Z999AA10123456784": {
+    "fr": "e.g. 1Z999AA10123456784",
+    "ar": "e.g. 1Z999AA10123456784"
+  },
+  "Yoco integration status": {
+    "fr": "Yoco integration statut",
+    "ar": "Yoco integration حالة"
+  },
+  "Tip {{percent}} percent": {
+    "fr": "Tip {{percent}} percent",
+    "ar": "Tip {{percent}} percent"
+  },
+  "{{current}} / {{total}}": {
+    "fr": "{{current}} / {{total}}",
+    "ar": "{{current}} / {{total}}"
+  },
+  "{{bank}} ···· {{last4}}": {
+    "fr": "{{bank}} ···· {{last4}}",
+    "ar": "{{bank}} ···· {{last4}}"
+  },
+  "Preferred: {{datetime}}": {
+    "fr": "Préféré : {{datetime}}",
+    "ar": "المفضل: {{datetime}}"
+  },
+  "{{base}} · {{location}}": {
+    "fr": "{{base}} · {{location}}",
+    "ar": "{{base}} · {{location}}"
+  },
+  "{{growth}}% {{compare}}": {
+    "fr": "{{growth}}% {{compare}}",
+    "ar": "{{growth}}% {{compare}}"
+  },
+  "What is the term sheet?": {
+    "fr": "What is the term sheet?",
+    "ar": "What is the term sheet?"
+  },
+  "JPEG or PNG · max 10 MB": {
+    "fr": "JPEG or PNG · max 10 MB",
+    "ar": "JPEG or PNG · max 10 MB"
+  },
+  "Ledger types: {{types}}": {
+    "fr": "Ledger types: {{types}}",
+    "ar": "Ledger types: {{types}}"
+  },
+  "{{count}} conversations": {
+    "fr": "{{count}} conversations",
+    "ar": "{{count}} conversations"
+  },
+  "{{service}}: {{amount}}": {
+    "fr": "{{service}}: {{amount}}",
+    "ar": "{{service}}: {{amount}}"
+  },
+  "Gross sales (liability)": {
+    "fr": "Gross sales (liability)",
+    "ar": "Gross sales (liability)"
+  },
+  "Reusable note templates": {
+    "fr": "Reusable note templates",
+    "ar": "Reusable note templates"
+  },
+  "Resources and equipment": {
+    "fr": "Resources and equipment",
+    "ar": "Resources and equipment"
+  },
+  "How lists are displayed": {
+    "fr": "How lists are displayed",
+    "ar": "How lists are displayed"
+  },
+  " · Retained by platform": {
+    "fr": " · Retained by platform",
+    "ar": " · Retained by platform"
+  },
+  "Platform commission (%)": {
+    "fr": "Platform commission (%)",
+    "ar": "Platform commission (%)"
+  },
+  "Beautonomi v{{version}}": {
+    "fr": "Beautonomi v{{version}}",
+    "ar": "Beautonomi v{{version}}"
+  },
+  "Changes to {{planName}}": {
+    "fr": "Modifications de {{planName}}",
+    "ar": "تغييرات على {{planName}}"
+  },
+  "Need {{min}}+ to redeem": {
+    "fr": "{{min}}+ requis pour utiliser",
+    "ar": "يلزم {{min}}+ للاسترداد"
+  },
+  "Unprofessional behavior": {
+    "fr": "Comportement non professionnel",
+    "ar": "سلوك غير مهني"
+  },
+  "Pay with •••• {{last4}}": {
+    "fr": "Pay with •••• {{last4}}",
+    "ar": "Pay with •••• {{last4}}"
+  },
+  "{{plan}} ({{percent}}%)": {
+    "fr": "{{plan}} ({{percent}}%)",
+    "ar": "{{plan}} ({{percent}}%)"
+  },
+  "Assign to something else": {
+    "fr": "Assign to something else",
+    "ar": "Assign to something else"
+  },
+  "Sensitive content filter": {
+    "fr": "Sensitive content filtrer",
+    "ar": "Sensitive content تصفية"
+  },
+  "{{quantity}} × {{price}}": {
+    "fr": "{{quantity}} × {{price}}",
+    "ar": "{{quantity}} × {{price}}"
+  },
+  "Couldn't reopen Paystack": {
+    "fr": "Couldn't reopen Paystack",
+    "ar": "Couldn't reopen Paystack"
+  },
+  "Commission rates & tiers": {
+    "fr": "Commission rates & tiers",
+    "ar": "Commission rates & tiers"
+  },
+  "{{count}} visits planned": {
+    "fr": "{{count}} visits planned",
+    "ar": "{{count}} visits planned"
+  },
+  "https://x.com/yourhandle": {
+    "fr": "https://x.com/yourhandle",
+    "ar": "https://x.com/yourhandle"
+  },
+  "I am planning to get one": {
+    "fr": "I am planning to get one",
+    "ar": "I am planning to get one"
+  },
+  "Toggle {{day}} {{state}}": {
+    "fr": "Toggle {{day}} {{state}}",
+    "ar": "Toggle {{day}} {{state}}"
+  },
+  "Comma or space separated": {
+    "fr": "Comma or space separated",
+    "ar": "Comma or space separated"
+  },
+  "Performance ({{period}})": {
+    "fr": "Performance ({{period}})",
+    "ar": "Performance ({{period}})"
+  },
+  "Completion rate: {{pct}}": {
+    "fr": "Completion rate: {{pct}}",
+    "ar": "Completion rate: {{pct}}"
+  },
+  "${{amount}} {{currency}}": {
+    "fr": "${{amount}} {{currency}}",
+    "ar": "${{amount}} {{currency}}"
+  },
+  "Get notified immediately": {
+    "fr": "Get notified immediately",
+    "ar": "Get notified immediately"
+  },
+  "{{count}} form templates": {
+    "fr": "{{count}} form templates",
+    "ar": "{{count}} form templates"
+  },
+  "From {{date}} · {{time}}": {
+    "fr": "From {{date}} · {{time}}",
+    "ar": "From {{date}} · {{time}}"
+  },
+  "Used {{count}} / {{max}}": {
+    "fr": "Used {{count}} / {{max}}",
+    "ar": "Used {{count}} / {{max}}"
+  },
+  "Qty {{qty}} · {{amount}}": {
+    "fr": "Qty {{qty}} · {{amount}}",
+    "ar": "Qty {{qty}} · {{amount}}"
+  },
+  "  Ledger net: {{amount}}": {
+    "fr": "  Ledger net: {{amount}}",
+    "ar": "  Ledger net: {{amount}}"
+  },
+  "{{count}} ({{percent}}%)": {
+    "fr": "{{count}} ({{percent}}%)",
+    "ar": "{{count}} ({{percent}}%)"
+  },
+  "{{count}} · {{percent}}%": {
+    "fr": "{{count}} · {{percent}}%",
+    "ar": "{{count}} · {{percent}}%"
+  },
+  "Stop servicing {{name}}?": {
+    "fr": "Stop servicing {{name}}?",
+    "ar": "Stop servicing {{name}}?"
+  },
+  "Mark as remitted to SARS": {
+    "fr": "Mark as remitted to SARS",
+    "ar": "Mark as remitted to SARS"
+  },
+  "Window {{from}} → {{to}}": {
+    "fr": "Window {{from}} → {{to}}",
+    "ar": "Window {{from}} → {{to}}"
+  },
+  "Completion: {{percent}}%": {
+    "fr": "Completion: {{percent}}%",
+    "ar": "Completion: {{percent}}%"
+  },
+  "Transactions ({{count}})": {
+    "fr": "Transactions ({{count}})",
+    "ar": "Transactions ({{count}})"
+  },
+  "South African VAT at 15%": {
+    "fr": "South African VAT at 15%",
+    "ar": "South African VAT at 15%"
+  },
+  "Min Value ({{currency}})": {
+    "fr": "Min Value ({{currency}})",
+    "ar": "Min Value ({{currency}})"
+  },
+  "Max Value ({{currency}})": {
+    "fr": "Max Value ({{currency}})",
+    "ar": "Max Value ({{currency}})"
+  },
+  "Preparing for your visit": {
+    "fr": "Préparation de votre visite",
+    "ar": "الاستعداد لزيارتك"
+  },
+  "{{count}} / 10 chars min": {
+    "fr": "{{count}} / 10 chars min",
+    "ar": "{{count}} / 10 chars min"
+  },
+  "{{hours}}h {{minutes}}min": {
+    "fr": "{{hours}}h {{minutes}}min",
+    "ar": "{{hours}}h {{minutes}}min"
+  },
+  "e.g. Front desk, Portable": {
+    "fr": "e.g. Front desk, Portable",
+    "ar": "e.g. Front desk, Portable"
+  },
+  "Window: {{from}} → {{to}}": {
+    "fr": "Window: {{from}} → {{to}}",
+    "ar": "Window: {{from}} → {{to}}"
+  },
+  "{{name}}: larger than 5MB": {
+    "fr": "{{name}}: larger than 5MB",
+    "ar": "{{name}}: larger than 5MB"
+  },
+  "{{percent}}% ({{amount}})": {
+    "fr": "{{percent}}% ({{amount}})",
+    "ar": "{{percent}}% ({{amount}})"
+  },
+  "{{count}} pts to level up": {
+    "fr": "{{count}} pts to level up",
+    "ar": "{{count}} pts to level up"
+  },
+  "Some files were too large": {
+    "fr": "Some files were too large",
+    "ar": "Some files were too large"
+  },
+  "e.g. Vacation, Sick leave": {
+    "fr": "e.g. Vacation, Sick leave",
+    "ar": "e.g. Vacation, Sick leave"
+  },
+  "Leave blank for unlimited": {
+    "fr": "Leave blank for unlimited",
+    "ar": "Leave blank for unlimited"
+  },
+  "No payout hold configured": {
+    "fr": "Non payout hold configured",
+    "ar": "لا payout hold configured"
+  },
+  "Completion Rate: {{rate}}": {
+    "fr": "Completion Rate: {{rate}}",
+    "ar": "Completion Rate: {{rate}}"
+  },
+  "What documents do I need?": {
+    "fr": "What documents do I need?",
+    "ar": "What documents do I need?"
+  },
+  "Page {{page}} / {{total}}": {
+    "fr": "Page {{page}} / {{total}}",
+    "ar": "Page {{page}} / {{total}}"
+  },
+  "{{label}} · qty {{count}}": {
+    "fr": "{{label}} · qty {{count}}",
+    "ar": "{{label}} · qty {{count}}"
+  },
+  "Ledger window · {{range}}": {
+    "fr": "Ledger window · {{range}}",
+    "ar": "Ledger window · {{range}}"
+  },
+  "Permissions are read only": {
+    "fr": "Permissions are read only",
+    "ar": "Permissions are read only"
+  },
+  "Communication preferences": {
+    "fr": "Communication preferences",
+    "ar": "Communication preferences"
+  },
+  "e.g. Beauty Wholesale Co.": {
+    "fr": "e.g. Beauty Wholesale Co.",
+    "ar": "e.g. Beauty Wholesale Co."
+  },
+  "Thank you for visiting...": {
+    "fr": "Thank you for visiting...",
+    "ar": "Thank you for visiting..."
+  },
+  "Net {{net}} · Fee {{fee}}": {
+    "fr": "Net {{net}} · Fee {{fee}}",
+    "ar": "Net {{net}} · Fee {{fee}}"
+  },
+  "{{count}}/2000 characters": {
+    "fr": "{{count}}/2000 characters",
+    "ar": "{{count}}/2000 characters"
+  },
+  "No matching conversations": {
+    "fr": "Non matching conversations",
+    "ar": "لا matching conversations"
+  },
+  "From {{currency}} {{min}}": {
+    "fr": "À partir de {{currency}} {{min}}",
+    "ar": "من {{currency}} {{min}}"
+  },
+  "Gate: 1234, Buzzer: Apt 5": {
+    "fr": "Portail : 1234, sonnette : apt 5",
+    "ar": "البوابة: 1234، الجرس: شقة 5"
+  },
+  "Allergies & sensitivities": {
+    "fr": "Allergies et sensibilités",
+    "ar": "الحساسية والحساسيات"
+  },
+  "🇿🇦 South Africa detected": {
+    "fr": "🇿🇦 Afrique du Sud détectée",
+    "ar": "🇿🇦 تم اكتشاف جنوب أفريقيا"
+  },
+  "Registered company / salon": {
+    "fr": "Registered company / salon",
+    "ar": "Registered company / صالون"
+  },
+  "{{name}} · {{minutes}} min": {
+    "fr": "{{name}} · {{minutes}} min",
+    "ar": "{{name}} · {{minutes}} min"
+  },
+  "Organize rooms & equipment": {
+    "fr": "Organize rooms & equipment",
+    "ar": "Organize rooms & equipment"
+  },
+  "generated through {{date}}": {
+    "fr": "generated through {{date}}",
+    "ar": "generated through {{date}}"
+  },
+  "Page {{page}} of {{total}}": {
+    "fr": "Page {{page}} of {{total}}",
+    "ar": "Page {{page}} of {{total}}"
+  },
+  "{{courier}}: {{reference}}": {
+    "fr": "{{courier}}: {{reference}}",
+    "ar": "{{courier}}: {{reference}}"
+  },
+  "Recurring occurrence count": {
+    "fr": "Recurring occurrence count",
+    "ar": "Recurring occurrence count"
+  },
+  "{{pattern}} until {{date}}": {
+    "fr": "{{pattern}} until {{date}}",
+    "ar": "{{pattern}} until {{date}}"
+  },
+  "{{prefix}}Owed to platform": {
+    "fr": "{{prefix}}Owed to platform",
+    "ar": "{{prefix}}Owed to platform"
+  },
+  "Unsubscribe from Marketing": {
+    "fr": "Unsubscribe from Marketing",
+    "ar": "Unsubscribe from Marketing"
+  },
+  "{{schedule}} · {{service}}": {
+    "fr": "{{schedule}} · {{service}}",
+    "ar": "{{schedule}} · {{service}}"
+  },
+  "What would you like to do?": {
+    "fr": "What would you like to do?",
+    "ar": "What would you like to do?"
+  },
+  "Try adjusting your filters": {
+    "fr": "Try adjusting your filters",
+    "ar": "Try adjusting your filters"
+  },
+  "No results for this filter": {
+    "fr": "Non results for this filtrer",
+    "ar": "لا results for this تصفية"
+  },
+  "Minimum payout: {{amount}}": {
+    "fr": "Minimum payout: {{amount}}",
+    "ar": "Minimum payout: {{amount}}"
+  },
+  "What this dashboard counts": {
+    "fr": "What this dashboard counts",
+    "ar": "What this dashboard counts"
+  },
+  "  Completion: {{percent}}%": {
+    "fr": "  Completion: {{percent}}%",
+    "ar": "  Completion: {{percent}}%"
+  },
+  "({{count}} · {{percent}}%)": {
+    "fr": "({{count}} · {{percent}}%)",
+    "ar": "({{count}} · {{percent}}%)"
+  },
+  "Rate per km ({{currency}})": {
+    "fr": "Rate per km ({{currency}})",
+    "ar": "Rate per km ({{currency}})"
+  },
+  "No point transactions yet.": {
+    "fr": "Non point transactions yet.",
+    "ar": "لا point transactions yet."
+  },
+  "{{from}} → {{to}} · {{tz}}": {
+    "fr": "{{from}} → {{to}} · {{tz}}",
+    "ar": "{{from}} → {{to}} · {{tz}}"
+  },
+  "Recorded takings by method": {
+    "fr": "Recorded takings by method",
+    "ar": "Recorded takings by method"
+  },
+  "Capture window · {{range}}": {
+    "fr": "Capture window · {{range}}",
+    "ar": "Capture window · {{range}}"
+  },
+  "{{title}}, {{description}}": {
+    "fr": "{{title}}, {{description}}",
+    "ar": "{{title}}, {{description}}"
+  },
+  "No results for \"{{query}}\"": {
+    "fr": "Non results for \"{{query}}\"",
+    "ar": "لا results for \"{{query}}\""
+  },
+  "VAT ({{percent}}%) (incl.)": {
+    "fr": "VAT ({{percent}}%) (incl.)",
+    "ar": "VAT ({{percent}}%) (incl.)"
+  },
+  "Sponsored listings and ads": {
+    "fr": "Sponsored listings and ads",
+    "ar": "Sponsored listings and ads"
+  },
+  "{{name}}, {{count}} visits": {
+    "fr": "{{name}}, {{count}} visits",
+    "ar": "{{name}}, {{count}} visits"
+  },
+  "Up to {{currency}} {{max}}": {
+    "fr": "Jusqu’à {{currency}} {{max}}",
+    "ar": "حتى {{currency}} {{max}}"
+  },
+  "{{name}} ({{minutes}} min)": {
+    "fr": "{{name}} ({{minutes}} min)",
+    "ar": "{{name}} ({{minutes}} د)"
+  },
+  "App URL is not configured.": {
+    "fr": "L’URL de l’app n’est pas configurée.",
+    "ar": "رابط التطبيق غير مهيأ."
+  },
+  "{{year}} · Issued {{date}}": {
+    "fr": "{{year}} · Émis le {{date}}",
+    "ar": "{{year}} · صدر في {{date}}"
+  },
+  "Step {{step}} of {{total}}": {
+    "fr": "Étape {{step}} sur {{total}}",
+    "ar": "الخطوة {{step}} من {{total}}"
+  },
+  "Regional storefront notice": {
+    "fr": "Regional storefront notice",
+    "ar": "Regional storefront notice"
+  },
+  "Opening App Store purchase…": {
+    "fr": "Opening App Store purchase…",
+    "ar": "Opening App Store purchase…"
+  },
+  "Lock the app with {{label}}": {
+    "fr": "Lock the app with {{label}}",
+    "ar": "Lock the app with {{label}}"
+  },
+  "{{amount}} budget remaining": {
+    "fr": "{{amount}} budget remaining",
+    "ar": "{{amount}} budget remaining"
+  },
+  "Restore App Store purchases": {
+    "fr": "Restore App Store purchases",
+    "ar": "Restore App Store purchases"
+  },
+  "What happens after purchase": {
+    "fr": "What happens after purchase",
+    "ar": "What happens after purchase"
+  },
+  "· Budget: {{min}} – {{max}}": {
+    "fr": "· Budget: {{min}} – {{max}}",
+    "ar": "· Budget: {{min}} – {{max}}"
+  },
+  "Tax ({{rate}}%): {{amount}}": {
+    "fr": "Tax ({{rate}}%): {{amount}}",
+    "ar": "Tax ({{rate}}%): {{amount}}"
+  },
+  "Are you registered for VAT?": {
+    "fr": "Are you registered for VAT?",
+    "ar": "Are you registered for VAT?"
+  },
+  "({{count}} rows · {{pct}}%)": {
+    "fr": "({{count}} rows · {{pct}}%)",
+    "ar": "({{count}} rows · {{pct}}%)"
+  },
+  "Process {{amount}} via Yoco": {
+    "fr": "Process {{amount}} via Yoco",
+    "ar": "Process {{amount}} via Yoco"
+  },
+  "Auto-notify when slots open": {
+    "fr": "Auto-notify when slots ouvrir",
+    "ar": "Auto-notify when slots فتح"
+  },
+  "Taking longer than expected": {
+    "fr": "Cela prend plus de temps que prévu",
+    "ar": "يستغرق وقتًا أطول من المتوقع"
+  },
+  "{{month}} · {{count}} block": {
+    "fr": "{{month}} · {{count}} block",
+    "ar": "{{month}} · {{count}} block"
+  },
+  "Platform-held ecommerce net": {
+    "fr": "Platform-held ecommerce net",
+    "ar": "Platform-held ecommerce net"
+  },
+  " · Budget {{min}} – {{max}}": {
+    "fr": " · Budget {{min}} – {{max}}",
+    "ar": " · Budget {{min}} – {{max}}"
+  },
+  "Allergies and sensitivities": {
+    "fr": "Allergies et sensibilités",
+    "ar": "الحساسية والحساسيات"
+  },
+  "At least {{min}} characters": {
+    "fr": "Au moins {{min}} caractères",
+    "ar": "{{min}} حرفًا على الأقل"
+  },
+  "{{minutes}} min · {{price}}": {
+    "fr": "{{minutes}} min · {{price}}",
+    "ar": "{{minutes}} د · {{price}}"
+  },
+  "Apartment, floor, building…": {
+    "fr": "Apartment, floor, building…",
+    "ar": "Apartment, floor, building…"
+  },
+  "e.g., New York, Los Angeles": {
+    "fr": "e.g., New York, Los Angeles",
+    "ar": "e.g., New York, Los Angeles"
+  },
+  "I have read and agree to the": {
+    "fr": "J’ai lu et j’accepte",
+    "ar": "لقد قرأت وأوافق على"
+  },
+  "No verification URL returned": {
+    "fr": "Non verification URL returned",
+    "ar": "لا verification URL returned"
+  },
+  "Pinch to zoom · drag to move": {
+    "fr": "Pincez pour zoomer · glissez pour déplacer",
+    "ar": "اقرص للتكبير · اسحب للتحريك"
+  },
+  "e.g. Partner, parent, friend": {
+    "fr": "ex. Conjoint, parent, ami",
+    "ar": "مثال: شريك، والد، صديق"
+  },
+  "Minimum payout is {{amount}}": {
+    "fr": "Minimum payout is {{amount}}",
+    "ar": "Minimum payout is {{amount}}"
+  },
+  "{{name}} ending in {{last4}}": {
+    "fr": "{{name}} ending in {{last4}}",
+    "ar": "{{name}} ending in {{last4}}"
+  },
+  "Above R{{amount}}: {{rate}}%": {
+    "fr": "Above R{{amount}}: {{rate}}%",
+    "ar": "Above R{{amount}}: {{rate}}%"
+  },
+  "Suggested target: {{target}}": {
+    "fr": "Suggested target: {{target}}",
+    "ar": "Suggested target: {{target}}"
+  },
+  "YYYY-MM-DDTHH:mm (ISO local)": {
+    "fr": "YYYY-MM-DDTHH:mm (ISO local)",
+    "ar": "YYYY-MM-DDTHH:mm (ISO local)"
+  },
+  "This PDF could not be found.": {
+    "fr": "This PDF impossible de be found.",
+    "ar": "This PDF تعذر be found."
+  },
+  "{{type}} · Qty: {{quantity}}": {
+    "fr": "{{type}} · Qty: {{quantity}}",
+    "ar": "{{type}} · Qty: {{quantity}}"
+  },
+  "Grow with sponsored listings": {
+    "fr": "Grow with sponsored listings",
+    "ar": "Grow with sponsored listings"
+  },
+  "{{month}} · {{count}} blocks": {
+    "fr": "{{month}} · {{count}} blocks",
+    "ar": "{{month}} · {{count}} blocks"
+  },
+  "Apartment, estate gate, etc.": {
+    "fr": "Apartment, estate gate, etc.",
+    "ar": "Apartment, estate gate, etc."
+  },
+  "Navigate to the login screen": {
+    "fr": "Aller à l’écran de connexion",
+    "ar": "الانتقال إلى شاشة تسجيل الدخول"
+  },
+  "After sign-in you can manage": {
+    "fr": "After sign-in you can gérer",
+    "ar": "After sign-in you can إدارة"
+  },
+  "Prefer a break instead? Use ": {
+    "fr": "Vous préférez une pause ? Utilisez ",
+    "ar": "هل تفضل استراحة بدلًا من ذلك؟ استخدم "
+  },
+  "{{unitPrice}} × {{quantity}}": {
+    "fr": "{{unitPrice}} × {{quantity}}",
+    "ar": "{{unitPrice}} × {{quantity}}"
+  },
+  "Step {{current}} of {{total}}": {
+    "fr": "Étape {{current}} sur {{total}}",
+    "ar": "الخطوة {{current}} من {{total}}"
+  },
+  "Suggestions & recommendations": {
+    "fr": "Suggestions & recommendations",
+    "ar": "Suggestions & recommendations"
+  },
+  "How would you like to get it?": {
+    "fr": "How would you like to get it?",
+    "ar": "How would you like to get it?"
+  },
+  "In-person sales you collected": {
+    "fr": "In-person sales you collected",
+    "ar": "In-person sales you collected"
+  },
+  "Minimum payout is {{amount}}.": {
+    "fr": "Minimum payout is {{amount}}.",
+    "ar": "Minimum payout is {{amount}}."
+  },
+  "Leave blank to use “{{name}}”": {
+    "fr": "Leave blank to use “{{name}}”",
+    "ar": "Leave blank to use “{{name}}”"
+  },
+  "{{units}} units · avg {{avg}}": {
+    "fr": "{{units}} units · avg {{avg}}",
+    "ar": "{{units}} units · avg {{avg}}"
+  },
+  "Distinct offerings: {{count}}": {
+    "fr": "Distinct offerings: {{count}}",
+    "ar": "Distinct offerings: {{count}}"
+  },
+  "At least {{count}} characters": {
+    "fr": "At least {{count}} characters",
+    "ar": "At least {{count}} characters"
+  },
+  "{{title}}, {{action}} section": {
+    "fr": "{{title}}, {{action}} section",
+    "ar": "{{title}}, {{action}} section"
+  },
+  "JPG, PNG or GIF. Max size 2MB": {
+    "fr": "JPG, PNG or GIF. Max size 2MB",
+    "ar": "JPG, PNG or GIF. Max size 2MB"
+  },
+  "Feed window {{from}} → {{to}}": {
+    "fr": "Feed window {{from}} → {{to}}",
+    "ar": "Feed window {{from}} → {{to}}"
+  },
+  "Opens in Apple or Google Maps": {
+    "fr": "S’ouvre dans Apple ou Google Maps",
+    "ar": "يفتح في Apple أو Google Maps"
+  },
+  "JPEG, PNG or WebP (max 10 MB)": {
+    "fr": "JPEG, PNG ou WebP (max. 10 Mo)",
+    "ar": "JPEG أو PNG أو WebP (بحد أقصى 10 ميجابايت)"
+  },
+  "Worth {{currency}} {{amount}}": {
+    "fr": "Valeur {{currency}} {{amount}}",
+    "ar": "بقيمة {{currency}} {{amount}}"
+  },
+  "{{earned}} / {{required}} pts": {
+    "fr": "{{earned}} / {{required}} pts",
+    "ar": "{{earned}} / {{required}} نقطة"
+  },
+  "Rate Beautonomi on Google Play": {
+    "fr": "Noter Beautonomi sur Google Play",
+    "ar": "قيّم Beautonomi على Google Play"
+  },
+  "Showing {{shown}} of {{total}}": {
+    "fr": "Affichage de {{shown}} sur {{total}}",
+    "ar": "عرض {{shown}} من {{total}}"
+  },
+  "Analytics, activity & insights": {
+    "fr": "Analytics, activity & insights",
+    "ar": "Analytics, activity & insights"
+  },
+  "https://tiktok.com/@yourhandle": {
+    "fr": "https://tiktok.com/@yourhandle",
+    "ar": "https://tiktok.com/@yourhandle"
+  },
+  "Track your application status.": {
+    "fr": "Track your application statut.",
+    "ar": "Track your application حالة."
+  },
+  "We'll discuss this after setup": {
+    "fr": "We'll discuss this after setup",
+    "ar": "We'll discuss this after setup"
+  },
+  "{{name}}, {{city}} {{country}}": {
+    "fr": "{{name}}, {{city}} {{country}}",
+    "ar": "{{name}}, {{city}} {{country}}"
+  },
+  "Ledger net includes: {{types}}": {
+    "fr": "Ledger net includes: {{types}}",
+    "ar": "Ledger net includes: {{types}}"
+  },
+  "e.g. Instagram, Google, Friend": {
+    "fr": "e.g. Instagram, Google, Friend",
+    "ar": "e.g. Instagram, Google, Friend"
+  },
+  "Organize resources into groups": {
+    "fr": "Organize resources into groups",
+    "ar": "Organize resources into groups"
+  },
+  "{{count}} / {{max}} characters": {
+    "fr": "{{count}} / {{max}} characters",
+    "ar": "{{count}} / {{max}} characters"
+  },
+  "{{ref}} · {{date}} at {{time}}": {
+    "fr": "{{ref}} · {{date}} at {{time}}",
+    "ar": "{{ref}} · {{date}} at {{time}}"
+  },
+  "{{date}} · {{start}} – {{end}}": {
+    "fr": "{{date}} · {{start}} – {{end}}",
+    "ar": "{{date}} · {{start}} – {{end}}"
+  },
+  "{{count}} achievement unlocked": {
+    "fr": "{{count}} achievement unlocked",
+    "ar": "{{count}} achievement unlocked"
+  },
+  "{{currency}} {{min}} – {{max}}": {
+    "fr": "{{currency}} {{min}} – {{max}}",
+    "ar": "{{currency}} {{min}} – {{max}}"
+  },
+  "Something you're obsessed with": {
+    "fr": "Quelque chose qui vous passionne",
+    "ar": "شيء تهتم به كثيرًا"
+  },
+  "Unsubscribe from all marketing": {
+    "fr": "Se désabonner de tout marketing",
+    "ar": "إلغاء الاشتراك من كل التسويق"
+  },
+  "Regional storefront suggestion": {
+    "fr": "Regional storefront suggestion",
+    "ar": "Regional storefront suggestion"
+  },
+  "Page {{page}} of {{totalPages}}": {
+    "fr": "Page {{page}} sur {{totalPages}}",
+    "ar": "الصفحة {{page}} من {{totalPages}}"
+  },
+  "{{quantity}} (alert ≤{{level}})": {
+    "fr": "{{quantity}} (alert ≤{{level}})",
+    "ar": "{{quantity}} (alert ≤{{level}})"
+  },
+  "{{count}} sold · avg {{amount}}": {
+    "fr": "{{count}} sold · avg {{amount}}",
+    "ar": "{{count}} sold · avg {{amount}}"
+  },
+  "By proceeding you agree to our ": {
+    "fr": "By proceeding you agree to our ",
+    "ar": "By proceeding you agree to our "
+  },
+  "First visit {{date}} · returned": {
+    "fr": "First visit {{date}} · returned",
+    "ar": "First visit {{date}} · returned"
+  },
+  "{{value}}% vs comparison period": {
+    "fr": "{{value}}% vs comparison period",
+    "ar": "{{value}}% vs comparison period"
+  },
+  "No transactions in this period.": {
+    "fr": "Non transactions in this period.",
+    "ar": "لا transactions in this period."
+  },
+  "{{count}} achievements unlocked": {
+    "fr": "{{count}} achievements unlocked",
+    "ar": "{{count}} achievements unlocked"
+  },
+  "You haven't blocked anyone yet.": {
+    "fr": "Vous n’avez encore bloqué personne.",
+    "ar": "لم تحظر أحدًا بعد."
+  },
+  "Beauty preferences: {{message}}": {
+    "fr": "Préférences beauté : {{message}}",
+    "ar": "تفضيلات التجميل: {{message}}"
+  },
+  "Rate Beautonomi on the App Store": {
+    "fr": "Rate Beautonomi on the App Store",
+    "ar": "Rate Beautonomi on the App Store"
+  },
+  "https://instagram.com/yourhandle": {
+    "fr": "https://instagram.com/yourhandle",
+    "ar": "https://instagram.com/yourhandle"
+  },
+  "{{pattern}} for {{count}} visits": {
+    "fr": "{{pattern}} for {{count}} visits",
+    "ar": "{{pattern}} for {{count}} visits"
+  },
+  "e.g. Deep Conditioning Treatment": {
+    "fr": "e.g. Deep Conditioning Treatment",
+    "ar": "e.g. Deep Conditioning Treatment"
+  },
+  "Ledger net allocated: {{amount}}": {
+    "fr": "Ledger net allocated: {{amount}}",
+    "ar": "Ledger net allocated: {{amount}}"
+  },
+  "Avg {{amount}} · {{count}} lines": {
+    "fr": "Avg {{amount}} · {{count}} lines",
+    "ar": "Avg {{amount}} · {{count}} lines"
+  },
+  "{{from}} → {{to}}{{description}}": {
+    "fr": "{{from}} → {{to}}{{description}}",
+    "ar": "{{from}} → {{to}}{{description}}"
+  },
+  "By continuing, you agree to our ": {
+    "fr": "By continuing, you agree to our ",
+    "ar": "By continuing, you agree to our "
+  },
+  "Receive marketing communications": {
+    "fr": "Recevoir les communications marketing",
+    "ar": "تلقي رسائل التسويق"
+  },
+  "Expected: {{currency}} {{amount}}": {
+    "fr": "Expected: {{currency}} {{amount}}",
+    "ar": "Expected: {{currency}} {{amount}}"
+  },
+  "{{name}} · {{variant}} · ×{{qty}}": {
+    "fr": "{{name}} · {{variant}} · ×{{qty}}",
+    "ar": "{{name}} · {{variant}} · ×{{qty}}"
+  },
+  "Beautonomi Ops has been notified.": {
+    "fr": "Beautonomi Ops has been notified.",
+    "ar": "Beautonomi Ops has been notified."
+  },
+  "{{name}}, {{appointment_date}}, …": {
+    "fr": "{{name}}, {{appointment_date}}, …",
+    "ar": "{{name}}, {{appointment_date}}, …"
+  },
+  "{{currency}} {{min}}+ → {{rate}}%": {
+    "fr": "{{currency}} {{min}}+ → {{rate}}%",
+    "ar": "{{currency}} {{min}}+ → {{rate}}%"
+  },
+  "Earned {{date}} · Until {{until}}": {
+    "fr": "Earned {{date}} · Until {{until}}",
+    "ar": "Earned {{date}} · Until {{until}}"
+  },
+  "Permissions ({{count}}/{{total}})": {
+    "fr": "Permissions ({{count}}/{{total}})",
+    "ar": "Permissions ({{count}}/{{total}})"
+  },
+  "Delivered to {{count}} recipient.": {
+    "fr": "Delivered to {{count}} recipient.",
+    "ar": "Delivered to {{count}} recipient."
+  },
+  "{{name}} is not on Beautonomi yet": {
+    "fr": "{{name}} is not on Beautonomi yet",
+    "ar": "{{name}} is not on Beautonomi yet"
+  },
+  "Browse the app without signing in": {
+    "fr": "Parcourir l’app sans se connecter",
+    "ar": "تصفح التطبيق دون تسجيل الدخول"
+  },
+  "{{type}} · {{country}} · {{when}}": {
+    "fr": "{{type}} · {{country}} · {{when}}",
+    "ar": "{{type}} · {{country}} · {{when}}"
+  },
+  "Let's personalize your experience": {
+    "fr": "Personnalisons votre expérience",
+    "ar": "لنخصص تجربتك"
+  },
+  "Growth vs prior window: {{value}}%": {
+    "fr": "Growth vs prior window: {{value}}%",
+    "ar": "Growth vs prior window: {{value}}%"
+  },
+  "{{count}} till log{{amountSuffix}}": {
+    "fr": "{{count}} till log{{amountSuffix}}",
+    "ar": "{{count}} till log{{amountSuffix}}"
+  },
+  "{{start}} – {{end}} ({{duration}})": {
+    "fr": "{{start}} – {{end}} ({{duration}})",
+    "ar": "{{start}} – {{end}} ({{duration}})"
+  },
+  "Delivered to {{count}} recipients.": {
+    "fr": "Delivered to {{count}} recipients.",
+    "ar": "Delivered to {{count}} recipients."
+  },
+  "{{active}} of {{total}} clocked in": {
+    "fr": "{{active}} of {{total}} clocked in",
+    "ar": "{{active}} of {{total}} clocked in"
+  },
+  "Describe your issue or question...": {
+    "fr": "Describe your issue or question...",
+    "ar": "Describe your issue or question..."
+  },
+  " and quote reference {{reference}}": {
+    "fr": " et indiquez la référence {{reference}}",
+    "ar": " واذكر المرجع {{reference}}"
+  },
+  "PNG, JPG, WebP, GIF up to 5MB each": {
+    "fr": "PNG, JPG, WebP, GIF jusqu’à 5 Mo chacun",
+    "ar": "PNG وJPG وWebP وGIF حتى 5MB لكل ملف"
+  },
+  "No further actions for this status.": {
+    "fr": "Non further actions for this statut.",
+    "ar": "لا further actions for this حالة."
+  },
+  "{{count}} till logs{{amountSuffix}}": {
+    "fr": "{{count}} till logs{{amountSuffix}}",
+    "ar": "{{count}} till logs{{amountSuffix}}"
+  },
+  "Every {{day}} · {{start}} – {{end}}": {
+    "fr": "Every {{day}} · {{start}} – {{end}}",
+    "ar": "Every {{day}} · {{start}} – {{end}}"
+  },
+  "You're on {{host}} (ZAR). {{suffix}}": {
+    "fr": "Vous êtes sur {{host}} (ZAR). {{suffix}}",
+    "ar": "أنت على {{host}} (ZAR). {{suffix}}"
+  },
+  "Require {{label}} to open Beautonomi": {
+    "fr": "Require {{label}} to ouvrir Beautonomi",
+    "ar": "Require {{label}} to فتح Beautonomi"
+  },
+  "Outstanding: {{currency}} {{amount}}": {
+    "fr": "Outstanding: {{currency}} {{amount}}",
+    "ar": "Outstanding: {{currency}} {{amount}}"
+  },
+  "{{prefix}}{{amount}} in payout queue": {
+    "fr": "{{prefix}}{{amount}} in payout queue",
+    "ar": "{{prefix}}{{amount}} in payout queue"
+  },
+  "No returns with status \"{{status}}.\"": {
+    "fr": "Non returns with statut \"{{status}}.\"",
+    "ar": "لا returns with حالة \"{{status}}.\""
+  },
+  "vs prior: {{previous}} → {{current}}": {
+    "fr": "vs prior: {{previous}} → {{current}}",
+    "ar": "vs prior: {{previous}} → {{current}}"
+  },
+  "{{date}} at {{time}} · {{minutes}}min": {
+    "fr": "{{date}} at {{time}} · {{minutes}}min",
+    "ar": "{{date}} at {{time}} · {{minutes}}min"
+  },
+  "Listed under “{{name}}” for discovery": {
+    "fr": "Listed under “{{name}}” for discovery",
+    "ar": "Listed under “{{name}}” for discovery"
+  },
+  "Commission must be between 0 and 100.": {
+    "fr": "Commission must be between 0 and 100.",
+    "ar": "Commission must be between 0 and 100."
+  },
+  "Percentage must be between 0 and 100.": {
+    "fr": "Percentage must be between 0 and 100.",
+    "ar": "Percentage must be between 0 and 100."
+  },
+  "{{label}} rules, {{count}} configured": {
+    "fr": "{{label}} rules, {{count}} configured",
+    "ar": "{{label}} rules, {{count}} configured"
+  },
+  "{{count}} gateway row{{amountSuffix}}": {
+    "fr": "{{count}} gateway row{{amountSuffix}}",
+    "ar": "{{count}} gateway row{{amountSuffix}}"
+  },
+  "{{current}} / {{min}}–4000 characters": {
+    "fr": "{{current}} / {{min}}–4000 characters",
+    "ar": "{{current}} / {{min}}–4000 characters"
+  },
+  "Under 13 — social features restricted": {
+    "fr": "Moins de 13 ans — fonctions sociales limitées",
+    "ar": "أقل من 13 — الميزات الاجتماعية مقيدة"
+  },
+  "See and unblock people you've blocked": {
+    "fr": "Voir et débloquer les personnes bloquées",
+    "ar": "عرض وإلغاء حظر من حظرتهم"
+  },
+  "Slot held for {{minutes}}:{{seconds}}": {
+    "fr": "Slot held for {{minutes}}:{{seconds}}",
+    "ar": "Slot held for {{minutes}}:{{seconds}}"
+  },
+  "How should we get your machine to you?": {
+    "fr": "How should we get your machine to you?",
+    "ar": "How should we get your machine to you?"
+  },
+  "{{count}} gateway rows{{amountSuffix}}": {
+    "fr": "{{count}} gateway rows{{amountSuffix}}",
+    "ar": "{{count}} gateway rows{{amountSuffix}}"
+  },
+  "e.g. focus on bridal makeup, Cape Town": {
+    "fr": "e.g. focus on bridal makeup, Cape Town",
+    "ar": "e.g. focus on bridal makeup, Cape Town"
+  },
+  "{{name}} · {{minutes}} min · {{amount}}": {
+    "fr": "{{name}} · {{minutes}} min · {{amount}}",
+    "ar": "{{name}} · {{minutes}} min · {{amount}}"
+  },
+  "Repeat count must be at least 2 visits.": {
+    "fr": "Repeat count must be at least 2 visits.",
+    "ar": "Repeat count must be at least 2 visits."
+  },
+  "e.g. braids, balayage (comma-separated)": {
+    "fr": "e.g. braids, balayage (comma-separated)",
+    "ar": "e.g. braids, balayage (comma-separated)"
+  },
+  "{{minutes}}min · {{currency}} {{price}}": {
+    "fr": "{{minutes}}min · {{currency}} {{price}}",
+    "ar": "{{minutes}}min · {{currency}} {{price}}"
+  },
+  "Response must be under 1000 characters.": {
+    "fr": "Response must be under 1000 characters.",
+    "ar": "Response must be under 1000 characters."
+  },
+  "Window {{from}} → {{to}} · {{timezone}}": {
+    "fr": "Window {{from}} → {{to}} · {{timezone}}",
+    "ar": "Window {{from}} → {{to}} · {{timezone}}"
+  },
+  "{{value}}% vs prior equal-length window": {
+    "fr": "{{value}}% vs prior equal-length window",
+    "ar": "{{value}}% vs prior equal-length window"
+  },
+  "Stay in touch with your beauty partner.": {
+    "fr": "Restez en contact avec votre prestataire.",
+    "ar": "ابقَ على تواصل مع شريك التجميل."
+  },
+  "Adding {{name}} ({{current}}/{{total}})…": {
+    "fr": "Adding {{name}} ({{current}}/{{total}})…",
+    "ar": "Adding {{name}} ({{current}}/{{total}})…"
+  },
+  "{{minutes}} min · {{currency}} {{price}}": {
+    "fr": "{{minutes}} min · {{currency}} {{price}}",
+    "ar": "{{minutes}} min · {{currency}} {{price}}"
+  },
+  "Untracked SKUs contribute 0 to this sum.": {
+    "fr": "Untracked SKUs contribute 0 to this sum.",
+    "ar": "Untracked SKUs contribute 0 to this sum."
+  },
+  "Step {{current}} of {{total}}: {{title}}": {
+    "fr": "Step {{current}} of {{total}}: {{title}}",
+    "ar": "Step {{current}} of {{total}}: {{title}}"
+  },
+  "{{index}}. {{service}}: {{count}} visits": {
+    "fr": "{{index}}. {{service}}: {{count}} visits",
+    "ar": "{{index}}. {{service}}: {{count}} visits"
+  },
+  "{{currency}} {{price}} · {{minutes}} min": {
+    "fr": "{{currency}} {{price}} · {{minutes}} min",
+    "ar": "{{currency}} {{price}} · {{minutes}} د"
+  },
+  "{{manufacturer}}{{model}} · ID {{serial}}": {
+    "fr": "{{manufacturer}}{{model}} · ID {{serial}}",
+    "ar": "{{manufacturer}}{{model}} · ID {{serial}}"
+  },
+  "e.g. Item was used, outside return window": {
+    "fr": "e.g. Item was used, outside return window",
+    "ar": "e.g. Item was used, outside return window"
+  },
+  "+{{minutes}} min • {{currency}} {{price}}": {
+    "fr": "+{{minutes}} min • {{currency}} {{price}}",
+    "ar": "+{{minutes}} د • {{currency}} {{price}}"
+  },
+  "Merchant {{merchantNo}} · Store {{storeNo}}": {
+    "fr": "Merchant {{merchantNo}} · Store {{storeNo}}",
+    "ar": "Merchant {{merchantNo}} · Store {{storeNo}}"
+  },
+  "{{message}}\n(Item {{current}} of {{total}})": {
+    "fr": "{{message}}\n(Item {{current}} of {{total}})",
+    "ar": "{{message}}\n(Item {{current}} of {{total}})"
+  },
+  "Commission rates must be between 0 and 100%": {
+    "fr": "Commission rates must be between 0 and 100%",
+    "ar": "Commission rates must be between 0 and 100%"
+  },
+  "Showing {{shown}} of {{total}} transactions": {
+    "fr": "Showing {{shown}} of {{total}} transactions",
+    "ar": "Showing {{shown}} of {{total}} transactions"
+  },
+  "{{resources}} resources · {{groups}} groups": {
+    "fr": "{{resources}} resources · {{groups}} groups",
+    "ar": "{{resources}} resources · {{groups}} groups"
+  },
+  "You're on the {{label}} storefront{{host}}.": {
+    "fr": "You're on the {{label}} storefront{{host}}.",
+    "ar": "You're on the {{label}} storefront{{host}}."
+  },
+  "Note: export is capped at 5,000 ledger rows.": {
+    "fr": "Note: export is capped at 5,000 ledger rows.",
+    "ar": "Note: export is capped at 5,000 ledger rows."
+  },
+  "Are you sure you want to withdraw this offer?": {
+    "fr": "Voulez-vous vraiment retirer cette offre ?",
+    "ar": "هل أنت متأكد من سحب هذا العرض؟"
+  },
+  "You are not authorized to perform this action.": {
+    "fr": "You are not authorized to perform this action.",
+    "ar": "You are not authorized to perform this action."
+  },
+  "{{index}}. {{name}}: {{units}} sold, {{amount}}": {
+    "fr": "{{index}}. {{name}}: {{units}} sold, {{amount}}",
+    "ar": "{{index}}. {{name}}: {{units}} sold, {{amount}}"
+  },
+  "Rate per km must be between {{min}} and {{max}}": {
+    "fr": "Rate per km must be between {{min}} and {{max}}",
+    "ar": "Rate per km must be between {{min}} and {{max}}"
+  },
+  "See every level and what you're working toward.": {
+    "fr": "See every level and what you're working toward.",
+    "ar": "See every level and what you're working toward."
+  },
+  "API URL is not configured (EXPO_PUBLIC_APP_URL).": {
+    "fr": "API URL is not configured (EXPO_PUBLIC_APP_URL).",
+    "ar": "API URL is not configured (EXPO_PUBLIC_APP_URL)."
+  },
+  "  {{channel}}: {{count}} ({{amount}} recognized)": {
+    "fr": "  {{channel}}: {{count}} ({{amount}} recognized)",
+    "ar": "  {{channel}}: {{count}} ({{amount}} recognized)"
+  },
+  "Returning to your ads dashboard in a few seconds…": {
+    "fr": "Returning to your ads dashboard in a few seconds…",
+    "ar": "Returning to your ads dashboard in a few seconds…"
+  },
+  "Allergies, accessibility, preferred stylist, etc.": {
+    "fr": "Allergies, accessibility, preferred stylist, etc.",
+    "ar": "Allergies, accessibility, preferred stylist, etc."
+  },
+  "Describe what you're looking for (min 10 characters)": {
+    "fr": "Décrivez ce que vous recherchez (10 caractères min.)",
+    "ar": "صف ما تبحث عنه (10 أحرف على الأقل)"
+  },
+  "I have a special occasion coming up and would like...": {
+    "fr": "I have a special occasion coming up and would like...",
+    "ar": "I have a special occasion coming up and would like..."
+  },
+  "  {{description}} - {{quantity}}x {{unit}} = {{total}}": {
+    "fr": "  {{description}} - {{quantity}}x {{unit}} = {{total}}",
+    "ar": "  {{description}} - {{quantity}}x {{unit}} = {{total}}"
+  },
+  "You have been signed out. Thank you for using Beautonomi.": {
+    "fr": "Vous avez été déconnecté. Merci d’utiliser Beautonomi.",
+    "ar": "تم تسجيل خروجك. شكرًا لاستخدام Beautonomi."
+  },
+  "No executions yet. This automation has not been triggered.": {
+    "fr": "No executions yet. This automation has not been triggered.",
+    "ar": "No executions yet. This automation has not been triggered."
+  },
+  "JPEG, PNG, WebP or GIF, up to 5 MB each. Add up to {{max}}.": {
+    "fr": "JPEG, PNG, WebP or GIF, up to 5 MB each. Add up to {{max}}.",
+    "ar": "JPEG, PNG, WebP or GIF, up to 5 MB each. Add up to {{max}}."
+  },
+  "Reduce posts tagged with medical or treatment-related topics": {
+    "fr": "Réduire les publications liées à la médecine ou aux traitements",
+    "ar": "تقليل المنشورات ذات المواضيع الطبية أو العلاجية"
+  },
+  "Maximum budget must be greater than or equal to minimum budget": {
+    "fr": "Maximum budget must be greater than or equal to minimum budget",
+    "ar": "Maximum budget must be greater than or equal to minimum budget"
+  },
+  "Maximum budget must be greater than or equal to minimum budget.": {
+    "fr": "Le budget max. doit être supérieur ou égal au budget min.",
+    "ar": "يجب أن تكون الميزانية القصوى أكبر من أو تساوي الدنيا."
+  },
+  "We're verifying with Paystack — this usually takes a few seconds.": {
+    "fr": "We're verifying with Paystack — this usually takes a few seconds.",
+    "ar": "We're verifying with Paystack — this usually takes a few seconds."
+  },
+  "Describe the incident, when it happened, and any relevant context…": {
+    "fr": "Décrivez l’incident, le moment et tout contexte utile…",
+    "ar": "صف الحادث ووقت وقوعه وأي سياق ذي صلة…"
+  },
+  "Delivered to {{count}} recipient. {{failed}} couldn't be delivered.": {
+    "fr": "Delivered to {{count}} recipient. {{failed}} couldn't be delivered.",
+    "ar": "Delivered to {{count}} recipient. {{failed}} couldn't be delivered."
+  },
+  "Delivered to {{count}} recipients. {{failed}} couldn't be delivered.": {
+    "fr": "Delivered to {{count}} recipients. {{failed}} couldn't be delivered.",
+    "ar": "Delivered to {{count}} recipients. {{failed}} couldn't be delivered."
+  },
+  "{{name}}, {{appointment_date}}, {{appointment_time}}, {{booking_number}}": {
+    "fr": "{{name}}, {{appointment_date}}, {{appointment_time}}, {{booking_number}}",
+    "ar": "{{name}}, {{appointment_date}}, {{appointment_time}}, {{booking_number}}"
+  },
+  "Discover looks, styles, and treatments from beauty professionals near you.": {
+    "fr": "Discover looks, styles, and treatments from professionnels beauté near you.",
+    "ar": "Discover looks, styles, and treatments from محترفو التجميل near you."
+  },
+  "Ledger activity will appear once you have recognized earnings in this window": {
+    "fr": "Ledger activity will appear once you have recognized earnings in this window",
+    "ar": "Ledger activity will appear once you have recognized earnings in this window"
+  },
+  "You must be at least 13 to use Beautonomi. Some features require you to be 18+.": {
+    "fr": "Vous devez avoir au moins 13 ans pour utiliser Beautonomi. Certaines fonctions exigent 18 ans et plus.",
+    "ar": "يجب أن يكون عمرك 13 عامًا على الأقل لاستخدام Beautonomi. بعض الميزات تتطلب 18 عامًا فأكثر."
+  },
+  "Retention {{rate}}% · prior {{prior}} · returned {{returned}} · bucket {{bucket}}": {
+    "fr": "Retention {{rate}}% · prior {{prior}} · returned {{returned}} · bucket {{bucket}}",
+    "ar": "Retention {{rate}}% · prior {{prior}} · returned {{returned}} · bucket {{bucket}}"
+  },
+  "Set to 0% if not VAT registered. Tax is excluded from platform commission calculations.": {
+    "fr": "Set to 0% if not VAT registered. Tax is excluded from platform commission calculations.",
+    "ar": "Set to 0% if not VAT registered. Tax is excluded from platform commission calculations."
+  }
+}

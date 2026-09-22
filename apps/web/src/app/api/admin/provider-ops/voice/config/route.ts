@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -5,7 +6,6 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import {
   getCallsIntegrationConfig,
@@ -18,7 +18,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsSales(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 

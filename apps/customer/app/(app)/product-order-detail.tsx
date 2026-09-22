@@ -35,6 +35,7 @@ import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
 const PRIMARY = Colors.primary;
 
@@ -185,6 +186,11 @@ export default function ProductOrderDetailScreen() {
       const fullKey = `customer.mobile.screens.productOrderDetail.${key}`;
       return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
     },
+    [t],
+  );
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
     [t],
   );
   const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
@@ -584,6 +590,20 @@ export default function ProductOrderDetailScreen() {
             </View>
           );
         })()}
+        {order.status === "ready_for_collection" && order.collection_location ? (
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 10 }}>
+              {pod("readyForPickupTitle")}
+            </Text>
+            <PickupStoreCard
+              location={order.collection_location}
+              variant="full"
+              showPhone
+              showMap
+              t={shopT}
+            />
+          </View>
+        ) : null}
         {/* Status timeline */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
@@ -837,6 +857,11 @@ export default function ProductOrderDetailScreen() {
                 <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
                   {pod("itemQtyPrice", { count: item.quantity, price: fmt(Number(item.unit_price)) })}
                 </Text>
+                {item.fulfilment_status ? (
+                  <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                    {pod("lineFulfilment", { status: item.fulfilment_status.replace(/_/g, " ") })}
+                  </Text>
+                ) : null}
               </View>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", alignSelf: "center" }}>
                 {fmt(Number(item.total_price))}
@@ -939,33 +964,39 @@ export default function ProductOrderDetailScreen() {
                     .join(", ")}
                   {order.delivery_address.country ? ` · ${order.delivery_address.country}` : ""}
                 </Text>
-              </View>
-            </View>
-          )}
-          {order.fulfillment_type === "collection" && order.collection_location && (
-            <View style={{ flexDirection: "row" }}>
-              <Ionicons name="storefront-outline" size={20} color="#6B7280" />
-              <View style={{ marginStart: 10, flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                  {order.collection_location.name}
-                </Text>
-                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                  {order.collection_location.address_line1}
-                  {order.collection_location.address_line2 ? `, ${order.collection_location.address_line2}` : ""}
-                </Text>
-                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                  {[order.collection_location.city, order.collection_location.state, order.collection_location.postal_code]
-                    .filter(Boolean)
-                    .join(", ")}
-                </Text>
-                {order.collection_location.phone && (
-                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                    {pod("telLabel", { phone: order.collection_location.phone })}
+                {order.delivery_address.apartment_unit ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
+                    {pod("unitLabel")}: {order.delivery_address.apartment_unit}
                   </Text>
-                )}
+                ) : null}
+                {order.delivery_address.building_name ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                    {pod("buildingLabel")}: {order.delivery_address.building_name}
+                  </Text>
+                ) : null}
+                {order.delivery_address.access_codes ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                    {pod("accessLabel")}: {order.delivery_address.access_codes}
+                  </Text>
+                ) : null}
+                {order.delivery_address.parking_instructions ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                    {pod("parkingLabel")}: {order.delivery_address.parking_instructions}
+                  </Text>
+                ) : null}
+                {order.delivery_address.location_landmarks ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                    {pod("landmarksLabel")}: {order.delivery_address.location_landmarks}
+                  </Text>
+                ) : null}
               </View>
             </View>
           )}
+          {order.fulfillment_type === "collection" &&
+          order.collection_location &&
+          order.status !== "ready_for_collection" ? (
+            <PickupStoreCard location={order.collection_location} variant="full" showPhone showMap t={shopT} />
+          ) : null}
           {(formatEstimatedDeliveryDate(order.estimated_delivery_date) || order.delivery_instructions?.trim()) &&
           order.fulfillment_type === "delivery" ? (
             <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#F3F4F6" }}>

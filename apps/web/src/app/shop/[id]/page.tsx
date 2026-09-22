@@ -11,6 +11,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProductVariant {
   id: string;
@@ -45,9 +47,15 @@ interface ProductDetail {
 interface CollectionLocation {
   id: string;
   name: string;
-  address_line1?: string | null;
-  city?: string | null;
+  address_line1: string;
+  address_line2?: string | null;
+  city: string;
   state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   working_hours?: unknown;
 }
 
@@ -99,6 +107,12 @@ function ProductDetailContent() {
   const router = useRouter();
   const { user, session, isLoading: authLoading } = useAuth();
   const { bundle } = useConfigBundle();
+  const { t } = useTranslation();
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts) as string,
+    [t],
+  );
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
   const rawId = params?.id;
@@ -115,6 +129,7 @@ function ProductDetailContent() {
   const [related, setRelated] = useState<RelatedProduct[]>([]);
   const [shipping, setShipping] = useState<Record<string, unknown> | null>(null);
   const [collectionLocations, setCollectionLocations] = useState<CollectionLocation[]>([]);
+  const [providerTimezone, setProviderTimezone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -302,6 +317,9 @@ function ProductDetailContent() {
           setRelated(Array.isArray(payload.related_products) ? payload.related_products : []);
           setShipping(payload.shipping ?? null);
           setCollectionLocations(Array.isArray(payload.collection_locations) ? payload.collection_locations : []);
+          setProviderTimezone(
+            typeof payload.provider_timezone === "string" ? payload.provider_timezone : null,
+          );
           if (p.has_variants && Array.isArray(p.variants) && p.variants.length > 0) {
             const sortedVariants = [...p.variants].sort((a: ProductVariant, b: ProductVariant) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
             const firstInStock = sortedVariants.find((v: ProductVariant) => (v.quantity || 0) > 0);
@@ -384,6 +402,10 @@ function ProductDetailContent() {
   const showFromPrice = hasVariants && variants.length > 1;
   const offersCollection = Boolean(shipping && (shipping as { offers_collection?: boolean }).offers_collection);
   const offersDelivery = Boolean(shipping && (shipping as { offers_delivery?: boolean }).offers_delivery);
+  const deliveryFeeType = (shipping as { delivery_fee_type?: string } | null)?.delivery_fee_type ?? "flat";
+  const isPickupOnly = offersCollection && !offersDelivery;
+  const resolvedTimezone =
+    providerTimezone ?? bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
 
   const partnerProfileHref = `/partner-profile?slug=${encodeURIComponent(product.provider.slug)}`;
 
@@ -691,11 +713,17 @@ function ProductDetailContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span>
-                        Delivery fee:{" "}
-                        {formatPrice(
-                          Number((shipping as { delivery_fee?: number }).delivery_fee ?? 0),
-                          product.currency,
-                          tenantCurrency,
+                        {deliveryFeeType === "flat" ? (
+                          <>
+                            Delivery fee:{" "}
+                            {formatPrice(
+                              Number((shipping as { delivery_fee?: number }).delivery_fee ?? 0),
+                              product.currency,
+                              tenantCurrency,
+                            )}
+                          </>
+                        ) : (
+                          shopT("delivery.calculatedAtCheckout")
                         )}
                         {(shipping as { free_delivery_threshold?: number | null }).free_delivery_threshold != null && (
                           <>
@@ -710,17 +738,33 @@ function ProductDetailContent() {
                         )}
                       </span>
                     </div>
-                    {(shipping as { estimated_delivery_days?: number | null }).estimated_delivery_days != null &&
-                      Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days) > 0 && (
-                        <p className="mt-1 text-xs text-gray-500">
-                          Estimated delivery: within{" "}
-                          {Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days)} business
-                          day
-                          {Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days) !== 1
-                            ? "s"
-                            : ""}
-                        </p>
-                      )}
+                    {((shipping as { estimated_delivery_days?: number | null }).estimated_delivery_days != null &&
+                      Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days) > 0) ||
+                    (shipping as { delivery_notes?: string | null }).delivery_notes ? (
+                      <div className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">
+                        {(shipping as { estimated_delivery_days?: number | null }).estimated_delivery_days != null &&
+                          Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days) > 0 && (
+                            <p>
+                              {t("customer.mobile.screens.productDetail.estimatedDeliveryDays", {
+                                days: Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days),
+                              })}
+                            </p>
+                          )}
+                        {(shipping as { delivery_notes?: string | null }).delivery_notes ? (
+                          <p
+                            className={
+                              (shipping as { estimated_delivery_days?: number | null }).estimated_delivery_days !=
+                                null &&
+                              Number((shipping as { estimated_delivery_days?: number }).estimated_delivery_days) > 0
+                                ? "mt-1 leading-relaxed"
+                                : "leading-relaxed"
+                            }
+                          >
+                            {(shipping as { delivery_notes?: string }).delivery_notes}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </>
                 )}
                 {!offersCollection && !offersDelivery && (
@@ -732,18 +776,24 @@ function ProductDetailContent() {
             {offersCollection && collectionLocations.length > 0 && (
               <div className="mt-6 rounded-xl border border-gray-100 bg-white p-4">
                 <h3 className="mb-3 font-semibold text-gray-900">Pickup locations</h3>
-                <ul className="space-y-3 text-sm text-gray-600">
-                  {collectionLocations.map((loc) => (
-                    <li key={loc.id} className="border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                      <p className="font-medium text-gray-900">{loc.name}</p>
-                      {[loc.address_line1, loc.city, loc.state].filter(Boolean).length > 0 && (
-                        <p className="mt-0.5">
-                          {[loc.address_line1, loc.city, loc.state].filter(Boolean).join(", ")}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                {collectionLocations.map((loc) => (
+                  <PickupStoreCard
+                    key={loc.id}
+                    location={{
+                      ...loc,
+                      address_line1: loc.address_line1 ?? "",
+                      city: loc.city ?? "",
+                    }}
+                    timezone={resolvedTimezone}
+                    collectionNotes={
+                      isPickupOnly
+                        ? ((shipping as { collection_notes?: string | null }).collection_notes ?? undefined)
+                        : undefined
+                    }
+                    variant="full"
+                    t={shopT}
+                  />
+                ))}
               </div>
             )}
 

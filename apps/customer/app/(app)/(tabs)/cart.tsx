@@ -27,10 +27,54 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { endTextAlign } from "@/lib/rtlText";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
 interface ProviderShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
+  delivery_fee?: number;
+  delivery_fee_type?: string;
+  free_delivery_threshold?: number | null;
+  estimated_delivery_days?: number;
+  delivery_notes?: string | null;
+  collection_notes?: string | null;
+}
+
+interface PickupLocationSummary {
+  id: string;
+  name: string;
+  address_line1: string;
+  city: string;
+  state?: string | null;
+  working_hours?: unknown;
+  is_primary?: boolean;
+}
+
+function useProviderPickupLocations(providerIds: string[]) {
+  const [locations, setLocations] = useState<Record<string, PickupLocationSummary[]>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const key = providerIds.join(",");
+
+  useEffect(() => {
+    const toFetch = providerIds.filter((id) => id && !fetchedRef.current.has(id));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((id) => fetchedRef.current.add(id));
+    Promise.allSettled(
+      toFetch.map((id) =>
+        api
+          .get<{ locations?: PickupLocationSummary[]; data?: { locations?: PickupLocationSummary[] } }>(
+            `/api/public/provider-locations?provider_id=${id}`,
+          )
+          .then((res) => {
+            const raw = res.data as { locations?: PickupLocationSummary[]; data?: { locations?: PickupLocationSummary[] } };
+            const list = raw?.locations ?? raw?.data?.locations ?? [];
+            if (list.length) setLocations((prev) => ({ ...prev, [id]: list }));
+          }),
+      ),
+    );
+  }, [providerIds, key]);
+
+  return locations;
 }
 
 function useProviderShippingConfigs(providerIds: string[]) {
@@ -75,6 +119,11 @@ export default function CartScreen() {
   const tc = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
       t(`customer.mobile.screens.cart.${key}`, opts) as string,
+    [t],
+  );
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts) as string,
     [t],
   );
   const navigation = useNavigation();
@@ -151,6 +200,11 @@ export default function CartScreen() {
     [items],
   );
   const shippingConfigs = useProviderShippingConfigs(providerIds);
+  const pickupProviderIds = useMemo(
+    () => providerIds.filter((id) => shippingConfigs[id]?.offers_collection),
+    [providerIds, shippingConfigs],
+  );
+  const pickupLocationsByProvider = useProviderPickupLocations(pickupProviderIds);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -323,10 +377,40 @@ export default function CartScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FFF7ED", borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#FED7AA" }}>
                     <Ionicons name="information-circle-outline" size={15} color="#C2410C" style={{ marginEnd: 8 }} />
                     <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 17 }}>
-                      {tc("pickupOnlyHint")}
+                      {isPickupOnly && sc?.collection_notes ? sc.collection_notes : tc("pickupOnlyHint")}
                     </Text>
                   </View>
                 )}
+                {sc?.offers_collection && pickupLocationsByProvider[g.provider.id]?.[0] ? (
+                  <View style={{ marginBottom: 10 }}>
+                    <PickupStoreCard
+                      location={pickupLocationsByProvider[g.provider.id][0]}
+                      variant="compact"
+                      t={shopT}
+                    />
+                    {(pickupLocationsByProvider[g.provider.id]?.length ?? 0) > 1 ? (
+                      <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+                        {tc("pickupLocationsMore", {
+                          count: pickupLocationsByProvider[g.provider.id].length,
+                        })}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {sc?.offers_delivery && (sc.estimated_delivery_days || sc.delivery_notes) ? (
+                  <View style={{ marginBottom: 10, backgroundColor: "#F8FAFC", borderRadius: 10, padding: 10 }}>
+                    {sc.estimated_delivery_days ? (
+                      <Text style={{ fontSize: 12, color: "#475569" }}>
+                        {tc("deliveryEtaDays", { days: sc.estimated_delivery_days })}
+                      </Text>
+                    ) : null}
+                    {sc.delivery_notes ? (
+                      <Text style={{ fontSize: 12, color: "#475569", marginTop: sc.estimated_delivery_days ? 4 : 0 }}>
+                        {sc.delivery_notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <View style={{ backgroundColor: "#fff", borderRadius: 12, overflow: "hidden", ...Shadows.cardSmall }}>
                   {g.items.map((item) => {
                     const label = variantLabel(item);

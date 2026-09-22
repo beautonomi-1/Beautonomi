@@ -135,10 +135,11 @@ export async function GET(
           id, business_name, slug, thumbnail_url, receipt_header, receipt_footer, phone, email
         ),
         delivery_address:user_addresses (
-          id, label, address_line1, address_line2, city, state, postal_code, country
+          id, label, address_line1, address_line2, city, state, postal_code, country,
+          apartment_unit, building_name, access_codes, parking_instructions, location_landmarks
         ),
         collection_location:provider_locations (
-          id, name, address_line1, address_line2, city, state, postal_code, phone, working_hours
+          id, name, address_line1, address_line2, city, state, postal_code, country, phone, working_hours, latitude, longitude
         )
       `
       )

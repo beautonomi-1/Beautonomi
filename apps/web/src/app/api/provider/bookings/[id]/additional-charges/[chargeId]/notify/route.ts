@@ -150,6 +150,9 @@ export async function POST(
 
     try {
       const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      const { customerBookingChannels } = await import(
+        "@/lib/notifications/customer-booking-channels"
+      );
       await sendTemplateNotification(
         "additional_charge_requested",
         [bookingData.customer_id],
@@ -161,8 +164,7 @@ export async function POST(
           booking_id: bookingId,
           charge_id: chargeId,
         },
-        ["push", "email"],
-        // In-app bell row inserted manually above; skip template auto-insert.
+        await customerBookingChannels(tenantId),
         { appType: "customer", tenantId, skipInApp: true }
       );
     } catch (notifError) {

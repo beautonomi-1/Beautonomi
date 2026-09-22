@@ -28,6 +28,14 @@ vi.mock("@/lib/notifications/notification-service", () => ({
   notifyOrderConfirmation: (...args: unknown[]) => mockNotifyOrderConfirmation(...args),
 }));
 
+vi.mock("@/lib/notifications/product-order-fulfillment-summary", () => ({
+  buildProductOrderFulfillmentSummary: vi.fn(async () => "Pickup: Store, Main St"),
+}));
+
+vi.mock("@/lib/notifications/dispatch-template-notification", () => ({
+  dispatchTemplateNotification: vi.fn(async () => ({ success: true })),
+}));
+
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn(async () => "tenant-1"),
 }));
@@ -162,7 +170,7 @@ describe("notifyProductOrderPaidIfTransitioned", () => {
       500,
       ["push", "email"],
       // skipInApp: this caller owns the rich in-app row via insertNotification.
-      { skipInApp: true },
+      { skipInApp: true, fulfillmentSummary: "Pickup: Store, Main St" },
     );
     expect(mockSendTemplateNotification).toHaveBeenCalledWith(
       "product_order_placed",
@@ -182,6 +190,8 @@ describe("notifyProductOrderPlacedPendingPayment", () => {
 
   it("notifies provider for pay-on-delivery placement", async () => {
     await notifyProductOrderPlacedPendingPayment({
+      supabase: { from: vi.fn() } as never,
+      customerId: "cust-1",
       providerId: "prov-1",
       productOrderId: "order-2",
       orderNumber: "BO-2",

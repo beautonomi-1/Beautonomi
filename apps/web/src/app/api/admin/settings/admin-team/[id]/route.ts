@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { syncAdminUserTenantRole } from "@/lib/tenant/sync-admin-user-tenant-role";
 
 const ADMIN_ROLES: UserRole[] = [
   "superadmin",
@@ -23,6 +24,9 @@ const ADMIN_ROLES: UserRole[] = [
   "admin_operations",
   "admin_platform_config",
   "support_agent",
+  "admin_sales",
+  "admin_onboarding",
+  "admin_retention",
 ];
 
 const patchSchema = z.object({
@@ -39,6 +43,9 @@ const patchSchema = z.object({
       "admin_operations",
       "admin_platform_config",
       "support_agent",
+      "admin_sales",
+      "admin_onboarding",
+      "admin_retention",
       "customer",
     ] as const)
     .optional(),
@@ -100,6 +107,10 @@ export async function PATCH(
 
     const { error: updateErr } = await supabase.from("users").update(updateData).eq("id", id);
     if (updateErr) throw updateErr;
+
+    if (parsed.data.role !== undefined) {
+      await syncAdminUserTenantRole(supabase, id, parsed.data.role, undefined, request);
+    }
 
     await writeAuditLog({
       actor_user_id: actor.id,

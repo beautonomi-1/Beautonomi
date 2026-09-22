@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isTransactionalWhatsAppTemplate } from "@/lib/whatsapp/transactional-templates";
 
 export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
@@ -71,6 +72,9 @@ export function templateKeyToPreferenceSection(templateKey: string): string {
   ) {
     return "reminders";
   }
+  if (key === "loyalty_points_earned" || key === "post_visit_whatsapp") {
+    return "account_activity";
+  }
   if (
     key.includes("welcome_message") ||
     key.includes("referral") ||
@@ -124,6 +128,8 @@ function channelAllowedForUser(
     push_notifications_enabled?: boolean | null;
     whatsapp_notifications_enabled?: boolean | null;
     whatsapp_opt_in_at?: string | null;
+    whatsapp_opted_out_at?: string | null;
+    phone?: string | null;
   } | null,
   templateKey: string,
   channel: NotificationChannelName
@@ -148,6 +154,14 @@ function channelAllowedForUser(
     return sec.push === true;
   }
   if (channel === "whatsapp") {
+    if (usersRow?.whatsapp_opted_out_at) return false;
+    if (isTransactionalWhatsAppTemplate(templateKey, "customer")) {
+      const phone = typeof usersRow?.phone === "string" ? usersRow.phone.trim() : "";
+      if (!phone) return false;
+      // Transactional tickets bypass saved UI default `whatsapp: false` until the
+      // customer explicitly opts out (STOP) or disables WhatsApp in prefs.
+      return true;
+    }
     if (usersRow?.whatsapp_notifications_enabled === false) return false;
     if (!usersRow?.whatsapp_opt_in_at && sec.whatsapp !== true) return false;
     return sec.whatsapp !== false;
@@ -174,7 +188,9 @@ export async function resolveChannelsPerCustomerRecipient(
 
   const { data: users } = await supabase
     .from("users")
-    .select("id, email_notifications_enabled, sms_notifications_enabled, push_notifications_enabled, whatsapp_notifications_enabled, whatsapp_opt_in_at")
+    .select(
+      "id, phone, email_notifications_enabled, sms_notifications_enabled, push_notifications_enabled, whatsapp_notifications_enabled, whatsapp_opt_in_at, whatsapp_opted_out_at",
+    )
     .in("id", userIds);
 
   const { data: profiles } = await supabase

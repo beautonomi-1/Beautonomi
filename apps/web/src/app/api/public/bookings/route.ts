@@ -11,7 +11,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
-import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
+import { assertTransactionalMarketAllowed } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 import { createBookingRecord } from "./_helpers/create-booking-record";
@@ -169,30 +169,18 @@ export async function POST(request: NextRequest) {
         const { tenantId: marketTenantId } = tenantRes;
 
         stage = "market_check";
-        const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
-        if (marketAvailability.status === "restricted") {
-          return handleApiError(
-            new Error("Access unavailable for this country"),
-            "Access unavailable in your country due to legal or regulatory restrictions.",
-            "COUNTRY_RESTRICTED",
-            451,
-          );
-        }
-
         const { data: marketTenant } = await supabaseAdmin
           .from("tenants")
-          .select("slug")
+          .select("slug, region_code")
           .eq("id", marketTenantId)
           .maybeSingle();
 
-        if ((marketTenant as { slug?: string } | null)?.slug === "global") {
-          return handleApiError(
-            new Error("Bookings are unavailable on global entry"),
-            "Please switch to an available market to continue booking.",
-            "MARKET_SWITCH_REQUIRED",
-            403,
-          );
-        }
+        const marketGuard = assertTransactionalMarketAllowed({
+          request,
+          tenantSlug: (marketTenant as { slug?: string } | null)?.slug ?? null,
+          tenantRegionCode: (marketTenant as { region_code?: string } | null)?.region_code ?? null,
+        });
+        if (marketGuard) return marketGuard;
 
         stage = "ensure_profile";
         // 2.5. Ensure user has a public profile (handles new sign-ins where trigger hasn't run yet)

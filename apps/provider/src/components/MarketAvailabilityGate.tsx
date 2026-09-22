@@ -13,21 +13,25 @@ import {
   setRuntimeMarketHost,
   withWebApiTenantHeaders,
 } from "@/config/public-env";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getDeviceLocaleCountryIso } from "@/lib/device-default-country-dial";
 import {
-  trackMarketAutoSwitch,
+  primeShopMarketCache,
+  setShopMarketCountry,
+} from "@/lib/market/shop-market-opt-in";
+import {
   trackMarketAutoSwitchSuppressed,
   trackMarketManualSwitch,
   trackMarketSwitchDeclined,
 } from "@/lib/analytics";
 import { api } from "@/lib/api-client";
 import { useTranslation } from "@beautonomi/i18n";
+import { CityWaitlistSheet } from "@/components/CityWaitlistSheet";
 
 type AvailabilityStatus = "allowed" | "unsupported" | "restricted";
 type Panel = null | "restricted" | "za_suggest" | "unsupported_global" | "regional_foreign";
 
-const MARKET_OVERRIDE_KEY = "market_manual_override";
-const ZA_SUGGEST_DISMISS_KEY = "beautonomi_market_banner_za_suggest_v1";
+const MARKET_OVERRIDE_KEY = "provider_market_manual_override";
+const ZA_SUGGEST_DISMISS_KEY = "provider_beautonomi_market_banner_za_suggest_v1";
 const MARKET_OVERRIDE_TTL_MS = Math.max(
   1,
   Number.isFinite(MARKET_OVERRIDE_TTL_HOURS) ? MARKET_OVERRIDE_TTL_HOURS : 24,
@@ -147,6 +151,7 @@ export default function MarketAvailabilityGate() {
   const sessionDismiss = useRef({ za: false, unsupportedG: false, regional: false });
 
   const [panel, setPanel] = useState<Panel>(null);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [countryCode, setCountryCode] = useState("");
   const [reason, setReason] = useState<string | null>(null);
   const [supportedCountries, setSupportedCountries] = useState<string[]>([]);
@@ -187,7 +192,7 @@ export default function MarketAvailabilityGate() {
         const response = await fetch(
           `${base}/api/public/tenant-context`,
           withWebApiTenantHeaders({
-            headers: { "X-Active-Market-Country": getDeviceRegionCountryIso() },
+            headers: { "X-Active-Market-Country": getDeviceLocaleCountryIso() },
           }),
         );
         const body = (await response.json()) as TenantContextResponse;
@@ -244,16 +249,7 @@ export default function MarketAvailabilityGate() {
           !dismissZaLong &&
           !sessionDismiss.current.za
         ) {
-          // Auto-switch silently to the recommended host
-          trackMarketAutoSwitch({
-            fromHost: activeHost,
-            toHost: switchHost,
-            source: routing?.marketSource ?? "unknown",
-            confidence: routing?.confidence ?? "unknown",
-            countryCode: (availability?.countryCode ?? "").toUpperCase(),
-          });
-          await persistPreferredHomeTenant(routing.recommendedTenantId ?? routing.defaultMarketTenantId);
-          await setRuntimeMarketHost(switchHost);
+          setPanel("za_suggest");
           return;
         }
 
@@ -263,17 +259,7 @@ export default function MarketAvailabilityGate() {
           !manualOverrideActive &&
           !sessionDismiss.current.unsupportedG
         ) {
-          // Auto switch to default market
-          await setManualOverride(defaultMarketHost);
-          trackMarketAutoSwitch({
-            fromHost: activeHost,
-            toHost: defaultMarketHost,
-            source: routing?.marketSource ?? "unknown",
-            confidence: routing?.confidence ?? "unknown",
-            countryCode: (availability?.countryCode ?? "").toUpperCase(),
-          });
-          await persistPreferredHomeTenant(routing?.defaultMarketTenantId);
-          await setRuntimeMarketHost(defaultMarketHost);
+          setPanel("unsupported_global");
           return;
         }
 
@@ -283,8 +269,7 @@ export default function MarketAvailabilityGate() {
           nextStatus === "unsupported" &&
           !sessionDismiss.current.regional
         ) {
-          // Let them be or redirect to global? Just silently continue
-          return;
+          setPanel("regional_foreign");
         }
       } catch {
         // best-effort only
@@ -296,8 +281,14 @@ export default function MarketAvailabilityGate() {
     };
   }, [globalEntryHost, defaultMarketHost]);
 
+  const persistShopZa = async () => {
+    await setShopMarketCountry("ZA");
+    primeShopMarketCache("ZA");
+  };
+
   const goToZaMarket = async () => {
     const za = targetZaHost || defaultMarketHost;
+    await persistShopZa();
     trackMarketManualSwitch({
       fromHost: normalizeHost(getRuntimeMarketHost()),
       toHost: za,
@@ -340,6 +331,7 @@ export default function MarketAvailabilityGate() {
 
   const switchToDefaultMarket = async () => {
     await setManualOverride(defaultMarketHost);
+    await persistShopZa();
     trackMarketManualSwitch({
       fromHost: normalizeHost(getRuntimeMarketHost()),
       toHost: defaultMarketHost,
@@ -462,6 +454,14 @@ export default function MarketAvailabilityGate() {
               ) : null}
               <View style={{ gap: 10 }}>
                 <Pressable
+                  onPress={() => setWaitlistOpen(true)}
+                  style={{ backgroundColor: "#fff", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
+                >
+                  <Text style={{ color: "#78350f", fontWeight: "700" }}>
+                    {(t("web.global.marketAvailability.joinWaitlist") as string) || "Join waitlist"}
+                  </Text>
+                </Pressable>
+                <Pressable
                   onPress={() => void switchToDefaultMarket()}
                   style={{ backgroundColor: "#fff", paddingVertical: 12, borderRadius: 10, alignItems: "center" }}
                 >
@@ -503,6 +503,11 @@ export default function MarketAvailabilityGate() {
             dismissRegional,
           )
         : null}
+      <CityWaitlistSheet
+        visible={waitlistOpen}
+        onClose={() => setWaitlistOpen(false)}
+        countryCode={countryCode}
+      />
     </>
   );
 }

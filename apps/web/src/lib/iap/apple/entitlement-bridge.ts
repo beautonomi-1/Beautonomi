@@ -185,7 +185,7 @@ async function applySubscriptionEntitlement(
     { onConflict: "provider_id" },
   );
 
-  if (isRevoked || status === "expired") return;
+  if (isRevoked) return;
 
   const { commissionMajor, proceedsMajor } = computeAppleCommission(
     grossMajor,

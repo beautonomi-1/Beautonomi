@@ -1,0 +1,643 @@
+{
+  "Filter": {
+    "zu": "Hlunga",
+    "xh": "Hluza",
+    "st": "Sefa",
+    "nso": "Sefa",
+    "tn": "Sefa",
+    "ts": "Hlawula",
+    "ve": "Hlawulela",
+    "ss": "Hlunga"
+  },
+  "{{count}} open": {
+    "zu": "{{count}} vula",
+    "xh": "{{count}} vula",
+    "st": "{{count}} bula",
+    "nso": "{{count}} bula",
+    "tn": "{{count}} bula",
+    "ts": "{{count}} pfula",
+    "ve": "{{count}} vula",
+    "ss": "{{count}} vula"
+  },
+  "April 1, 2024": {
+    "zu": "uMbasa 1, 2024",
+    "xh": "uTshazimpuzi 1, 2024",
+    "st": "Mmesa 1, 2024",
+    "nso": "Moranang 1, 2024",
+    "tn": "Moranang 1, 2024",
+    "ts": "Dzivamisoko 1, 2024",
+    "ve": "Lambamai 1, 2024",
+    "ss": "Mabasa 1, 2024"
+  },
+  "Registered company / salon": {
+    "zu": "Registered company / isaloni",
+    "xh": "Registered company / isaloni",
+    "ts": "Registered company / saloni",
+    "ve": "Registered company / saloni",
+    "ss": "Registered company / lisaloni"
+  },
+  "this salon": {
+    "zu": "this isaloni",
+    "xh": "this isaloni",
+    "ts": "this saloni",
+    "ve": "this saloni",
+    "ss": "this lisaloni"
+  },
+  "Plan": {
+    "zu": "Uhlelo",
+    "xh": "Isicwangciso",
+    "st": "Morero",
+    "nso": "Leano",
+    "tn": "Leano",
+    "ts": "Pulani",
+    "ve": "Pulane",
+    "ss": "Luhlelo"
+  },
+  "Plan limit reached": {
+    "zu": "Uhlelo limit reached",
+    "xh": "Isicwangciso limit reached",
+    "st": "Morero limit reached",
+    "nso": "Leano limit reached",
+    "tn": "Leano limit reached",
+    "ts": "Pulani limit reached",
+    "ve": "Pulane limit reached",
+    "ss": "Luhlelo limit reached"
+  },
+  "Require {{label}} to open Beautonomi": {
+    "zu": "Require {{label}} to vula Beautonomi",
+    "xh": "Require {{label}} to vula Beautonomi",
+    "st": "Require {{label}} to bula Beautonomi",
+    "nso": "Require {{label}} to bula Beautonomi",
+    "tn": "Require {{label}} to bula Beautonomi",
+    "ts": "Require {{label}} to pfula Beautonomi",
+    "ve": "Require {{label}} to vula Beautonomi",
+    "ss": "Require {{label}} to vula Beautonomi"
+  },
+  "Sensitive content filter": {
+    "zu": "Sensitive content hlunga",
+    "xh": "Sensitive content hluza",
+    "st": "Sensitive content sefa",
+    "nso": "Sensitive content sefa",
+    "tn": "Sensitive content sefa",
+    "ts": "Sensitive content hlawula",
+    "ve": "Sensitive content hlawulela",
+    "ss": "Sensitive content hlunga"
+  },
+  "{{count}} item": {
+    "zu": "Into engu-{{count}}",
+    "xh": "Into engu-{{count}}",
+    "st": "Ntho e {{count}}",
+    "nso": "Selô se {{count}}",
+    "tn": "Selo se {{count}}",
+    "ts": "Xilo xa {{count}}",
+    "ve": "Tshithu tsha {{count}}",
+    "ss": "Sinto lesingu-{{count}}"
+  },
+  "{{count}} items": {
+    "zu": "Izinto ezingu-{{count}}",
+    "xh": "Izinto ezingu-{{count}}",
+    "st": "Lintho tse {{count}}",
+    "nso": "Dilo tše {{count}}",
+    "tn": "Dilo tse {{count}}",
+    "ts": "Swilo swa {{count}}",
+    "ve": "Zwithu zwa {{count}}",
+    "ss": "Tintfo letingu-{{count}}"
+  },
+  "Items": {
+    "zu": "Izinto",
+    "xh": "Izinto",
+    "st": "Lintho",
+    "nso": "Dilo",
+    "tn": "Dilo",
+    "ts": "Swilo",
+    "ve": "Zwithu",
+    "ss": "Tintfo"
+  },
+  "Couldn't reopen Paystack": {
+    "zu": "Couldn't revula Paystack",
+    "xh": "Couldn't revula Paystack",
+    "st": "Couldn't rebula Paystack",
+    "nso": "Couldn't rebula Paystack",
+    "tn": "Couldn't rebula Paystack",
+    "ts": "Couldn't repfula Paystack",
+    "ve": "Couldn't revula Paystack",
+    "ss": "Couldn't revula Paystack"
+  },
+  " · {{count}} spot open": {
+    "zu": " · {{count}} spot vula",
+    "xh": " · {{count}} spot vula",
+    "st": " · {{count}} spot bula",
+    "nso": " · {{count}} spot bula",
+    "tn": " · {{count}} spot bula",
+    "ts": " · {{count}} spot pfula",
+    "ve": " · {{count}} spot vula",
+    "ss": " · {{count}} spot vula"
+  },
+  " · {{count}} spots open": {
+    "zu": " · {{count}} spots vula",
+    "xh": " · {{count}} spots vula",
+    "st": " · {{count}} spots bula",
+    "nso": " · {{count}} spots bula",
+    "tn": " · {{count}} spots bula",
+    "ts": " · {{count}} spots pfula",
+    "ve": " · {{count}} spots vula",
+    "ss": " · {{count}} spots vula"
+  },
+  "Pay later": {
+    "zu": "Pay kamuva",
+    "xh": "Pay emva kwexesha",
+    "st": "Pay hamorao",
+    "nso": "Pay ka morago",
+    "tn": "Pay moragonyana",
+    "ts": "Pay endzhaku",
+    "ve": "Pay nga murahu",
+    "ss": "Pay kamuva"
+  },
+  "Setup status": {
+    "zu": "Setup isimo",
+    "xh": "Setup imo",
+    "st": "Setup boemo",
+    "nso": "Setup maemo",
+    "tn": "Setup maemo",
+    "ts": "Setup xiyimo",
+    "ve": "Setup mutevhe",
+    "ss": "Setup simo"
+  },
+  "This week": {
+    "zu": "This iviki",
+    "xh": "This iveki",
+    "st": "This beke",
+    "nso": "This beke",
+    "tn": "This beke",
+    "ts": "This vhiki",
+    "ve": "This vhege",
+    "ss": "This liviki"
+  },
+  "{{day}} open toggle": {
+    "zu": "{{day}} vula toggle",
+    "xh": "{{day}} vula toggle",
+    "st": "{{day}} bula toggle",
+    "nso": "{{day}} bula toggle",
+    "tn": "{{day}} bula toggle",
+    "ts": "{{day}} pfula toggle",
+    "ve": "{{day}} vula toggle",
+    "ss": "{{day}} vula toggle"
+  },
+  "Plan renewed.": {
+    "zu": "Uhlelo renewed.",
+    "xh": "Isicwangciso renewed.",
+    "st": "Morero renewed.",
+    "nso": "Leano renewed.",
+    "tn": "Leano renewed.",
+    "ts": "Pulani renewed.",
+    "ve": "Pulane renewed.",
+    "ss": "Luhlelo renewed."
+  },
+  "Couldn't open": {
+    "zu": "Couldn't vula",
+    "xh": "Couldn't vula",
+    "st": "Couldn't bula",
+    "nso": "Couldn't bula",
+    "tn": "Couldn't bula",
+    "ts": "Couldn't pfula",
+    "ve": "Couldn't vula",
+    "ss": "Couldn't vula"
+  },
+  "Status": {
+    "zu": "Isimo",
+    "xh": "Imo",
+    "st": "Boemo",
+    "nso": "Maemo",
+    "tn": "Maemo",
+    "ts": "Xiyimo",
+    "ve": "Mutevhe",
+    "ss": "Simo"
+  },
+  "Track your application status.": {
+    "af": "Volg jou aansoekstatus.",
+    "zu": "Landelela isimo sesicelo sakho.",
+    "xh": "Landelela imeko yesicelo sakho.",
+    "st": "Latela maemo a kopo ea hau.",
+    "nso": "Latela maemo a kgopelo ya gago.",
+    "tn": "Latela maemo a kgopelo ya gago.",
+    "ts": "Landelela xiyimo xa xikombelo xa wena.",
+    "ve": "Tandululani mutevhe wa tshikelo tshavho.",
+    "ss": "Landzelela simo sesicelo sakho."
+  },
+  "Couldn't check status": {
+    "zu": "Couldn't check isimo",
+    "xh": "Couldn't check imo",
+    "st": "Couldn't check boemo",
+    "nso": "Couldn't check maemo",
+    "tn": "Couldn't check maemo",
+    "ts": "Couldn't check xiyimo",
+    "ve": "Couldn't check mutevhe",
+    "ss": "Couldn't check simo"
+  },
+  "Yoco integration status": {
+    "zu": "Yoco integration isimo",
+    "xh": "Yoco integration imo",
+    "st": "Yoco integration boemo",
+    "nso": "Yoco integration maemo",
+    "tn": "Yoco integration maemo",
+    "ts": "Yoco integration xiyimo",
+    "ve": "Yoco integration mutevhe",
+    "ss": "Yoco integration simo"
+  },
+  "your-salon": {
+    "zu": "your-isaloni",
+    "xh": "your-isaloni",
+    "ts": "your-saloni",
+    "ve": "your-saloni",
+    "ss": "your-lisaloni"
+  },
+  "April": {
+    "zu": "uMbasa",
+    "xh": "uTshazimpuzi",
+    "st": "Mmesa",
+    "nso": "Moranang",
+    "tn": "Moranang",
+    "ts": "Dzivamisoko",
+    "ve": "Lambamai",
+    "ss": "Mabasa"
+  },
+  "September": {
+    "zu": "uMandulo",
+    "xh": "eyoMsintsi",
+    "st": "Loetse",
+    "nso": "Lewedi",
+    "tn": "Lwetse",
+    "ts": "Ndzhati",
+    "ve": "Khubvumedzi",
+    "ss": "iNyoni"
+  },
+  "November": {
+    "zu": "uLwezi",
+    "xh": "eyeNkanga",
+    "st": "Pulungoana",
+    "nso": "Dibatsela",
+    "tn": "Ngwanatsele",
+    "ts": "Hukuri",
+    "ve": "Ḽara",
+    "ss": "Lweti"
+  },
+  "Maybe later": {
+    "zu": "Maybe kamuva",
+    "xh": "Maybe emva kwexesha",
+    "st": "Maybe hamorao",
+    "nso": "Maybe ka morago",
+    "tn": "Maybe moragonyana",
+    "ts": "Maybe endzhaku",
+    "ve": "Maybe nga murahu",
+    "ss": "Maybe kamuva"
+  },
+  "open": {
+    "zu": "vula",
+    "xh": "vula",
+    "st": "bula",
+    "nso": "bula",
+    "tn": "bula",
+    "ts": "pfula",
+    "ve": "vula",
+    "ss": "vula"
+  },
+  "{{day}} open switch": {
+    "zu": "{{day}} vula switch",
+    "xh": "{{day}} vula switch",
+    "st": "{{day}} bula switch",
+    "nso": "{{day}} bula switch",
+    "tn": "{{day}} bula switch",
+    "ts": "{{day}} pfula switch",
+    "ve": "{{day}} vula switch",
+    "ss": "{{day}} vula switch"
+  },
+  "Item": {
+    "zu": "Into",
+    "xh": "Into",
+    "st": "Ntho",
+    "nso": "Selô",
+    "tn": "Selo",
+    "ts": "Xilo",
+    "ve": "Tshithu",
+    "ss": "Sinto"
+  },
+  "my-salon": {
+    "zu": "my-isaloni",
+    "xh": "my-isaloni",
+    "ts": "my-saloni",
+    "ve": "my-saloni",
+    "ss": "my-lisaloni"
+  },
+  "{{message}}\n(Item {{current}} of {{total}})": {
+    "zu": "{{message}}\n(Into {{current}} of {{total}})",
+    "xh": "{{message}}\n(Into {{current}} of {{total}})",
+    "st": "{{message}}\n(Ntho {{current}} of {{total}})",
+    "nso": "{{message}}\n(Selô {{current}} of {{total}})",
+    "tn": "{{message}}\n(Selo {{current}} of {{total}})",
+    "ts": "{{message}}\n(Xilo {{current}} of {{total}})",
+    "ve": "{{message}}\n(Tshithu {{current}} of {{total}})",
+    "ss": "{{message}}\n(Sinto {{current}} of {{total}})"
+  },
+  "this week": {
+    "zu": "this iviki",
+    "xh": "this iveki",
+    "st": "this beke",
+    "nso": "this beke",
+    "tn": "this beke",
+    "ts": "this vhiki",
+    "ve": "this vhege",
+    "ss": "this liviki"
+  },
+  "At-salon": {
+    "zu": "At-isaloni",
+    "xh": "At-isaloni",
+    "ts": "At-saloni",
+    "ve": "At-saloni",
+    "ss": "At-lisaloni"
+  },
+  "Bank": {
+    "zu": "Ibhange",
+    "xh": "Ibhanki",
+    "st": "Banka",
+    "nso": "Panka",
+    "tn": "Banka",
+    "ts": "Bhangi",
+    "ve": "Banga",
+    "ss": "Libhange"
+  },
+  "Bank * (Paystack)": {
+    "zu": "Ibhange * (Paystack)",
+    "xh": "Ibhanki * (Paystack)",
+    "st": "Banka * (Paystack)",
+    "nso": "Panka * (Paystack)",
+    "tn": "Banka * (Paystack)",
+    "ts": "Bhangi * (Paystack)",
+    "ve": "Banga * (Paystack)",
+    "ss": "Libhange * (Paystack)"
+  },
+  "Try a different filter": {
+    "zu": "Try a different hlunga",
+    "xh": "Try a different hluza",
+    "st": "Try a different sefa",
+    "nso": "Try a different sefa",
+    "tn": "Try a different sefa",
+    "ts": "Try a different hlawula",
+    "ve": "Try a different hlawulela",
+    "ss": "Try a different hlunga"
+  },
+  "Every week": {
+    "zu": "Every iviki",
+    "xh": "Every iveki",
+    "st": "Every beke",
+    "nso": "Every beke",
+    "tn": "Every beke",
+    "ts": "Every vhiki",
+    "ve": "Every vhege",
+    "ss": "Every liviki"
+  },
+  "e.g. Main salon": {
+    "zu": "e.g. Main isaloni",
+    "xh": "e.g. Main isaloni",
+    "ts": "e.g. Main saloni",
+    "ve": "e.g. Main saloni",
+    "ss": "e.g. Main lisaloni"
+  },
+  "Items ({{count}})": {
+    "zu": "Izinto ({{count}})",
+    "xh": "Izinto ({{count}})",
+    "st": "Lintho ({{count}})",
+    "nso": "Dilo ({{count}})",
+    "tn": "Dilo ({{count}})",
+    "ts": "Swilo ({{count}})",
+    "ve": "Zwithu ({{count}})",
+    "ss": "Tintfo ({{count}})"
+  },
+  "Try adjusting your filters": {
+    "zu": "Try adjusting your hlungas",
+    "xh": "Try adjusting your hluzas",
+    "st": "Try adjusting your sefas",
+    "nso": "Try adjusting your sefas",
+    "tn": "Try adjusting your sefas",
+    "ts": "Try adjusting your hlawulas",
+    "ve": "Try adjusting your hlawulelas",
+    "ss": "Try adjusting your hlungas"
+  },
+  "Items:": {
+    "zu": "Izinto:",
+    "xh": "Izinto:",
+    "st": "Lintho:",
+    "nso": "Dilo:",
+    "tn": "Dilo:",
+    "ts": "Swilo:",
+    "ve": "Zwithu:",
+    "ss": "Tintfo:"
+  },
+  "No results for this filter": {
+    "zu": "No results for this hlunga",
+    "xh": "No results for this hluza",
+    "st": "No results for this sefa",
+    "nso": "No results for this sefa",
+    "tn": "No results for this sefa",
+    "ts": "No results for this hlawula",
+    "ve": "No results for this hlawulela",
+    "ss": "No results for this hlunga"
+  },
+  "Try different filters": {
+    "zu": "Try different hlungas",
+    "xh": "Try different hluzas",
+    "st": "Try different sefas",
+    "nso": "Try different sefas",
+    "tn": "Try different sefas",
+    "ts": "Try different hlawulas",
+    "ve": "Try different hlawulelas",
+    "ss": "Try different hlungas"
+  },
+  "This week · ledger": {
+    "zu": "This iviki · ledger",
+    "xh": "This iveki · ledger",
+    "st": "This beke · ledger",
+    "nso": "This beke · ledger",
+    "tn": "This beke · ledger",
+    "ts": "This vhiki · ledger",
+    "ve": "This vhege · ledger",
+    "ss": "This liviki · ledger"
+  },
+  "In-salon": {
+    "zu": "In-isaloni",
+    "xh": "In-isaloni",
+    "ts": "In-saloni",
+    "ve": "In-saloni",
+    "ss": "In-lisaloni"
+  },
+  "Banking": {
+    "zu": "Ibhangeing",
+    "xh": "Ibhankiing",
+    "st": "Bankaing",
+    "nso": "Pankaing",
+    "tn": "Bankaing",
+    "ts": "Bhangiing",
+    "ve": "Bangaing",
+    "ss": "Libhangeing"
+  },
+  "Mix by status": {
+    "zu": "Mix by isimo",
+    "xh": "Mix by imo",
+    "st": "Mix by boemo",
+    "nso": "Mix by maemo",
+    "tn": "Mix by maemo",
+    "ts": "Mix by xiyimo",
+    "ve": "Mix by mutevhe",
+    "ss": "Mix by simo"
+  },
+  "Ledger net by status": {
+    "zu": "Ledger net by isimo",
+    "xh": "Ledger net by imo",
+    "st": "Ledger net by boemo",
+    "nso": "Ledger net by maemo",
+    "tn": "Ledger net by maemo",
+    "ts": "Ledger net by xiyimo",
+    "ve": "Ledger net by mutevhe",
+    "ss": "Ledger net by simo"
+  },
+  "Auto-notify when slots open": {
+    "zu": "Auto-notify when slots vula",
+    "xh": "Auto-notify when slots vula",
+    "st": "Auto-notify when slots bula",
+    "nso": "Auto-notify when slots bula",
+    "tn": "Auto-notify when slots bula",
+    "ts": "Auto-notify when slots pfula",
+    "ve": "Auto-notify when slots vula",
+    "ss": "Auto-notify when slots vula"
+  },
+  "Video": {
+    "zu": "Ividiyo",
+    "xh": "Ividiyo",
+    "ts": "Vhidiyo",
+    "ve": "Vhidio",
+    "ss": "Ividiyo"
+  },
+  "Video — tap to open": {
+    "zu": "Ividiyo — tap to vula",
+    "xh": "Ividiyo — tap to vula",
+    "st": "Video — tap to bula",
+    "nso": "Video — tap to bula",
+    "tn": "Video — tap to bula",
+    "ts": "Vhidiyo — tap to pfula",
+    "ve": "Vhidio — tap to vula",
+    "ss": "Ividiyo — tap to vula"
+  },
+  "No returns with status \"{{status}}.\"": {
+    "af": "Geen terugsendings met status \"{{status}}.\"",
+    "zu": "Akukho ukubuyisela ngesimo \"{{status}}.\"",
+    "xh": "Akukho ukubuyisela ngemeko \"{{status}}.\"",
+    "st": "Ha ho na ho khutlisa ka boemo \"{{status}}.\"",
+    "nso": "Ga go na go busetša ka maemo \"{{status}}.\"",
+    "tn": "Ga go na go busetsa ka maemo \"{{status}}.\"",
+    "ts": "A ku na ku vuyisa hi xiyimo \"{{status}}.\"",
+    "ve": "A hu na u vhuyela nga mutevhe \"{{status}}.\"",
+    "ss": "Akukho kubuyisela ngesimo \"{{status}}.\""
+  },
+  "No further actions for this status.": {
+    "af": "Geen verdere aksies vir hierdie status.",
+    "zu": "Azikho ezinye izenzo zalesi simo.",
+    "xh": "Akukho zenzo ezongezelelweyo zale imeko.",
+    "st": "Ha ho na liketso tse ling bakeng sa boemo bona.",
+    "nso": "Ga go na ditiro tše dingwe tša maemo a.",
+    "tn": "Ga go na ditiro tse dingwe tsa maemo a.",
+    "ts": "A ku na mintirho yin'wana ya xiyimo lexi.",
+    "ve": "A hu na maitele anzhi a mutevhe uyu.",
+    "ss": "Akukho tento letinye tesimo lesi."
+  },
+  "e.g. Item was used, outside return window": {
+    "af": "bv. Item is gebruik, buite retourvenster",
+    "zu": "isb. Into isetshenzisiwe, ngaphandle kwesikhathi sokubuyisela",
+    "xh": "umz. Into isetyenzisiwe, ngaphandle kwexesha lokubuyisela",
+    "st": "mohl. Ntho e sebelisitsoeng, kantle ho fensetere ea ho khutlisa",
+    "nso": "mohl. Selo se šomišitšwego, ka ntle ga fensetere ya go busetša",
+    "tn": "mohl. Selo se dirisitsweng, fa ntle ga fensetere ya go busetsa",
+    "ts": "swiv. Nchumu wu tirhisiwile, handle ka fasitere ya ku vuyisa",
+    "ve": "Tshithu tshi shumisiwaho, nga nnḓa ha windo ya u vhuyela",
+    "ss": "isb. Into isetsentiswe, ngaphandle kwesikhatsi sekubuyisela"
+  },
+  "Statuses included": {
+    "zu": "Isimoes included",
+    "xh": "Imoes included",
+    "st": "Boemoes included",
+    "nso": "Maemoes included",
+    "tn": "Maemoes included",
+    "ts": "Xiyimoes included",
+    "ve": "Mutevhees included",
+    "ss": "Simoes included"
+  },
+  "Item arrived damaged": {
+    "zu": "Into arrived damaged",
+    "xh": "Into arrived damaged",
+    "st": "Ntho arrived damaged",
+    "nso": "Selô arrived damaged",
+    "tn": "Selo arrived damaged",
+    "ts": "Xilo arrived damaged",
+    "ve": "Tshithu arrived damaged",
+    "ss": "Sinto arrived damaged"
+  },
+  "Item received": {
+    "zu": "Into received",
+    "xh": "Into received",
+    "st": "Ntho received",
+    "nso": "Selô received",
+    "tn": "Selo received",
+    "ts": "Xilo received",
+    "ve": "Tshithu received",
+    "ss": "Sinto received"
+  },
+  "Find a salon": {
+    "zu": "Find a isaloni",
+    "xh": "Find a isaloni",
+    "ts": "Find a saloni",
+    "ve": "Find a saloni",
+    "ss": "Find a lisaloni"
+  },
+  "At the salon": {
+    "zu": "At the isaloni",
+    "xh": "At the isaloni",
+    "ts": "At the saloni",
+    "ve": "At the saloni",
+    "ss": "At the lisaloni"
+  },
+  "Item Received": {
+    "zu": "Into Received",
+    "xh": "Into Received",
+    "st": "Ntho Received",
+    "nso": "Selô Received",
+    "tn": "Selo Received",
+    "ts": "Xilo Received",
+    "ve": "Tshithu Received",
+    "ss": "Sinto Received"
+  },
+  "In-salon visit": {
+    "zu": "In-isaloni visit",
+    "xh": "In-isaloni visit",
+    "ts": "In-saloni visit",
+    "ve": "In-saloni visit",
+    "ss": "In-lisaloni visit"
+  },
+  "Tax status": {
+    "zu": "Tax isimo",
+    "xh": "Tax imo",
+    "st": "Tax boemo",
+    "nso": "Tax maemo",
+    "tn": "Tax maemo",
+    "ts": "Tax xiyimo",
+    "ve": "Tax mutevhe",
+    "ss": "Tax simo"
+  },
+  "Join Plan": {
+    "zu": "Join Uhlelo",
+    "xh": "Join Isicwangciso",
+    "st": "Join Morero",
+    "nso": "Join Leano",
+    "tn": "Join Leano",
+    "ts": "Join Pulani",
+    "ve": "Join Pulane",
+    "ss": "Join Luhlelo"
+  }
+}

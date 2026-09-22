@@ -1424,7 +1424,17 @@ export async function finalizeCustomOfferPayment(
       });
     }
 
-    await notifyProviderNewBooking(booking.id as string, ["push"]);
+    const { providerBookingChannels } = await import(
+      "@/lib/notifications/customer-booking-channels"
+    );
+    const offerTenantId =
+      (booking as { tenant_id?: string | null }).tenant_id ??
+      (req as { tenant_id?: string | null }).tenant_id ??
+      null;
+    await notifyProviderNewBooking(
+      booking.id as string,
+      await providerBookingChannels(offerTenantId),
+    );
 
     const { data: providerRow } = await adminSupabase
       .from("providers")

@@ -16,9 +16,20 @@ import type { Booking } from "@/types/beautonomi";
  * used by start-service/complete-service so arrived pushes are as reliable
  * as the rest of the booking lifecycle.
  */
-async function notifyArrivedAndLog(bookingId: string, hasOtp: boolean): Promise<void> {
+async function notifyArrivedAndLog(
+  bookingId: string,
+  hasOtp: boolean,
+  tenantId?: string | null,
+): Promise<void> {
   try {
-    const result = await notifyProviderArrived(bookingId, { hasOtp }, ["push", "email"]);
+    const { customerBookingChannels } = await import(
+      "@/lib/notifications/customer-booking-channels"
+    );
+    const result = await notifyProviderArrived(
+      bookingId,
+      { hasOtp },
+      await customerBookingChannels(tenantId ?? null),
+    );
     if (!result?.success) {
       console.error("[arrive] notifyProviderArrived did not succeed:", {
         bookingId,
@@ -155,7 +166,11 @@ export async function POST(
       }
 
       // Notify customer via template pipeline (push + in-app bell row).
-      await notifyArrivedAndLog(id, false);
+      await notifyArrivedAndLog(
+        id,
+        false,
+        (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+      );
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -227,7 +242,11 @@ export async function POST(
       }
 
       // Notify customer via template pipeline (push + in-app bell row).
-      await notifyArrivedAndLog(id, false);
+      await notifyArrivedAndLog(
+        id,
+        false,
+        (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+      );
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -345,7 +364,11 @@ export async function POST(
     // the arrived push is silently dropped while confirmed/started always fire.
     // When OTP is enabled the wording hints the customer to open the app for their code;
     // the actual PIN is shown only in-app on the booking detail screen.
-    await notifyArrivedAndLog(id, !!(otp_enabled && otp));
+    await notifyArrivedAndLog(
+      id,
+      !!(otp_enabled && otp),
+      (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+    );
 
     if (customer) {
       try {

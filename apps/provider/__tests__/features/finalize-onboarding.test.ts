@@ -79,7 +79,7 @@ describe("finalizeOnboardingSuccess", () => {
     });
   });
 
-  it("routes to verify-identity for free plan without checkout", async () => {
+  it("routes to onboarding hub for free plan without checkout", async () => {
     await finalizeOnboardingSuccess({
       data: {
         selected_plan_id: "free-plan",
@@ -93,7 +93,7 @@ describe("finalizeOnboardingSuccess", () => {
       showSuccessAlert: false,
     });
 
-    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
     expect(mockRefresh).toHaveBeenCalled();
     expect(mockSetBiometricPromptPending).toHaveBeenCalledWith("user-1");
   });
@@ -154,7 +154,7 @@ describe("finalizeOnboardingSuccess", () => {
       "https://checkout.paystack.com/test",
       expect.objectContaining({ returnUrl: "provider://subscription-return" }),
     );
-    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
 
   it("verifies stored reference when auth session closes after checkout", async () => {
@@ -184,7 +184,7 @@ describe("finalizeOnboardingSuccess", () => {
     });
 
     expect(verifyPaystackWithRetry).toHaveBeenCalledWith("provider_subscription_auth_test");
-    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
 
   it("sets portal cache to provider after free plan success", async () => {

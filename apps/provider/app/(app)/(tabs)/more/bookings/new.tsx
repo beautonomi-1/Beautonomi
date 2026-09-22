@@ -39,6 +39,14 @@ import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import {
+  buildSingleBookingCreateReadiness,
+  validateProviderBookingCreateDetailed,
+  type ProviderBookingCreateValidationField,
+} from "@beautonomi/provider-booking";
+import { buildNewBookingValidationInput } from "@/lib/build-new-booking-validation-input";
+import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
+import { useCreateFormSections } from "@/hooks/useCreateFormSections";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -697,6 +705,61 @@ export default function NewBookingScreen() {
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("weekly");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [recurrenceOccurrences, setRecurrenceOccurrences] = useState("");
+  const formScrollRef = useRef<ScrollView>(null);
+  const { registerSection, scrollToSection } = useCreateFormSections();
+  const [createReviewBanner, setCreateReviewBanner] = useState<string | null>(null);
+  const [createReadinessExpanded, setCreateReadinessExpanded] = useState(false);
+
+  const bookingValidationInput = useMemo(
+    () =>
+      buildNewBookingValidationInput({
+        clientMode,
+        selectedClient,
+        newClientFirst,
+        isWalkIn,
+        newClientPhoneE164,
+        validatePhone: validateE164Phone,
+        selectedServicesLength: selectedServices.length,
+        selectedProductsLength: selectedProducts.length,
+        selectedDate,
+        selectedTime,
+        isRecurring,
+        recurrenceOccurrences,
+        staffListLength: staffList?.length ?? 0,
+        selectedServices,
+        activeProviderForms,
+        providerFormResponses,
+        locationType,
+        addressLine1,
+        addressLatitude,
+        addressLongitude,
+      }),
+    [
+      clientMode,
+      selectedClient,
+      newClientFirst,
+      isWalkIn,
+      newClientPhoneE164,
+      selectedServices,
+      selectedProducts.length,
+      selectedDate,
+      selectedTime,
+      isRecurring,
+      recurrenceOccurrences,
+      staffList?.length,
+      activeProviderForms,
+      providerFormResponses,
+      locationType,
+      addressLine1,
+      addressLatitude,
+      addressLongitude,
+    ],
+  );
+
+  const createReadiness = useMemo(
+    () => buildSingleBookingCreateReadiness(bookingValidationInput),
+    [bookingValidationInput],
+  );
 
   useEffect(() => {
     if (!yocoEnabled && paymentMethod === "yoco_pos") {
@@ -1719,47 +1782,13 @@ export default function NewBookingScreen() {
 
   // --- Validation ---
   function validate(): string | null {
-    if (clientMode === "search" && !selectedClient) return nb("selectClient");
-    if (clientMode === "new" && !newClientFirst.trim()) return nb("enterFirstName");
-    if (clientMode === "new" && !isWalkIn) {
-      const phoneErr = validateE164Phone(newClientPhoneE164);
-      if (phoneErr) return phoneErr;
+    const err = validateProviderBookingCreateDetailed(bookingValidationInput);
+    if (!err) return null;
+    if (err.messageKey && err.messageKey !== "completeField") {
+      const translated = nb(err.messageKey as Parameters<typeof nb>[0]);
+      if (translated) return translated;
     }
-    if (selectedServices.length === 0 && selectedProducts.length === 0) return nb("selectServiceOrProduct");
-    if (!selectedDate) return nb("selectDate");
-    if (!selectedTime) return nb("selectTime");
-    if (isRecurring) {
-      if (!selectedClient?.customer_id) return nb("recurringNeedsSavedClient");
-      if (selectedServices.length === 0) return nb("recurringNeedsService");
-      const occ = recurrenceOccurrences.trim();
-      if (occ && (!/^\d+$/.test(occ) || Number(occ) < 2)) return nb("repeatCountMin");
-    }
-    if ((staffList?.length ?? 0) > 0 && selectedServices.length > 0) {
-      const missingStaff = selectedServices.some((s) => !s.staffId);
-      if (missingStaff) return nb("assignStaffEach");
-    }
-    for (const form of activeProviderForms) {
-      for (const field of form.fields || []) {
-        if (!field.is_required) continue;
-        const val = providerFormResponses[form.id]?.[field.id];
-        if (field.field_type === "checkbox") {
-          if (val !== true) {
-            return nb("completeField", { field: field.name, form: form.title });
-          }
-          continue;
-        }
-        if (val === undefined || val === null || String(val).trim() === "") {
-          return nb("completeField", { field: field.name, form: form.title });
-        }
-      }
-    }
-    if (locationType === "at_home") {
-      if (!addressLine1.trim()) return nb("selectClientAddress");
-      if (addressLatitude == null || addressLongitude == null) {
-        return nb("chooseAddressSuggestion");
-      }
-    }
-    return null;
+    return err.message;
   }
 
   async function checkAvailability(): Promise<{ ok: boolean; warning?: string }> {
@@ -1825,11 +1854,18 @@ export default function NewBookingScreen() {
   }
 
   async function handleReview() {
-    const err = validate();
-    if (err) {
-      Alert.alert(nb("missingInfoTitle"), err);
+    const detailedErr = validateProviderBookingCreateDetailed(bookingValidationInput);
+    if (detailedErr) {
+      const err = validate();
+      setCreateReviewBanner(err ?? detailedErr.message);
+      setCreateReadinessExpanded(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      requestAnimationFrame(() =>
+        scrollToSection(formScrollRef, detailedErr.sectionKey),
+      );
       return;
     }
+    setCreateReviewBanner(null);
 
     const result = await checkAvailability();
     if (!result.ok) {
@@ -2279,8 +2315,21 @@ export default function NewBookingScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScreenContainer onRefresh={() => void refreshStaffList()}>
+      <ScreenContainer scrollRef={formScrollRef} onRefresh={() => void refreshStaffList()}>
         <ScreenHeader title={isWalkIn ? nb("walkInTitle") : nb("newBookingTitle")} showBack />
+
+        {!showConfirmation && createReadiness.total > 0 ? (
+          <BookingCreateReadinessStrip
+            summary={createReadiness}
+            forceExpanded={createReadinessExpanded}
+            onJumpToSection={(sectionKey) => scrollToSection(formScrollRef, sectionKey)}
+          />
+        ) : null}
+        {createReviewBanner && !showConfirmation ? (
+          <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
+            <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewBanner}</Text>
+          </View>
+        ) : null}
 
         {!isWalkIn ? (
           <TouchableOpacity
@@ -2422,6 +2471,7 @@ export default function NewBookingScreen() {
           <View style={twStyle(isTablet ? "flex-row" : "")}>
             <View style={[twStyle(isTablet ? "flex-1" : ""), isTablet ? { marginEnd: 24 } : undefined]}>
               {/* -------- CLIENT -------- */}
+              <View onLayout={(e) => registerSection("client", e.nativeEvent.layout.y)}>
               <SectionLabel label={nb("client")} required />
               <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
                 <View style={twStyle("mb-3 flex-row")}>
@@ -2646,8 +2696,16 @@ export default function NewBookingScreen() {
                   </View>
                 )}
               </View>
+              </View>
 
               {/* -------- SERVICES -------- */}
+              <View
+                onLayout={(e) => {
+                  const y = e.nativeEvent.layout.y;
+                  registerSection("services", y);
+                  registerSection("staff", y);
+                }}
+              >
               <SectionLabel label={nb("services")} required />
               <View style={twStyle("mb-3 flex-row flex-wrap items-center gap-2")}>
                 <TouchableOpacity
@@ -2920,8 +2978,10 @@ export default function NewBookingScreen() {
                   ))}
                 </View>
               ) : null}
+              </View>
 
               {/* -------- DATE -------- */}
+              <View onLayout={(e) => registerSection("schedule", e.nativeEvent.layout.y)}>
               <SectionLabel label={nb("date")} required />
               {needsServiceFirstForScheduling ? (
                 <Text style={twStyle("mb-2 text-xs text-amber-800")}>{nb(SCHEDULING_DURATION_HINT_KEY)}</Text>
@@ -2951,8 +3011,10 @@ export default function NewBookingScreen() {
                 </View>
                 <Ionicons name="chevron-down" size={18} color="#9ca3af" />
               </TouchableOpacity>
+              </View>
 
               {/* -------- RECURRING -------- */}
+              <View onLayout={(e) => registerSection("recurring", e.nativeEvent.layout.y)}>
               <SectionLabel label={nb("repeatBooking")} />
               <View style={twStyle(`mb-4 rounded-2xl border px-4 py-3 ${
                 isRecurring ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"
@@ -3045,6 +3107,7 @@ export default function NewBookingScreen() {
                   </View>
                 ) : null}
               </View>
+              </View>
 
               {/* -------- LOCATION --------
                   §Provider-audit 2026-04: hide the "At Home" chip when the
@@ -3119,7 +3182,10 @@ export default function NewBookingScreen() {
                 })}
               </View>
               {locationType === "at_home" && (
-                <View style={twStyle("mb-4")}>
+                <View
+                  style={twStyle("mb-4")}
+                  onLayout={(e) => registerSection("location", e.nativeEvent.layout.y)}
+                >
                   <SectionLabel label={nb("clientAddress")} required />
                   <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                     {nb("addressHint")}
@@ -3652,7 +3718,10 @@ export default function NewBookingScreen() {
 
               {/* -------- PROVIDER INTAKE / CONSENT FORMS -------- */}
               {(formsLoading || formsError || activeProviderForms.length > 0) && (
-                <View style={twStyle("mb-4")}>
+                <View
+                  style={twStyle("mb-4")}
+                  onLayout={(e) => registerSection("intake", e.nativeEvent.layout.y)}
+                >
                   <SectionLabel label={nb("clientForms")} />
                   {formsError && !providerFormsRaw ? (
                     <Text style={twStyle("mb-2 text-sm text-red-600")}>{formsError}</Text>
@@ -4257,7 +4326,10 @@ export default function NewBookingScreen() {
                   : nb("reviewBooking")
             }
             onPress={handleReview}
-            disabled={(selectedServices.length === 0 && selectedProducts.length === 0) || checkingAvailability}
+            disabled={
+              checkingAvailability ||
+              createReadiness.completed < createReadiness.total
+            }
             loading={checkingAvailability}
             fullWidth
             size="lg"

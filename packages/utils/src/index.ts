@@ -96,6 +96,7 @@ export {
   type ParsedAddressFromMapboxFeature,
 } from "./mapbox/geocodeFeatureToAddressParts";
 export { countryFilterIso2FromStorage } from "./geo/countryFilterIso2";
+export { distanceKmBetween, type GeoPointLike } from "./geo/distanceKm";
 export {
   alpha2ToAlpha3,
   ISO3166_ALPHA2_TO_ALPHA3,
@@ -309,7 +310,9 @@ export {
   deriveGridHourWindow,
   expandResolvedDay,
   formatDateKeyInTimeZone,
+  getLocationOpenState,
   getWallMinutesInTimeZone,
+  getWeeklyHoursRows,
   getWeekdayInTimeZone,
   hourIsOutsideWeekly,
   mergeOperatingHours,
@@ -326,6 +329,8 @@ export {
   type DayName,
   type GridHourInput,
   type GridHourWindow,
+  type LocationOpenState,
+  type WeeklyHoursRow,
   type MergedDayHours,
   type MergedWeeklyHours,
   type MinuteRange,

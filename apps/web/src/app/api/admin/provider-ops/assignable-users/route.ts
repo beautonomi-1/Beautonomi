@@ -1,7 +1,7 @@
+import { requireProviderOpsAnyDesk } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { PROVIDER_OPS_ASSIGNABLE_ROLES } from "@/lib/provider-ops/assignable-admin-roles";
 
 function sanitizeIlikeTerm(raw: string) {
@@ -15,7 +15,7 @@ const LIMIT = 40;
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsAnyDesk(request);
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const q = sanitizeIlikeTerm(searchParams.get("q") || "");

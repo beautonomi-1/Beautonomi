@@ -17,7 +17,8 @@ import {
   MOBILE_WEB_USER_AGENT_TOKEN,
   webApiTenantHeaders,
 } from "@/config/public-env";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getDeviceLocaleCountryIso } from "@/lib/device-default-country-dial";
+import { getShopMarketHeaderSync } from "@/lib/market/shop-market-opt-in";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 import { getHttpErrorStatus } from "@/lib/api-error";
 import {
@@ -155,7 +156,8 @@ const baseApi = createApiClient({
   },
   getDefaultHeaders: (ctx) => ({
     ...webApiTenantHeaders(),
-    "X-Active-Market-Country": getDeviceRegionCountryIso(),
+    "X-Active-Market-Country": getDeviceLocaleCountryIso(),
+    ...getShopMarketHeaderSync(),
     ...activeProviderIdHeadersForPath(ctx.path),
   }),
 });

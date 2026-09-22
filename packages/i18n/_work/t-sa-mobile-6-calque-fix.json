@@ -1,0 +1,168 @@
+{
+  "{{name}}: {{count}} bookings, {{revenue}} revenue": {
+    "af": "{{name}}: {{count}} besprekings, {{revenue}} inkomste",
+    "zu": "{{name}}: {{count}} ukubhukha, {{revenue}} imali engenile",
+    "xh": "{{name}}: {{count}} iibhuking, {{revenue}} ingeniso",
+    "st": "{{name}}: {{count}} lipehelo, {{revenue}} chelete e fumanoeng",
+    "nso": "{{name}}: {{count}} dipehelo, {{revenue}} tšhelete e hwetšwago",
+    "tn": "{{name}}: {{count}} dipeelo, {{revenue}} madi a a bonweng",
+    "ts": "{{name}}: {{count}} swibukelo, {{revenue}} mali leyi nghenisiweke",
+    "ve": "{{name}}: {{count}} zwibukelo, {{revenue}} mashele a ngwadyo",
+    "ss": "{{name}}: {{count}} kubhukha, {{revenue}} imali leyangene"
+  },
+  "{{name}}: {{stock}} left (reorder at {{reorder}})": {
+    "af": "{{name}}: {{stock}} oor (herbestel by {{reorder}})",
+    "zu": "{{name}}: kusele {{stock}} (oda kabusha ngo-{{reorder}})",
+    "xh": "{{name}}: kusele {{stock}} (oda kwakhona ngo-{{reorder}})",
+    "st": "{{name}}: {{stock}} e setseng (jara hape ho {{reorder}})",
+    "nso": "{{name}}: {{stock}} e setšego (e tlile gape go {{reorder}})",
+    "tn": "{{name}}: {{stock}} e tsetseng (reka gape ka {{reorder}})",
+    "ts": "{{name}}: {{stock}} swi sale (oda nakambe hi {{reorder}})",
+    "ve": "{{name}}: {{stock}} zwi songo (odani hafu kha {{reorder}})",
+    "ss": "{{name}}: kusele {{stock}} (oda fusti ngo-{{reorder}})"
+  },
+  "Add categories like Annual Leave, Sick Leave, etc.": {
+    "ts": "Engetela swiyenge swo fana na nkarhi wa lembe, wa vuvabyi, na swin'wana."
+  },
+  "Support ticket {{number}}, {{subject}}, {{status}}": {
+    "af": "Ondersteuningskaartjie {{number}}, {{subject}}, {{status}}",
+    "zu": "Ithikithi lokusekela {{number}}, {{subject}}, {{status}}",
+    "xh": "Itikiti loncedo {{number}}, {{subject}}, {{status}}",
+    "st": "Tekete ea tšehetso {{number}}, {{subject}}, {{status}}",
+    "nso": "Tekete ya thekgo {{number}}, {{subject}}, {{status}}",
+    "tn": "Tekete ya thuso {{number}}, {{subject}}, {{status}}",
+    "ts": "Thikiti ya nseketelo {{number}}, {{subject}}, {{status}}",
+    "ve": "Thikiti ya thuso {{number}}, {{subject}}, {{status}}",
+    "ss": "Lithikithi lesisekelo {{number}}, {{subject}}, {{status}}"
+  },
+  "Bookings {{bookings}} · Distinct clients {{clients}}": {
+    "st": "Lipehelo {{bookings}} · Bareki ba ikhethang {{clients}}"
+  },
+  "App Review demo account — enter the review OTP code.": {
+    "ts": "Akhaunti ya demo ya App Review — nghenisa khodi ya OTP ya ku kambela."
+  },
+  "Please add your name in Profile to join the waitlist.": {
+    "ve": "Ndwelani zina lyanu kha Profile u ita uri mi dzhene kha lenaneo la vhalindeli."
+  },
+  "Pay {{amount}} using Paystack Terminal code {{code}}.": {
+    "af": "Betaal {{amount}} met Paystack Terminal-kode {{code}}.",
+    "zu": "Khokha {{amount}} usebenzisa ikhodi ye-Paystack Terminal {{code}}.",
+    "xh": "Hlawula {{amount}} usebenzisa ikhowudi ye-Paystack Terminal {{code}}.",
+    "st": "Lefa {{amount}} ka khoutu ea Paystack Terminal {{code}}.",
+    "nso": "Lefa {{amount}} ka khoutu ya Paystack Terminal {{code}}.",
+    "tn": "Lefa {{amount}} ka khoutu ya Paystack Terminal {{code}}.",
+    "ts": "Hakela {{amount}} hi khodi ya Paystack Terminal {{code}}.",
+    "ve": "Lifhani {{amount}} ni shumisa khodi ya Paystack Terminal {{code}}.",
+    "ss": "Khokha {{amount}} usebentisa ikhodi ye-Paystack Terminal {{code}}."
+  },
+  "Used server-side to create Yoco hosted checkout links.": {
+    "af": "Word bedienerkant gebruik om Yoco gehoste betaalskakels te skep.",
+    "zu": "Kusetshenziswa ngakolunye uhlelo lweseva ukudala amalinki okukhokha ase-Yoco.",
+    "xh": "Isetyenziswa ngakwinga leseva ukudala amakhonkco okuhlawula e-Yoco.",
+    "st": "E sebelisoa lehlakoreng la seva ho theha lihokelo tsa ho lefa tsa Yoco.",
+    "nso": "E šomišwa ka gare ga seva go hlola dihokelo tša go lefa tša Yoco.",
+    "tn": "E dirisiwa fa godimo ga seva go tlhama dilinki tsa go duela tsa Yoco.",
+    "ts": "Yi tirhisiwa eka server ku tumbuluxa swihlanganisi swa Yoco swa ku hakela.",
+    "ve": "I shumiswa nga tshifhinga tsha server u ita zwihlanganisi zwa Yoco zwa u lifha.",
+    "ss": "Isetjentiswa ngakulomkhatsi weseva kudala emalinki ekukhokha e-Yoco."
+  },
+  "Hi {{name}}, thanks for booking with us. See you soon!": {
+    "af": "Hallo {{name}}, dankie dat jy by ons bespreek het. Sien jou binnekort!",
+    "zu": "Sawubona {{name}}, siyabonga ngokubhukha nathi. Sikubone maduze!",
+    "xh": "Molo {{name}}, enkosi ngokubhukha nathi. Sikubone kungekudala!",
+    "st": "Lumela {{name}}, rea leboha ka ho re behela. Re u bone haufinyane!",
+    "nso": "Thobela {{name}}, re leboga ka go re behela. Re go bona kgauswinyane!",
+    "tn": "Dumela {{name}}, re lebogela go re beelela. Re go bone mo bogautshwaneng!",
+    "ts": "Avuxeni {{name}}, hi khensa ku va xibukelo xa hina. Hi ku vona ku nga ri khale!",
+    "ve": "Ndaa {{name}}, ri livhuwa nga u ri ṅwala. Ri do u vhona hu si kale!",
+    "ss": "Sawubona {{name}}, siyabonga ngokubhukha natsi. Sikubone masinyane!"
+  },
+  "{{count}} impressions · {{paid}} paid · {{spent}} spent": {
+    "af": "{{count}} vertonings · {{paid}} betaal · {{spent}} bestee",
+    "zu": "{{count}} ukubonakala · {{paid}} okukhokhiwe · {{spent}} okuchithiwe",
+    "xh": "{{count}} ukubonakala · {{paid}} ihlawuliweyo · {{spent}} ichithiweyo",
+    "st": "{{count}} lipontšo · {{paid}} e lefiloeng · {{spent}} e sebelisitsoeng",
+    "nso": "{{count}} dipoelo · {{paid}} e lefilwego · {{spent}} e šomišitšwego",
+    "tn": "{{count}} ditshupo · {{paid}} e dueleditswe · {{spent}} e dirisiwa",
+    "ts": "{{count}} swivono · {{paid}} swi hakeriwile · {{spent}} swi tirhisiwile",
+    "ve": "{{count}} zwivhoni · {{paid}} zwo lifhiwa · {{spent}} zwo shumiswa",
+    "ss": "{{count}} kubonakala · {{paid}} lokukhokhelwe · {{spent}} lokuchitjiwe"
+  },
+  "Unique appointments: {{count}} · Ledger net: {{amount}}": {
+    "af": "Unieke afsprake: {{count}} · Grootboek netto: {{amount}}",
+    "zu": "Ama-aphoyintimenti ahlukile: {{count}} · I-ledger inethi: {{amount}}",
+    "xh": "Iintlanganiso ezizodwa: {{count}} · I-ledger inethi: {{amount}}",
+    "st": "Lipakelo tse ikhethang: {{count}} · Ledger e hloekileng: {{amount}}",
+    "nso": "Dipehelo tše fapanego: {{count}} · Ledger e hloekile: {{amount}}",
+    "tn": "Dipeelo tse di farologaneng: {{count}} · Ledger e e hloekileng: {{amount}}",
+    "ts": "Swihlangano swo hlawuleka: {{count}} · Ledger leyi hlokeke: {{amount}}",
+    "ve": "Zwibukelo zwo fhambanaho: {{count}} · Ledger yo hloekaho: {{amount}}",
+    "ss": "Ema-aphoyintimenti lahlukile: {{count}} · I-ledger inethi: {{amount}}"
+  },
+  "{{category}} · Priority: {{priority}} · Updated {{date}}": {
+    "af": "{{category}} · Prioriteit: {{priority}} · Opgedateer {{date}}",
+    "zu": "{{category}} · Okubalulekile: {{priority}} · Kuvuselelwe {{date}}",
+    "xh": "{{category}} · Okubalulekileyo: {{priority}} · Kuhlaziyiwe {{date}}",
+    "st": "{{category}} · Bohlokoa: {{priority}} · E nchafalitsoe {{date}}",
+    "nso": "{{category}} · Bohlokwa: {{priority}} · E mpshafaditšwe {{date}}",
+    "tn": "{{category}} · Bontle jwa pele: {{priority}} · E ntšhwafaditswe {{date}}",
+    "ts": "{{category}} · Xiyimo xa nkoka: {{priority}} · Ku pfuxetiwile {{date}}",
+    "ve": "{{category}} · Nḓeme: {{priority}} · Yo pfuxetshwa {{date}}",
+    "ss": "{{category}} · Kubaluleka: {{priority}} · Kubuyekeziwe {{date}}"
+  },
+  "Total budget {{budget}} · Spent {{spent}}{{daily}}{{bid}}": {
+    "af": "Totale begroting {{budget}} · Bestee {{spent}}{{daily}}{{bid}}",
+    "zu": "Isabelomali esiphelele {{budget}} · Kuchithiwe {{spent}}{{daily}}{{bid}}",
+    "xh": "Ibhajethi iyonke {{budget}} · Ichithiwe {{spent}}{{daily}}{{bid}}",
+    "st": "Tekanyetso e felletseng {{budget}} · E sebelisitsoe {{spent}}{{daily}}{{bid}}",
+    "nso": "Tekanyetšo ya mafelelo {{budget}} · E šomišitšwe {{spent}}{{daily}}{{bid}}",
+    "tn": "Bajete e e feletseng {{budget}} · E dirisiwa {{spent}}{{daily}}{{bid}}",
+    "ts": "Bajete hinkwayo {{budget}} · Yi tirhisiwile {{spent}}{{daily}}{{bid}}",
+    "ve": "Bajete yo fhelelaho {{budget}} · Yo shumiswa {{spent}}{{daily}}{{bid}}",
+    "ss": "Bhajethi leliphelele {{budget}} · Lichitjiwe {{spent}}{{daily}}{{bid}}"
+  },
+  "{{likes}} likes · {{comments}} comments · {{views}} views": {
+    "af": "{{likes}} hou van · {{comments}} opmerkings · {{views}} kyke",
+    "zu": "{{likes}} ukuthandwa · {{comments}} amazwana · {{views}} ukubukwa",
+    "xh": "{{likes}} ukuthandwa · {{comments}} amagqabantshintshi · {{views}} ukujongwa",
+    "st": "{{likes}} litekanyetso · {{comments}} maikutlo · {{views}} lipono",
+    "nso": "{{likes}} dithatelo · {{comments}} ditshwayotshwayo · {{views}} dipoelo",
+    "tn": "{{likes}} dithatelo · {{comments}} ditshwantsho · {{views}} dipono",
+    "ts": "{{likes}} swi tsakeriwa · {{comments}} swibumabumelo · {{views}} swivono",
+    "ve": "{{likes}} zwo takalelwa · {{comments}} mbudziso · {{views}} zwivhoni",
+    "ss": "{{likes}} kutitsandza · {{comments}} emacomment · {{views}} kubukwa"
+  },
+  "Pay {{amount}} using this Paystack Terminal link: {{link}}": {
+    "af": "Betaal {{amount}} met hierdie Paystack Terminal-skakel: {{link}}",
+    "zu": "Khokha {{amount}} usebenzisa lesi sixhumanisi se-Paystack Terminal: {{link}}",
+    "xh": "Hlawula {{amount}} usebenzisa eli khonkco le-Paystack Terminal: {{link}}",
+    "st": "Lefa {{amount}} ka sehokelo sena sa Paystack Terminal: {{link}}",
+    "nso": "Lefa {{amount}} ka sehokelo se Paystack Terminal: {{link}}",
+    "tn": "Lefa {{amount}} ka sehokelo se Paystack Terminal: {{link}}",
+    "ts": "Hakela {{amount}} hi xixambano lexi xa Paystack Terminal: {{link}}",
+    "ve": "Lifhani {{amount}} ni shumisa zwihlanganisi zwa Paystack Terminal: {{link}}",
+    "ss": "Khokha {{amount}} usebentisa leli linki le-Paystack Terminal: {{link}}"
+  },
+  "Checked {{count}} payment{{suffix}} — {{settled}} settled.": {
+    "af": "{{count}} betaling{{suffix}} nagegaan — {{settled}} afgehandel.",
+    "zu": "Kuhlolwe {{count}} inkokhelo{{suffix}} — {{settled}} kuqediwe.",
+    "xh": "Kujongwe {{count}} intlawulo{{suffix}} — {{settled}} igqityiwe.",
+    "st": "Ho hlahlobiloe {{count}} tefo{{suffix}} — {{settled}} e qetiloe.",
+    "nso": "Go hlahlobilwe {{count}} tefo{{suffix}} — {{settled}} e feletšwe.",
+    "tn": "Go lekanyetswe {{count}} tefo{{suffix}} — {{settled}} e feditswe.",
+    "ts": "Ku kambetiwile {{count}} hakelo{{suffix}} — {{settled}} swi hetisekile.",
+    "ve": "Zwo sedzuluswa {{count}} mbadelo{{suffix}} — {{settled}} zwo fheliswa.",
+    "ss": "Kuhlolwe {{count}} inkhokhelo{{suffix}} — {{settled}} kuphele."
+  },
+  "Opens the App Store or Google Play so you can leave a review": {
+    "af": "Maak die App Store of Google Play oop sodat jy 'n resensie kan los",
+    "zu": "Vula i-App Store noma i-Google Play ukuze ushiye isibuyekezo",
+    "xh": "Vula i-App Store okanye i-Google Play ukuze ushiye ingxelo",
+    "st": "E bula App Store kapa Google Play hore u ka siea maikutlo",
+    "nso": "E bula App Store goba Google Play gore o kgone go tlogela tshekatsheko",
+    "tn": "E bula App Store kgotsa Google Play gore o kgone go tlogela tshekatsheko",
+    "ts": "Yi pfula App Store kumbe Google Play leswaku u nga siya nhlaluto",
+    "ve": "I pfula App Store kana Google Play uri u kone u tshiya tshekatsheko",
+    "ss": "Ivula i-App Store noma i-Google Play ukuze ushiye kubuyekeza"
+  }
+}

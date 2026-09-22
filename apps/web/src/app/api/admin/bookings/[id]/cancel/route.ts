@@ -125,7 +125,17 @@ export async function POST(
           : policy
             ? describeCancellationRefund(policy, false, settlementWalletRefund, bookingTotal, currency)
             : "This booking was cancelled by our team. A full refund has been credited to your Beautonomi wallet when payment was collected.";
-      await notifyBookingCancelled(id, "system", refundInfo);
+      const { customerBookingChannels } = await import(
+        "@/lib/notifications/customer-booking-channels"
+      );
+      await notifyBookingCancelled(
+        id,
+        "system",
+        refundInfo,
+        await customerBookingChannels(
+          (bookingRow as { tenant_id?: string | null }).tenant_id ?? null,
+        ),
+      );
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }

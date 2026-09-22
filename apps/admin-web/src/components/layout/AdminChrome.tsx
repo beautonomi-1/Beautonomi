@@ -22,6 +22,7 @@ import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { filterNavTree, flattenNavItems, NAV_GROUPS } from "@/config/nav";
+import { deskForAdminRole, isOpsDeskManager } from "@/lib/providerOpsDeskNav";
 import { AdminNavSidebar } from "@/components/layout/AdminNavSidebar";
 import { CommandPalette, pushRecentSearch } from "@/components/layout/CommandPalette";
 import { cn } from "@/lib/cn";
@@ -185,7 +186,12 @@ export function AdminChrome() {
   const filteredNav = useMemo(() => {
     const role = bootstrap?.role as UserRole;
     if (!role) return [];
-    const opts = { isSuperadmin: bootstrap?.isSuperadmin === true, canAccess };
+    const opts = {
+      isSuperadmin: bootstrap?.isSuperadmin === true,
+      canAccess,
+      opsDesk: deskForAdminRole(role),
+      isOpsManager: isOpsDeskManager(role),
+    };
     return NAV_GROUPS.map((g) => ({
       ...g,
       items: g.items

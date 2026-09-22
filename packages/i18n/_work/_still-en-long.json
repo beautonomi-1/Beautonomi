@@ -1,0 +1,14 @@
+[
+  "I have a special occasion coming up and would like...",
+  "  {{description}} - {{quantity}}x {{unit}} = {{total}}",
+  "No executions yet. This automation has not been triggered.",
+  "JPEG, PNG, WebP or GIF, up to 5 MB each. Add up to {{max}}.",
+  "Maximum budget must be greater than or equal to minimum budget",
+  "We're verifying with Paystack — this usually takes a few seconds.",
+  "Delivered to {{count}} recipient. {{failed}} couldn't be delivered.",
+  "Delivered to {{count}} recipients. {{failed}} couldn't be delivered.",
+  "{{name}}, {{appointment_date}}, {{appointment_time}}, {{booking_number}}",
+  "Ledger activity will appear once you have recognized earnings in this window",
+  "Retention {{rate}}% · prior {{prior}} · returned {{returned}} · bucket {{bucket}}",
+  "Set to 0% if not VAT registered. Tax is excluded from platform commission calculations."
+]

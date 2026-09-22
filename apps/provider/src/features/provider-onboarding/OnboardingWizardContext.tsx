@@ -36,7 +36,10 @@ import {
   STEPS,
   stepIsVisible,
   visibleStepIndex,
+  wizardStepIdForKey,
+  wizardStepKeyForId,
 } from "./state";
+import { suggestZonesForOnboardingAddress } from "./suggest-zones";
 import { buildSubmitPayload, validateStep } from "./validation";
 import type { OnboardingFormData } from "./types";
 
@@ -59,7 +62,8 @@ interface OnboardingWizardContextValue {
   editFromReview: (n: number) => void;
   /** True while the user is editing a step they jumped to from Review. */
   editingFromReview: boolean;
-  goNext: () => void;
+  goNext: () => void | Promise<void>;
+  isAdvancingStep: boolean;
   goBack: () => void;
   skipForward: () => void;
   isSubmitting: boolean;
@@ -205,6 +209,7 @@ export function OnboardingWizardProvider({
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdvancingStep, setIsAdvancingStep] = useState(false);
   const [providerProfileExists, setProviderProfileExists] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSubmittingRef = useRef(false);
@@ -269,7 +274,9 @@ export function OnboardingWizardProvider({
         const row = !draftRes.error ? (draftRes.data as DraftRow) : null;
         if (!cancelled && row && typeof row === "object" && row.draft_data) {
           Object.assign(merged, row.draft_data);
-          if (typeof row.current_step === "number" && row.current_step >= 1) {
+          if (merged.current_step_key) {
+            step = wizardStepIdForKey(merged.current_step_key);
+          } else if (typeof row.current_step === "number" && row.current_step >= 1) {
             step = row.current_step;
           }
           try {
@@ -285,9 +292,13 @@ export function OnboardingWizardProvider({
                 draft_data?: Partial<OnboardingFormData>;
                 current_step?: number;
               };
-              if (parsed.draft_data) Object.assign(merged, parsed.draft_data);
-              if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
-                step = parsed.current_step;
+              if (parsed.draft_data) {
+                Object.assign(merged, parsed.draft_data);
+                if (merged.current_step_key) {
+                  step = wizardStepIdForKey(merged.current_step_key);
+                } else if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
+                  step = parsed.current_step;
+                }
               }
             }
           } catch {
@@ -320,12 +331,20 @@ export function OnboardingWizardProvider({
 
         if (!cancelled) {
           setFormData(merged);
-          const resolved = resolveWizardEntryStep(
+          let resolved = resolveWizardEntryStep(
             step,
             initialStepRef.current,
             focusUnmappedRef.current,
             merged,
           );
+          while (resolved <= STEPS.length && !stepIsVisible(resolved, merged)) {
+            const n = getNextStep(resolved, merged);
+            if (n == null) {
+              resolved = getPreviousStep(resolved, merged) ?? 1;
+              break;
+            }
+            resolved = n;
+          }
           setCurrentStepState(resolved);
 
           // Do not auto-submit on load — the provider must tap Submit on the
@@ -347,16 +366,18 @@ export function OnboardingWizardProvider({
 
   const persistDraft = useCallback(async (data: Partial<OnboardingFormData>, step: number) => {
     setSavingDraft(true);
+    const stepKey = wizardStepKeyForId(step);
+    const draftPayload = stepKey != null ? { ...data, current_step_key: stepKey } : data;
     try {
       const res = await api.post("/api/provider/onboarding/draft", {
-        draft_data: data,
+        draft_data: draftPayload,
         current_step: step,
       });
       if (res.error) {
         try {
           await AsyncStorage.setItem(
             LOCAL_DRAFT_KEY,
-            JSON.stringify({ draft_data: data, current_step: step })
+            JSON.stringify({ draft_data: draftPayload, current_step: step })
           );
         } catch {
           /* ignore */
@@ -372,7 +393,7 @@ export function OnboardingWizardProvider({
       try {
         await AsyncStorage.setItem(
           LOCAL_DRAFT_KEY,
-          JSON.stringify({ draft_data: data, current_step: step })
+          JSON.stringify({ draft_data: draftPayload, current_step: step })
         );
       } catch {
         /* ignore */
@@ -420,7 +441,7 @@ export function OnboardingWizardProvider({
     if (target !== currentStep) setCurrentStepState(target);
   }, [formData, currentStep, loadingDraft]);
 
-  const goNext = useCallback(() => {
+  const goNext = useCallback(async () => {
     const v = validateStep(currentStep, formData, validateOptions);
     if (!v.valid) {
       Alert.alert("Check this step", v.errors[0] ?? "Please complete required fields.");
@@ -432,7 +453,27 @@ export function OnboardingWizardProvider({
       setCurrentStepState(REVIEW_STEP_ID);
       return;
     }
-    const next = getNextStep(currentStep, formData);
+
+    let navFormData = formData;
+    if (
+      currentStep === 7 &&
+      (formData.business_type === "mobile" || formData.business_type === "both")
+    ) {
+      setIsAdvancingStep(true);
+      try {
+        const result = await suggestZonesForOnboardingAddress(formData.address);
+        const updates: Partial<OnboardingFormData> = { zone_suggest_status: result.status };
+        if (result.status === "matched" && !(formData.selected_zone_ids?.length ?? 0)) {
+          updates.selected_zone_ids = result.zoneIds;
+        }
+        navFormData = { ...formData, ...updates };
+        setFormData(navFormData);
+      } finally {
+        setIsAdvancingStep(false);
+      }
+    }
+
+    const next = getNextStep(currentStep, navFormData);
     if (next !== null) setCurrentStepState(next);
   }, [currentStep, formData, editingFromReview, validateOptions]);
 
@@ -636,17 +677,13 @@ export function OnboardingWizardProvider({
     providerProfileExists && currentStep === STEPS.length
       ? "Continue to app"
       : currentStep === STEPS.length
-        ? selectedPlanIsFree
-          ? "Launch your business"
-          : "Submit & launch"
+        ? "Create profile"
         : editingFromReview && currentStep < REVIEW_STEP_ID
           ? "Back to review"
           : "Continue";
 
   const submitBusyLabel =
-    currentStep === STEPS.length && selectedPlanIsFree
-      ? "Launching your business…"
-      : "Submitting…";
+    currentStep === STEPS.length ? "Creating profile…" : "Submitting…";
 
   const visibleTotal = useMemo(() => countVisibleSteps(formData), [formData]);
   const visibleIndex = useMemo(
@@ -665,6 +702,7 @@ export function OnboardingWizardProvider({
       editFromReview,
       editingFromReview,
       goNext,
+      isAdvancingStep,
       goBack,
       skipForward,
       isSubmitting,
@@ -688,6 +726,7 @@ export function OnboardingWizardProvider({
       editFromReview,
       editingFromReview,
       goNext,
+      isAdvancingStep,
       goBack,
       skipForward,
       isSubmitting,

@@ -178,6 +178,8 @@ export interface OnboardingFormData {
   phone?: string;
   email?: string;
   selected_zone_ids?: string[];
+  zone_suggest_status?: "matched" | "none" | "error" | "no_coords";
+  current_step_key?: WizardStepKey;
   /** Travel-fee configuration for mobile / both providers (mirrors the settings screen). */
   travel_fees?: OnboardingTravelFees;
   global_category_ids: string[];
@@ -214,6 +216,25 @@ export interface OnboardingFormData {
    */
   tips_enabled?: boolean;
 }
+
+export type ZoneSuggestStatus = "matched" | "none" | "error" | "no_coords";
+
+export type WizardStepKey =
+  | "team_size"
+  | "identity"
+  | "business"
+  | "payment"
+  | "software"
+  | "payroll"
+  | "location"
+  | "photos"
+  | "zones"
+  | "travel_fees"
+  | "categories"
+  | "catalog"
+  | "hours"
+  | "review"
+  | "plan";
 
 export interface OnboardingStepMeta {
   id: number;

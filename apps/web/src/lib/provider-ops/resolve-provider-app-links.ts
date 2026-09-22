@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { coalesceStoreUrl, NATIVE_STORE } from "@/lib/store/native-app-store";
 
 export interface ProviderAppLinks {
   ios: string | null;
@@ -63,11 +63,11 @@ export async function resolveProviderAppLinks(
         ios:
           ios?.enabled === false
             ? null
-            : (ios?.app_store_url?.trim() || fallback.ios),
+            : coalesceStoreUrl(ios?.app_store_url, fallback.ios!),
         android:
           android?.enabled === false
             ? null
-            : (android?.download_url?.trim() || fallback.android),
+            : coalesceStoreUrl(android?.download_url, fallback.android!),
         huawei:
           huawei && huawei.enabled !== false && huawei.app_gallery_url?.trim()
             ? huawei.app_gallery_url.trim()

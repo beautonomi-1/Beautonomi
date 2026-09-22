@@ -194,7 +194,11 @@ export async function POST(
     }
 
     // Notify customer via template pipeline (push + in-app bell row).
-    await notifyProviderEnRoute(id, estimatedArrivalIso, ["push", "email"]);
+    const { customerBookingChannels } = await import(
+      "@/lib/notifications/customer-booking-channels"
+    );
+    const tenantId = (updatedBooking as { tenant_id?: string | null }).tenant_id ?? null;
+    await notifyProviderEnRoute(id, estimatedArrivalIso, await customerBookingChannels(tenantId));
 
     return successResponse({
       booking: updatedBooking as Booking,

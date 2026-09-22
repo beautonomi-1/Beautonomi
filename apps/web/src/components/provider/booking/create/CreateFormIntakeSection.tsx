@@ -13,7 +13,7 @@ type FormField = {
   is_required?: boolean;
 };
 
-type ProviderForm = {
+export type ProviderIntakeForm = {
   id: string;
   title: string;
   is_required?: boolean;
@@ -26,21 +26,23 @@ interface CreateFormIntakeSectionProps {
   responses: IntakeFormResponses;
   onChange: (next: IntakeFormResponses) => void;
   onValidationChange?: (valid: boolean) => void;
+  onFormsLoaded?: (forms: ProviderIntakeForm[]) => void;
 }
 
 export function CreateFormIntakeSection({
   responses,
   onChange,
   onValidationChange,
+  onFormsLoaded,
 }: CreateFormIntakeSectionProps) {
-  const [forms, setForms] = useState<ProviderForm[]>([]);
+  const [forms, setForms] = useState<ProviderIntakeForm[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetcher.get<{ data?: ProviderForm[] }>("/api/provider/forms");
+        const res = await fetcher.get<{ data?: ProviderIntakeForm[] }>("/api/provider/forms");
         if (!cancelled) setForms(res?.data ?? []);
       } catch {
         if (!cancelled) setForms([]);
@@ -57,6 +59,10 @@ export function CreateFormIntakeSection({
     onValidationChange?.(validateIntakeResponses(forms, responses));
   }, [forms, responses, onValidationChange]);
 
+  useEffect(() => {
+    if (!loading) onFormsLoaded?.(forms);
+  }, [forms, loading, onFormsLoaded]);
+
   if (loading || forms.length === 0) return null;
 
   const setField = (formId: string, fieldName: string, value: unknown) => {
@@ -67,7 +73,7 @@ export function CreateFormIntakeSection({
   };
 
   return (
-    <>
+    <div id="booking-create-section-intake">
       {forms.map((form) => (
         <BookingSectionCard key={form.id}>
           <BookingSectionLabel className="mb-3">
@@ -104,13 +110,13 @@ export function CreateFormIntakeSection({
           </div>
         </BookingSectionCard>
       ))}
-    </>
+    </div>
   );
 }
 
 /** Returns true if all required intake fields are filled. */
 export function validateIntakeResponses(
-  forms: ProviderForm[],
+  forms: ProviderIntakeForm[],
   responses: IntakeFormResponses,
 ): boolean {
   for (const form of forms) {

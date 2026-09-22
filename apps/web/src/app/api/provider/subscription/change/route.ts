@@ -14,6 +14,7 @@ import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-ho
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +26,13 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
+
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      supabaseAdmin,
+      hostTenantId,
+    );
+    if (marketGuard) return marketGuard;
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");

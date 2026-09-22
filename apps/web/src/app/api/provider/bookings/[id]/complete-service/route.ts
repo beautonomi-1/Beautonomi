@@ -251,9 +251,19 @@ export async function POST(
         console.error("[complete-service] notification failed:", notifyErr);
       }
 
-      // Encourage post-booking reviews from both sides.
+      let postVisitWhatsAppSent = false;
       try {
-        await notifyReviewReminder(id);
+        const { maybeEnqueuePostVisitWhatsApp } = await import(
+          "@/lib/whatsapp/post-visit-retention"
+        );
+        postVisitWhatsAppSent = await maybeEnqueuePostVisitWhatsApp(id);
+      } catch (postVisitErr) {
+        console.warn("[complete-service] post-visit WhatsApp failed:", postVisitErr);
+      }
+
+      // Encourage post-booking reviews from both sides (no parallel SMS/WA — post-visit WA covers retention).
+      try {
+        await notifyReviewReminder(id, ["push", "email"]);
       } catch (reviewReminderErr) {
         console.error("[complete-service] review reminder failed:", reviewReminderErr);
       }
@@ -268,7 +278,11 @@ export async function POST(
           provider_id?: string;
           tenant_id?: string | null;
         };
-        if (bookingRow.customer_id && bookingRow.booking_source === "walk_in") {
+        if (
+          !postVisitWhatsAppSent &&
+          bookingRow.customer_id &&
+          bookingRow.booking_source === "walk_in"
+        ) {
           const { data: providerRow } = await supabaseAdminComplete
             .from("providers")
             .select("business_name")

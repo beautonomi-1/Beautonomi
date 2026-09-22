@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
@@ -9,6 +9,8 @@ import Footer from "@/components/layout/footer";
 import { formatCurrency } from "@/lib/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
+import { useTranslation } from "@beautonomi/i18n";
 
 function csrfHeaders(): HeadersInit {
   const h: Record<string, string> = {};
@@ -21,6 +23,74 @@ function csrfHeaders(): HeadersInit {
 
 function jsonHeaders(): HeadersInit {
   return { "Content-Type": "application/json", ...csrfHeaders() as Record<string, string> };
+}
+
+interface ProviderShippingConfig {
+  offers_delivery: boolean;
+  offers_collection: boolean;
+  delivery_fee?: number;
+  delivery_fee_type?: string;
+  free_delivery_threshold?: number | null;
+  estimated_delivery_days?: number;
+  delivery_notes?: string | null;
+  collection_notes?: string | null;
+}
+
+interface PickupLocationSummary {
+  id: string;
+  name: string;
+  address_line1: string;
+  city: string;
+  state?: string | null;
+  working_hours?: unknown;
+}
+
+function useProviderShippingConfigs(providerIds: string[]) {
+  const [configs, setConfigs] = useState<Record<string, ProviderShippingConfig>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const providerIdsKey = useMemo(() => providerIds.join(","), [providerIds]);
+
+  useEffect(() => {
+    const toFetch = providerIds.filter((id) => id && id !== "unknown" && !fetchedRef.current.has(id));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((id) => fetchedRef.current.add(id));
+    void Promise.allSettled(
+      toFetch.map((id) =>
+        fetch(`/api/public/products/shipping-config?provider_id=${encodeURIComponent(id)}`)
+          .then((res) => res.json())
+          .then((raw) => {
+            const sc: ProviderShippingConfig | null = raw?.shipping ?? raw?.data?.shipping ?? null;
+            if (sc) setConfigs((prev) => ({ ...prev, [id]: sc }));
+          }),
+      ),
+    );
+  }, [providerIds, providerIdsKey]);
+
+  return configs;
+}
+
+function useProviderPickupLocations(providerIds: string[]) {
+  const [locations, setLocations] = useState<Record<string, PickupLocationSummary[]>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const key = providerIds.join(",");
+
+  useEffect(() => {
+    const toFetch = providerIds.filter((id) => id && !fetchedRef.current.has(id));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((id) => fetchedRef.current.add(id));
+    void Promise.allSettled(
+      toFetch.map((id) =>
+        fetch(`/api/public/provider-locations?provider_id=${encodeURIComponent(id)}`)
+          .then((res) => res.json())
+          .then((raw) => {
+            const list: PickupLocationSummary[] = raw?.locations ?? raw?.data?.locations ?? [];
+            if (list.length) setLocations((prev) => ({ ...prev, [id]: list }));
+          }),
+      ),
+    );
+  }, [providerIds, key]);
+
+  return locations;
 }
 
 interface CartItem {
@@ -47,7 +117,14 @@ interface CartItem {
 
 export default function CartPage() {
   const { bundle } = useConfigBundle();
+  const { t } = useTranslation();
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts) as string,
+    [t],
+  );
   const currency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
   const fmt = (n: number) => formatCurrency(n, currency);
 
   const [items, setItems] = useState<CartItem[]>([]);
@@ -122,6 +199,17 @@ export default function CartPage() {
   const total = items.reduce((s, i) => s + linePrice(i), 0);
   const totalCount = items.reduce((s, i) => s + i.quantity, 0);
 
+  const providerIds = useMemo(
+    () => [...new Set(items.map((i) => i.provider?.id).filter(Boolean) as string[])],
+    [items],
+  );
+  const shippingConfigs = useProviderShippingConfigs(providerIds);
+  const pickupProviderIds = useMemo(
+    () => providerIds.filter((id) => shippingConfigs[id]?.offers_collection),
+    [providerIds, shippingConfigs],
+  );
+  const pickupLocationsByProvider = useProviderPickupLocations(pickupProviderIds);
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
@@ -151,7 +239,12 @@ export default function CartPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {Object.values(groups).map((group) => (
+            {Object.values(groups).map((group) => {
+              const pid = group.provider?.id ?? "";
+              const sc = pid ? shippingConfigs[pid] : undefined;
+              const pickupLocs = pid ? pickupLocationsByProvider[pid] : undefined;
+              const primaryPickup = pickupLocs?.[0];
+              return (
               <div key={group.provider?.id} className="overflow-hidden rounded-2xl bg-white shadow-sm">
                 <div className="flex items-center gap-2 border-b border-gray-50 bg-gray-50/50 px-5 py-3">
                   <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -159,6 +252,43 @@ export default function CartPage() {
                   </svg>
                   <span className="text-sm font-semibold text-gray-700">{group.provider?.business_name}</span>
                 </div>
+
+                {sc?.offers_collection && primaryPickup ? (
+                  <div className="border-b border-gray-50 px-5 py-3">
+                    <PickupStoreCard
+                      location={primaryPickup}
+                      timezone={providerTimezone}
+                      variant="compact"
+                      t={shopT}
+                    />
+                    {(pickupLocs?.length ?? 0) > 1 ? (
+                      <p className="mt-1 text-xs text-gray-500">
+                        {t("customer.mobile.screens.productDetail.pickupLocationsCount", {
+                          count: pickupLocs!.length,
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {sc?.offers_delivery &&
+                (sc.delivery_notes ||
+                  (sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0)) ? (
+                  <div className="border-b border-gray-50 bg-slate-50/80 px-5 py-3 text-xs text-slate-600">
+                    {sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0 ? (
+                      <p>
+                        {t("customer.mobile.screens.productDetail.estimatedDeliveryDays", {
+                          days: sc.estimated_delivery_days,
+                        })}
+                      </p>
+                    ) : null}
+                    {sc.delivery_notes ? (
+                      <p className={sc.estimated_delivery_days ? "mt-1 leading-relaxed" : "leading-relaxed"}>
+                        {sc.delivery_notes}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div className="divide-y divide-gray-50">
                   {group.items.map((item) => (
@@ -233,7 +363,8 @@ export default function CartPage() {
                   )}
                 </div>
               </div>
-            ))}
+            );
+            })}
 
             {/* Total */}
             <div className="flex items-center justify-between rounded-2xl bg-white px-6 py-5 shadow-sm">

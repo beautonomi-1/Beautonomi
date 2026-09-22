@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -5,7 +6,6 @@ import {
   successResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
@@ -91,7 +91,7 @@ async function loadExistingLeadMatches(
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsSales(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 

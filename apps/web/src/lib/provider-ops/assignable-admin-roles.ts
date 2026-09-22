@@ -1,16 +1,15 @@
 import type { UserRole } from "@/types/beautonomi";
+import {
+  PROVIDER_OPS_ONBOARDING_ASSIGNABLE_ROLES,
+  PROVIDER_OPS_RETENTION_ASSIGNABLE_ROLES,
+  PROVIDER_OPS_SALES_ASSIGNABLE_ROLES,
+} from "@/lib/provider-ops/ops-desk-roles";
 
-/** Platform operators eligible for provider-lead assignment — aligned with admin team roles. */
-export const PROVIDER_OPS_ASSIGNABLE_ROLES: UserRole[] = [
-  "superadmin",
-  "admin_support",
-  "admin_finance",
-  "admin_trust",
-  "admin_content",
-  "admin_ecommerce",
-  "admin_marketing",
-  "admin_integrations",
-  "admin_operations",
-  "admin_platform_config",
-  "support_agent",
-];
+/** Platform operators eligible for provider-lead assignment (sales desk). */
+export const PROVIDER_OPS_ASSIGNABLE_ROLES: UserRole[] = PROVIDER_OPS_SALES_ASSIGNABLE_ROLES;
+
+export const PROVIDER_OPS_SALES_ASSIGNABLE: UserRole[] = PROVIDER_OPS_SALES_ASSIGNABLE_ROLES;
+export const PROVIDER_OPS_ONBOARDING_ASSIGNABLE: UserRole[] =
+  PROVIDER_OPS_ONBOARDING_ASSIGNABLE_ROLES;
+export const PROVIDER_OPS_RETENTION_ASSIGNABLE: UserRole[] =
+  PROVIDER_OPS_RETENTION_ASSIGNABLE_ROLES;

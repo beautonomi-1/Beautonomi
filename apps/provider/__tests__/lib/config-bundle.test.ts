@@ -13,7 +13,11 @@ jest.mock("@/config/public-env", () => ({
 }));
 
 jest.mock("@/lib/device-default-country-dial", () => ({
-  getDeviceRegionCountryIso: jest.fn(() => "ZA"),
+  getDeviceLocaleCountryIso: jest.fn(() => "ZA"),
+}));
+
+jest.mock("@/lib/market/shop-market-opt-in", () => ({
+  getShopMarketHeaderSync: jest.fn(() => ({})),
 }));
 
 const mockFetch = jest.fn();

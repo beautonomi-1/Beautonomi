@@ -22,6 +22,19 @@ type WhatsAppDeliveryRow = {
   error_code?: string | null;
   category?: string | null;
   updated_at: string;
+  recipient_user_id?: string | null;
+  queue_row_id?: string | null;
+};
+
+type WhatsAppInboundRow = {
+  id: string;
+  direction: string;
+  phone: string;
+  booking_id: string | null;
+  body: string | null;
+  button_id: string | null;
+  status: string;
+  created_at: string;
 };
 
 function WhatsAppDeliveryLogPanel() {
@@ -47,6 +60,7 @@ function WhatsAppDeliveryLogPanel() {
             <th className="py-2 pr-3">Updated</th>
             <th className="py-2 pr-3">Template</th>
             <th className="py-2 pr-3">Status</th>
+            <th className="py-2 pr-3">User</th>
             <th className="py-2 pr-3">SID</th>
           </tr>
         </thead>
@@ -56,7 +70,51 @@ function WhatsAppDeliveryLogPanel() {
               <td className="py-2 pr-3">{new Date(row.updated_at).toLocaleString()}</td>
               <td className="py-2 pr-3 font-mono text-xs">{row.template_key ?? "—"}</td>
               <td className="py-2 pr-3">{row.status}</td>
+              <td className="py-2 pr-3 font-mono text-xs">{row.recipient_user_id?.slice(0, 8) ?? "—"}</td>
               <td className="py-2 pr-3 font-mono text-xs">{row.message_sid}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WhatsAppInboundLogPanel() {
+  const q = useQuery({
+    queryKey: [...adminQueryKeys.root, "whatsapp-customer-messages"],
+    queryFn: () =>
+      adminApi.getJson<{ messages: WhatsAppInboundRow[] }>(
+        "/api/admin/whatsapp/customer-messages?limit=25",
+      ),
+  });
+
+  if (q.isLoading) return <p className="text-sm text-gray-500">Loading inbound messages…</p>;
+  if (q.error) return <p className="text-sm text-red-600">{q.error.message}</p>;
+
+  const rows = q.data?.messages ?? [];
+  if (rows.length === 0) {
+    return <p className="text-sm text-gray-500">No inbound WhatsApp messages yet.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-gray-500">
+            <th className="py-2 pr-3">Time</th>
+            <th className="py-2 pr-3">Phone</th>
+            <th className="py-2 pr-3">Booking</th>
+            <th className="py-2 pr-3">Body / button</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-b border-gray-100">
+              <td className="py-2 pr-3">{new Date(row.created_at).toLocaleString()}</td>
+              <td className="py-2 pr-3 font-mono text-xs">{row.phone}</td>
+              <td className="py-2 pr-3 font-mono text-xs">{row.booking_id?.slice(0, 8) ?? "—"}</td>
+              <td className="py-2 pr-3">{row.button_id || row.body || "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -512,6 +570,11 @@ export function NotificationsConfigPage() {
       <AdminPanel>
         <h2 className="mb-4 text-sm font-semibold text-gray-900">Recent WhatsApp delivery log</h2>
         <WhatsAppDeliveryLogPanel />
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">Customer WhatsApp inbound</h3>
+        <WhatsAppInboundLogPanel />
       </AdminPanel>
 
       <AdminPanel>

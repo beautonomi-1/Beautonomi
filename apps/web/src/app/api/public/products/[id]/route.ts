@@ -45,7 +45,7 @@ export async function GET(
         tax_rate, weight_grams, is_active, retail_sales_enabled, created_at,
         has_variants, variant_option_types, track_stock_quantity, provider_id,
         provider:providers (
-          id, business_name, slug, thumbnail_url, avatar_url, description, tenant_id, status
+          id, business_name, slug, thumbnail_url, avatar_url, description, tenant_id, status, timezone
         )
       `,
       )
@@ -156,7 +156,9 @@ export async function GET(
     let locations: any[] = [];
     const { data: typedLocations, error: typedLocationsError } = await (supabase
       .from("provider_locations") as any)
-      .select("id, name, address_line1, city, state, working_hours")
+      .select(
+        "id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude, phone, working_hours",
+      )
       .eq("provider_id", product.provider.id)
       .eq("is_active", true)
       .eq("location_type", "salon")
@@ -164,7 +166,9 @@ export async function GET(
     if (typedLocationsError?.code === "42703") {
       const { data: legacyLocations, error: legacyLocationsError } = await (supabase
         .from("provider_locations") as any)
-        .select("id, name, address_line1, city, state, working_hours")
+        .select(
+        "id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude, phone, working_hours",
+      )
         .eq("provider_id", product.provider.id)
         .eq("is_active", true)
         .order("is_primary", { ascending: false });
@@ -202,6 +206,9 @@ export async function GET(
       },
       shipping: shippingConfig ?? { offers_delivery: false, offers_collection: true },
       collection_locations: locations ?? [],
+      provider_timezone:
+        (product.provider as { timezone?: string | null } | null)?.timezone ??
+        "Africa/Johannesburg",
       related_products: related,
     });
   } catch (err) {

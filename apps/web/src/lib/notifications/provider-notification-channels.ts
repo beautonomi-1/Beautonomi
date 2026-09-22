@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isTransactionalWhatsAppTemplate } from "@/lib/whatsapp/transactional-templates";
 
 export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
@@ -12,17 +13,17 @@ type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean; whatsapp?:
  * opt-outs made from the provider app).
  */
 const DEFAULT_PREFS: Record<string, SectionPrefs> = {
-  booking_updates: { email: true, sms: true, push: true },
-  booking_cancellations: { email: true, sms: true, push: true },
-  booking_reminders: { email: true, sms: true, push: true },
-  new_reviews: { email: true, sms: false, push: true },
-  review_responses: { email: true, sms: false, push: true },
-  client_messages: { email: true, sms: true, push: true },
-  payment_received: { email: true, sms: false, push: true },
-  payout_updates: { email: true, sms: true, push: true },
-  waitlist_notifications: { email: true, sms: false, push: true },
-  system_updates: { email: true, sms: false, push: false },
-  marketing: { email: true, sms: false, push: false },
+  booking_updates: { email: true, sms: true, push: true, whatsapp: false },
+  booking_cancellations: { email: true, sms: true, push: true, whatsapp: false },
+  booking_reminders: { email: true, sms: true, push: true, whatsapp: false },
+  new_reviews: { email: true, sms: false, push: true, whatsapp: false },
+  review_responses: { email: true, sms: false, push: true, whatsapp: false },
+  client_messages: { email: true, sms: true, push: true, whatsapp: false },
+  payment_received: { email: true, sms: false, push: true, whatsapp: false },
+  payout_updates: { email: true, sms: true, push: true, whatsapp: false },
+  waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
+  system_updates: { email: true, sms: false, push: false, whatsapp: false },
+  marketing: { email: true, sms: false, push: false, whatsapp: false },
 };
 
 const MARKETING_SECTION_SET = new Set<string>(["marketing", "system_updates"]);
@@ -76,6 +77,7 @@ export function providerTemplateKeyToPreferenceSection(templateKey: string): str
 
 function channelAllowedForProvider(
   prefs: Record<string, unknown> | null | undefined,
+  usersRow: { whatsapp_opted_out_at?: string | null; phone?: string | null } | null,
   templateKey: string,
   channel: NotificationChannelName,
 ): boolean {
@@ -89,7 +91,15 @@ function channelAllowedForProvider(
   if (channel === "email") return sec.email !== false;
   if (channel === "sms") return sec.sms !== false;
   if (channel === "push") return sec.push !== false;
-  if (channel === "whatsapp") return sec.whatsapp !== false;
+  if (channel === "whatsapp") {
+    if (usersRow?.whatsapp_opted_out_at) return false;
+    if (isTransactionalWhatsAppTemplate(templateKey, "provider")) {
+      const phone = typeof usersRow?.phone === "string" ? usersRow.phone.trim() : "";
+      if (!phone) return false;
+      return true;
+    }
+    return sec.whatsapp === true;
+  }
   return true;
 }
 
@@ -120,6 +130,11 @@ export async function resolveChannelsPerProviderRecipient(
   const out = new Map<string, NotificationChannelName[]>();
   if (userIds.length === 0 || requested.length === 0) return out;
 
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, phone, whatsapp_opted_out_at")
+    .in("id", userIds);
+
   const { data: profiles } = await supabase
     .from("user_profiles")
     .select("user_id, notification_preferences")
@@ -132,11 +147,14 @@ export async function resolveChannelsPerProviderRecipient(
     ]),
   );
 
+  const userById = new Map((users ?? []).map((u) => [u.id as string, u]));
+
   for (const uid of userIds) {
     const pref = profileByUser.get(uid) ?? null;
+    const userRow = userById.get(uid) ?? null;
     out.set(
       uid,
-      requested.filter((ch) => channelAllowedForProvider(pref, templateKey, ch)),
+      requested.filter((ch) => channelAllowedForProvider(pref, userRow, templateKey, ch)),
     );
   }
   return out;

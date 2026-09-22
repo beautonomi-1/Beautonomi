@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -6,7 +7,6 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
@@ -15,7 +15,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; taskId: string }> },
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsSales(request);
     const { id, taskId } = await params;
     const tenantId = await resolveAdminApiTenantId(request);
     const body = (await request.json()) as { completed?: boolean };
@@ -78,7 +78,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; taskId: string }> },
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsSales(request);
     const { id, taskId } = await params;
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();

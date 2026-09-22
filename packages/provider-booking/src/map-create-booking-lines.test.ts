@@ -41,6 +41,40 @@ describe("mapCreateBookingServiceLines", () => {
     );
     expect(rows[0]?.staff_id).toBe("fallback");
   });
+
+  it("does not add custom flags for catalog lines", () => {
+    const catalogId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const rows = mapCreateBookingServiceLines(
+      [{ id: "l", serviceId: catalogId, serviceName: "Haircut", price: 100, duration: 45 }],
+      "fallback",
+    );
+    expect(rows[0]).toMatchObject({
+      service_id: catalogId,
+      serviceName: "Haircut",
+    });
+    expect(rows[0]).not.toHaveProperty("isCustom");
+    expect(rows[0]).not.toHaveProperty("name");
+  });
+
+  it("adds custom flags for custom- placeholder id", () => {
+    const rows = mapCreateBookingServiceLines(
+      [
+        {
+          id: "l",
+          serviceId: "custom-1",
+          serviceName: "Bridal",
+          price: 500,
+          duration: 120,
+        },
+      ],
+      "fallback",
+    );
+    expect(rows[0]).toMatchObject({
+      isCustom: true,
+      customName: "Bridal",
+      name: "Bridal",
+    });
+  });
 });
 
 describe("mapCreateBookingProductLines", () => {

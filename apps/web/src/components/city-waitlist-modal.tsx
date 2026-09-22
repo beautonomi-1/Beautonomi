@@ -25,12 +25,18 @@ interface CityWaitlistModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultCity?: string;
+  countryCode?: string;
+  source?: "web" | "customer_app" | "provider_app";
+  persona?: "customer" | "provider";
 }
 
 export default function CityWaitlistModal({
   open,
   onOpenChange,
   defaultCity = "",
+  countryCode = "",
+  source = "web",
+  persona = "customer",
 }: CityWaitlistModalProps) {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -58,6 +64,13 @@ export default function CityWaitlistModal({
       return;
     }
 
+    const hasEmail = formData.email?.trim().includes("@");
+    const hasPhone = (formData.phone?.trim().length ?? 0) >= 7;
+    if (!hasEmail && !hasPhone) {
+      toast.error(t("web.global.cityWaitlist.contactRequired") || "Email or phone is required");
+      return;
+    }
+
     if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
       toast.error(t("web.global.cityWaitlist.invalidPhone"));
       return;
@@ -65,7 +78,15 @@ export default function CityWaitlistModal({
 
     setIsSubmitting(true);
     try {
-      const response = await fetcher.post<{ data?: { entry?: { message?: string } } }>("/api/public/city-waitlist", formData);
+      const response = await fetcher.post<{ data?: { entry?: { message?: string } } }>(
+        "/api/public/city-waitlist",
+        {
+          ...formData,
+          country_code: countryCode || undefined,
+          source,
+          persona,
+        },
+      );
       
       toast.success(response?.data?.entry?.message || t("web.global.cityWaitlist.joinedSuccess"));
       onOpenChange(false);

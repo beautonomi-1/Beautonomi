@@ -10,6 +10,8 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { normalizePhone } from "@/lib/provider-ops/leads-csv-import";
+import { ensureProviderOpsCase, syncLeadOwnerFromSalesCase } from "@/lib/provider-ops/ops-case";
+import { slackNotifyLeadCreatedForTenant } from "@/lib/integrations/slack/lead-triggers";
 import { z } from "zod";
 
 const createReferralSchema = z.object({
@@ -236,6 +238,22 @@ export async function POST(request: NextRequest) {
         submitted_by: user.id,
       },
       performed_by: user.id,
+    });
+
+    await ensureProviderOpsCase(admin, {
+      tenantId: providerRow.tenant_id,
+      leadId: lead.id,
+      currentDesk: "sales",
+      tryAutoAssign: true,
+      actorUserId: user.id,
+    });
+
+    const assignedTo = await syncLeadOwnerFromSalesCase(admin, providerRow.tenant_id, lead.id);
+
+    void slackNotifyLeadCreatedForTenant(providerRow.tenant_id, {
+      id: lead.id,
+      business_name: lead.business_name,
+      assigned_to: assignedTo,
     });
 
     return successResponse({ lead });

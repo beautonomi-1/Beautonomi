@@ -47,7 +47,7 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   // Setup wizard: authenticated provider role but no ProviderPortalProvider (no providers row yet — profile API 404s)
   if (isGetStartedPage) {
     return (
-      <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
+      <RoleGuard allowedRoles={["provider_owner", "provider_staff", "provider_onboarding"]}>
         <ProviderPortalConfigBundle>
           <ProviderPortalGate>
             <RouteTracker />

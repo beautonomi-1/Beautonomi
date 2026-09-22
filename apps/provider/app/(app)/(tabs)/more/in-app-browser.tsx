@@ -27,6 +27,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { POST_ONBOARDING_ROUTE } from "@/features/provider-onboarding/finalize-onboarding";
 
 export default function InAppBrowserScreen() {
   const { t } = useTranslation();
@@ -42,8 +43,7 @@ export default function InAppBrowserScreen() {
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
   const displayTitle = params.title ? decodeURIComponent(params.title) : ib("defaultTitle");
   // Optional post-success destination passed by the caller (e.g. the onboarding
-  // wizard sends "verify-identity" so a paid checkout lands on the optional
-  // identity step rather than straight on the dashboard).
+  // wizard sends "onboarding" so paid checkout lands on the setup hub checklist).
   const screenReturnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
 
   const [error, setError] = useState<string | null>(null);
@@ -147,22 +147,28 @@ export default function InAppBrowserScreen() {
         return;
       }
       if (raw?.type === "subscription_success") {
-        // Prefer the caller-supplied screen destination (e.g. onboarding's
-        // "verify-identity") over the web-echoed return_to.
+        // Prefer the caller-supplied screen destination (e.g. onboarding hub)
+        // over the web-echoed return_to.
         const returnTo = screenReturnTo ?? raw.return_to;
+        const returnToOnboarding = returnTo === "onboarding";
         const returnToVerify = returnTo === "verify-identity";
         const returnToDashboard = returnTo === "dashboard" || returnToVerify;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setPaymentResult({
           status: "success",
-          title: returnToDashboard ? ib("readyToLaunch") : ib("subscriptionPaymentComplete"),
-          message: returnToVerify
-            ? verificationRequired
-              ? ib("verifyIdentityRequired")
-              : ib("verifyIdentityOptional")
-            : returnToDashboard
-              ? ib("continueToDashboard")
-              : ib("returnToSubscription"),
+          title:
+            returnToOnboarding || returnToDashboard
+              ? ib("readyToLaunch")
+              : ib("subscriptionPaymentComplete"),
+          message: returnToOnboarding
+            ? ib("continueToSetupHub")
+            : returnToVerify
+              ? verificationRequired
+                ? ib("verifyIdentityRequired")
+                : ib("verifyIdentityOptional")
+              : returnToDashboard
+                ? ib("continueToDashboard")
+                : ib("returnToSubscription"),
           returnToDashboard,
           returnTo,
         });
@@ -411,6 +417,10 @@ export default function InAppBrowserScreen() {
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 if (paymentResult.status === "success") {
+                  if (paymentResult.returnTo === "onboarding") {
+                    router.replace(POST_ONBOARDING_ROUTE as never);
+                    return;
+                  }
                   if (paymentResult.returnTo === "verify-identity") {
                     router.replace("/(app)/onboarding/verify-identity" as never);
                     return;
@@ -427,11 +437,13 @@ export default function InAppBrowserScreen() {
               accessibilityRole="button"
             >
               <Text style={styles.resultButtonText}>
-                {paymentResult.returnTo === "verify-identity" && paymentResult.status === "success"
-                  ? ib("continue")
-                  : paymentResult.returnToDashboard && paymentResult.status === "success"
-                    ? ib("goToDashboard")
-                    : ib("returnToApp")}
+                {paymentResult.returnTo === "onboarding" && paymentResult.status === "success"
+                  ? ib("goToSetupHub")
+                  : paymentResult.returnTo === "verify-identity" && paymentResult.status === "success"
+                    ? ib("continue")
+                    : paymentResult.returnToDashboard && paymentResult.status === "success"
+                      ? ib("goToDashboard")
+                      : ib("returnToApp")}
               </Text>
               <DirectionalIcon name="arrow-forward" size={18} color={Colors.white} />
             </TouchableOpacity>

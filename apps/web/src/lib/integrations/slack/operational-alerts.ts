@@ -66,7 +66,7 @@ export async function runSlackOperationalAlerts(now = new Date()): Promise<Slack
     unsupported: [
       "support.ticket.overdue_followup uses updated_at age because no explicit next_follow_up_at field exists.",
       "support scheduled checks only include tickets linked to tenant-scoped providers; unscoped customer tickets still rely on direct event triggers.",
-      "provider_ops.lead.high_value_created is not emitted because provider_leads has no reliable monetary value field.",
+      "provider_ops.lead.high_value_created emits when deal_value meets tenant high_value_threshold (see lead create + lead-triggers).",
       "finance anomaly alerts are limited to real reconciliation, payout, refund, wallet, and negative-balance signals.",
     ],
   };
@@ -226,9 +226,17 @@ async function runLeadAlerts(
     assigned_to?: string | null;
     updated_at?: string | null;
     created_at?: string | null;
+    next_follow_up_at?: string | null;
+    deal_value?: number | null;
   };
 
-  const select = "id, business_name, commercial_stage, assigned_to, updated_at, created_at";
+  const { loadProviderOpsSettings } = await import("@/lib/provider-ops/ops-settings");
+  const opsSettings = await loadProviderOpsSettings(supabase, tenantId);
+  const firstContactMs = opsSettings.sla_first_contact_hours * 60 * 60 * 1000;
+  const staleMs = opsSettings.sla_stage_stale_hours * 60 * 60 * 1000;
+
+  const select =
+    "id, business_name, commercial_stage, assigned_to, updated_at, created_at, next_follow_up_at, deal_value";
   const activeStages = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "nurture"];
   const { data: stale } = await supabase
     .from("provider_leads")
@@ -236,7 +244,7 @@ async function runLeadAlerts(
     .eq("tenant_id", tenantId)
     .is("deleted_at", null)
     .in("commercial_stage", activeStages)
-    .lt("updated_at", isoBefore(now, 7 * DAY))
+    .lt("updated_at", new Date(now.getTime() - staleMs).toISOString())
     .order("updated_at", { ascending: true })
     .limit(10);
 
@@ -252,7 +260,7 @@ async function runLeadAlerts(
       detailLines: [
         lead.business_name || "(unnamed)",
         `Stage: ${lead.commercial_stage || "unknown"}`,
-        `Last update: ${ageLabel(lead.updated_at, now)}`,
+        `Last update: ${ageLabel(lead.next_follow_up_at ?? lead.updated_at, now)}`,
       ],
       actionUrl: `/provider-ops/leads/${lead.id}`,
     });
@@ -286,13 +294,42 @@ async function runLeadAlerts(
     });
   }
 
+  const { data: nextStepFollowUp } = await supabase
+    .from("provider_leads")
+    .select(select)
+    .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
+    .not("next_follow_up_at", "is", null)
+    .lt("next_follow_up_at", now.toISOString())
+    .order("next_follow_up_at", { ascending: true })
+    .limit(10);
+
+  for (const lead of (nextStepFollowUp ?? []) as Lead[]) {
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.PROVIDER_LEAD_OVERDUE_NEXT_STEP,
+      dedupeKey: `lead:${lead.id}:follow-up:${dayKey(now)}`,
+      entityType: "provider_lead",
+      entityId: lead.id,
+      title: "Lead follow-up date passed",
+      detailLines: [
+        lead.business_name || "(unnamed)",
+        `Stage: ${lead.commercial_stage}`,
+        `Follow-up was: ${ageLabel(lead.next_follow_up_at, now)} ago`,
+      ],
+      actionUrl: `/provider-ops/leads/${lead.id}`,
+    });
+  }
+
   const { data: nextStep } = await supabase
     .from("provider_leads")
     .select(select)
     .eq("tenant_id", tenantId)
     .is("deleted_at", null)
     .in("commercial_stage", ["new", "contacted", "qualified"])
-    .lt("updated_at", isoBefore(now, 48 * HOUR))
+    .is("next_follow_up_at", null)
+    .lt("updated_at", new Date(now.getTime() - firstContactMs).toISOString())
     .order("updated_at", { ascending: true })
     .limit(10);
 
@@ -308,7 +345,7 @@ async function runLeadAlerts(
       detailLines: [
         lead.business_name || "(unnamed)",
         `Stage: ${lead.commercial_stage}`,
-        `Last update: ${ageLabel(lead.updated_at, now)}`,
+        `Last update: ${ageLabel(lead.next_follow_up_at ?? lead.updated_at, now)}`,
       ],
       actionUrl: `/provider-ops/leads/${lead.id}`,
     });

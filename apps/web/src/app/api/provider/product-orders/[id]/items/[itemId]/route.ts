@@ -32,6 +32,7 @@ const bodySchema = z.object({
   fulfilled_qty: z.number().int().min(0).optional(),
   tracking_number: z.string().trim().max(100).optional(),
   carrier: z.string().trim().max(100).optional(),
+  tracking_url: z.string().trim().max(500).optional(),
 });
 
 const ORDER_NOTIFY_STATUSES = new Set<ProductOrderNotifyStatus>([
@@ -137,6 +138,7 @@ export async function PATCH(
     const orderPatch: Record<string, unknown> = { updated_at: nowIso };
     if (parsed.tracking_number) orderPatch.tracking_number = parsed.tracking_number;
     if (parsed.carrier) orderPatch.carrier = parsed.carrier;
+    if (parsed.tracking_url) orderPatch.tracking_url = parsed.tracking_url;
     if (derivedStatus) {
       orderPatch.status = derivedStatus;
       if (derivedStatus === "shipped") orderPatch.shipped_at = nowIso;
@@ -158,6 +160,8 @@ export async function PATCH(
 
     const trackingNumber = parsed.tracking_number ?? order.tracking_number ?? "";
     const carrier = parsed.carrier ?? order.carrier ?? "";
+    const trackingUrl =
+      parsed.tracking_url ?? (order as { tracking_url?: string | null }).tracking_url ?? "";
 
     if (order.customer_id) {
       if (notifyPartial) {
@@ -180,9 +184,12 @@ export async function PATCH(
               shipped_items: shippedItems,
               tracking_number: trackingNumber,
               carrier,
+              tracking_url: trackingUrl,
               tracking_info: trackingNumber
-                ? `Tracking: ${trackingNumber}${carrier ? ` (${carrier})` : ""}`
-                : "",
+                ? `Tracking: ${trackingNumber}${carrier ? ` (${carrier})` : ""}${trackingUrl ? ` — ${trackingUrl}` : ""}`
+                : trackingUrl
+                  ? `Track: ${trackingUrl}`
+                  : "",
             },
             ["push", "email"],
             { appType: "customer", tenantId: order.tenant_id ?? undefined },
@@ -208,6 +215,7 @@ export async function PATCH(
           collectionLocationId: order.collection_location_id,
           trackingNumber: trackingNumber || null,
           carrier: carrier || null,
+          trackingUrl: trackingUrl || null,
         });
       }
     }

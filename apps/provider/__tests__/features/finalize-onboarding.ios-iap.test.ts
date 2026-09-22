@@ -117,7 +117,7 @@ describe("finalizeOnboardingSuccess iOS IAP", () => {
     });
     expect(startPaidSubscriptionCheckout).not.toHaveBeenCalled();
     expect(waitForCheckout).not.toHaveBeenCalled();
-    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
 
   it("fails closed instead of opening Paystack when the Apple product is missing", async () => {

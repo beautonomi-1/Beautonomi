@@ -5,6 +5,8 @@ import { isRealCustomerEmail, isShadowEmail } from "@/lib/users/shadow-email";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getGuestLinkDeliverySettings } from "@/lib/platform-settings";
+import { isCustomerWhatsAppJourneyEnabled } from "@/lib/whatsapp/journey-flags";
+import { enqueueGuestWhatsAppTemplate } from "@/lib/whatsapp/guest-template-enqueue";
 
 function escapeHtml(input: string): string {
   return input
@@ -124,6 +126,29 @@ export async function deliverGuestBookingLink(params: {
 
   const phone = customerPhone?.trim();
   const emailIsSynthetic = !customerEmail || isShadowEmail(customerEmail);
+  const waJourneyOn = await isCustomerWhatsAppJourneyEnabled(tenantId);
+  const tryWhatsAppFirst =
+    waJourneyOn && deliverySettings.guest_link_whatsapp_enabled && phone;
+
+  if (tryWhatsAppFirst) {
+    const waSent = await enqueueGuestWhatsAppTemplate({
+      supabaseAdmin,
+      templateKey,
+      customerId,
+      bookingId,
+      tenantId,
+      phone,
+      variables: {
+        portal_url: portalUrl,
+        booking_number: bookingNumber,
+        provider_name: providerName,
+        booking_id: bookingId,
+      },
+      dedupeKey: `guest_portal:${templateKey}:whatsapp:${bookingId}${dedupeSuffix}`,
+    });
+    if (waSent) return;
+  }
+
   if (deliverySettings.guest_link_sms_enabled && phone && (emailIsSynthetic || !deliverySettings.guest_link_email_enabled)) {
     await enqueueNotification(
       {

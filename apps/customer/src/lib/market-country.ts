@@ -3,7 +3,7 @@
  * Fallback chain: config bundle market → tenant region name/code → device region → ZA.
  */
 import type { ConfigBundleMeta } from "@/lib/config-bundle";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getCachedConfigBundle } from "@/lib/config-bundle";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 const ISO_TO_DISPLAY_NAME: Record<string, string> = {
@@ -25,6 +25,11 @@ function normalizeIso2(value: string | null | undefined): string | undefined {
   return countryFilterIso2FromStorage(value) ?? undefined;
 }
 
+/** Shop-market ISO for booking/geocode (tenant bundle, not device locale). */
+export function getShopCountryIsoForForms(): string {
+  return resolveMarketCountryIso(getCachedConfigBundle()?.meta ?? null);
+}
+
 /** ISO 3166-1 alpha-2 for Mapbox `country` filter and address defaults. */
 export function resolveMarketCountryIso(bundle?: ConfigBundleMeta | null): string {
   const fromActiveMarket = normalizeIso2(bundle?.active_market_country);
@@ -36,7 +41,7 @@ export function resolveMarketCountryIso(bundle?: ConfigBundleMeta | null): strin
   const fromRegionName = countryFilterIso2FromStorage(bundle?.tenant_region?.name);
   if (fromRegionName) return fromRegionName;
 
-  return getDeviceRegionCountryIso();
+  return "ZA";
 }
 
 /** Human-readable country for structured address fields when Mapbox omits country. */

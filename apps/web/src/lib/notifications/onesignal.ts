@@ -206,13 +206,14 @@ function applyOneSignalTargeting(
 /**
  * Notification channels supported by OneSignal
  */
-export type NotificationChannel = "push" | "email" | "sms" | "live_activities";
+export type NotificationChannel = "push" | "email" | "sms" | "live_activities" | "whatsapp";
 
 const VALID_NOTIFICATION_CHANNELS: ReadonlySet<string> = new Set([
   "push",
   "email",
   "sms",
   "live_activities",
+  "whatsapp",
 ]);
 
 export const DEFAULT_NOTIFICATION_CHANNELS: NotificationChannel[] = ["push"];
@@ -1418,6 +1419,8 @@ export type SendTemplateOptions = OneSignalSendOptions & {
    * key) so the same event does not create two bell entries.
    */
   skipInApp?: boolean;
+  /** Delay durable queue delivery (e.g. retention quiet hours). */
+  scheduleAt?: Date | null;
   /** Fallback copy when the DB template row is missing but push is must-deliver. */
   fallbackTitle?: string;
   fallbackBody?: string;
@@ -1930,7 +1933,14 @@ export async function sendTemplateNotification(
       const whatsappFirst = waterfall.length === 0 || waterfall[0] === "whatsapp";
 
       if (whatsappFirst && waRecipients.length > 0 && (contentSid || waBody)) {
-        if (!["paused", "disabled", "rejected"].includes(waStatus)) {
+        const { isFirstTouchWhatsAppTemplate } = await import(
+          "@/lib/whatsapp/transactional-templates"
+        );
+        const firstTouch = isFirstTouchWhatsAppTemplate(templateKey);
+        const waBlocked =
+          ["paused", "disabled", "rejected"].includes(waStatus) ||
+          (firstTouch && waStatus !== "approved");
+        if (!waBlocked) {
           const { enqueueTemplateEmailSmsChannels } = await import(
             "@/lib/notifications/enqueue-template-channels"
           );
@@ -1952,6 +1962,7 @@ export async function sendTemplateNotification(
               whatsappTemplateStatus: waStatus,
               data: { template_key: templateKey, ...variables },
               url: pushUrlFields.actionPath || undefined,
+              scheduleAt: options?.scheduleAt ?? null,
             },
             options?.supabaseClient,
           );

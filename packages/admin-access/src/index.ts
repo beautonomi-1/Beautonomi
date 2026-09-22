@@ -47,6 +47,9 @@ export const ALL_ADMIN_ROLES: UserRole[] = [
   "admin_integrations",
   "admin_operations",
   "admin_platform_config",
+  "admin_sales",
+  "admin_onboarding",
+  "admin_retention",
 ];
 
 /** Section -> roles that can access that section. Superadmin is implied everywhere. */
@@ -63,7 +66,14 @@ export const ADMIN_SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   [ADMIN_SECTION_INTEGRATIONS_DEV]: ["superadmin", "admin_integrations"],
   [ADMIN_SECTION_OPERATIONS]: ["superadmin", "admin_operations", "admin_support"],
   [ADMIN_SECTION_PLATFORM_CONFIG]: ["superadmin", "admin_platform_config"],
-  [ADMIN_SECTION_PROVIDER_OPS]: ["superadmin", "admin_operations", "admin_support"],
+  [ADMIN_SECTION_PROVIDER_OPS]: [
+    "superadmin",
+    "admin_operations",
+    "admin_support",
+    "admin_sales",
+    "admin_onboarding",
+    "admin_retention",
+  ],
   [ADMIN_SECTION_COMMERCIAL]: ["superadmin", "admin_finance", "admin_operations"],
 };
 
@@ -126,6 +136,9 @@ export const ROLE_LABELS: Record<string, string> = {
   admin_integrations: "Integrations",
   admin_operations: "Operations",
   admin_platform_config: "Platform config",
+  admin_sales: "Provider sales",
+  admin_onboarding: "Provider onboarding",
+  admin_retention: "Provider retention",
 };
 
 export type StoredSectionRoles = Partial<Record<AdminSection, UserRole[]>>;

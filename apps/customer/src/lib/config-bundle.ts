@@ -2,7 +2,8 @@
  * Fetch config bundle from backend (customer app). Uses getBackendUrl() – no auth required for public bundle.
  */
 import { getBackendUrl, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getDeviceLocaleCountryIso } from "@/lib/device-default-country-dial";
+import { getShopMarketHeaderSync } from "@/lib/market/shop-market-opt-in";
 
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
@@ -201,7 +202,10 @@ export async function fetchConfigBundle(params?: {
     const res = await fetch(
       url,
       withWebApiTenantHeaders({
-        headers: { "X-Active-Market-Country": getDeviceRegionCountryIso() },
+        headers: {
+          "X-Active-Market-Country": getDeviceLocaleCountryIso(),
+          ...getShopMarketHeaderSync(),
+        },
       }),
     );
     const data = (await res.json()) as PublicConfigBundle;

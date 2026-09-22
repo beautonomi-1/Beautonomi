@@ -366,6 +366,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
   const [cancelReasonSheetOpen, setCancelReasonSheetOpen] = useState(false);
   const [cancelReasonOrderId, setCancelReasonOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -509,6 +510,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         tracking_number?: string;
         carrier?: string;
         tracking_url?: string;
+        estimated_delivery_date?: string;
         cancellation_reason?: string;
         refund_method?: "cash" | "store_credit";
       },
@@ -529,6 +531,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setTrackingNumber("");
         setCarrier("");
         setTrackingUrl("");
+        setEstimatedDeliveryDate("");
         setCancelReasonSheetOpen(false);
         setCancelReasonOrderId(null);
         setCancelReason("");
@@ -545,6 +548,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setTrackingNumber("");
         setCarrier("");
         setTrackingUrl("");
+        setEstimatedDeliveryDate("");
         setTrackingSheetOpen(true);
       } else if (status === "cancelled") {
         const order = (orderDetail?.id === orderId ? orderDetail : viewOrder?.id === orderId ? viewOrder : allOrders.find((o) => o.id === orderId)) ?? null;
@@ -670,8 +674,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       tracking_number: trackingNumber.trim() || undefined,
       carrier: carrier.trim() || undefined,
       tracking_url: urlTrim || undefined,
+      estimated_delivery_date: estimatedDeliveryDate.trim() || undefined,
     });
-  }, [pendingStatus, trackingNumber, carrier, trackingUrl, doUpdateStatus, po]);
+  }, [pendingStatus, trackingNumber, carrier, trackingUrl, estimatedDeliveryDate, doUpdateStatus, po]);
 
   if (loading && !data) {
     return (
@@ -1658,6 +1663,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           {/* §Customer-audit 2026-04 (follow-up): let providers paste a
               carrier tracking link so the customer can tap straight through
               from their order detail page. */}
+          <View>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("estimatedDeliveryDate")}</Text>
+            <TextInput
+              value={estimatedDeliveryDate}
+              onChangeText={setEstimatedDeliveryDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            />
+          </View>
           <View>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("trackingUrl")}</Text>
             <TextInput

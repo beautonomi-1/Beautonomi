@@ -174,6 +174,7 @@ export default function ProviderProductOrdersPage() {
   // so customers can tap straight through from their order detail page.
   const [carrierInput, setCarrierInput] = useState("");
   const [trackingUrlInput, setTrackingUrlInput] = useState("");
+  const [estimatedDeliveryDateInput, setEstimatedDeliveryDateInput] = useState("");
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
   const [yocoOrder, setYocoOrder] = useState<ProductOrder | null>(null);
   const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
@@ -314,6 +315,7 @@ export default function ProviderProductOrdersPage() {
       setTrackingInput("");
       setCarrierInput("");
       setTrackingUrlInput("");
+      setEstimatedDeliveryDateInput("");
       return;
     }
     if (newStatus === "refunded") {
@@ -365,7 +367,13 @@ export default function ProviderProductOrdersPage() {
   const submitStatusUpdate = async (
     orderId: string,
     newStatus: string,
-    shipping?: { tracking_number?: string; carrier?: string; tracking_url?: string; cancellation_reason?: string },
+    shipping?: {
+      tracking_number?: string;
+      carrier?: string;
+      tracking_url?: string;
+      estimated_delivery_date?: string;
+      cancellation_reason?: string;
+    },
     refund?: { refund_method?: "cash" | "store_credit"; refund_amount?: number; refund_reason?: string },
   ) => {
     setUpdating(orderId);
@@ -375,6 +383,7 @@ export default function ProviderProductOrdersPage() {
       if (shipping?.tracking_number) payload.tracking_number = shipping.tracking_number;
       if (shipping?.carrier) payload.carrier = shipping.carrier;
       if (shipping?.tracking_url) payload.tracking_url = shipping.tracking_url;
+      if (shipping?.estimated_delivery_date) payload.estimated_delivery_date = shipping.estimated_delivery_date;
       if (shipping?.cancellation_reason) payload.cancellation_reason = shipping.cancellation_reason;
       if (refund?.refund_method) payload.refund_method = refund.refund_method;
       if (refund?.refund_amount != null) payload.refund_amount = refund.refund_amount;
@@ -768,6 +777,15 @@ export default function ProviderProductOrdersPage() {
               placeholder={t("web.provider.pages.ecommerce/orders.carrierPlaceholder")}
               className="mb-3"
             />
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              {t("web.provider.pages.ecommerce/orders.estimatedDeliveryDate")}
+            </label>
+            <Input
+              type="date"
+              value={estimatedDeliveryDateInput}
+              onChange={(e) => setEstimatedDeliveryDateInput(e.target.value)}
+              className="mb-3"
+            />
             <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.trackingUrl")}</label>
             <Input
               value={trackingUrlInput}
@@ -797,6 +815,7 @@ export default function ProviderProductOrdersPage() {
                     tracking_number: trackingInput.trim() || undefined,
                     carrier: carrierInput.trim() || undefined,
                     tracking_url: urlTrim || undefined,
+                    estimated_delivery_date: estimatedDeliveryDateInput.trim() || undefined,
                   });
                 }}
                 disabled={updating === trackingDialog.orderId}

@@ -112,6 +112,8 @@ export default function App() {
           <Route path="providers/:id" element={<P.ProviderDetailPage />} />
           <Route path="providers" element={<P.ProvidersListPage />} />
           <Route path="provider-ops" element={<P.ProviderOpsDashboardPage />} />
+          <Route path="provider-ops/my-day" element={<P.ProviderOpsMyDayPage />} />
+          <Route path="provider-ops/retention" element={<P.ProviderOpsRetentionPage />} />
           <Route path="provider-ops/leads/new" element={<P.ProviderOpsLeadNewPage />} />
           <Route path="provider-ops/leads/:id" element={<P.ProviderOpsLeadDetailPage />} />
           <Route path="provider-ops/leads" element={<P.ProviderOpsLeadsPage />} />
@@ -213,6 +215,7 @@ export default function App() {
           <Route path="notifications/inbox" element={<P.NotificationsInboxPage />} />
           <Route path="notifications" element={<P.NotificationsConfigPage />} />
           <Route path="marketing" element={<P.MarketingOpsHubPage />} />
+          <Route path="marketing/market-waitlist" element={<P.MarketWaitlistPage />} />
           <Route path="broadcast/history" element={<P.BroadcastHistoryPage />} />
           <Route path="broadcast/compose" element={<P.BroadcastComposePage />} />
           <Route path="broadcast" element={<P.BroadcastHubPage />} />

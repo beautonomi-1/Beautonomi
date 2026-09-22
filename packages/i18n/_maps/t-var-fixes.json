@@ -1,0 +1,172 @@
+{
+  "Delete \"{{name}}\"?": {
+    "fr": "Supprimer « {{name}} » ?",
+    "ar": "حذف \"{{name}}\"؟",
+    "sw": "Futa \"{{name}}\"?"
+  },
+  "Enter a valid total budget ({{currency}}).": {
+    "fr": "Saisissez un budget total valide ({{currency}}).",
+    "ar": "أدخل ميزانية إجمالية صالحة ({{currency}}).",
+    "sw": "Weka bajeti sahihi ya jumla ({{currency}})."
+  },
+  "Search clients for participant {{n}}": {
+    "fr": "Rechercher des clients pour le participant {{n}}",
+    "ar": "ابحث عن عملاء للمشارك {{n}}",
+    "sw": "Tafuta wateja wa mshiriki {{n}}"
+  },
+  "View full checklist · +{{count}} more": {
+    "fr": "Voir la liste complète · +{{count}} de plus",
+    "ar": "عرض القائمة الكاملة · +{{count}} إضافية",
+    "sw": "Angalia orodha kamili · +{{count}} zaidi"
+  },
+  "Delete {{name}}": {
+    "fr": "Supprimer {{name}}",
+    "ar": "حذف {{name}}",
+    "sw": "Futa {{name}}"
+  },
+  "Enter the {{count}}-digit code from SMS.": {
+    "fr": "Saisissez le code à {{count}} chiffres reçu par SMS.",
+    "ar": "أدخل الرمز المكون من {{count}} أرقام من رسالة SMS.",
+    "sw": "Weka msimbo wa tarakimu {{count}} kutoka SMS."
+  },
+  "Enter the {{count}}-digit code from your email.": {
+    "fr": "Saisissez le code à {{count}} chiffres reçu par e-mail.",
+    "ar": "أدخل الرمز المكون من {{count}} أرقام من بريدك الإلكتروني.",
+    "sw": "Weka msimbo wa tarakimu {{count}} kutoka barua pepe yako."
+  },
+  "Edit {{title}}": {
+    "fr": "Modifier {{title}}",
+    "ar": "تعديل {{title}}",
+    "sw": "Hariri {{title}}"
+  },
+  "Edit {{label}}": {
+    "fr": "Modifier {{label}}",
+    "ar": "تعديل {{label}}",
+    "sw": "Hariri {{label}}"
+  },
+  "{{name}} — activates instantly, no card required": {
+    "fr": "{{name}} — s’active immédiatement, sans carte",
+    "ar": "{{name}} — يُفعَّل فورًا دون الحاجة إلى بطاقة",
+    "sw": "{{name}} — huwashwa mara moja, bila kadi"
+  },
+  "Add package {{name}}": {
+    "fr": "Ajouter le forfait {{name}}",
+    "ar": "إضافة الباقة {{name}}",
+    "sw": "Ongeza kifurushi {{name}}"
+  },
+  "Save {{amount}}": {
+    "fr": "Enregistrer {{amount}}",
+    "ar": "حفظ {{amount}}",
+    "sw": "Hifadhi {{amount}}"
+  },
+  "Could not set hours for: {{days}}. Please try again.": {
+    "fr": "Impossible de définir les horaires pour : {{days}}. Veuillez réessayer.",
+    "ar": "تعذر تعيين الساعات لـ: {{days}}. يرجى المحاولة مرة أخرى.",
+    "sw": "Imeshindwa kuweka saa za: {{days}}. Tafadhali jaribu tena."
+  },
+  "Delete this shift on {{date}}?": {
+    "fr": "Supprimer ce créneau du {{date}} ?",
+    "ar": "حذف هذه الوردية في {{date}}؟",
+    "sw": "Futa zamu hii tarehe {{date}}?"
+  },
+  "Delete this {{day}} shift ({{start}} - {{end}})?": {
+    "fr": "Supprimer ce créneau du {{day}} ({{start}} - {{end}}) ?",
+    "ar": "حذف وردية {{day}} ({{start}} - {{end}})؟",
+    "sw": "Futa zamu ya {{day}} ({{start}} - {{end}})?"
+  },
+  "Add shift on {{day}}": {
+    "fr": "Ajouter un créneau le {{day}}",
+    "ar": "إضافة وردية يوم {{day}}",
+    "sw": "Ongeza zamu siku ya {{day}}"
+  },
+  "Add a weekly shift to override this for {{name}}.": {
+    "fr": "Ajoutez un créneau hebdomadaire pour remplacer celui-ci pour {{name}}.",
+    "ar": "أضف وردية أسبوعية لاستبدال هذه لـ {{name}}.",
+    "sw": "Ongeza zamu ya kila wiki ili kubadilisha hii kwa {{name}}."
+  },
+  "Select {{day}}": {
+    "fr": "Sélectionner {{day}}",
+    "ar": "اختيار {{day}}",
+    "sw": "Chagua {{day}}"
+  },
+  "Delete \"{{title}}\"?": {
+    "fr": "Supprimer « {{title}} » ?",
+    "ar": "حذف \"{{title}}\"؟",
+    "sw": "Futa \"{{title}}\"?"
+  },
+  "Select role {{role}}": {
+    "fr": "Sélectionner le rôle {{role}}",
+    "ar": "اختيار الدور {{role}}",
+    "sw": "Chagua jukumu {{role}}"
+  },
+  "Select client {{name}}": {
+    "fr": "Sélectionner le client {{name}}",
+    "ar": "اختيار العميل {{name}}",
+    "sw": "Chagua mteja {{name}}"
+  },
+  "Add {{name}} to cart": {
+    "fr": "Ajouter {{name}} au panier",
+    "ar": "إضافة {{name}} إلى السلة",
+    "sw": "Ongeza {{name}} kwenye kikapu"
+  },
+  "Enter the {{digits}}-digit code sent to {{email}}": {
+    "fr": "Saisissez le code à {{digits}} chiffres envoyé à {{email}}",
+    "ar": "أدخل الرمز المكون من {{digits}} أرقام المرسَل إلى {{email}}",
+    "sw": "Weka msimbo wa tarakimu {{digits}} uliotumwa kwa {{email}}"
+  },
+  "Add at least {{count}} more character to the description.": {
+    "fr": "Ajoutez encore au moins {{count}} caractère à la description.",
+    "ar": "أضف حرفًا واحدًا على الأقل ({{count}}) إلى الوصف.",
+    "sw": "Ongeza angalau herufi {{count}} kwenye maelezo."
+  },
+  "Add at least {{count}} more characters to the description.": {
+    "fr": "Ajoutez encore au moins {{count}} caractères à la description.",
+    "ar": "أضف {{count}} أحرف على الأقل إلى الوصف.",
+    "sw": "Ongeza angalau herufi {{count}} kwenye maelezo."
+  },
+  "Failed to {{action}} charge": {
+    "fr": "Impossible d’{{action}} le prélèvement",
+    "ar": "تعذر {{action}} الرسوم",
+    "sw": "Imeshindwa {{action}} tozo"
+  },
+  "Enter new password (min {{min}} characters)": {
+    "fr": "Saisissez le nouveau mot de passe ({{min}} caractères min.)",
+    "ar": "أدخل كلمة مرور جديدة ({{min}} أحرف على الأقل)",
+    "sw": "Weka nenosiri jipya (herufi {{min}} angalau)"
+  },
+  "Enter your new email. We'll send a {{digits}}-digit verification code.": {
+    "fr": "Saisissez votre nouvel e-mail. Nous enverrons un code de vérification à {{digits}} chiffres.",
+    "ar": "أدخل بريدك الإلكتروني الجديد. سنرسل رمز تحقق مكونًا من {{digits}} أرقام.",
+    "sw": "Weka barua pepe yako mpya. Tutakutumia msimbo wa uthibitisho wa tarakimu {{digits}}."
+  },
+  "Enter the {{digits}}-digit code we sent to your email.": {
+    "fr": "Saisissez le code à {{digits}} chiffres envoyé à votre e-mail.",
+    "ar": "أدخل الرمز المكون من {{digits}} أرقام الذي أرسلناه إلى بريدك.",
+    "sw": "Weka msimbo wa tarakimu {{digits}} tuliotuma kwenye barua pepe yako."
+  },
+  "Enter your new phone number. We'll SMS a {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).": {
+    "fr": "Saisissez votre nouveau numéro. Nous enverrons par SMS un code à {{digits}} chiffres (valable environ {{minutes}} {{minuteLabel}}).",
+    "ar": "أدخل رقم هاتفك الجديد. سنرسل برسالة SMS رمزًا من {{digits}} أرقام (صالح نحو {{minutes}} {{minuteLabel}}).",
+    "sw": "Weka nambari yako mpya ya simu. Tutakutumia SMS msimbo wa tarakimu {{digits}} (halali takriban {{minutes}} {{minuteLabel}})."
+  },
+  "Enter the {{digits}}-digit code we sent to your phone.": {
+    "fr": "Saisissez le code à {{digits}} chiffres envoyé sur votre téléphone.",
+    "ar": "أدخل الرمز المكون من {{digits}} أرقام الذي أرسلناه إلى هاتفك.",
+    "sw": "Weka msimbo wa tarakimu {{digits}} tuliotuma kwenye simu yako."
+  },
+  "Failed to sign in with {{label}}": {
+    "fr": "Impossible de se connecter avec {{label}}",
+    "ar": "تعذر تسجيل الدخول باستخدام {{label}}",
+    "sw": "Imeshindwa kuingia kwa {{label}}"
+  },
+  "Select variant — {{name}}": {
+    "fr": "Sélectionner une variante — {{name}}",
+    "ar": "اختيار المتغير — {{name}}",
+    "sw": "Chagua toleo — {{name}}"
+  },
+  "Could not send offer: {{message}}": {
+    "fr": "Impossible d’envoyer l’offre : {{message}}",
+    "ar": "تعذر إرسال العرض: {{message}}",
+    "sw": "Imeshindwa kutuma ofa: {{message}}"
+  }
+}

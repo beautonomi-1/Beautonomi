@@ -72,6 +72,7 @@ type VerificationForm = {
   allow_provider_override: boolean;
   guest_link_email_enabled: boolean;
   guest_link_sms_enabled: boolean;
+  guest_link_whatsapp_enabled: boolean;
 };
 
 type SocialAuthForm = {
@@ -227,6 +228,7 @@ export function GeneralSettingsPage() {
     allow_provider_override: true,
     guest_link_email_enabled: true,
     guest_link_sms_enabled: true,
+    guest_link_whatsapp_enabled: true,
   });
   const [socialAuth, setSocialAuth] = useState<SocialAuthForm>({
     google: true,
@@ -304,6 +306,7 @@ export function GeneralSettingsPage() {
       allow_provider_override: v.allow_provider_override !== false,
       guest_link_email_enabled: v.guest_link_email_enabled !== false,
       guest_link_sms_enabled: v.guest_link_sms_enabled !== false,
+      guest_link_whatsapp_enabled: v.guest_link_whatsapp_enabled !== false,
     });
     const sa = (q.data.social_auth ?? {}) as Partial<SocialAuthForm>;
     setSocialAuth({
@@ -898,6 +901,7 @@ export function GeneralSettingsPage() {
               ["allow_provider_override", "Allow provider manual override when customer cannot verify"],
               ["guest_link_email_enabled", "Email guest portal links to shadow customers"],
               ["guest_link_sms_enabled", "SMS guest portal links when no real email"],
+              ["guest_link_whatsapp_enabled", "WhatsApp guest portal links (requires customer WhatsApp journey)"],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="flex cursor-pointer items-center gap-3">

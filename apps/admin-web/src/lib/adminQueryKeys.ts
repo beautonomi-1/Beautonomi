@@ -9,6 +9,9 @@ export const adminQueryKeys = {
   sectionPermissions: () => [...adminQueryKeys.root, "section-permissions"] as const,
   adminTeam: () => [...adminQueryKeys.root, "admin-team"] as const,
   navCounts: () => [...adminQueryKeys.root, "nav-counts"] as const,
+  marketWaitlistRoot: () => [...adminQueryKeys.root, "market-waitlist"] as const,
+  marketWaitlist: (filters: { status?: string }) =>
+    [...adminQueryKeys.marketWaitlistRoot(), filters] as const,
   tenants: () => [...adminQueryKeys.root, "tenants"] as const,
   activity: () => [...adminQueryKeys.root, "activity"] as const,
   adminNotifications: (signature = "inbox") =>
@@ -380,6 +383,11 @@ export const adminQueryKeys = {
     referrerSearch: (q: string) => [...adminQueryKeys.providerOps.all(), "referrers", "search", q] as const,
     voiceConfig: () => [...adminQueryKeys.providerOps.all(), "voice", "config"] as const,
     settings: () => [...adminQueryKeys.providerOps.all(), "settings"] as const,
+    myDay: () => [...adminQueryKeys.providerOps.all(), "my-day"] as const,
+    caseLookup: (key: string) => [...adminQueryKeys.providerOps.all(), "case", key] as const,
+    reportsScorecard: () => [...adminQueryKeys.providerOps.all(), "reports", "scorecard"] as const,
+    retention: (q: string) => [...adminQueryKeys.providerOps.all(), "retention", q] as const,
+    quotas: () => [...adminQueryKeys.providerOps.all(), "quotas"] as const,
     categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,
     providerLifecycle: (id: string) => [...adminQueryKeys.providerOps.all(), "provider", id, "lifecycle"] as const,
   },

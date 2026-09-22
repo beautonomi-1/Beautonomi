@@ -2,10 +2,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   ensureWalkInCustomOffering,
   isWalkInCustomServiceInput,
+  parseWalkInCustomizationJson,
   walkInCustomServiceLabel,
 } from "@/lib/bookings/walk-in-custom-service";
 
 type ServiceInput = Record<string, unknown>;
+
+function plainCustomizationNote(service: ServiceInput): string | undefined {
+  const raw = service.customization;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed.length) return undefined;
+  if (parseWalkInCustomizationJson(trimmed)) return undefined;
+  return trimmed;
+}
 
 export async function resolveCustomServicesInBookingBody(
   supabase: SupabaseClient,
@@ -14,6 +24,11 @@ export async function resolveCustomServicesInBookingBody(
   services: ServiceInput[] | undefined,
 ): Promise<ServiceInput[] | undefined> {
   if (!Array.isArray(services) || services.length === 0) return services;
+
+  const hasCustomLine = services.some((service) =>
+    isWalkInCustomServiceInput(service as never),
+  );
+  if (!hasCustomLine) return services;
 
   const customOfferingId = await ensureWalkInCustomOffering(supabase, providerId, currency);
   let customLineIndex = 0;
@@ -27,6 +42,7 @@ export async function resolveCustomServicesInBookingBody(
         60,
     );
     const lineKey = customLineIndex++;
+    const note = plainCustomizationNote(service);
     return {
       ...service,
       serviceId: customOfferingId,
@@ -39,10 +55,13 @@ export async function resolveCustomServicesInBookingBody(
         display_name: label,
         is_walk_in_custom: true,
         custom_line_index: lineKey,
+        ...(note ? { notes: note } : {}),
       }),
       isCustom: undefined,
       customName: undefined,
       name: undefined,
+      serviceName: undefined,
+      service_name: undefined,
     };
   });
 }

@@ -1,0 +1,5110 @@
+[
+  {
+    "n": 14,
+    "s": "Retry"
+  },
+  {
+    "n": 6,
+    "s": "Go back"
+  },
+  {
+    "n": 5,
+    "s": "Cancelled"
+  },
+  {
+    "n": 5,
+    "s": "Manage saved cards"
+  },
+  {
+    "n": 5,
+    "s": "Total"
+  },
+  {
+    "n": 5,
+    "s": "Try again"
+  },
+  {
+    "n": 4,
+    "s": "Account"
+  },
+  {
+    "n": 4,
+    "s": "Cancel"
+  },
+  {
+    "n": 4,
+    "s": "Card"
+  },
+  {
+    "n": 4,
+    "s": "Contact support"
+  },
+  {
+    "n": 4,
+    "s": "Email"
+  },
+  {
+    "n": 4,
+    "s": "Other"
+  },
+  {
+    "n": 4,
+    "s": "Phone"
+  },
+  {
+    "n": 4,
+    "s": "Send verification code"
+  },
+  {
+    "n": 4,
+    "s": "Tax"
+  },
+  {
+    "n": 3,
+    "s": "99+"
+  },
+  {
+    "n": 3,
+    "s": "All"
+  },
+  {
+    "n": 3,
+    "s": "Booking"
+  },
+  {
+    "n": 3,
+    "s": "Cancel order"
+  },
+  {
+    "n": 3,
+    "s": "Change address"
+  },
+  {
+    "n": 3,
+    "s": "Completed"
+  },
+  {
+    "n": 3,
+    "s": "Confirmed"
+  },
+  {
+    "n": 3,
+    "s": "Default"
+  },
+  {
+    "n": 3,
+    "s": "Delivery"
+  },
+  {
+    "n": 3,
+    "s": "Delivery Address"
+  },
+  {
+    "n": 3,
+    "s": "Enter code"
+  },
+  {
+    "n": 3,
+    "s": "Gift card"
+  },
+  {
+    "n": 3,
+    "s": "Gift card code"
+  },
+  {
+    "n": 3,
+    "s": "In-store pickup only"
+  },
+  {
+    "n": 3,
+    "s": "Loading…"
+  },
+  {
+    "n": 3,
+    "s": "Payment method"
+  },
+  {
+    "n": 3,
+    "s": "Pending"
+  },
+  {
+    "n": 3,
+    "s": "Processing"
+  },
+  {
+    "n": 3,
+    "s": "Refunded"
+  },
+  {
+    "n": 3,
+    "s": "Reviews"
+  },
+  {
+    "n": 3,
+    "s": "Saved"
+  },
+  {
+    "n": 3,
+    "s": "Sending..."
+  },
+  {
+    "n": 3,
+    "s": "Sold out"
+  },
+  {
+    "n": 2,
+    "s": " · Verified"
+  },
+  {
+    "n": 2,
+    "s": "{{count}} reviews"
+  },
+  {
+    "n": 2,
+    "s": "{{count}} services"
+  },
+  {
+    "n": 2,
+    "s": "{{minutes}} min"
+  },
+  {
+    "n": 2,
+    "s": "{{percent}}% off services"
+  },
+  {
+    "n": 2,
+    "s": "Add address"
+  },
+  {
+    "n": 2,
+    "s": "Add Address"
+  },
+  {
+    "n": 2,
+    "s": "Add new address"
+  },
+  {
+    "n": 2,
+    "s": "Add products from this provider to your cart first."
+  },
+  {
+    "n": 2,
+    "s": "Add to cart"
+  },
+  {
+    "n": 2,
+    "s": "Address"
+  },
+  {
+    "n": 2,
+    "s": "and"
+  },
+  {
+    "n": 2,
+    "s": "Available"
+  },
+  {
+    "n": 2,
+    "s": "Back"
+  },
+  {
+    "n": 2,
+    "s": "booking"
+  },
+  {
+    "n": 2,
+    "s": "Booking reminders"
+  },
+  {
+    "n": 2,
+    "s": "Cash or card when you receive your order"
+  },
+  {
+    "n": 2,
+    "s": "Change"
+  },
+  {
+    "n": 2,
+    "s": "Checkout"
+  },
+  {
+    "n": 2,
+    "s": "Close"
+  },
+  {
+    "n": 2,
+    "s": "closed"
+  },
+  {
+    "n": 2,
+    "s": "Code sent. Valid for about {{minutes}} min."
+  },
+  {
+    "n": 2,
+    "s": "Collection"
+  },
+  {
+    "n": 2,
+    "s": "Collection Point"
+  },
+  {
+    "n": 2,
+    "s": "Copy"
+  },
+  {
+    "n": 2,
+    "s": "Current location"
+  },
+  {
+    "n": 2,
+    "s": "Current: {{value}}"
+  },
+  {
+    "n": 2,
+    "s": "Customer"
+  },
+  {
+    "n": 2,
+    "s": "Date of birth"
+  },
+  {
+    "n": 2,
+    "s": "Delivered"
+  },
+  {
+    "n": 2,
+    "s": "Delivery available"
+  },
+  {
+    "n": 2,
+    "s": "Delivery only"
+  },
+  {
+    "n": 2,
+    "s": "Details"
+  },
+  {
+    "n": 2,
+    "s": "Edit address"
+  },
+  {
+    "n": 2,
+    "s": "Email address"
+  },
+  {
+    "n": 2,
+    "s": "End User License Agreement"
+  },
+  {
+    "n": 2,
+    "s": "Expired"
+  },
+  {
+    "n": 2,
+    "s": "Expires {{expiry}}"
+  },
+  {
+    "n": 2,
+    "s": "Find a provider"
+  },
+  {
+    "n": 2,
+    "s": "Free · In-store"
+  },
+  {
+    "n": 2,
+    "s": "gift card"
+  },
+  {
+    "n": 2,
+    "s": "Go to cart"
+  },
+  {
+    "n": 2,
+    "s": "Group booking"
+  },
+  {
+    "n": 2,
+    "s": "high"
+  },
+  {
+    "n": 2,
+    "s": "Hottest Picks"
+  },
+  {
+    "n": 2,
+    "s": "How would you like to receive your order?"
+  },
+  {
+    "n": 2,
+    "s": "I have read and agree to the"
+  },
+  {
+    "n": 2,
+    "s": "in progress"
+  },
+  {
+    "n": 2,
+    "s": "Loading verification options…"
+  },
+  {
+    "n": 2,
+    "s": "Log in"
+  },
+  {
+    "n": 2,
+    "s": "low"
+  },
+  {
+    "n": 2,
+    "s": "medium"
+  },
+  {
+    "n": 2,
+    "s": "Missing seller information. Open checkout from your cart."
+  },
+  {
+    "n": 2,
+    "s": "Nearest Providers"
+  },
+  {
+    "n": 2,
+    "s": "New support ticket"
+  },
+  {
+    "n": 2,
+    "s": "New ticket"
+  },
+  {
+    "n": 2,
+    "s": "No items for this seller"
+  },
+  {
+    "n": 2,
+    "s": "No submissions yet"
+  },
+  {
+    "n": 2,
+    "s": "Notifications"
+  },
+  {
+    "n": 2,
+    "s": "Only {{count}} left"
+  },
+  {
+    "n": 2,
+    "s": "open"
+  },
+  {
+    "n": 2,
+    "s": "Option"
+  },
+  {
+    "n": 2,
+    "s": "Order Summary"
+  },
+  {
+    "n": 2,
+    "s": "Package"
+  },
+  {
+    "n": 2,
+    "s": "Pay Online"
+  },
+  {
+    "n": 2,
+    "s": "Pay with a new card"
+  },
+  {
+    "n": 2,
+    "s": "Pay with a new card (secure browser)"
+  },
+  {
+    "n": 2,
+    "s": "Pay-at-collection/delivery is disabled by platform policy. Please pay online."
+  },
+  {
+    "n": 2,
+    "s": "Payment"
+  },
+  {
+    "n": 2,
+    "s": "Payment cancelled"
+  },
+  {
+    "n": 2,
+    "s": "Payment Method"
+  },
+  {
+    "n": 2,
+    "s": "Platform fee"
+  },
+  {
+    "n": 2,
+    "s": "Platform Fee"
+  },
+  {
+    "n": 2,
+    "s": "Priority: {{priority}}"
+  },
+  {
+    "n": 2,
+    "s": "Privacy Policy"
+  },
+  {
+    "n": 2,
+    "s": "Product order"
+  },
+  {
+    "n": 2,
+    "s": "Products"
+  },
+  {
+    "n": 2,
+    "s": "Promo & gift card"
+  },
+  {
+    "n": 2,
+    "s": "Promotion"
+  },
+  {
+    "n": 2,
+    "s": "Promotion code"
+  },
+  {
+    "n": 2,
+    "s": "Rate this support experience"
+  },
+  {
+    "n": 2,
+    "s": "Recommended"
+  },
+  {
+    "n": 2,
+    "s": "Remove"
+  },
+  {
+    "n": 2,
+    "s": "Remove from wishlist"
+  },
+  {
+    "n": 2,
+    "s": "Resend code"
+  },
+  {
+    "n": 2,
+    "s": "Resend in {{seconds}}s"
+  },
+  {
+    "n": 2,
+    "s": "resolved"
+  },
+  {
+    "n": 2,
+    "s": "Return to checkout"
+  },
+  {
+    "n": 2,
+    "s": "Save to wishlist"
+  },
+  {
+    "n": 2,
+    "s": "Saving…"
+  },
+  {
+    "n": 2,
+    "s": "Secure payment with card (card, EFT, etc.)"
+  },
+  {
+    "n": 2,
+    "s": "Share product"
+  },
+  {
+    "n": 2,
+    "s": "Shipped"
+  },
+  {
+    "n": 2,
+    "s": "Sign in to place your order"
+  },
+  {
+    "n": 2,
+    "s": "Sponsored"
+  },
+  {
+    "n": 2,
+    "s": "Submitting…"
+  },
+  {
+    "n": 2,
+    "s": "Subtotal"
+  },
+  {
+    "n": 2,
+    "s": "Technical"
+  },
+  {
+    "n": 2,
+    "s": "Top Rated"
+  },
+  {
+    "n": 2,
+    "s": "Unlock"
+  },
+  {
+    "n": 2,
+    "s": "Unlock app"
+  },
+  {
+    "n": 2,
+    "s": "Upcoming Talent"
+  },
+  {
+    "n": 2,
+    "s": "Upload a government-issued ID below to get verified. Your document is reviewed securely."
+  },
+  {
+    "n": 2,
+    "s": "Upload a government-issued ID to complete verification before your first booking."
+  },
+  {
+    "n": 2,
+    "s": "urgent"
+  },
+  {
+    "n": 2,
+    "s": "Use a different card (secure browser)"
+  },
+  {
+    "n": 2,
+    "s": "Use current location"
+  },
+  {
+    "n": 2,
+    "s": "Use saved card"
+  },
+  {
+    "n": 2,
+    "s": "View booking"
+  },
+  {
+    "n": 2,
+    "s": "View cart"
+  },
+  {
+    "n": 2,
+    "s": "waiting customer"
+  },
+  {
+    "n": 2,
+    "s": "Your rating: {{score}}/5"
+  },
+  {
+    "n": 1,
+    "s": " · {{km}} km"
+  },
+  {
+    "n": 1,
+    "s": " · ✓ Checked out"
+  },
+  {
+    "n": 1,
+    "s": " · default"
+  },
+  {
+    "n": 1,
+    "s": " · Renews {{date}}"
+  },
+  {
+    "n": 1,
+    "s": " · Sold out"
+  },
+  {
+    "n": 1,
+    "s": " before {{date}}"
+  },
+  {
+    "n": 1,
+    "s": " soon"
+  },
+  {
+    "n": 1,
+    "s": " to disable your account without deleting data."
+  },
+  {
+    "n": 1,
+    "s": " until {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "--"
+  },
+  {
+    "n": 1,
+    "s": ", and"
+  },
+  {
+    "n": 1,
+    "s": ". I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics. I can update analytics preferences in my account privacy settings."
+  },
+  {
+    "n": 1,
+    "s": "· Save {{percent}}%"
+  },
+  {
+    "n": 1,
+    "s": "(attachment)"
+  },
+  {
+    "n": 1,
+    "s": "(optional)"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} bookings used this membership."
+  },
+  {
+    "n": 1,
+    "s": "{{count}} days ago"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} item"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} items"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} Locations"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} months ago"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} option · tap to choose"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} option · tap to hide"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} options"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} options · tap to choose"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} options · tap to hide"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} points"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} pts required"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} review"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} review.{{suffix}}"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} reviews.{{suffix}}"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} saved post"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} saved posts"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} service"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} team members. Meet our professionals when you book."
+  },
+  {
+    "n": 1,
+    "s": "{{count}} weeks ago"
+  },
+  {
+    "n": 1,
+    "s": "{{count}} x {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "{{current}} / {{total}}"
+  },
+  {
+    "n": 1,
+    "s": "{{earned}} / {{required}} pts"
+  },
+  {
+    "n": 1,
+    "s": "{{error}} Showing saved cart."
+  },
+  {
+    "n": 1,
+    "s": "{{hours}}h"
+  },
+  {
+    "n": 1,
+    "s": "{{km}} km"
+  },
+  {
+    "n": 1,
+    "s": "{{label}} category"
+  },
+  {
+    "n": 1,
+    "s": "{{min}}–{{max}} min"
+  },
+  {
+    "n": 1,
+    "s": "{{minutes}} min · {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}} — {{service}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}} ×{{quantity}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}} x{{quantity}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}}, {{count}} options, tap to hide"
+  },
+  {
+    "n": 1,
+    "s": "{{name}}, {{count}} options, tap to show"
+  },
+  {
+    "n": 1,
+    "s": "{{name}}, {{count}} service, {{action}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}}, {{count}} services, {{action}}"
+  },
+  {
+    "n": 1,
+    "s": "{{name}}, {{minutes}} minutes, {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "{{percent}}% deposit to confirm booking"
+  },
+  {
+    "n": 1,
+    "s": "{{time}} — unavailable"
+  },
+  {
+    "n": 1,
+    "s": "{{title}} providers"
+  },
+  {
+    "n": 1,
+    "s": "{{unitPrice}} × {{quantity}}"
+  },
+  {
+    "n": 1,
+    "s": "/5"
+  },
+  {
+    "n": 1,
+    "s": "•••• {{last4}}"
+  },
+  {
+    "n": 1,
+    "s": "+{{count}} more"
+  },
+  {
+    "n": 1,
+    "s": "+{{minutes}} min • {{currency}} {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "<1h"
+  },
+  {
+    "n": 1,
+    "s": "~{{count}} min"
+  },
+  {
+    "n": 1,
+    "s": "🇿🇦 South Africa detected"
+  },
+  {
+    "n": 1,
+    "s": "✓ Checked in"
+  },
+  {
+    "n": 1,
+    "s": "📍 {{count}} pickup locations"
+  },
+  {
+    "n": 1,
+    "s": "📍 {{name}}, {{city}}"
+  },
+  {
+    "n": 1,
+    "s": "1 booking used this membership."
+  },
+  {
+    "n": 1,
+    "s": "14:30"
+  },
+  {
+    "n": 1,
+    "s": "2026-06-10"
+  },
+  {
+    "n": 1,
+    "s": "A clear description, affected booking/order id, and screenshots if relevant."
+  },
+  {
+    "n": 1,
+    "s": "A deposit is required to confirm your booking"
+  },
+  {
+    "n": 1,
+    "s": "A newer version of Beautonomi is required to keep bookings, payments, and account features working correctly."
+  },
+  {
+    "n": 1,
+    "s": "A platform fee of {{amount}} applies to online payments"
+  },
+  {
+    "n": 1,
+    "s": "About"
+  },
+  {
+    "n": 1,
+    "s": "About {{context}}"
+  },
+  {
+    "n": 1,
+    "s": "About {{km}} kilometres from you"
+  },
+  {
+    "n": 1,
+    "s": "About {{km}} km"
+  },
+  {
+    "n": 1,
+    "s": "About 2 minutes · Beauty preferences are optional"
+  },
+  {
+    "n": 1,
+    "s": "About Beautonomi"
+  },
+  {
+    "n": 1,
+    "s": "About this service"
+  },
+  {
+    "n": 1,
+    "s": "About: {{context}}"
+  },
+  {
+    "n": 1,
+    "s": "Access codes"
+  },
+  {
+    "n": 1,
+    "s": "Access is unavailable due to legal or regulatory restrictions."
+  },
+  {
+    "n": 1,
+    "s": "Access unavailable in your country"
+  },
+  {
+    "n": 1,
+    "s": "account"
+  },
+  {
+    "n": 1,
+    "s": "Account activity"
+  },
+  {
+    "n": 1,
+    "s": "Account check needed"
+  },
+  {
+    "n": 1,
+    "s": "Account deactivated"
+  },
+  {
+    "n": 1,
+    "s": "Account settings"
+  },
+  {
+    "n": 1,
+    "s": "Account settings →"
+  },
+  {
+    "n": 1,
+    "s": "Account suspended"
+  },
+  {
+    "n": 1,
+    "s": "Active"
+  },
+  {
+    "n": 1,
+    "s": "Active membership"
+  },
+  {
+    "n": 1,
+    "s": "Active sessions"
+  },
+  {
+    "n": 1,
+    "s": "Add {{name}} {{minutes}} minutes"
+  },
+  {
+    "n": 1,
+    "s": "Add {{name}}, {{minutes}} minutes"
+  },
+  {
+    "n": 1,
+    "s": "Add a number"
+  },
+  {
+    "n": 1,
+    "s": "Add a payment method"
+  },
+  {
+    "n": 1,
+    "s": "Add a profile photo"
+  },
+  {
+    "n": 1,
+    "s": "Add a public Mapbox token in admin (Mapbox settings). You can still set your address using search or current location."
+  },
+  {
+    "n": 1,
+    "s": "Add a reply"
+  },
+  {
+    "n": 1,
+    "s": "Add a special character"
+  },
+  {
+    "n": 1,
+    "s": "Add an uppercase letter"
+  },
+  {
+    "n": 1,
+    "s": "Add inspiration photos if helpful"
+  },
+  {
+    "n": 1,
+    "s": "Add participant"
+  },
+  {
+    "n": 1,
+    "s": "Add to cart · {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "Add to cart first"
+  },
+  {
+    "n": 1,
+    "s": "Add to wallet"
+  },
+  {
+    "n": 1,
+    "s": "Add-on"
+  },
+  {
+    "n": 1,
+    "s": "Additional details"
+  },
+  {
+    "n": 1,
+    "s": "Additional Details (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Adjust photo"
+  },
+  {
+    "n": 1,
+    "s": "Age suitability"
+  },
+  {
+    "n": 1,
+    "s": "Also checkout on web"
+  },
+  {
+    "n": 1,
+    "s": "An address is required for house-call bookings. Only shared with providers when you book a visit."
+  },
+  {
+    "n": 1,
+    "s": "Apartment / Unit"
+  },
+  {
+    "n": 1,
+    "s": "Apartment, suite, unit (optional)"
+  },
+  {
+    "n": 1,
+    "s": "App not configured"
+  },
+  {
+    "n": 1,
+    "s": "App Review demo account — enter the review OTP code."
+  },
+  {
+    "n": 1,
+    "s": "App URL is not configured."
+  },
+  {
+    "n": 1,
+    "s": "Approved"
+  },
+  {
+    "n": 1,
+    "s": "Appt · newest"
+  },
+  {
+    "n": 1,
+    "s": "Appt · soonest"
+  },
+  {
+    "n": 1,
+    "s": "Arrived too late"
+  },
+  {
+    "n": 1,
+    "s": "As on your ID"
+  },
+  {
+    "n": 1,
+    "s": "At least {{min}} characters"
+  },
+  {
+    "n": 1,
+    "s": "at period end"
+  },
+  {
+    "n": 1,
+    "s": "At salon"
+  },
+  {
+    "n": 1,
+    "s": "At Salon"
+  },
+  {
+    "n": 1,
+    "s": "At the salon"
+  },
+  {
+    "n": 1,
+    "s": "At your home"
+  },
+  {
+    "n": 1,
+    "s": "At your location"
+  },
+  {
+    "n": 1,
+    "s": "Attach image"
+  },
+  {
+    "n": 1,
+    "s": "Attachment"
+  },
+  {
+    "n": 1,
+    "s": "Attachment {{index}}"
+  },
+  {
+    "n": 1,
+    "s": "Attempts to reload the content"
+  },
+  {
+    "n": 1,
+    "s": "Attempts to reload the provider list"
+  },
+  {
+    "n": 1,
+    "s": "Auto-renew is off{{until}}. Resume anytime to keep your benefits."
+  },
+  {
+    "n": 1,
+    "s": "Available {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Available at"
+  },
+  {
+    "n": 1,
+    "s": "Available markets: {{markets}}"
+  },
+  {
+    "n": 1,
+    "s": "Average rating {{rating}} out of five. {{suffix}}"
+  },
+  {
+    "n": 1,
+    "s": "Average rating and breakdown from clients"
+  },
+  {
+    "n": 1,
+    "s": "Average rating not yet rated out of five. {{suffix}}"
+  },
+  {
+    "n": 1,
+    "s": "Back to checkout"
+  },
+  {
+    "n": 1,
+    "s": "Back to home"
+  },
+  {
+    "n": 1,
+    "s": "Back to list"
+  },
+  {
+    "n": 1,
+    "s": "Back to login"
+  },
+  {
+    "n": 1,
+    "s": "Balance due {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Be the first to share what you think."
+  },
+  {
+    "n": 1,
+    "s": "Beautonomi home"
+  },
+  {
+    "n": 1,
+    "s": "Beautonomi is locked"
+  },
+  {
+    "n": 1,
+    "s": "Beautonomi is not available in your country yet."
+  },
+  {
+    "n": 1,
+    "s": "Beautonomi v{{version}}"
+  },
+  {
+    "n": 1,
+    "s": "Become a beauty provider"
+  },
+  {
+    "n": 1,
+    "s": "Before you sign in or create an account, review and accept our EULA. It covers community standards, reporting, blocking, parental controls, and our commitment to act on reports within 24 hours."
+  },
+  {
+    "n": 1,
+    "s": "Benefits"
+  },
+  {
+    "n": 1,
+    "s": "Billed monthly"
+  },
+  {
+    "n": 1,
+    "s": "Billed yearly"
+  },
+  {
+    "n": 1,
+    "s": "Biometric authentication is not available on this device"
+  },
+  {
+    "n": 1,
+    "s": "Board not found"
+  },
+  {
+    "n": 1,
+    "s": "Book"
+  },
+  {
+    "n": 1,
+    "s": "Book — {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "Book {{name}}"
+  },
+  {
+    "n": 1,
+    "s": "Book {{title}}"
+  },
+  {
+    "n": 1,
+    "s": "Book a visit — then leave a review"
+  },
+  {
+    "n": 1,
+    "s": "Book again — review after your visit"
+  },
+  {
+    "n": 1,
+    "s": "Book in Browser"
+  },
+  {
+    "n": 1,
+    "s": "Book Now"
+  },
+  {
+    "n": 1,
+    "s": "Booked"
+  },
+  {
+    "n": 1,
+    "s": "Booked · newest"
+  },
+  {
+    "n": 1,
+    "s": "Booked · oldest"
+  },
+  {
+    "n": 1,
+    "s": "Booking confirmation emails"
+  },
+  {
+    "n": 1,
+    "s": "Booking confirmation SMS"
+  },
+  {
+    "n": 1,
+    "s": "Booking confirmation WhatsApp"
+  },
+  {
+    "n": 1,
+    "s": "Booking details not available"
+  },
+  {
+    "n": 1,
+    "s": "Booking ID"
+  },
+  {
+    "n": 1,
+    "s": "Booking number"
+  },
+  {
+    "n": 1,
+    "s": "Booking policies"
+  },
+  {
+    "n": 1,
+    "s": "Booking reference"
+  },
+  {
+    "n": 1,
+    "s": "Booking reminders, account activity, and policies."
+  },
+  {
+    "n": 1,
+    "s": "Booking steps and options"
+  },
+  {
+    "n": 1,
+    "s": "Booking total"
+  },
+  {
+    "n": 1,
+    "s": "Booking/order/payment reference"
+  },
+  {
+    "n": 1,
+    "s": "Both email and phone must be verified before you can finish setup and start booking."
+  },
+  {
+    "n": 1,
+    "s": "Both of you earn bonus points"
+  },
+  {
+    "n": 1,
+    "s": "Braids / Weaves"
+  },
+  {
+    "n": 1,
+    "s": "Brand new programs and announcements"
+  },
+  {
+    "n": 1,
+    "s": "Brief description of the issue"
+  },
+  {
+    "n": 1,
+    "s": "Browse other products"
+  },
+  {
+    "n": 1,
+    "s": "Browse products"
+  },
+  {
+    "n": 1,
+    "s": "Browse provider profiles to see membership plans and subscribe."
+  },
+  {
+    "n": 1,
+    "s": "Browse the Learning Centre for guides and common answers. For account or booking-specific help, open a ticket with your details and screenshots where possible. Track replies in My tickets."
+  },
+  {
+    "n": 1,
+    "s": "Browse the shop and add products to get started."
+  },
+  {
+    "n": 1,
+    "s": "Building name"
+  },
+  {
+    "n": 1,
+    "s": "Buy a Gift Card"
+  },
+  {
+    "n": 1,
+    "s": "Calculated total"
+  },
+  {
+    "n": 1,
+    "s": "Call"
+  },
+  {
+    "n": 1,
+    "s": "Camera or photo library · Required · JPEG, PNG or WebP · max 5 MB"
+  },
+  {
+    "n": 1,
+    "s": "Can be a first name, nickname, or whatever you prefer."
+  },
+  {
+    "n": 1,
+    "s": "Can't connect. Check your internet and try again."
+  },
+  {
+    "n": 1,
+    "s": "Can't load categories. Check your connection."
+  },
+  {
+    "n": 1,
+    "s": "Cancel {{planName}} membership with {{providerName}}"
+  },
+  {
+    "n": 1,
+    "s": "Cancel membership"
+  },
+  {
+    "n": 1,
+    "s": "Cancel salon membership"
+  },
+  {
+    "n": 1,
+    "s": "Cancel this order? In-stock items will be restocked and paid tenders refunded."
+  },
+  {
+    "n": 1,
+    "s": "Cancelling..."
+  },
+  {
+    "n": 1,
+    "s": "card"
+  },
+  {
+    "n": 1,
+    "s": "Card (Pay online)"
+  },
+  {
+    "n": 1,
+    "s": "Card on delivery / collection"
+  },
+  {
+    "n": 1,
+    "s": "Cart"
+  },
+  {
+    "n": 1,
+    "s": "Cart, {{count}} items"
+  },
+  {
+    "n": 1,
+    "s": "Cash"
+  },
+  {
+    "n": 1,
+    "s": "Category filters"
+  },
+  {
+    "n": 1,
+    "s": "Category: {{category}} · Priority: {{priority}}"
+  },
+  {
+    "n": 1,
+    "s": "Change {{label}}"
+  },
+  {
+    "n": 1,
+    "s": "Change date"
+  },
+  {
+    "n": 1,
+    "s": "Change email or phone →"
+  },
+  {
+    "n": 1,
+    "s": "Change email or phone number"
+  },
+  {
+    "n": 1,
+    "s": "Change password"
+  },
+  {
+    "n": 1,
+    "s": "Change photo"
+  },
+  {
+    "n": 1,
+    "s": "Change plan →"
+  },
+  {
+    "n": 1,
+    "s": "Changed my mind"
+  },
+  {
+    "n": 1,
+    "s": "Changes to {{planName}}"
+  },
+  {
+    "n": 1,
+    "s": "Charged total"
+  },
+  {
+    "n": 1,
+    "s": "Checkout — {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Checkout cart ({{count}})"
+  },
+  {
+    "n": 1,
+    "s": "Checkout for pickup — {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Choose a specific option"
+  },
+  {
+    "n": 1,
+    "s": "Choose any amount and send it digitally"
+  },
+  {
+    "n": 1,
+    "s": "Choose which push alerts you receive on this device. Critical alerts (like payment and safety) are always delivered."
+  },
+  {
+    "n": 1,
+    "s": "City"
+  },
+  {
+    "n": 1,
+    "s": "Close map"
+  },
+  {
+    "n": 1,
+    "s": "Closed"
+  },
+  {
+    "n": 1,
+    "s": "Code sent to {{email}}"
+  },
+  {
+    "n": 1,
+    "s": "Code sent to {{phone}}"
+  },
+  {
+    "n": 1,
+    "s": "Code sent. Check your inbox."
+  },
+  {
+    "n": 1,
+    "s": "Collapse"
+  },
+  {
+    "n": 1,
+    "s": "Collected"
+  },
+  {
+    "n": 1,
+    "s": "Collection Details"
+  },
+  {
+    "n": 1,
+    "s": "Combination"
+  },
+  {
+    "n": 1,
+    "s": "Common questions"
+  },
+  {
+    "n": 1,
+    "s": "Complete a booking"
+  },
+  {
+    "n": 1,
+    "s": "Complete your profile"
+  },
+  {
+    "n": 1,
+    "s": "Complete: {{label}}"
+  },
+  {
+    "n": 1,
+    "s": "Completing sign in..."
+  },
+  {
+    "n": 1,
+    "s": "Confirm & pay"
+  },
+  {
+    "n": 1,
+    "s": "Confirm new password"
+  },
+  {
+    "n": 1,
+    "s": "Confirm Password"
+  },
+  {
+    "n": 1,
+    "s": "Confirm payment"
+  },
+  {
+    "n": 1,
+    "s": "Confirm with a one-time verification code."
+  },
+  {
+    "n": 1,
+    "s": "Confirm you agree to the End User License Agreement, Privacy Policy, and Cookie Policy (including product analytics while signed in)."
+  },
+  {
+    "n": 1,
+    "s": "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in)."
+  },
+  {
+    "n": 1,
+    "s": "Confirm your email and phone so you can book and receive updates"
+  },
+  {
+    "n": 1,
+    "s": "Confirm your legal details"
+  },
+  {
+    "n": 1,
+    "s": "Confirm your phone number so you can book and receive updates"
+  },
+  {
+    "n": 1,
+    "s": "Contact support about this gift card"
+  },
+  {
+    "n": 1,
+    "s": "Continue"
+  },
+  {
+    "n": 1,
+    "s": "Continue browsing"
+  },
+  {
+    "n": 1,
+    "s": "Continue here"
+  },
+  {
+    "n": 1,
+    "s": "Continue with phone, email, Google, or Apple."
+  },
+  {
+    "n": 1,
+    "s": "Cookie Policy"
+  },
+  {
+    "n": 1,
+    "s": "Copied"
+  },
+  {
+    "n": 1,
+    "s": "Copy {{label}}"
+  },
+  {
+    "n": 1,
+    "s": "Copy booking number and ID"
+  },
+  {
+    "n": 1,
+    "s": "Copy ID"
+  },
+  {
+    "n": 1,
+    "s": "Copy number"
+  },
+  {
+    "n": 1,
+    "s": "Copy number and ID"
+  },
+  {
+    "n": 1,
+    "s": "Copy order ID"
+  },
+  {
+    "n": 1,
+    "s": "Copy order number"
+  },
+  {
+    "n": 1,
+    "s": "Copy promo code {{code}}"
+  },
+  {
+    "n": 1,
+    "s": "Could not cancel this order."
+  },
+  {
+    "n": 1,
+    "s": "Could not display this PDF."
+  },
+  {
+    "n": 1,
+    "s": "Could not load booking details. Check your bookings list."
+  },
+  {
+    "n": 1,
+    "s": "Could not load group booking"
+  },
+  {
+    "n": 1,
+    "s": "Could not load more providers."
+  },
+  {
+    "n": 1,
+    "s": "Could not load offer"
+  },
+  {
+    "n": 1,
+    "s": "Could not load page"
+  },
+  {
+    "n": 1,
+    "s": "Could not load product. Please try again."
+  },
+  {
+    "n": 1,
+    "s": "Could not load providers."
+  },
+  {
+    "n": 1,
+    "s": "Could not remove card. Please try again."
+  },
+  {
+    "n": 1,
+    "s": "Could not reschedule"
+  },
+  {
+    "n": 1,
+    "s": "Could not save address"
+  },
+  {
+    "n": 1,
+    "s": "Could not save avatar"
+  },
+  {
+    "n": 1,
+    "s": "Could not save date of birth"
+  },
+  {
+    "n": 1,
+    "s": "Could not save name"
+  },
+  {
+    "n": 1,
+    "s": "Could not save preferences"
+  },
+  {
+    "n": 1,
+    "s": "Could not start payment"
+  },
+  {
+    "n": 1,
+    "s": "Could not submit"
+  },
+  {
+    "n": 1,
+    "s": "Could not submit rating"
+  },
+  {
+    "n": 1,
+    "s": "Could not submit ticket"
+  },
+  {
+    "n": 1,
+    "s": "Could not sync your name to your account."
+  },
+  {
+    "n": 1,
+    "s": "Could not verify phone on server."
+  },
+  {
+    "n": 1,
+    "s": "Couldn't load product"
+  },
+  {
+    "n": 1,
+    "s": "Couldn't load profile details."
+  },
+  {
+    "n": 1,
+    "s": "Couldn't verify your account"
+  },
+  {
+    "n": 1,
+    "s": "Country"
+  },
+  {
+    "n": 1,
+    "s": "Country code: {{country}}"
+  },
+  {
+    "n": 1,
+    "s": "Country on ID"
+  },
+  {
+    "n": 1,
+    "s": "Country that issued your document"
+  },
+  {
+    "n": 1,
+    "s": "Create account"
+  },
+  {
+    "n": 1,
+    "s": "Create Account"
+  },
+  {
+    "n": 1,
+    "s": "Create Your Account"
+  },
+  {
+    "n": 1,
+    "s": "Curly"
+  },
+  {
+    "n": 1,
+    "s": "Current password"
+  },
+  {
+    "n": 1,
+    "s": "Custom request"
+  },
+  {
+    "n": 1,
+    "s": "Customer reviews"
+  },
+  {
+    "n": 1,
+    "s": "Date (YYYY-MM-DD)"
+  },
+  {
+    "n": 1,
+    "s": "Day"
+  },
+  {
+    "n": 1,
+    "s": "Deactivate account"
+  },
+  {
+    "n": 1,
+    "s": "DEFAULT"
+  },
+  {
+    "n": 1,
+    "s": "Delete account permanently"
+  },
+  {
+    "n": 1,
+    "s": "Delete address"
+  },
+  {
+    "n": 1,
+    "s": "Deletion scheduled"
+  },
+  {
+    "n": 1,
+    "s": "Delivery · {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Delivery Details"
+  },
+  {
+    "n": 1,
+    "s": "Delivery fee: {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Delivery notes"
+  },
+  {
+    "n": 1,
+    "s": "Deposit ({{pct}}%)"
+  },
+  {
+    "n": 1,
+    "s": "Deposit option: {{deposit}} (pay now) · Full balance {{full}}."
+  },
+  {
+    "n": 1,
+    "s": "Deposit required"
+  },
+  {
+    "n": 1,
+    "s": "Describe the issue in detail, including any error messages or steps to reproduce…"
+  },
+  {
+    "n": 1,
+    "s": "Describe what you need, optional budget and photos, then submit. You'll chat with the provider about timing and pricing."
+  },
+  {
+    "n": 1,
+    "s": "Description"
+  },
+  {
+    "n": 1,
+    "s": "Details:"
+  },
+  {
+    "n": 1,
+    "s": "Detecting location…"
+  },
+  {
+    "n": 1,
+    "s": "Didit"
+  },
+  {
+    "n": 1,
+    "s": "Directions"
+  },
+  {
+    "n": 1,
+    "s": "Discount"
+  },
+  {
+    "n": 1,
+    "s": "Dismiss"
+  },
+  {
+    "n": 1,
+    "s": "Dismiss announcement banner"
+  },
+  {
+    "n": 1,
+    "s": "Distance"
+  },
+  {
+    "n": 1,
+    "s": "Distance not available"
+  },
+  {
+    "n": 1,
+    "s": "Distance unknown. Set your address to see how far this provider is."
+  },
+  {
+    "n": 1,
+    "s": "Do not close this screen."
+  },
+  {
+    "n": 1,
+    "s": "Document"
+  },
+  {
+    "n": 1,
+    "s": "Don't have an account?"
+  },
+  {
+    "n": 1,
+    "s": "Don't show again"
+  },
+  {
+    "n": 1,
+    "s": "Done"
+  },
+  {
+    "n": 1,
+    "s": "Double tap to submit your order"
+  },
+  {
+    "n": 1,
+    "s": "Download order receipt"
+  },
+  {
+    "n": 1,
+    "s": "Download receipt"
+  },
+  {
+    "n": 1,
+    "s": "Drop a pin"
+  },
+  {
+    "n": 1,
+    "s": "Drop a pin on the map"
+  },
+  {
+    "n": 1,
+    "s": "Drop pin on map"
+  },
+  {
+    "n": 1,
+    "s": "Dry"
+  },
+  {
+    "n": 1,
+    "s": "e.g. 12 Main Street"
+  },
+  {
+    "n": 1,
+    "s": "e.g. Nolo Sehlolo"
+  },
+  {
+    "n": 1,
+    "s": "e.g. Thandi"
+  },
+  {
+    "n": 1,
+    "s": "Earn points on every booking"
+  },
+  {
+    "n": 1,
+    "s": "Earn points on every visit"
+  },
+  {
+    "n": 1,
+    "s": "Edit address fields manually"
+  },
+  {
+    "n": 1,
+    "s": "Edit fields manually"
+  },
+  {
+    "n": 1,
+    "s": "Email and SMS deals, tips, and promotions"
+  },
+  {
+    "n": 1,
+    "s": "Email is required"
+  },
+  {
+    "n": 1,
+    "s": "Email notifications"
+  },
+  {
+    "n": 1,
+    "s": "Email verification code"
+  },
+  {
+    "n": 1,
+    "s": "Email verified"
+  },
+  {
+    "n": 1,
+    "s": "Email verified but could not save. Please try again."
+  },
+  {
+    "n": 1,
+    "s": "Email when a booking is confirmed or updated"
+  },
+  {
+    "n": 1,
+    "s": "Email when you receive a new message"
+  },
+  {
+    "n": 1,
+    "s": "Enable push notifications"
+  },
+  {
+    "n": 1,
+    "s": "Enable push notifications on this device"
+  },
+  {
+    "n": 1,
+    "s": "Enter {{digits}}-digit code"
+  },
+  {
+    "n": 1,
+    "s": "Enter a friend's code"
+  },
+  {
+    "n": 1,
+    "s": "Enter gift card code"
+  },
+  {
+    "n": 1,
+    "s": "Enter the {{digits}}-digit code sent to"
+  },
+  {
+    "n": 1,
+    "s": "Enter the verification code to delete your account."
+  },
+  {
+    "n": 1,
+    "s": "Enter your details exactly as they appear on your government ID or passport."
+  },
+  {
+    "n": 1,
+    "s": "Error"
+  },
+  {
+    "n": 1,
+    "s": "Escalated"
+  },
+  {
+    "n": 1,
+    "s": "Estimated delivery: {{count}} day"
+  },
+  {
+    "n": 1,
+    "s": "Estimated delivery: {{count}} days"
+  },
+  {
+    "n": 1,
+    "s": "Estimated delivery: {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "EULA"
+  },
+  {
+    "n": 1,
+    "s": "Exact address available after booking confirmation"
+  },
+  {
+    "n": 1,
+    "s": "Expand"
+  },
+  {
+    "n": 1,
+    "s": "Expires {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "Explore"
+  },
+  {
+    "n": 1,
+    "s": "Explore tab"
+  },
+  {
+    "n": 1,
+    "s": "failed"
+  },
+  {
+    "n": 1,
+    "s": "Failed to load"
+  },
+  {
+    "n": 1,
+    "s": "Failed to load addresses"
+  },
+  {
+    "n": 1,
+    "s": "Failed to load available times"
+  },
+  {
+    "n": 1,
+    "s": "Failed to load more tickets"
+  },
+  {
+    "n": 1,
+    "s": "Failed to load reviews"
+  },
+  {
+    "n": 1,
+    "s": "Failed to request changes"
+  },
+  {
+    "n": 1,
+    "s": "Failed to save address"
+  },
+  {
+    "n": 1,
+    "s": "Featured"
+  },
+  {
+    "n": 1,
+    "s": "Fetching price, taxes, and payment options."
+  },
+  {
+    "n": 1,
+    "s": "Filter providers by {{label}} category"
+  },
+  {
+    "n": 1,
+    "s": "Final total includes taxes & fees."
+  },
+  {
+    "n": 1,
+    "s": "Finish"
+  },
+  {
+    "n": 1,
+    "s": "Floor"
+  },
+  {
+    "n": 1,
+    "s": "For faster checkout next time"
+  },
+  {
+    "n": 1,
+    "s": "For myself"
+  },
+  {
+    "n": 1,
+    "s": "For ZAR pricing and local checkout, open the South Africa storefront ({{host}})."
+  },
+  {
+    "n": 1,
+    "s": "Forgot password?"
+  },
+  {
+    "n": 1,
+    "s": "Free"
+  },
+  {
+    "n": 1,
+    "s": "Free delivery to your address."
+  },
+  {
+    "n": 1,
+    "s": "Freelancer"
+  },
+  {
+    "n": 1,
+    "s": "Friday"
+  },
+  {
+    "n": 1,
+    "s": "friend@email.com"
+  },
+  {
+    "n": 1,
+    "s": "From {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "Full name"
+  },
+  {
+    "n": 1,
+    "s": "Full name is required"
+  },
+  {
+    "n": 1,
+    "s": "Full payment summary — same taxes and platform fee as a standard booking."
+  },
+  {
+    "n": 1,
+    "s": "Get a personalized offer in messages"
+  },
+  {
+    "n": 1,
+    "s": "Getting location…"
+  },
+  {
+    "n": 1,
+    "s": "Gift Card"
+  },
+  {
+    "n": 1,
+    "s": "Gift card tender"
+  },
+  {
+    "n": 1,
+    "s": "Gift Cards"
+  },
+  {
+    "n": 1,
+    "s": "Giftcard"
+  },
+  {
+    "n": 1,
+    "s": "Give the gift of beauty. Purchase a gift card for {{name}} and share it with someone special."
+  },
+  {
+    "n": 1,
+    "s": "Give us feedback"
+  },
+  {
+    "n": 1,
+    "s": "Go back to edit signup details"
+  },
+  {
+    "n": 1,
+    "s": "Go back to previous step"
+  },
+  {
+    "n": 1,
+    "s": "Go to {{host}}"
+  },
+  {
+    "n": 1,
+    "s": "Group booking not found"
+  },
+  {
+    "n": 1,
+    "s": "Group session not found"
+  },
+  {
+    "n": 1,
+    "s": "Hair type (select all that apply)"
+  },
+  {
+    "n": 1,
+    "s": "Happy birthday! Enjoy a treat on me 💛"
+  },
+  {
+    "n": 1,
+    "s": "Have a referral code?"
+  },
+  {
+    "n": 1,
+    "s": "Help"
+  },
+  {
+    "n": 1,
+    "s": "Help center"
+  },
+  {
+    "n": 1,
+    "s": "Help centre"
+  },
+  {
+    "n": 1,
+    "s": "Help with {{kind}} {{label}}"
+  },
+  {
+    "n": 1,
+    "s": "Hide manual edit fields"
+  },
+  {
+    "n": 1,
+    "s": "Hide manual fields"
+  },
+  {
+    "n": 1,
+    "s": "Hide service options"
+  },
+  {
+    "n": 1,
+    "s": "High"
+  },
+  {
+    "n": 1,
+    "s": "Highest"
+  },
+  {
+    "n": 1,
+    "s": "Home"
+  },
+  {
+    "n": 1,
+    "s": "Home tab"
+  },
+  {
+    "n": 1,
+    "s": "House Call"
+  },
+  {
+    "n": 1,
+    "s": "House call details (optional)"
+  },
+  {
+    "n": 1,
+    "s": "House Calls"
+  },
+  {
+    "n": 1,
+    "s": "How do I follow up on a ticket?"
+  },
+  {
+    "n": 1,
+    "s": "How it works"
+  },
+  {
+    "n": 1,
+    "s": "How long does support take?"
+  },
+  {
+    "n": 1,
+    "s": "How they work"
+  },
+  {
+    "n": 1,
+    "s": "How to Earn Points"
+  },
+  {
+    "n": 1,
+    "s": "HTTP {{status}}"
+  },
+  {
+    "n": 1,
+    "s": "HTTP {{statusCode}}"
+  },
+  {
+    "n": 1,
+    "s": "Identity"
+  },
+  {
+    "n": 1,
+    "s": "Identity verification is currently unavailable. Contact support if you need assistance."
+  },
+  {
+    "n": 1,
+    "s": "If you completed payment, your booking will appear shortly. You can check Bookings in your profile."
+  },
+  {
+    "n": 1,
+    "s": "In progress"
+  },
+  {
+    "n": 1,
+    "s": "In stock"
+  },
+  {
+    "n": 1,
+    "s": "In-app push alerts for new messages"
+  },
+  {
+    "n": 1,
+    "s": "In-store collection required. No delivery for this provider."
+  },
+  {
+    "n": 1,
+    "s": "In-store pickup"
+  },
+  {
+    "n": 1,
+    "s": "Inspiration and offers"
+  },
+  {
+    "n": 1,
+    "s": "Invalid date"
+  },
+  {
+    "n": 1,
+    "s": "Invalid date/time"
+  },
+  {
+    "n": 1,
+    "s": "Invalid email address"
+  },
+  {
+    "n": 1,
+    "s": "Invalid or missing link."
+  },
+  {
+    "n": 1,
+    "s": "Invalid section."
+  },
+  {
+    "n": 1,
+    "s": "It will be removed from your saved cards."
+  },
+  {
+    "n": 1,
+    "s": "Item"
+  },
+  {
+    "n": 1,
+    "s": "Item arrived damaged"
+  },
+  {
+    "n": 1,
+    "s": "Item received"
+  },
+  {
+    "n": 1,
+    "s": "Item Received"
+  },
+  {
+    "n": 1,
+    "s": "Items"
+  },
+  {
+    "n": 1,
+    "s": "Items subtotal"
+  },
+  {
+    "n": 1,
+    "s": "Join Beautonomi and discover the best beauty services near you"
+  },
+  {
+    "n": 1,
+    "s": "Join Plan"
+  },
+  {
+    "n": 1,
+    "s": "Keep order"
+  },
+  {
+    "n": 1,
+    "s": "Label (e.g. Home, Work)"
+  },
+  {
+    "n": 1,
+    "s": "Landmarks"
+  },
+  {
+    "n": 1,
+    "s": "Language & region"
+  },
+  {
+    "n": 1,
+    "s": "Languages spoken"
+  },
+  {
+    "n": 1,
+    "s": "Last updated at {{time}}"
+  },
+  {
+    "n": 1,
+    "s": "Later"
+  },
+  {
+    "n": 1,
+    "s": "Learning Centre"
+  },
+  {
+    "n": 1,
+    "s": "Leave a review"
+  },
+  {
+    "n": 1,
+    "s": "Legal first name"
+  },
+  {
+    "n": 1,
+    "s": "Legal last name"
+  },
+  {
+    "n": 1,
+    "s": "Let's personalize your experience"
+  },
+  {
+    "n": 1,
+    "s": "Lifetime Earned"
+  },
+  {
+    "n": 1,
+    "s": "Lifetime: {{currency}} {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Link"
+  },
+  {
+    "n": 1,
+    "s": "Load more providers"
+  },
+  {
+    "n": 1,
+    "s": "Load more support tickets"
+  },
+  {
+    "n": 1,
+    "s": "Load more tickets"
+  },
+  {
+    "n": 1,
+    "s": "Loading cards…"
+  },
+  {
+    "n": 1,
+    "s": "Loading categories…"
+  },
+  {
+    "n": 1,
+    "s": "Loading map…"
+  },
+  {
+    "n": 1,
+    "s": "Loading session…"
+  },
+  {
+    "n": 1,
+    "s": "Loading waitlist…"
+  },
+  {
+    "n": 1,
+    "s": "Loading your offer…"
+  },
+  {
+    "n": 1,
+    "s": "Locating..."
+  },
+  {
+    "n": 1,
+    "s": "Location"
+  },
+  {
+    "n": 1,
+    "s": "Locations"
+  },
+  {
+    "n": 1,
+    "s": "Locs / Dreadlocks"
+  },
+  {
+    "n": 1,
+    "s": "Log in to book beauty and wellness, manage appointments, and shop with Beautonomi."
+  },
+  {
+    "n": 1,
+    "s": "Log in to start booking beauty services, managing your appointments, and more."
+  },
+  {
+    "n": 1,
+    "s": "Log in to view and create support tickets"
+  },
+  {
+    "n": 1,
+    "s": "Log in to view your cart and checkout"
+  },
+  {
+    "n": 1,
+    "s": "Log out"
+  },
+  {
+    "n": 1,
+    "s": "Login & security → Deactivate account"
+  },
+  {
+    "n": 1,
+    "s": "Login method selection"
+  },
+  {
+    "n": 1,
+    "s": "Login verification code"
+  },
+  {
+    "n": 1,
+    "s": "Low"
+  },
+  {
+    "n": 1,
+    "s": "Lowest"
+  },
+  {
+    "n": 1,
+    "s": "Loyalty discount"
+  },
+  {
+    "n": 1,
+    "s": "Loyalty points"
+  },
+  {
+    "n": 1,
+    "s": "Make booking easier and help providers give you the best experience"
+  },
+  {
+    "n": 1,
+    "s": "Manage in Account → Membership"
+  },
+  {
+    "n": 1,
+    "s": "Manage OS-level permissions if push isn't arriving"
+  },
+  {
+    "n": 1,
+    "s": "Map not configured"
+  },
+  {
+    "n": 1,
+    "s": "Map unavailable"
+  },
+  {
+    "n": 1,
+    "s": "Me"
+  },
+  {
+    "n": 1,
+    "s": "Medium"
+  },
+  {
+    "n": 1,
+    "s": "Meet the Team"
+  },
+  {
+    "n": 1,
+    "s": "Member since {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "Membership"
+  },
+  {
+    "n": 1,
+    "s": "Membership discount"
+  },
+  {
+    "n": 1,
+    "s": "Membership payment"
+  },
+  {
+    "n": 1,
+    "s": "Membership Plans"
+  },
+  {
+    "n": 1,
+    "s": "Membership usage"
+  },
+  {
+    "n": 1,
+    "s": "Memberships"
+  },
+  {
+    "n": 1,
+    "s": "Message"
+  },
+  {
+    "n": 1,
+    "s": "Message emails"
+  },
+  {
+    "n": 1,
+    "s": "Message SMS"
+  },
+  {
+    "n": 1,
+    "s": "Message WhatsApp"
+  },
+  {
+    "n": 1,
+    "s": "Messages"
+  },
+  {
+    "n": 1,
+    "s": "Missing hold. Please start your booking again."
+  },
+  {
+    "n": 1,
+    "s": "Missing offer"
+  },
+  {
+    "n": 1,
+    "s": "Missing product id."
+  },
+  {
+    "n": 1,
+    "s": "Missing request ID"
+  },
+  {
+    "n": 1,
+    "s": "Mobile number"
+  },
+  {
+    "n": 1,
+    "s": "Monday"
+  },
+  {
+    "n": 1,
+    "s": "Month"
+  },
+  {
+    "n": 1,
+    "s": "More from {{name}}"
+  },
+  {
+    "n": 1,
+    "s": "Most helpful"
+  },
+  {
+    "n": 1,
+    "s": "Most requests are answered within 1-2 business days."
+  },
+  {
+    "n": 1,
+    "s": "My location"
+  },
+  {
+    "n": 1,
+    "s": "My Orders"
+  },
+  {
+    "n": 1,
+    "s": "My tickets"
+  },
+  {
+    "n": 1,
+    "s": "Name"
+  },
+  {
+    "n": 1,
+    "s": "Name (required)"
+  },
+  {
+    "n": 1,
+    "s": "Natural / Afro"
+  },
+  {
+    "n": 1,
+    "s": "Navigate to the Explore feed"
+  },
+  {
+    "n": 1,
+    "s": "Need {{min}}+ to redeem"
+  },
+  {
+    "n": 1,
+    "s": "Need 8+ characters"
+  },
+  {
+    "n": 1,
+    "s": "New Card"
+  },
+  {
+    "n": 1,
+    "s": "New password"
+  },
+  {
+    "n": 1,
+    "s": "New reply"
+  },
+  {
+    "n": 1,
+    "s": "Newest"
+  },
+  {
+    "n": 1,
+    "s": "News and programs"
+  },
+  {
+    "n": 1,
+    "s": "Next"
+  },
+  {
+    "n": 1,
+    "s": "Next Milestone"
+  },
+  {
+    "n": 1,
+    "s": "Next month"
+  },
+  {
+    "n": 1,
+    "s": "No addresses saved"
+  },
+  {
+    "n": 1,
+    "s": "No billing history yet."
+  },
+  {
+    "n": 1,
+    "s": "No categories available"
+  },
+  {
+    "n": 1,
+    "s": "No categories match your search."
+  },
+  {
+    "n": 1,
+    "s": "No collection locations are available for this provider. Please switch to delivery or contact the provider."
+  },
+  {
+    "n": 1,
+    "s": "No contact details on file for this order."
+  },
+  {
+    "n": 1,
+    "s": "No matches yet. Keep typing, press search on the keyboard, or use the map pin."
+  },
+  {
+    "n": 1,
+    "s": "No membership plans available yet."
+  },
+  {
+    "n": 1,
+    "s": "No memberships yet"
+  },
+  {
+    "n": 1,
+    "s": "No milestones available"
+  },
+  {
+    "n": 1,
+    "s": "No orders yet"
+  },
+  {
+    "n": 1,
+    "s": "No participants listed yet."
+  },
+  {
+    "n": 1,
+    "s": "No payment link returned from server. Please try again."
+  },
+  {
+    "n": 1,
+    "s": "No platform membership"
+  },
+  {
+    "n": 1,
+    "s": "No posts in this board yet. Save posts from Explore and add them from your Saved tab."
+  },
+  {
+    "n": 1,
+    "s": "No product ID provided."
+  },
+  {
+    "n": 1,
+    "s": "No products available"
+  },
+  {
+    "n": 1,
+    "s": "No providers in this section yet."
+  },
+  {
+    "n": 1,
+    "s": "No reviews yet"
+  },
+  {
+    "n": 1,
+    "s": "No reviews yet."
+  },
+  {
+    "n": 1,
+    "s": "No scheduled visits yet."
+  },
+  {
+    "n": 1,
+    "s": "No support tickets yet"
+  },
+  {
+    "n": 1,
+    "s": "No transactions yet"
+  },
+  {
+    "n": 1,
+    "s": "No visible messages are available for this ticket yet."
+  },
+  {
+    "n": 1,
+    "s": "No waitlist entries"
+  },
+  {
+    "n": 1,
+    "s": "Normal"
+  },
+  {
+    "n": 1,
+    "s": "Not as described"
+  },
+  {
+    "n": 1,
+    "s": "Not available in your country yet"
+  },
+  {
+    "n": 1,
+    "s": "Not checked in"
+  },
+  {
+    "n": 1,
+    "s": "Not scheduled"
+  },
+  {
+    "n": 1,
+    "s": "Notes (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Nothing here yet"
+  },
+  {
+    "n": 1,
+    "s": "Nothing saved yet"
+  },
+  {
+    "n": 1,
+    "s": "Notified"
+  },
+  {
+    "n": 1,
+    "s": "Number and ID copied"
+  },
+  {
+    "n": 1,
+    "s": "Offer not found"
+  },
+  {
+    "n": 1,
+    "s": "Offer unavailable"
+  },
+  {
+    "n": 1,
+    "s": "Offer your services on Beautonomi"
+  },
+  {
+    "n": 1,
+    "s": "Offers and promotions"
+  },
+  {
+    "n": 1,
+    "s": "Offers and updates"
+  },
+  {
+    "n": 1,
+    "s": "Offers from this provider"
+  },
+  {
+    "n": 1,
+    "s": "Oily"
+  },
+  {
+    "n": 1,
+    "s": "OK"
+  },
+  {
+    "n": 1,
+    "s": "Online booking for this provider requires staff selection. Book via the website instead."
+  },
+  {
+    "n": 1,
+    "s": "Open"
+  },
+  {
+    "n": 1,
+    "s": "Open age suitability information"
+  },
+  {
+    "n": 1,
+    "s": "Open in Maps"
+  },
+  {
+    "n": 1,
+    "s": "Open international site"
+  },
+  {
+    "n": 1,
+    "s": "Open Learning Centre articles"
+  },
+  {
+    "n": 1,
+    "s": "Open My tickets, choose your ticket, and send a reply in the thread."
+  },
+  {
+    "n": 1,
+    "s": "Open privacy policy"
+  },
+  {
+    "n": 1,
+    "s": "Open saved providers, products, and posts"
+  },
+  {
+    "n": 1,
+    "s": "Open system notification settings"
+  },
+  {
+    "n": 1,
+    "s": "Open terms of service"
+  },
+  {
+    "n": 1,
+    "s": "Open tracking"
+  },
+  {
+    "n": 1,
+    "s": "Open tracking with {{carrier}}"
+  },
+  {
+    "n": 1,
+    "s": "Open your booking to view details."
+  },
+  {
+    "n": 1,
+    "s": "Opening in your browser…"
+  },
+  {
+    "n": 1,
+    "s": "Opening times"
+  },
+  {
+    "n": 1,
+    "s": "Opening…"
+  },
+  {
+    "n": 1,
+    "s": "Opens a secure Paystack window. We never see your card details."
+  },
+  {
+    "n": 1,
+    "s": "Opens address selector to choose your location"
+  },
+  {
+    "n": 1,
+    "s": "Opens in Apple or Google Maps"
+  },
+  {
+    "n": 1,
+    "s": "Opens reviews."
+  },
+  {
+    "n": 1,
+    "s": "Optional comment"
+  },
+  {
+    "n": 1,
+    "s": "Optional gift card code"
+  },
+  {
+    "n": 1,
+    "s": "Optional points to redeem"
+  },
+  {
+    "n": 1,
+    "s": "Options"
+  },
+  {
+    "n": 1,
+    "s": "or sign up with email"
+  },
+  {
+    "n": 1,
+    "s": "order"
+  },
+  {
+    "n": 1,
+    "s": "Order {{orderNumber}}"
+  },
+  {
+    "n": 1,
+    "s": "Order ID"
+  },
+  {
+    "n": 1,
+    "s": "Order Placed"
+  },
+  {
+    "n": 1,
+    "s": "Order Status"
+  },
+  {
+    "n": 1,
+    "s": "Organiser"
+  },
+  {
+    "n": 1,
+    "s": "other"
+  },
+  {
+    "n": 1,
+    "s": "Other reason"
+  },
+  {
+    "n": 1,
+    "s": "out of 5"
+  },
+  {
+    "n": 1,
+    "s": "Out of stock — remove before checkout"
+  },
+  {
+    "n": 1,
+    "s": "Overview"
+  },
+  {
+    "n": 1,
+    "s": "Package · {{currency}} {{price}}"
+  },
+  {
+    "n": 1,
+    "s": "paid"
+  },
+  {
+    "n": 1,
+    "s": "Paid {{paid}} of {{total}}"
+  },
+  {
+    "n": 1,
+    "s": "Paid from gift card"
+  },
+  {
+    "n": 1,
+    "s": "Paid from wallet"
+  },
+  {
+    "n": 1,
+    "s": "Parking instructions"
+  },
+  {
+    "n": 1,
+    "s": "Participant"
+  },
+  {
+    "n": 1,
+    "s": "Participants"
+  },
+  {
+    "n": 1,
+    "s": "Password"
+  },
+  {
+    "n": 1,
+    "s": "Password is required"
+  },
+  {
+    "n": 1,
+    "s": "Passwords don't match"
+  },
+  {
+    "n": 1,
+    "s": "Past"
+  },
+  {
+    "n": 1,
+    "s": "Pause membership"
+  },
+  {
+    "n": 1,
+    "s": "Paused"
+  },
+  {
+    "n": 1,
+    "s": "Paused — manage in account"
+  },
+  {
+    "n": 1,
+    "s": "Pay {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Pay {{amount}} online"
+  },
+  {
+    "n": 1,
+    "s": "Pay at Collection"
+  },
+  {
+    "n": 1,
+    "s": "Pay at Delivery"
+  },
+  {
+    "n": 1,
+    "s": "Pay custom offer"
+  },
+  {
+    "n": 1,
+    "s": "Pay in full"
+  },
+  {
+    "n": 1,
+    "s": "Pay now"
+  },
+  {
+    "n": 1,
+    "s": "Pay one-tap on your next booking. We store a secure token, never the full card."
+  },
+  {
+    "n": 1,
+    "s": "Pay Order — {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Pay order online"
+  },
+  {
+    "n": 1,
+    "s": "Pay with saved {{brand}} ending {{last4}}"
+  },
+  {
+    "n": 1,
+    "s": "Pay with wallet"
+  },
+  {
+    "n": 1,
+    "s": "payment"
+  },
+  {
+    "n": 1,
+    "s": "Payment amount"
+  },
+  {
+    "n": 1,
+    "s": "Payment details will appear once the provider finalises the group invoice."
+  },
+  {
+    "n": 1,
+    "s": "Payment failed"
+  },
+  {
+    "n": 1,
+    "s": "Payment is still processing. Check Bookings in a moment or tap Pay to retry."
+  },
+  {
+    "n": 1,
+    "s": "Payment may still be processing. Check Bookings shortly."
+  },
+  {
+    "n": 1,
+    "s": "Payment methods"
+  },
+  {
+    "n": 1,
+    "s": "Payment received"
+  },
+  {
+    "n": 1,
+    "s": "Payment status"
+  },
+  {
+    "n": 1,
+    "s": "Payment summary"
+  },
+  {
+    "n": 1,
+    "s": "Payment/refund"
+  },
+  {
+    "n": 1,
+    "s": "pending"
+  },
+  {
+    "n": 1,
+    "s": "Permanent deletion"
+  },
+  {
+    "n": 1,
+    "s": "Personal message (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Phone (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Phone number"
+  },
+  {
+    "n": 1,
+    "s": "Phone number, optional"
+  },
+  {
+    "n": 1,
+    "s": "Phone should be {{digits}} digits for {{country}} (leading 0 is optional)"
+  },
+  {
+    "n": 1,
+    "s": "Phone verified"
+  },
+  {
+    "n": 1,
+    "s": "Photo {{index}} of {{total}}. Tap to view all photos."
+  },
+  {
+    "n": 1,
+    "s": "Photos"
+  },
+  {
+    "n": 1,
+    "s": "Pick a time"
+  },
+  {
+    "n": 1,
+    "s": "Pick another time"
+  },
+  {
+    "n": 1,
+    "s": "Pickup only"
+  },
+  {
+    "n": 1,
+    "s": "Pinch to zoom · drag to move"
+  },
+  {
+    "n": 1,
+    "s": "Place order"
+  },
+  {
+    "n": 1,
+    "s": "Place Order — {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Please describe the changes you want."
+  },
+  {
+    "n": 1,
+    "s": "Please sign in again"
+  },
+  {
+    "n": 1,
+    "s": "Please sign in to pay."
+  },
+  {
+    "n": 1,
+    "s": "Please try again"
+  },
+  {
+    "n": 1,
+    "s": "Please try again."
+  },
+  {
+    "n": 1,
+    "s": "Please wait"
+  },
+  {
+    "n": 1,
+    "s": "Points earned"
+  },
+  {
+    "n": 1,
+    "s": "Points expired"
+  },
+  {
+    "n": 1,
+    "s": "Points redeemed"
+  },
+  {
+    "n": 1,
+    "s": "Points will appear here after your first booking"
+  },
+  {
+    "n": 1,
+    "s": "Policies and reminders"
+  },
+  {
+    "n": 1,
+    "s": "Postal code"
+  },
+  {
+    "n": 1,
+    "s": "Powered by Didit · takes about 2 minutes"
+  },
+  {
+    "n": 1,
+    "s": "Prefer a break instead? Use "
+  },
+  {
+    "n": 1,
+    "s": "Preferred name"
+  },
+  {
+    "n": 1,
+    "s": "Previous month"
+  },
+  {
+    "n": 1,
+    "s": "Price breakdown"
+  },
+  {
+    "n": 1,
+    "s": "Priority"
+  },
+  {
+    "n": 1,
+    "s": "Privacy"
+  },
+  {
+    "n": 1,
+    "s": "Privacy & sharing"
+  },
+  {
+    "n": 1,
+    "s": "Product"
+  },
+  {
+    "n": 1,
+    "s": "Product list pagination"
+  },
+  {
+    "n": 1,
+    "s": "product order"
+  },
+  {
+    "n": 1,
+    "s": "Product unavailable"
+  },
+  {
+    "n": 1,
+    "s": "Profile"
+  },
+  {
+    "n": 1,
+    "s": "Profile content"
+  },
+  {
+    "n": 1,
+    "s": "Profile screen"
+  },
+  {
+    "n": 1,
+    "s": "Promotions and news from Beautonomi will appear here."
+  },
+  {
+    "n": 1,
+    "s": "Promotions, tips, and news from Beautonomi."
+  },
+  {
+    "n": 1,
+    "s": "Provider"
+  },
+  {
+    "n": 1,
+    "s": "Provider forms"
+  },
+  {
+    "n": 1,
+    "s": "provider onboarding"
+  },
+  {
+    "n": 1,
+    "s": "Provider onboarding"
+  },
+  {
+    "n": 1,
+    "s": "Provider reply"
+  },
+  {
+    "n": 1,
+    "s": "Provider response"
+  },
+  {
+    "n": 1,
+    "s": "Providers"
+  },
+  {
+    "n": 1,
+    "s": "Province"
+  },
+  {
+    "n": 1,
+    "s": "Push for deals, tips, and promotions"
+  },
+  {
+    "n": 1,
+    "s": "Push for policy updates and check-ins"
+  },
+  {
+    "n": 1,
+    "s": "Push notifications"
+  },
+  {
+    "n": 1,
+    "s": "Push notifications enabled"
+  },
+  {
+    "n": 1,
+    "s": "Push notifications enabled on this device"
+  },
+  {
+    "n": 1,
+    "s": "Push notifications for messages"
+  },
+  {
+    "n": 1,
+    "s": "Push reminders before your upcoming appointments"
+  },
+  {
+    "n": 1,
+    "s": "Push when a booking is confirmed, updated, or cancelled"
+  },
+  {
+    "n": 1,
+    "s": "Quality issue"
+  },
+  {
+    "n": 1,
+    "s": "Rating"
+  },
+  {
+    "n": 1,
+    "s": "Read full EULA"
+  },
+  {
+    "n": 1,
+    "s": "Ready"
+  },
+  {
+    "n": 1,
+    "s": "Ready for Collection"
+  },
+  {
+    "n": 1,
+    "s": "Reason (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Reason:"
+  },
+  {
+    "n": 1,
+    "s": "Receive general Beautonomi emails"
+  },
+  {
+    "n": 1,
+    "s": "Receive general Beautonomi SMS messages"
+  },
+  {
+    "n": 1,
+    "s": "Receive promotional SMS messages"
+  },
+  {
+    "n": 1,
+    "s": "Receive promotional WhatsApp messages (requires opt-in)"
+  },
+  {
+    "n": 1,
+    "s": "Received wrong item"
+  },
+  {
+    "n": 1,
+    "s": "Recipient email"
+  },
+  {
+    "n": 1,
+    "s": "Recipient name (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Redeem Gift Card"
+  },
+  {
+    "n": 1,
+    "s": "Redeem points"
+  },
+  {
+    "n": 1,
+    "s": "Redeem to Wallet"
+  },
+  {
+    "n": 1,
+    "s": "Refer a friend"
+  },
+  {
+    "n": 1,
+    "s": "Referral code"
+  },
+  {
+    "n": 1,
+    "s": "Refresh status"
+  },
+  {
+    "n": 1,
+    "s": "Refresh verification status"
+  },
+  {
+    "n": 1,
+    "s": "Refreshing..."
+  },
+  {
+    "n": 1,
+    "s": "Refund Amount:"
+  },
+  {
+    "n": 1,
+    "s": "Refund Processed"
+  },
+  {
+    "n": 1,
+    "s": "refunded"
+  },
+  {
+    "n": 1,
+    "s": "Refunded {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Rejected"
+  },
+  {
+    "n": 1,
+    "s": "Related reference (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Relaxed / Permed"
+  },
+  {
+    "n": 1,
+    "s": "Reloads identity verification status from the server"
+  },
+  {
+    "n": 1,
+    "s": "Reminders before your upcoming appointments"
+  },
+  {
+    "n": 1,
+    "s": "Remove {{name}} {{minutes}} minutes"
+  },
+  {
+    "n": 1,
+    "s": "Remove card ending in {{last4}}"
+  },
+  {
+    "n": 1,
+    "s": "Remove out-of-stock items to checkout"
+  },
+  {
+    "n": 1,
+    "s": "Remove service"
+  },
+  {
+    "n": 1,
+    "s": "Remove this card?"
+  },
+  {
+    "n": 1,
+    "s": "Repeat this booking"
+  },
+  {
+    "n": 1,
+    "s": "Report review"
+  },
+  {
+    "n": 1,
+    "s": "Request changes"
+  },
+  {
+    "n": 1,
+    "s": "Request custom service"
+  },
+  {
+    "n": 1,
+    "s": "Request permission if you skipped push during setup"
+  },
+  {
+    "n": 1,
+    "s": "Request Return / Refund"
+  },
+  {
+    "n": 1,
+    "s": "Requested on {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "Required for birthday perks and age-appropriate recommendations"
+  },
+  {
+    "n": 1,
+    "s": "Required so providers can recognise you at appointments"
+  },
+  {
+    "n": 1,
+    "s": "Reschedule group session"
+  },
+  {
+    "n": 1,
+    "s": "Reschedule session"
+  },
+  {
+    "n": 1,
+    "s": "Resend"
+  },
+  {
+    "n": 1,
+    "s": "Resend code in {{seconds}}s"
+  },
+  {
+    "n": 1,
+    "s": "Resend gift card"
+  },
+  {
+    "n": 1,
+    "s": "Resend verification code"
+  },
+  {
+    "n": 1,
+    "s": "Reserving..."
+  },
+  {
+    "n": 1,
+    "s": "Reset"
+  },
+  {
+    "n": 1,
+    "s": "Resolved"
+  },
+  {
+    "n": 1,
+    "s": "Response\nrate"
+  },
+  {
+    "n": 1,
+    "s": "Response\ntime"
+  },
+  {
+    "n": 1,
+    "s": "Resume membership"
+  },
+  {
+    "n": 1,
+    "s": "Retail included"
+  },
+  {
+    "n": 1,
+    "s": "Retry account status check"
+  },
+  {
+    "n": 1,
+    "s": "Retry loading categories"
+  },
+  {
+    "n": 1,
+    "s": "Retry loading providers"
+  },
+  {
+    "n": 1,
+    "s": "Return {{status}}"
+  },
+  {
+    "n": 1,
+    "s": "Return Approved"
+  },
+  {
+    "n": 1,
+    "s": "Return Cancelled"
+  },
+  {
+    "n": 1,
+    "s": "Return Escalated"
+  },
+  {
+    "n": 1,
+    "s": "Return Policy"
+  },
+  {
+    "n": 1,
+    "s": "Return Rejected"
+  },
+  {
+    "n": 1,
+    "s": "Return Request"
+  },
+  {
+    "n": 1,
+    "s": "Return window ({{days}} days) has passed. For help, open Profile → Help centre → New ticket."
+  },
+  {
+    "n": 1,
+    "s": "Returns & Refunds"
+  },
+  {
+    "n": 1,
+    "s": "Returns must be requested within 14 days of delivery. Items must be in their original condition. The provider will review your request and respond within 2 business days. If your request is rejected, you can escalate to our support team."
+  },
+  {
+    "n": 1,
+    "s": "Review"
+  },
+  {
+    "n": 1,
+    "s": "Rotate"
+  },
+  {
+    "n": 1,
+    "s": "Salon memberships"
+  },
+  {
+    "n": 1,
+    "s": "Same safeguards as the website. Passwordless accounts can confirm with a one-time verification code."
+  },
+  {
+    "n": 1,
+    "s": "Saturday"
+  },
+  {
+    "n": 1,
+    "s": "Save address"
+  },
+  {
+    "n": 1,
+    "s": "Save changes"
+  },
+  {
+    "n": 1,
+    "s": "Save new time"
+  },
+  {
+    "n": 1,
+    "s": "Save rating"
+  },
+  {
+    "n": 1,
+    "s": "Save this card"
+  },
+  {
+    "n": 1,
+    "s": "Save this card for next time"
+  },
+  {
+    "n": 1,
+    "s": "Saved {{currency}} {{amount}}."
+  },
+  {
+    "n": 1,
+    "s": "Saved addresses"
+  },
+  {
+    "n": 1,
+    "s": "Saved card"
+  },
+  {
+    "n": 1,
+    "s": "Saved Card"
+  },
+  {
+    "n": 1,
+    "s": "Scroll to bottom"
+  },
+  {
+    "n": 1,
+    "s": "Search above, use your location, or drop a pin. Saved addresses appear here for quick reuse."
+  },
+  {
+    "n": 1,
+    "s": "Search address"
+  },
+  {
+    "n": 1,
+    "s": "Search for an address"
+  },
+  {
+    "n": 1,
+    "s": "Search for your address"
+  },
+  {
+    "n": 1,
+    "s": "Search for your address..."
+  },
+  {
+    "n": 1,
+    "s": "Search results"
+  },
+  {
+    "n": 1,
+    "s": "Secure payment"
+  },
+  {
+    "n": 1,
+    "s": "See all {{count}} reviews"
+  },
+  {
+    "n": 1,
+    "s": "See all reviews"
+  },
+  {
+    "n": 1,
+    "s": "Select {{name}}"
+  },
+  {
+    "n": 1,
+    "s": "Select address"
+  },
+  {
+    "n": 1,
+    "s": "Select date of birth"
+  },
+  {
+    "n": 1,
+    "s": "Select service(s)"
+  },
+  {
+    "n": 1,
+    "s": "Select the reason that best describes your issue"
+  },
+  {
+    "n": 1,
+    "s": "Select time {{time}}"
+  },
+  {
+    "n": 1,
+    "s": "Selected"
+  },
+  {
+    "n": 1,
+    "s": "Selected:"
+  },
+  {
+    "n": 1,
+    "s": "Send"
+  },
+  {
+    "n": 1,
+    "s": "Send as a gift"
+  },
+  {
+    "n": 1,
+    "s": "Send later (optional)"
+  },
+  {
+    "n": 1,
+    "s": "Send reply"
+  },
+  {
+    "n": 1,
+    "s": "Sending…"
+  },
+  {
+    "n": 1,
+    "s": "Sensitive"
+  },
+  {
+    "n": 1,
+    "s": "Service"
+  },
+  {
+    "n": 1,
+    "s": "Service area: {{area}}"
+  },
+  {
+    "n": 1,
+    "s": "Service subtotal"
+  },
+  {
+    "n": 1,
+    "s": "Services"
+  },
+  {
+    "n": 1,
+    "s": "Services for this person"
+  },
+  {
+    "n": 1,
+    "s": "Session not found"
+  },
+  {
+    "n": 1,
+    "s": "Session total"
+  },
+  {
+    "n": 1,
+    "s": "Set address"
+  },
+  {
+    "n": 1,
+    "s": "Set as default"
+  },
+  {
+    "n": 1,
+    "s": "Set default"
+  },
+  {
+    "n": 1,
+    "s": "Set password"
+  },
+  {
+    "n": 1,
+    "s": "Setting things up…"
+  },
+  {
+    "n": 1,
+    "s": "Settings"
+  },
+  {
+    "n": 1,
+    "s": "Share & Earn Bonus Points"
+  },
+  {
+    "n": 1,
+    "s": "Share or save PDF"
+  },
+  {
+    "n": 1,
+    "s": "Share order receipt"
+  },
+  {
+    "n": 1,
+    "s": "Share referral code and earn bonus points"
+  },
+  {
+    "n": 1,
+    "s": "Share your experience"
+  },
+  {
+    "n": 1,
+    "s": "Share your vision and any must-haves"
+  },
+  {
+    "n": 1,
+    "s": "Short / Tapered"
+  },
+  {
+    "n": 1,
+    "s": "Show profile"
+  },
+  {
+    "n": 1,
+    "s": "Show profile, opens personal info"
+  },
+  {
+    "n": 1,
+    "s": "Show recent notifications"
+  },
+  {
+    "n": 1,
+    "s": "Show service options"
+  },
+  {
+    "n": 1,
+    "s": "Shows all providers in the {{title}} section"
+  },
+  {
+    "n": 1,
+    "s": "Sign in"
+  },
+  {
+    "n": 1,
+    "s": "Sign in again"
+  },
+  {
+    "n": 1,
+    "s": "Sign in required"
+  },
+  {
+    "n": 1,
+    "s": "Sign in to add a delivery address"
+  },
+  {
+    "n": 1,
+    "s": "Sign in to read the full description, opening times, and location details."
+  },
+  {
+    "n": 1,
+    "s": "Sign in to see location details"
+  },
+  {
+    "n": 1,
+    "s": "Sign in to see your saved providers, products and posts"
+  },
+  {
+    "n": 1,
+    "s": "Sign out"
+  },
+  {
+    "n": 1,
+    "s": "Sign out from all devices"
+  },
+  {
+    "n": 1,
+    "s": "Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in."
+  },
+  {
+    "n": 1,
+    "s": "Sign up"
+  },
+  {
+    "n": 1,
+    "s": "Signed in with Apple"
+  },
+  {
+    "n": 1,
+    "s": "Signup verification code"
+  },
+  {
+    "n": 1,
+    "s": "Skin type"
+  },
+  {
+    "n": 1,
+    "s": "Skip"
+  },
+  {
+    "n": 1,
+    "s": "Skip and finish"
+  },
+  {
+    "n": 1,
+    "s": "Skip for now"
+  },
+  {
+    "n": 1,
+    "s": "Small differences can come from rounding or promotions applied at checkout."
+  },
+  {
+    "n": 1,
+    "s": "SMS notifications"
+  },
+  {
+    "n": 1,
+    "s": "SMS offers"
+  },
+  {
+    "n": 1,
+    "s": "SMS when a booking is confirmed or updated"
+  },
+  {
+    "n": 1,
+    "s": "SMS when you receive a new message"
+  },
+  {
+    "n": 1,
+    "s": "Sold by"
+  },
+  {
+    "n": 1,
+    "s": "Sold Out"
+  },
+  {
+    "n": 1,
+    "s": "Sort"
+  },
+  {
+    "n": 1,
+    "s": "South Africa storefront"
+  },
+  {
+    "n": 1,
+    "s": "Specialties"
+  },
+  {
+    "n": 1,
+    "s": "Split payment"
+  },
+  {
+    "n": 1,
+    "s": "Star distribution"
+  },
+  {
+    "n": 1,
+    "s": "Start verification"
+  },
+  {
+    "n": 1,
+    "s": "Start your request"
+  },
+  {
+    "n": 1,
+    "s": "Stay in touch with your beauty partner."
+  },
+  {
+    "n": 1,
+    "s": "Stay on {{host}}"
+  },
+  {
+    "n": 1,
+    "s": "Step {{step}} of {{total}}"
+  },
+  {
+    "n": 1,
+    "s": "Still loading account security settings. Please try again."
+  },
+  {
+    "n": 1,
+    "s": "Stop receiving promotional messages"
+  },
+  {
+    "n": 1,
+    "s": "Straight"
+  },
+  {
+    "n": 1,
+    "s": "Street address"
+  },
+  {
+    "n": 1,
+    "s": "Subject"
+  },
+  {
+    "n": 1,
+    "s": "Submit a new support ticket"
+  },
+  {
+    "n": 1,
+    "s": "Submit a ticket from Help → New ticket, or tap below."
+  },
+  {
+    "n": 1,
+    "s": "Submit rating"
+  },
+  {
+    "n": 1,
+    "s": "Submit Return Request"
+  },
+  {
+    "n": 1,
+    "s": "Submit ticket"
+  },
+  {
+    "n": 1,
+    "s": "Subtotal (estimate)"
+  },
+  {
+    "n": 1,
+    "s": "Subtotal: {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Sumsub (legacy)"
+  },
+  {
+    "n": 1,
+    "s": "Sunday"
+  },
+  {
+    "n": 1,
+    "s": "Support"
+  },
+  {
+    "n": 1,
+    "s": "Support Team"
+  },
+  {
+    "n": 1,
+    "s": "Support ticket"
+  },
+  {
+    "n": 1,
+    "s": "Support ticket {{number}}, {{subject}}, {{status}}"
+  },
+  {
+    "n": 1,
+    "s": "Support tickets"
+  },
+  {
+    "n": 1,
+    "s": "Surname as on your ID"
+  },
+  {
+    "n": 1,
+    "s": "Switch market"
+  },
+  {
+    "n": 1,
+    "s": "Switch to ZA site"
+  },
+  {
+    "n": 1,
+    "s": "System notification settings"
+  },
+  {
+    "n": 1,
+    "s": "Tailored to you — {{name}} will reply with a quote or questions."
+  },
+  {
+    "n": 1,
+    "s": "Taken"
+  },
+  {
+    "n": 1,
+    "s": "Taking longer than expected"
+  },
+  {
+    "n": 1,
+    "s": "Tap “Submit rating” below to send your {{score}}/5 rating."
+  },
+  {
+    "n": 1,
+    "s": "Tap a category to expand or collapse. Add one or more services for yourself or your group."
+  },
+  {
+    "n": 1,
+    "s": "Tap an option, then confirm below — your booking uses the highlighted option."
+  },
+  {
+    "n": 1,
+    "s": "Tap Learning Centre above to browse articles on our website (opens in the app browser)."
+  },
+  {
+    "n": 1,
+    "s": "Tap map or drag pin"
+  },
+  {
+    "n": 1,
+    "s": "Tap or drag the pin, then confirm"
+  },
+  {
+    "n": 1,
+    "s": "Tap to add a photo"
+  },
+  {
+    "n": 1,
+    "s": "Tax ({{rate}}%)"
+  },
+  {
+    "n": 1,
+    "s": "Team"
+  },
+  {
+    "n": 1,
+    "s": "technical"
+  },
+  {
+    "n": 1,
+    "s": "Tel: {{phone}}"
+  },
+  {
+    "n": 1,
+    "s": "Tell the provider what you'd like adjusted."
+  },
+  {
+    "n": 1,
+    "s": "Tell us about you"
+  },
+  {
+    "n": 1,
+    "s": "Temporarily disable your account. You can reactivate later by signing in again."
+  },
+  {
+    "n": 1,
+    "s": "Terms"
+  },
+  {
+    "n": 1,
+    "s": "Thanks for your feedback"
+  },
+  {
+    "n": 1,
+    "s": "Thanks! We will notify you when we are back."
+  },
+  {
+    "n": 1,
+    "s": "The code will be shown right after payment — you can copy or share it anytime from Payments, or redeem to your wallet."
+  },
+  {
+    "n": 1,
+    "s": "The codes will be shown right after payment — you can copy or share them anytime from Payments, or redeem to your wallet."
+  },
+  {
+    "n": 1,
+    "s": "The payment window closed before we could confirm. If you completed payment, your booking will appear in a moment — otherwise tap Pay to try again."
+  },
+  {
+    "n": 1,
+    "s": "This build is missing a required setting (EXPO_PUBLIC_APP_URL). Please reinstall the latest app from the store, or contact support if the problem persists."
+  },
+  {
+    "n": 1,
+    "s": "This device can receive push alerts"
+  },
+  {
+    "n": 1,
+    "s": "This group booking no longer exists or you may not have access to it."
+  },
+  {
+    "n": 1,
+    "s": "This is how you'll appear on your profile and to beauty providers"
+  },
+  {
+    "n": 1,
+    "s": "This item must be collected in person. No delivery available."
+  },
+  {
+    "n": 1,
+    "s": "This month: {{currency}} {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "This moves the entire group to a new date and time. Availability is verified when you save."
+  },
+  {
+    "n": 1,
+    "s": "This offer is already paid."
+  },
+  {
+    "n": 1,
+    "s": "This PDF could not be found."
+  },
+  {
+    "n": 1,
+    "s": "This product could not be found. It may have been removed or is no longer available."
+  },
+  {
+    "n": 1,
+    "s": "This product is no longer available or could not be found."
+  },
+  {
+    "n": 1,
+    "s": "This provider does not offer delivery. You must collect your order in person."
+  },
+  {
+    "n": 1,
+    "s": "This ticket is {{status}}. Open Help → New ticket if you need further help."
+  },
+  {
+    "n": 1,
+    "s": "This ticket is closed. We appreciate you taking a moment to rate support."
+  },
+  {
+    "n": 1,
+    "s": "Thursday"
+  },
+  {
+    "n": 1,
+    "s": "Tick the box below to continue with Google, Apple, or email sign up."
+  },
+  {
+    "n": 1,
+    "s": "Ticket not found"
+  },
+  {
+    "n": 1,
+    "s": "Ticket submitted"
+  },
+  {
+    "n": 1,
+    "s": "Time (HH:MM)"
+  },
+  {
+    "n": 1,
+    "s": "Tip"
+  },
+  {
+    "n": 1,
+    "s": "Today"
+  },
+  {
+    "n": 1,
+    "s": "Top Up Option"
+  },
+  {
+    "n": 1,
+    "s": "Track shipment"
+  },
+  {
+    "n": 1,
+    "s": "Tracking: {{detail}}"
+  },
+  {
+    "n": 1,
+    "s": "Tracking: {{number}}"
+  },
+  {
+    "n": 1,
+    "s": "Travel"
+  },
+  {
+    "n": 1,
+    "s": "Travel fee"
+  },
+  {
+    "n": 1,
+    "s": "Try Another Date"
+  },
+  {
+    "n": 1,
+    "s": "Try another time."
+  },
+  {
+    "n": 1,
+    "s": "Tuesday"
+  },
+  {
+    "n": 1,
+    "s": "Turn on repeating visits"
+  },
+  {
+    "n": 1,
+    "s": "Type {{phrase}} to confirm"
+  },
+  {
+    "n": 1,
+    "s": "Unavailable"
+  },
+  {
+    "n": 1,
+    "s": "Unknown location"
+  },
+  {
+    "n": 1,
+    "s": "Unlock Beautonomi"
+  },
+  {
+    "n": 1,
+    "s": "Unsubscribe from all marketing"
+  },
+  {
+    "n": 1,
+    "s": "Upcoming"
+  },
+  {
+    "n": 1,
+    "s": "Upcoming visits"
+  },
+  {
+    "n": 1,
+    "s": "Update Beautonomi now"
+  },
+  {
+    "n": 1,
+    "s": "Update now"
+  },
+  {
+    "n": 1,
+    "s": "Update password"
+  },
+  {
+    "n": 1,
+    "s": "Update rating"
+  },
+  {
+    "n": 1,
+    "s": "Update required"
+  },
+  {
+    "n": 1,
+    "s": "Update your rating"
+  },
+  {
+    "n": 1,
+    "s": "Updated {{date}}"
+  },
+  {
+    "n": 1,
+    "s": "Updating..."
+  },
+  {
+    "n": 1,
+    "s": "Upload failed"
+  },
+  {
+    "n": 1,
+    "s": "Urgent"
+  },
+  {
+    "n": 1,
+    "s": "Usage history →"
+  },
+  {
+    "n": 1,
+    "s": "Use a new card"
+  },
+  {
+    "n": 1,
+    "s": "Use Face ID, fingerprint, or your device passcode to unlock."
+  },
+  {
+    "n": 1,
+    "s": "Use this location"
+  },
+  {
+    "n": 1,
+    "s": "Use wallet balance"
+  },
+  {
+    "n": 1,
+    "s": "Use wallet balance — {{amount}} available"
+  },
+  {
+    "n": 1,
+    "s": "Use YYYY-MM-DD and HH:MM (24-hour)."
+  },
+  {
+    "n": 1,
+    "s": "Used for house-call bookings and finding services near you"
+  },
+  {
+    "n": 1,
+    "s": "User"
+  },
+  {
+    "n": 1,
+    "s": "Variant {{id}}"
+  },
+  {
+    "n": 1,
+    "s": "Verification code"
+  },
+  {
+    "n": 1,
+    "s": "Verification required"
+  },
+  {
+    "n": 1,
+    "s": "Verification required to book"
+  },
+  {
+    "n": 1,
+    "s": "Verified"
+  },
+  {
+    "n": 1,
+    "s": "Verified customer"
+  },
+  {
+    "n": 1,
+    "s": "Verify & continue"
+  },
+  {
+    "n": 1,
+    "s": "Verify & save"
+  },
+  {
+    "n": 1,
+    "s": "Verify and continue"
+  },
+  {
+    "n": 1,
+    "s": "Verify email"
+  },
+  {
+    "n": 1,
+    "s": "Verify identity now"
+  },
+  {
+    "n": 1,
+    "s": "Verify now →"
+  },
+  {
+    "n": 1,
+    "s": "Verify phone"
+  },
+  {
+    "n": 1,
+    "s": "Verify your details"
+  },
+  {
+    "n": 1,
+    "s": "Verify your email"
+  },
+  {
+    "n": 1,
+    "s": "Verify your identity to book"
+  },
+  {
+    "n": 1,
+    "s": "View {{name}}"
+  },
+  {
+    "n": 1,
+    "s": "View all services"
+  },
+  {
+    "n": 1,
+    "s": "View More"
+  },
+  {
+    "n": 1,
+    "s": "View more {{title}}"
+  },
+  {
+    "n": 1,
+    "s": "View my bookings"
+  },
+  {
+    "n": 1,
+    "s": "View my orders"
+  },
+  {
+    "n": 1,
+    "s": "View my support tickets"
+  },
+  {
+    "n": 1,
+    "s": "View photo {{index}} of {{total}} fullscreen"
+  },
+  {
+    "n": 1,
+    "s": "View provider →"
+  },
+  {
+    "n": 1,
+    "s": "Waiting"
+  },
+  {
+    "n": 1,
+    "s": "Wallet"
+  },
+  {
+    "n": 1,
+    "s": "Wallet and gift card reduce your total; pay the remainder securely by card."
+  },
+  {
+    "n": 1,
+    "s": "Wallet applies first; you pay {{amount}} by card."
+  },
+  {
+    "n": 1,
+    "s": "Wallet tender"
+  },
+  {
+    "n": 1,
+    "s": "Wavy"
+  },
+  {
+    "n": 1,
+    "s": "We couldn't place your account"
+  },
+  {
+    "n": 1,
+    "s": "We couldn't reach our servers in time. Check your connection and try again."
+  },
+  {
+    "n": 1,
+    "s": "We couldn't use biometrics on this device. Sign out and back in to continue."
+  },
+  {
+    "n": 1,
+    "s": "We couldn't verify your account status. Check your connection and try again."
+  },
+  {
+    "n": 1,
+    "s": "We found bookings under this email. Check your inbox to claim your account."
+  },
+  {
+    "n": 1,
+    "s": "We had trouble confirming your customer access. Check your connection and try again."
+  },
+  {
+    "n": 1,
+    "s": "We received your payment but could not finish creating the booking. Please contact support with your payment reference."
+  },
+  {
+    "n": 1,
+    "s": "We sent a {{digits}}-digit code to {{phone}}"
+  },
+  {
+    "n": 1,
+    "s": "We sent a {{digits}}-digit verification code to:"
+  },
+  {
+    "n": 1,
+    "s": "We typically respond within 1–2 business days"
+  },
+  {
+    "n": 1,
+    "s": "We'll email a {{digits}}-digit code to verify your new address."
+  },
+  {
+    "n": 1,
+    "s": "We'll email the code straight to {{recipient}} after payment, with simple steps to redeem it. If they already have a Beautonomi account, it also appears in their wallet automatically."
+  },
+  {
+    "n": 1,
+    "s": "We'll get back to you as soon as possible. You can track replies in your support tickets."
+  },
+  {
+    "n": 1,
+    "s": "We'll personalise service recommendations just for you"
+  },
+  {
+    "n": 1,
+    "s": "We'll send a {{digits}}-digit code to verify your email."
+  },
+  {
+    "n": 1,
+    "s": "We'll SMS a {{digits}}-digit code (valid about {{minutes}} {{minuteUnit}})."
+  },
+  {
+    "n": 1,
+    "s": "We've emailed the gift card to {{email}} with steps to redeem."
+  },
+  {
+    "n": 1,
+    "s": "We've emailed the gift card to {{email}} with steps to redeem. You can also copy or share the code below."
+  },
+  {
+    "n": 1,
+    "s": "We've updated our End User License Agreement. Review and accept to continue using Beautonomi."
+  },
+  {
+    "n": 1,
+    "s": "Wednesday"
+  },
+  {
+    "n": 1,
+    "s": "Welcome back"
+  },
+  {
+    "n": 1,
+    "s": "What is this about?"
+  },
+  {
+    "n": 1,
+    "s": "What should I include?"
+  },
+  {
+    "n": 1,
+    "s": "What this provider offers:"
+  },
+  {
+    "n": 1,
+    "s": "What's included"
+  },
+  {
+    "n": 1,
+    "s": "WhatsApp offers"
+  },
+  {
+    "n": 1,
+    "s": "WhatsApp reminders"
+  },
+  {
+    "n": 1,
+    "s": "WhatsApp reminders before your upcoming appointments"
+  },
+  {
+    "n": 1,
+    "s": "WhatsApp when a booking is confirmed or updated"
+  },
+  {
+    "n": 1,
+    "s": "WhatsApp when you receive a new message"
+  },
+  {
+    "n": 1,
+    "s": "When your preferred time isn't available, you can join a waitlist on the provider's booking page. We'll notify you when a slot opens."
+  },
+  {
+    "n": 1,
+    "s": "When's your birthday?"
+  },
+  {
+    "n": 1,
+    "s": "Where are guides and how-to articles?"
+  },
+  {
+    "n": 1,
+    "s": "Where are you based?"
+  },
+  {
+    "n": 1,
+    "s": "Who is this for?"
+  },
+  {
+    "n": 1,
+    "s": "Why are you returning this item?"
+  },
+  {
+    "n": 1,
+    "s": "with {{name}}"
+  },
+  {
+    "n": 1,
+    "s": "Worth {{currency}} {{amount}}"
+  },
+  {
+    "n": 1,
+    "s": "Wrong email? Go back and edit"
+  },
+  {
+    "n": 1,
+    "s": "Year"
+  },
+  {
+    "n": 1,
+    "s": "Year in\nbusiness"
+  },
+  {
+    "n": 1,
+    "s": "Years in\nbusiness"
+  },
+  {
+    "n": 1,
+    "s": "Yes"
+  },
+  {
+    "n": 1,
+    "s": "Yesterday"
+  },
+  {
+    "n": 1,
+    "s": "Yoco"
+  },
+  {
+    "n": 1,
+    "s": "you"
+  },
+  {
+    "n": 1,
+    "s": "You"
+  },
+  {
+    "n": 1,
+    "s": "You already have a saved address. You can continue or add another."
+  },
+  {
+    "n": 1,
+    "s": "You can review delivery options below. When you are ready, sign in to pay and confirm."
+  },
+  {
+    "n": 1,
+    "s": "You can still permanently delete your account below if you want all personal data removed."
+  },
+  {
+    "n": 1,
+    "s": "You cancelled the payment. No charge was made. You can try again from this order."
+  },
+  {
+    "n": 1,
+    "s": "You cancelled the payment. Tap Pay to try again."
+  },
+  {
+    "n": 1,
+    "s": "You cancelled the payment. Your membership has not been activated."
+  },
+  {
+    "n": 1,
+    "s": "You deactivated your account. Log in again to reactivate."
+  },
+  {
+    "n": 1,
+    "s": "You may switch to your bank app — we will bring you back here when payment completes."
+  },
+  {
+    "n": 1,
+    "s": "You must be at least 13 years old to use Beautonomi."
+  },
+  {
+    "n": 1,
+    "s": "You will complete payment in a secure browser window."
+  },
+  {
+    "n": 1,
+    "s": "You're on {{host}} (ZAR). {{suffix}}"
+  },
+  {
+    "n": 1,
+    "s": "You're subscribed"
+  },
+  {
+    "n": 1,
+    "s": "you@example.com"
+  },
+  {
+    "n": 1,
+    "s": "Your {{planName}} membership is active, but we couldn't save a card for renewals. Add one{{when}} to keep it from lapsing."
+  },
+  {
+    "n": 1,
+    "s": "Your account has been suspended. Contact support if you believe this is an error."
+  },
+  {
+    "n": 1,
+    "s": "Your account has been suspended. Contact support if you need help."
+  },
+  {
+    "n": 1,
+    "s": "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support."
+  },
+  {
+    "n": 1,
+    "s": "Your account is signed in but we couldn't confirm a customer role. Retry or sign out and back in."
+  },
+  {
+    "n": 1,
+    "s": "Your account uses one-time codes or social login. Send a verification code, then choose a password."
+  },
+  {
+    "n": 1,
+    "s": "Your account will be permanently deleted in {{days}} days. Check your email to cancel."
+  },
+  {
+    "n": 1,
+    "s": "Your active memberships with providers. You get the listed discount on bookings at each salon."
+  },
+  {
+    "n": 1,
+    "s": "Your active salon memberships are listed below."
+  },
+  {
+    "n": 1,
+    "s": "Your beauty profile"
+  },
+  {
+    "n": 1,
+    "s": "Your cart is empty"
+  },
+  {
+    "n": 1,
+    "s": "Your details"
+  },
+  {
+    "n": 1,
+    "s": "Your device region suggests {{country}} — we may not be live there yet."
+  },
+  {
+    "n": 1,
+    "s": "Your exact address is only shared with providers when you book a house call."
+  },
+  {
+    "n": 1,
+    "s": "Your first booking needs a quick identity check — it takes about 2 minutes and you'll come right back here."
+  },
+  {
+    "n": 1,
+    "s": "Your legal or full name for your personal profile."
+  },
+  {
+    "n": 1,
+    "s": "Your name and email from Apple are already saved ({{email}})."
+  },
+  {
+    "n": 1,
+    "s": "Your name and email from Apple are already saved."
+  },
+  {
+    "n": 1,
+    "s": "Your payment was received. Your booking may take a moment to appear."
+  },
+  {
+    "n": 1,
+    "s": "Your phone number must be verified before you can finish setup and start booking."
+  },
+  {
+    "n": 1,
+    "s": "Your Points"
+  },
+  {
+    "n": 1,
+    "s": "Your product orders will appear here"
+  },
+  {
+    "n": 1,
+    "s": "Your rating has been saved and this ticket is now closed."
+  },
+  {
+    "n": 1,
+    "s": "Your rating has been updated. Thank you!"
+  },
+  {
+    "n": 1,
+    "s": "Your rating: {{score}}/5\n“{{comment}}”"
+  },
+  {
+    "n": 1,
+    "s": "your recipient"
+  },
+  {
+    "n": 1,
+    "s": "Your savings"
+  },
+  {
+    "n": 1,
+    "s": "Your selection ({{count}})"
+  },
+  {
+    "n": 1,
+    "s": "Your session expired while we were checking your account."
+  },
+  {
+    "n": 1,
+    "s": "YYYY-MM-DD HH:mm"
+  }
+]

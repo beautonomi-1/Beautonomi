@@ -27,11 +27,13 @@ import { formatMoney } from "@beautonomi/utils";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import type { PublicProductVariant } from "@/types/api";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
 interface ShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
   delivery_fee?: number;
+  delivery_fee_type?: string;
   free_delivery_threshold?: number | null;
   estimated_delivery_days?: number;
   collection_notes?: string | null;
@@ -42,7 +44,14 @@ interface CollectionLocation {
   id: string;
   name: string;
   address_line1: string;
+  address_line2?: string | null;
   city: string;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  working_hours?: unknown;
 }
 
 interface ReviewsSummary {
@@ -92,6 +101,7 @@ interface ProductDetailResponse {
   };
   shipping?: ShippingConfig;
   collection_locations?: CollectionLocation[];
+  provider_timezone?: string | null;
   reviews?: ReviewsSummary;
 }
 
@@ -106,6 +116,11 @@ export default function ProductDetailScreen() {
     const fullKey = `customer.mobile.screens.productDetail.${key}`;
     return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
   }, [t]);
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
+    [t],
+  );
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const cart = useCart();
@@ -125,6 +140,8 @@ export default function ProductDetailScreen() {
 
   const shipping = data?.shipping;
   const collectionLocations = data?.collection_locations ?? [];
+  const providerTimezone = data?.provider_timezone ?? "Africa/Johannesburg";
+  const deliveryFeeType = shipping?.delivery_fee_type ?? "flat";
   const isPickupOnly = shipping
     ? shipping.offers_collection && !shipping.offers_delivery
     : false;
@@ -617,20 +634,10 @@ export default function ProductDetailScreen() {
                         {shipping.collection_notes}
                       </Text>
                     ) : null}
-                    {collectionLocations.length > 0 && (
-                      <Text style={{ fontSize: 12, color: "#C2410C", marginTop: 4, fontWeight: "600" }}>
-                        {collectionLocations.length === 1
-                          ? pd("pickupLocationNamed", {
-                              name: collectionLocations[0].name,
-                              city: collectionLocations[0].city,
-                            })
-                          : pd("pickupLocationsCount", { count: collectionLocations.length })}
-                      </Text>
-                    )}
                   </View>
                 </View>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                   {shipping.offers_collection && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}>
                       <Ionicons name="storefront-outline" size={13} color="#16A34A" style={{ marginEnd: 4 }} />
@@ -641,14 +648,44 @@ export default function ProductDetailScreen() {
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}>
                       <Ionicons name="bicycle-outline" size={13} color="#1D4ED8" style={{ marginEnd: 4 }} />
                       <Text style={{ fontSize: 12, fontWeight: "600", color: "#1D4ED8" }}>
-                        {shipping.delivery_fee
+                        {deliveryFeeType === "flat" && shipping.delivery_fee
                           ? pd("deliveryWithFee", { amount: priceLabel(shipping.delivery_fee) })
-                          : pd("deliveryAvailable")}
+                          : pd("deliveryCalculatedAtCheckout")}
                       </Text>
                     </View>
                   )}
                 </View>
               )}
+              {collectionLocations.length > 0 ? (
+                <View style={{ marginTop: 10 }}>
+                  <PickupStoreCard
+                    location={collectionLocations[0]}
+                    timezone={providerTimezone}
+                    collectionNotes={isPickupOnly ? shipping?.collection_notes : undefined}
+                    variant="compact"
+                    t={shopT}
+                  />
+                  {collectionLocations.length > 1 ? (
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
+                      {pd("pickupLocationsCount", { count: collectionLocations.length })}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {hasDelivery && (shipping?.estimated_delivery_days || shipping?.delivery_notes) ? (
+                <View style={{ marginTop: 10, backgroundColor: "#F8FAFC", borderRadius: 10, padding: 10 }}>
+                  {shipping.estimated_delivery_days ? (
+                    <Text style={{ fontSize: 12, color: "#475569" }}>
+                      {pd("estimatedDeliveryDays", { days: shipping.estimated_delivery_days })}
+                    </Text>
+                  ) : null}
+                  {shipping.delivery_notes ? (
+                    <Text style={{ fontSize: 12, color: "#475569", marginTop: shipping.estimated_delivery_days ? 4 : 0, lineHeight: 17 }}>
+                      {shipping.delivery_notes}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           )}
 

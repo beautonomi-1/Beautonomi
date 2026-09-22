@@ -23,6 +23,9 @@ import { startAppleSubscriptionCheckout } from "@/lib/subscription/start-apple-s
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 
+/** Post-wizard setup hub (checklist), not identity verification. */
+export const POST_ONBOARDING_ROUTE = "/(app)/onboarding" as const;
+
 type WaitForCheckout = (
   url: string,
   options: {
@@ -117,7 +120,7 @@ async function completeCheckoutAfterReturn(options: {
         {
           text: "Continue to app",
           style: "cancel",
-          onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+          onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
         },
       ],
     );
@@ -144,7 +147,7 @@ async function completeCheckoutAfterReturn(options: {
           {
             text: "Continue to app",
             style: "cancel",
-            onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+            onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
           },
         ],
       );
@@ -167,7 +170,7 @@ async function completeCheckoutAfterReturn(options: {
         {
           text: "Continue to app",
           style: "cancel",
-          onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+          onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
         },
       ],
     );
@@ -180,7 +183,7 @@ async function completeCheckoutAfterReturn(options: {
     delayMs: 1500,
   });
   await clearPendingOnboardingCheckout();
-  router.replace("/(app)/onboarding/verify-identity" as never);
+  router.replace(POST_ONBOARDING_ROUTE as never);
   return true;
 }
 
@@ -204,7 +207,7 @@ export async function resumePendingOnboardingCheckout(router: Router): Promise<b
     delayMs: 1500,
   });
   await clearPendingOnboardingCheckout();
-  router.replace("/(app)/onboarding/verify-identity" as never);
+  router.replace(POST_ONBOARDING_ROUTE as never);
   return true;
 }
 
@@ -361,7 +364,7 @@ export async function finalizeOnboardingSuccess(options: {
                 onPress: () =>
                   router.replace("/(app)/(tabs)/more/settings/subscription" as never),
               },
-              { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+              { text: "Skip for now", style: "cancel", onPress: () => router.replace(POST_ONBOARDING_ROUTE as never) },
             ],
           );
           return;
@@ -392,7 +395,7 @@ export async function finalizeOnboardingSuccess(options: {
                 {
                   text: "Skip for now",
                   style: "cancel",
-                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+                  onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
                 },
               ],
             );
@@ -405,7 +408,7 @@ export async function finalizeOnboardingSuccess(options: {
             providerId,
           });
           if (appleCheckout.ok) {
-            router.replace("/(app)/onboarding/verify-identity" as never);
+            router.replace(POST_ONBOARDING_ROUTE as never);
             return;
           }
           if (!appleCheckout.cancelled) {
@@ -421,7 +424,7 @@ export async function finalizeOnboardingSuccess(options: {
                 {
                   text: "Skip for now",
                   style: "cancel",
-                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+                  onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
                 },
               ],
             );
@@ -437,7 +440,7 @@ export async function finalizeOnboardingSuccess(options: {
 
         if (!checkoutStart.ok) {
           if (checkoutStart.errorCode === "CONFLICT" || checkoutStart.status === 409) {
-            router.replace("/(app)/onboarding/verify-identity" as never);
+            router.replace(POST_ONBOARDING_ROUTE as never);
             return;
           }
           Alert.alert(
@@ -449,14 +452,14 @@ export async function finalizeOnboardingSuccess(options: {
                 onPress: () =>
                   router.replace("/(app)/(tabs)/more/settings/subscription" as never),
               },
-              { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+              { text: "Skip for now", style: "cancel", onPress: () => router.replace(POST_ONBOARDING_ROUTE as never) },
             ],
           );
           return;
         }
 
         if (checkoutStart.alreadyActive) {
-          router.replace("/(app)/onboarding/verify-identity" as never);
+          router.replace(POST_ONBOARDING_ROUTE as never);
           return;
         }
 
@@ -488,7 +491,7 @@ export async function finalizeOnboardingSuccess(options: {
               onPress: () =>
                 router.replace("/(app)/(tabs)/more/settings/subscription" as never),
             },
-            { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+            { text: "Skip for now", style: "cancel", onPress: () => router.replace(POST_ONBOARDING_ROUTE as never) },
           ],
         );
       }
@@ -508,7 +511,7 @@ export async function finalizeOnboardingSuccess(options: {
           {
             text: "Skip for now",
             style: "cancel",
-            onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+            onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
           },
         ],
       );
@@ -545,7 +548,7 @@ export async function finalizeOnboardingSuccess(options: {
       params: {
         url: encodeURIComponent(url),
         title: "Complete subscription",
-        returnTo: "verify-identity",
+        returnTo: "onboarding",
       },
     } as never);
     return;
@@ -555,12 +558,12 @@ export async function finalizeOnboardingSuccess(options: {
     Alert.alert(
       "You're all set",
       `You're on ${formData.selected_plan_name} — ready to go.`,
-      [{ text: "Continue", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) }],
+      [{ text: "Continue", onPress: () => router.replace(POST_ONBOARDING_ROUTE as never) }],
     );
     return;
   }
 
-  router.replace("/(app)/onboarding/verify-identity" as never);
+  router.replace(POST_ONBOARDING_ROUTE as never);
 }
 
 export async function probeProviderProfileExists(): Promise<boolean> {

@@ -108,6 +108,7 @@ function LanguageCard({
   tabIndex: number;
   listed?: boolean;
 }) {
+  const { t } = useTranslation();
   const meta = getLanguageMeta(lang.code);
   const isRtl = getLanguageDirection(lang.code) === "rtl";
   const primary = meta?.nativeName ?? lang.name.split(" (")[0];
@@ -129,7 +130,9 @@ function LanguageCard({
         </div>
         {saving ? <Loader2 className="h-4 w-4 animate-spin text-[#717171] shrink-0 mt-1" /> : null}
         {isRtl && !saving ? (
-          <span className="text-[10px] uppercase tracking-wide text-[#717171] shrink-0 mt-1">RTL</span>
+          <span className="text-[10px] uppercase tracking-wide text-[#717171] shrink-0 mt-1">
+            {t("web.preferences.rtlBadge")}
+          </span>
         ) : null}
       </div>
     </PreferenceCard>

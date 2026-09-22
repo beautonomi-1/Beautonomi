@@ -13,7 +13,7 @@ import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
 import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
-import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { bookingProductLineSchema } from "@/lib/public-booking/booking-draft-schema";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
@@ -137,15 +137,13 @@ async function handlePost(
     }
     const { tenantId: marketTenantId } = tenantRes;
 
-    const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
-    if (marketAvailability.status === "restricted") {
-      return handleApiError(
-        new Error("Access unavailable for this country"),
-        "Access unavailable in your country due to legal or regulatory restrictions.",
-        "COUNTRY_RESTRICTED",
-        451
-      );
-    }
+    const adminSupabaseEarly = getSupabaseAdmin();
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      adminSupabaseEarly,
+      marketTenantId,
+    );
+    if (marketGuard) return marketGuard;
 
     // §customer-verification-gate: if the tenant requires verified customers,
     // block the first booking until identity is approved. Subsequent bookings
@@ -252,20 +250,6 @@ async function handlePost(
 
     const adminSupabase = getSupabaseAdmin();
     adminSupabaseForRelease = adminSupabase;
-
-    const { data: marketTenant } = await adminSupabase
-      .from("tenants")
-      .select("slug")
-      .eq("id", marketTenantId)
-      .maybeSingle();
-    if ((marketTenant as { slug?: string } | null)?.slug === "global") {
-      return handleApiError(
-        new Error("Bookings are unavailable on global entry"),
-        "Please switch to an available market to continue booking.",
-        "MARKET_SWITCH_REQUIRED",
-        403
-      );
-    }
 
     // B4: atomic claim. `claim_booking_hold_for_consume` flips hold_status
     // from 'active' → 'consuming' in a single SQL round-trip, protecting

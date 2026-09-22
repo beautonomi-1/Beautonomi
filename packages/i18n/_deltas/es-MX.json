@@ -1,0 +1,15 @@
+{
+  "provider": {
+    "mobile": {
+      "screens": {
+        "loginSecurity": {
+          "invalidPhone": "Ingresa un número de teléfono válido.",
+          "enterSmsOtp": "Ingresa el código de {{digits}} dígitos del SMS.",
+          "enterSmsOtpHint": "Ingresa el código de {{digits}} dígitos del SMS",
+          "invalidEmail": "Ingresa un correo electrónico válido.",
+          "enterEmailOtp": "Ingresa el código de {{digits}} dígitos de tu correo."
+        }
+      }
+    }
+  }
+}

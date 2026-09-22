@@ -17,7 +17,10 @@ export type UserRole =
   | 'admin_marketing'
   | 'admin_integrations'
   | 'admin_operations'
-  | 'admin_platform_config';
+  | 'admin_platform_config'
+  | 'admin_sales'
+  | 'admin_onboarding'
+  | 'admin_retention';
 
 export interface User {
   id: string;

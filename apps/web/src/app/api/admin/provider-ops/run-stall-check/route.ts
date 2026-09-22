@@ -1,12 +1,13 @@
+import { requireProviderOpsManagersOnly } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 import { loadProviderOpsStallSettings } from "@/lib/provider-ops/stall-thresholds";
+import { autoAssignOnboardingTrackingOwners } from "@/lib/provider-ops/ops-case";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 
 /**
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
   } else {
     // Admin call: require section access and resolve tenant from session
     try {
-      const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+      const { user } = await requireProviderOpsManagersOnly(request);
       actorUserId = user?.id;
     } catch {
       return NextResponse.json(
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
     const {
       stall_threshold_hours: stallThresholdHours,
       dropoff_threshold_hours: dropoffThresholdHours,
+      auto_assign_enabled: autoAssignEnabled,
       auto_sms_on_stall: autoSmsOnStall,
       sla_contact_stalled_hours: slaContactStalledHours,
     } = opsSettings;
@@ -215,6 +217,29 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    let auto_assigned = 0;
+    if (autoAssignEnabled) {
+      const assignUserIds = [...toUpdateTrackingStalled, ...toUpdateTrackingDropped];
+      if (assignUserIds.length > 0) {
+        const { data: trackingRows } = await supabase
+          .from("provider_onboarding_tracking")
+          .select("user_id, assigned_to")
+          .in("user_id", assignUserIds);
+        const trackingMap = new Map(
+          (trackingRows ?? []).map((t: { user_id: string; assigned_to: string | null }) => [
+            t.user_id,
+            { assigned_to: t.assigned_to },
+          ]),
+        );
+        auto_assigned = await autoAssignOnboardingTrackingOwners(
+          supabase,
+          tenantId,
+          assignUserIds,
+          trackingMap,
+        );
+      }
+    }
+
     // ── 4. Audit log ────────────────────────────────────────────────────────
     await writeAuditLog({
       actor_user_id: actorUserId,
@@ -224,7 +249,14 @@ export async function POST(request: NextRequest) {
       entity_id: tenantId,
       metadata: {
         ...results,
-        settings_used: { stallThresholdHours, dropoffThresholdHours, autoSmsOnStall, slaContactStalledHours },
+        auto_assigned,
+        settings_used: {
+          stallThresholdHours,
+          dropoffThresholdHours,
+          autoAssignEnabled,
+          autoSmsOnStall,
+          slaContactStalledHours,
+        },
       },
     });
 
@@ -232,7 +264,14 @@ export async function POST(request: NextRequest) {
       tenant_id: tenantId,
       processed: (drafts ?? []).length,
       ...results,
-      settings_used: { stallThresholdHours, dropoffThresholdHours, autoSmsOnStall, slaContactStalledHours },
+      auto_assigned,
+      settings_used: {
+        stallThresholdHours,
+        dropoffThresholdHours,
+        autoAssignEnabled,
+        autoSmsOnStall,
+        slaContactStalledHours,
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to run stall check");

@@ -92,7 +92,13 @@ export function LoginPage() {
         return;
       }
       await qc.invalidateQueries({ queryKey: adminQueryKeys.root });
-      navigate(adminSpaTo(`/admin/${safeNext}`), { replace: true });
+      const specialistHome =
+        role === "admin_sales" || role === "admin_onboarding" || role === "admin_retention";
+      const dest =
+        specialistHome && (safeNext === "dashboard" || safeNext === "provider-ops")
+          ? "provider-ops/my-day"
+          : safeNext;
+      navigate(adminSpaTo(`/admin/${dest}`), { replace: true });
     } catch (e) {
       if (e instanceof AdminApiError && e.code === "MFA_REQUIRED") {
         navigate(adminSpaTo(`/admin/mfa/enroll?next=${enrollNext}`), { replace: true });

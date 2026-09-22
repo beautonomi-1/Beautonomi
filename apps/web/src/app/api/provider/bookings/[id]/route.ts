@@ -51,6 +51,7 @@ import {
 import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
 import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
+import { mapProviderBookingServiceLineForApi } from "@/lib/bookings/walk-in-custom-service";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -326,6 +327,7 @@ export async function GET(
           scheduled_start_at,
           scheduled_end_at,
           guest_name,
+          customization,
           offerings:offerings!booking_services_offering_id_fkey(id, title),
           staff:provider_staff(id, name, role)
         ),
@@ -457,26 +459,9 @@ export async function GET(
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
       // Services are fetched via booking_services join (include guest_name for group bookings)
-      services: (bookingData.booking_services ?? []).map((bs) => {
-        const offering = Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings;
-        const staffObj = Array.isArray(bs.staff) ? bs.staff[0] : bs.staff;
-        return {
-        id: bs.id,
-        offering_id: bs.offering_id,
-        service_id: bs.offering_id,
-        offering_name: offering?.title ?? "Unknown Service",
-        service_name: offering?.title ?? "Unknown Service",
-        staff_id: bs.staff_id,
-        staff_name: staffObj?.name,
-        staff: staffObj,
-        duration_minutes: bs.duration_minutes,
-        price: bs.price,
-        scheduled_start_at: bs.scheduled_start_at,
-        scheduled_end_at: bs.scheduled_end_at,
-        guest_name: bs.guest_name ?? null,
-        customization: null,
-      };
-      }),
+      services: (bookingData.booking_services ?? []).map((bs) =>
+        mapProviderBookingServiceLineForApi(bs, { defaultTitle: "Unknown Service" }),
+      ),
       products: (bookingData.booking_products ?? []).map((bp) => {
         const product = Array.isArray(bp.products) ? bp.products[0] : bp.products;
         return {
@@ -1589,6 +1574,7 @@ export async function PATCH(
           duration_minutes,
           price,
           scheduled_start_at,
+          customization,
           offerings:offerings!booking_services_offering_id_fkey(id, title),
           staff:provider_staff(id, name, role)
         ),
@@ -1631,6 +1617,7 @@ export async function PATCH(
             duration_minutes,
             price,
             scheduled_start_at,
+            customization,
             offerings:offerings!booking_services_offering_id_fkey(id, title),
             staff:provider_staff(id, name, role)
           ),
@@ -1733,6 +1720,7 @@ export async function PATCH(
             duration_minutes,
             price,
             scheduled_start_at,
+            customization,
             offerings:offerings!booking_services_offering_id_fkey(id, title),
             staff:provider_staff(id, name, role)
           ),
@@ -2275,22 +2263,9 @@ export async function PATCH(
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
       custom_offer: bookingData.custom_offer || null,
-      services: (bookingData.booking_services ?? []).map((bs) => {
-        const offering = Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings;
-        const staffObj = Array.isArray(bs.staff) ? bs.staff[0] : bs.staff;
-        return {
-        id: bs.id,
-        offering_id: bs.offering_id,
-        service_id: bs.offering_id,
-        offering_name: offering?.title ?? "Unknown Service",
-        service_name: offering?.title ?? "Unknown Service",
-        staff_id: bs.staff_id,
-        staff_name: staffObj?.name ?? null,
-        duration_minutes: bs.duration_minutes,
-        price: bs.price,
-        customization: null,
-      };
-      }),
+      services: (bookingData.booking_services ?? []).map((bs) =>
+        mapProviderBookingServiceLineForApi(bs, { defaultTitle: "Unknown Service" }),
+      ),
       products: (bookingData.booking_products ?? []).map((bp) => {
         const product = Array.isArray(bp.products) ? bp.products[0] : bp.products;
         return {

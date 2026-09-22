@@ -187,6 +187,20 @@ export const CRITICAL_ADMIN_FLOWS: CriticalAdminFlow[] = [
     rbac: "section",
   },
   {
+    id: "provider-ops-my-day",
+    description: "Provider Ops — specialist My Day queue",
+    appPath: "provider-ops/my-day",
+    pageModule: "routes/provider-ops/ProviderOpsMyDayPage.tsx",
+    rbac: "section",
+  },
+  {
+    id: "provider-ops-retention",
+    description: "Provider Ops — retention desk queue",
+    appPath: "provider-ops/retention",
+    pageModule: "routes/provider-ops/ProviderOpsRetentionPage.tsx",
+    rbac: "section",
+  },
+  {
     id: "provider-ops-tracker-detail",
     description: "Provider Ops — onboarding tracker per user",
     appPath: "provider-ops/tracker/:userId",

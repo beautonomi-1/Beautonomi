@@ -18,6 +18,9 @@ export interface AppointmentService {
   serviceName: string;
   duration: number;
   price: number;
+  /** Ad-hoc provider-entered service line (not catalog offering id). */
+  isCustom?: boolean;
+  customName?: string;
   /** Per-service staff (mobile parity). Falls back to form-level staff when unset. */
   staffId?: string;
   customization?: string;

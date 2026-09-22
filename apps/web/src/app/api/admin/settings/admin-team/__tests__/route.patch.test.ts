@@ -24,6 +24,10 @@ vi.mock("@/lib/audit/audit", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/tenant/sync-admin-user-tenant-role", () => ({
+  syncAdminUserTenantRole: vi.fn().mockResolvedValue(undefined),
+}));
+
 const TARGET_ID = "admin-0000-0000-0000-000000000099";
 
 function buildSupabase(target: Record<string, unknown>) {

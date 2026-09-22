@@ -26,7 +26,7 @@ export async function POST(
 
     const { data: userRow, error } = await supabaseAdmin
       .from("users")
-      .select("id, email, is_shadow")
+      .select("id, email, phone, is_shadow, whatsapp_opted_out_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -46,6 +46,29 @@ export async function POST(
         "NOT_SHADOW",
         400,
       );
+    }
+
+
+    const phone = (userRow.phone as string | null)?.trim();
+    if (phone && !userRow.whatsapp_opted_out_at) {
+      try {
+        const { isCustomerWhatsAppJourneyEnabled } = await import("@/lib/whatsapp/journey-flags");
+        if (await isCustomerWhatsAppJourneyEnabled(tenantId)) {
+          const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+          const { dispatchTemplateNotification } = await import(
+            "@/lib/notifications/dispatch-template-notification"
+          );
+          await dispatchTemplateNotification(
+            "account_claim_invite",
+            [id],
+            { claim_link: `${baseUrl}/auth/claim?user=${id}` },
+            ["whatsapp"],
+            { appType: "customer", tenantId },
+          );
+        }
+      } catch (waErr) {
+        console.warn("[send-claim-invite] WhatsApp claim failed:", waErr);
+      }
     }
 
     return successResponse({ message: "Claim invite sent." });

@@ -2,7 +2,7 @@
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FetchError, fetcher, isTransientNetworkFetchError } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { PickupStoreCard, type PickupStoreLocation } from "@/components/shop/PickupStoreCard";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CartItem {
   id: string;
@@ -50,19 +52,17 @@ interface Address {
   is_default: boolean;
 }
 
-interface Location {
-  id: string;
-  name: string;
-  address_line1: string;
-  city: string;
-}
+type Location = PickupStoreLocation & { id: string };
 
 interface ShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
   delivery_fee: number;
+  delivery_fee_type?: string | null;
   free_delivery_threshold: number | null;
   estimated_delivery_days: number;
+  delivery_notes?: string | null;
+  collection_notes?: string | null;
 }
 
 interface SavedCard {
@@ -81,7 +81,17 @@ export default function ProductCheckoutPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts) as string,
+    [t],
+  );
   const providerId = searchParams.get("provider_id");
+  const checkoutRedirect = useMemo(() => {
+    const q = providerId ? `?provider_id=${encodeURIComponent(providerId)}` : "";
+    return `/shop/checkout${q}`;
+  }, [providerId]);
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -111,6 +121,7 @@ export default function ProductCheckoutPage() {
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
 
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [cardsLoading, setCardsLoading] = useState(false);
@@ -118,6 +129,10 @@ export default function ProductCheckoutPage() {
   const [useNewCard, setUseNewCard] = useState(true);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [removingCardId, setRemovingCardId] = useState<string | null>(null);
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
+  const [previewDeliveryFee, setPreviewDeliveryFee] = useState<number | null>(null);
+  const [deliveryPreviewBlocked, setDeliveryPreviewBlocked] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -337,6 +352,42 @@ export default function ProductCheckoutPage() {
     }
   }, [cashEnabledOnPlatform, paymentMethod]);
 
+  useEffect(() => {
+    if (!user || fulfillment !== "delivery" || !selectedAddress || !providerId) {
+      setPreviewDeliveryFee(null);
+      setDeliveryPreviewBlocked(false);
+      setPreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    const timer = setTimeout(() => {
+      void fetcher
+        .post<{ data?: { fee?: number } }>("/api/me/orders/delivery-preview", {
+          provider_id: providerId,
+          delivery_address_id: selectedAddress,
+        })
+        .then((res) => {
+          if (cancelled) return;
+          const fee = Number(res?.data?.fee ?? 0);
+          setPreviewDeliveryFee(Number.isFinite(fee) ? fee : 0);
+          setDeliveryPreviewBlocked(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setPreviewDeliveryFee(null);
+          setDeliveryPreviewBlocked(true);
+        })
+        .finally(() => {
+          if (!cancelled) setPreviewLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [user, fulfillment, selectedAddress, providerId, items.length]);
+
   const linePrice = (i: CartItem) =>
     (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
   const subtotal = items.reduce((s, i) => s + linePrice(i), 0);
@@ -344,12 +395,28 @@ export default function ProductCheckoutPage() {
     const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
     return s + Math.round(((linePrice(i) * rate) / 100) * 100) / 100;
   }, 0);
-  const deliveryFee =
+  const guestDeliveryEstimate =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
         ? 0
-        : Number(shippingConfig.delivery_fee) || 0
+        : shippingConfig.delivery_fee_type &&
+            shippingConfig.delivery_fee_type !== "flat" &&
+            Number(shippingConfig.delivery_fee) >= 0
+          ? null
+          : Number(shippingConfig.delivery_fee) || 0
       : 0;
+  const deliveryFee =
+    fulfillment === "delivery"
+      ? user && previewDeliveryFee != null
+        ? previewDeliveryFee
+        : guestDeliveryEstimate ?? 0
+      : 0;
+  const deliveryFeePending =
+    fulfillment === "delivery" &&
+    Boolean(user) &&
+    previewLoading &&
+    previewDeliveryFee == null &&
+    !deliveryPreviewBlocked;
   const platformFee =
     paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
@@ -428,12 +495,20 @@ export default function ProductCheckoutPage() {
       setPageError("Missing provider. Please go back to cart and try again.");
       return;
     }
+    if (!user) {
+      setPageError("Please sign in to place your order.");
+      return;
+    }
     if (fulfillment === "delivery" && !selectedAddress) {
       setPageError("Please select a delivery address.");
       return;
     }
     if (fulfillment === "collection" && !selectedLocation) {
       setPageError("Please select a collection point.");
+      return;
+    }
+    if (fulfillment === "delivery" && deliveryPreviewBlocked) {
+      setPageError(shopT("delivery.outsideRadius"));
       return;
     }
 
@@ -461,6 +536,9 @@ export default function ProductCheckoutPage() {
           fulfillment_type: fulfillment,
           delivery_address_id: fulfillment === "delivery" ? selectedAddress : undefined,
           collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
+          ...(fulfillment === "delivery" && deliveryInstructions.trim()
+            ? { delivery_instructions: deliveryInstructions.trim() }
+            : {}),
           payment_method: paymentMethod,
           use_wallet: paymentMethod === "paystack" ? useWallet : false,
           ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
@@ -629,6 +707,9 @@ export default function ProductCheckoutPage() {
     selectedCardId,
     promotionCode,
     giftCardCode,
+    deliveryPreviewBlocked,
+    deliveryInstructions,
+    shopT,
   ]);
 
   if (loading) {
@@ -683,6 +764,22 @@ export default function ProductCheckoutPage() {
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
               No payment methods are currently enabled for on-platform checkout. Please contact
               support.
+            </div>
+          )}
+          {!user && (
+            <div className="rounded-xl border border-pink-200 bg-pink-50 p-4">
+              <p className="font-semibold text-gray-900">
+                {t("customer.mobile.screens.productCheckout.signInBannerTitle")}
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                {t("customer.mobile.screens.productCheckout.signInBannerBody")}
+              </p>
+              <Link
+                href={`/account-settings?redirect=${encodeURIComponent(checkoutRedirect)}`}
+                className="mt-3 inline-flex rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-700"
+              >
+                {t("customer.mobile.screens.productCheckout.signInCta")}
+              </Link>
             </div>
           )}
           {/* Fulfillment type */}
@@ -740,45 +837,59 @@ export default function ProductCheckoutPage() {
           {fulfillment === "collection" && locations.length > 0 && (
             <div className="bg-white rounded-xl border p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Collection Point</h3>
-              <div className="space-y-3">
-                {locations.map((loc) => (
-                  <label
-                    key={loc.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedLocation === loc.id
-                        ? "border-pink-500 bg-pink-50"
-                        : "border-gray-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="location"
-                      checked={selectedLocation === loc.id}
-                      onChange={() => setSelectedLocation(loc.id)}
-                      className="accent-pink-600"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">{loc.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {loc.address_line1}, {loc.city}
-                      </p>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              {shippingConfig?.collection_notes ? (
+                <p className="mb-4 rounded-lg bg-orange-50 p-3 text-sm text-orange-900">
+                  {shippingConfig.collection_notes}
+                </p>
+              ) : null}
+              {locations.map((loc) => (
+                <PickupStoreCard
+                  key={loc.id}
+                  location={{ ...loc, city: loc.city ?? "", address_line1: loc.address_line1 ?? "" }}
+                  timezone={providerTimezone}
+                  collectionNotes={shippingConfig?.collection_notes}
+                  variant="full"
+                  selected={selectedLocation === loc.id}
+                  onSelect={() => setSelectedLocation(loc.id)}
+                  showPhone
+                  showMapLink={selectedLocation === loc.id}
+                  t={shopT}
+                />
+              ))}
             </div>
           )}
 
           {fulfillment === "delivery" && (
             <div className="bg-white rounded-xl border p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Delivery Address</h3>
-              {shippingConfig?.estimated_delivery_days != null &&
-                Number(shippingConfig.estimated_delivery_days) > 0 && (
-                  <p className="text-sm text-gray-500 mb-4">
-                    Estimated delivery: within {Number(shippingConfig.estimated_delivery_days)}{" "}
-                    business day{Number(shippingConfig.estimated_delivery_days) !== 1 ? "s" : ""}
-                  </p>
-                )}
+              {(shippingConfig?.estimated_delivery_days != null &&
+                Number(shippingConfig.estimated_delivery_days) > 0) ||
+              shippingConfig?.delivery_notes ? (
+                <div className="mb-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                  {shippingConfig?.estimated_delivery_days != null &&
+                    Number(shippingConfig.estimated_delivery_days) > 0 && (
+                      <p>
+                        {t("customer.mobile.screens.productDetail.estimatedDeliveryDays", {
+                          days: Number(shippingConfig.estimated_delivery_days),
+                        })}
+                      </p>
+                    )}
+                  {shippingConfig?.delivery_notes ? (
+                    <p
+                      className={
+                        shippingConfig.estimated_delivery_days ? "mt-1 leading-relaxed" : "leading-relaxed"
+                      }
+                    >
+                      {shippingConfig.delivery_notes}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {deliveryPreviewBlocked ? (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {shopT("delivery.outsideRadius")}
+                </div>
+              ) : null}
               {addresses.length === 0 ? (
                 <div className="text-center py-4">
                   <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -819,6 +930,18 @@ export default function ProductCheckoutPage() {
                   ))}
                 </div>
               )}
+              <div className="mt-5">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  {shopT("delivery.instructionsLabel")}
+                </label>
+                <textarea
+                  value={deliveryInstructions}
+                  onChange={(e) => setDeliveryInstructions(e.target.value)}
+                  placeholder={shopT("delivery.instructionsPlaceholder")}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
             </div>
           )}
 
@@ -1116,7 +1239,17 @@ export default function ProductCheckoutPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Delivery</span>
                   <span className={deliveryFee === 0 ? "text-green-600" : "text-gray-900"}>
-                    {deliveryFee === 0 ? "Free" : `${tenantCurrency}${deliveryFee.toFixed(2)}`}
+                    {deliveryPreviewBlocked
+                      ? "—"
+                      : deliveryFeePending
+                        ? t("customer.mobile.screens.productCheckout.deliveryFeeCalculating")
+                        : deliveryFee === 0
+                          ? "Free"
+                          : !user &&
+                              shippingConfig?.delivery_fee_type &&
+                              shippingConfig.delivery_fee_type !== "flat"
+                            ? t("customer.mobile.screens.productCheckout.feeEstimateGuest")
+                            : `${tenantCurrency} ${deliveryFee.toFixed(2)}`}
                   </span>
                 </div>
               )}
@@ -1150,7 +1283,14 @@ export default function ProductCheckoutPage() {
           {/* Pay button */}
           <button
             onClick={handlePlaceOrder}
-            disabled={placing || !hasAnyEnabledPaymentMethod || hasOutOfStock}
+            disabled={
+              placing ||
+              !user ||
+              !hasAnyEnabledPaymentMethod ||
+              hasOutOfStock ||
+              deliveryPreviewBlocked ||
+              deliveryFeePending
+            }
             className="w-full py-4 bg-pink-600 text-white rounded-xl font-bold text-lg hover:bg-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {placing ? (
@@ -1158,6 +1298,8 @@ export default function ProductCheckoutPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
                 Processing...
               </>
+            ) : !user ? (
+              t("customer.mobile.screens.productCheckout.signInCta")
             ) : (
               `${paymentMethod === "paystack" ? "Pay &" : ""} Place Order — ${tenantCurrency}${total.toFixed(2)}`
             )}

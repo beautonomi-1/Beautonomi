@@ -85,7 +85,7 @@ import { KeyboardDoneAccessory } from "./KeyboardDoneAccessory";
 import { useOnboardingScroll } from "./OnboardingScrollContext";
 import { useAutoFocus } from "./useAutoFocus";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164, phoneNumbersMatchProfile } from "./onboarding-phone";
-import { DEFAULT_COUNTRY_NAME } from "./state";
+import { DEFAULT_COUNTRY_NAME, zoneSuggestInvalidationPatch } from "./state";
 import type { BusinessType, OnboardingServiceAddon, TeamSize, TerminalOwnershipStatus, TerminalVendor, TerminalCountRange, TerminalActiveUsageStatus, TerminalInterestLevel } from "./types";
 import { ServiceFormFields } from "@/features/catalogue/ServiceFormFields";
 import {
@@ -1828,18 +1828,26 @@ function Step7Location() {
   };
   const mapboxCountry = countryFilterIso2FromStorage(addr.country || DEFAULT_COUNTRY_NAME) ?? "ZA";
 
+  const applyAddressUpdate = (next: typeof addr) => {
+    const zonePatch = zoneSuggestInvalidationPatch(
+      addr.latitude,
+      addr.longitude,
+      next.latitude,
+      next.longitude,
+    );
+    updateFormData({ ...(zonePatch ?? {}), address: next });
+  };
+
   const onSelect = (p: ParsedAddress) => {
-    updateFormData({
-      address: {
-        ...addr,
-        line1: p.address_line1,
-        city: p.city,
-        state: p.state,
-        postal_code: p.postal_code,
-        country: p.country || DEFAULT_COUNTRY_NAME,
-        latitude: p.latitude,
-        longitude: p.longitude,
-      },
+    applyAddressUpdate({
+      ...addr,
+      line1: p.address_line1,
+      city: p.city,
+      state: p.state,
+      postal_code: p.postal_code,
+      country: p.country || DEFAULT_COUNTRY_NAME,
+      latitude: p.latitude,
+      longitude: p.longitude,
     });
   };
 
@@ -1857,20 +1865,18 @@ function Step7Location() {
       const defaultCountry = addr.country?.trim() || DEFAULT_COUNTRY_NAME;
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
-        updateFormData({
-          address: {
-            ...addr,
-            line1: mapped.address_line1 || addr.line1 || ow("location.currentLocationFallback"),
-            city: mapped.city || addr.city || "",
-            state: mapped.state || addr.state || "",
-            postal_code: mapped.postal_code || addr.postal_code || "",
-            country: mapped.country || defaultCountry,
-            latitude: mapped.latitude,
-            longitude: mapped.longitude,
-          },
+        applyAddressUpdate({
+          ...addr,
+          line1: mapped.address_line1 || addr.line1 || ow("location.currentLocationFallback"),
+          city: mapped.city || addr.city || "",
+          state: mapped.state || addr.state || "",
+          postal_code: mapped.postal_code || addr.postal_code || "",
+          country: mapped.country || defaultCountry,
+          latitude: mapped.latitude,
+          longitude: mapped.longitude,
         });
       } else {
-        updateFormData({ address: { ...addr, latitude: lat, longitude: lng } });
+        applyAddressUpdate({ ...addr, latitude: lat, longitude: lng });
       }
     } catch (e) {
       Alert.alert(ow("location.errorTitle"), e instanceof Error ? e.message : ow("location.couldNotRead"));
@@ -1883,20 +1889,18 @@ function Step7Location() {
     const defaultCountry = addr.country?.trim() || DEFAULT_COUNTRY_NAME;
     const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
     if (mapped) {
-      updateFormData({
-        address: {
-          ...addr,
-          line1: mapped.address_line1 || addr.line1,
-          city: mapped.city || addr.city,
-          state: mapped.state || addr.state,
-          postal_code: mapped.postal_code || addr.postal_code,
-          country: mapped.country || defaultCountry,
-          latitude: mapped.latitude,
-          longitude: mapped.longitude,
-        },
+      applyAddressUpdate({
+        ...addr,
+        line1: mapped.address_line1 || addr.line1,
+        city: mapped.city || addr.city,
+        state: mapped.state || addr.state,
+        postal_code: mapped.postal_code || addr.postal_code,
+        country: mapped.country || defaultCountry,
+        latitude: mapped.latitude,
+        longitude: mapped.longitude,
       });
     } else {
-      updateFormData({ address: { ...addr, latitude: lat, longitude: lng } });
+      applyAddressUpdate({ ...addr, latitude: lat, longitude: lng });
     }
     setMapPinOpen(false);
   };
@@ -2442,8 +2446,6 @@ function Step9Zones() {
   const { formData, updateFormData } = useOnboardingWizard();
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const autoSelectedRef = useRef(false);
-
   useEffect(() => {
     const lat = formData.address?.latitude;
     const lng = formData.address?.longitude;
@@ -2453,7 +2455,6 @@ function Step9Zones() {
     }
     (async () => {
       setLoading(true);
-      const hadZones = (formData.selected_zone_ids?.length ?? 0) > 0;
       try {
         const res = await api.post<{ suggested_zones: ZoneRow[] }>(
           "/api/provider/onboarding/suggest-zones",
@@ -2468,10 +2469,6 @@ function Step9Zones() {
         );
         const list = res.data?.suggested_zones ?? [];
         setZones(list);
-        if (list.length && !hadZones && !autoSelectedRef.current) {
-          autoSelectedRef.current = true;
-          updateFormData({ selected_zone_ids: list.map((z) => z.id) });
-        }
       } catch {
         setZones([]);
       } finally {

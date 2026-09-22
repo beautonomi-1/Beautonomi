@@ -37,7 +37,9 @@ export async function GET(request: NextRequest) {
 
     let locations: any[] | null = null;
     const primaryQuery = (supabase.from("provider_locations") as any)
-      .select("id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude")
+      .select(
+        "id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude, phone, working_hours",
+      )
       .eq("provider_id", providerId)
       .eq("is_active", true)
       .eq("location_type", "salon")
@@ -48,7 +50,9 @@ export async function GET(request: NextRequest) {
       // Backward-compatible fallback for DBs that do not have provider_locations.location_type yet.
       const { data: legacyLocations, error: legacyError } = await (supabase
         .from("provider_locations") as any)
-        .select("id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude")
+        .select(
+        "id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude, phone, working_hours",
+      )
         .eq("provider_id", providerId)
         .eq("is_active", true)
         .order("is_primary", { ascending: false });

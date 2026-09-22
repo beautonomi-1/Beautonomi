@@ -65,6 +65,8 @@ export function CreateServicesSection({
         id: newLineId(),
         serviceId: customId,
         serviceName: name,
+        isCustom: true,
+        customName: name,
         duration: Math.round(duration),
         price,
         staffId: defaultStaffId,

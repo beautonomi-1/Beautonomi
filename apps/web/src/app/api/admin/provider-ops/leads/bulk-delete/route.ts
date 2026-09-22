@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -7,7 +8,6 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { applyActiveLeadFilter } from "@/lib/provider-ops/lead-query-filters";
@@ -26,7 +26,7 @@ const bodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsSales(request);
     const raw = await request.json().catch(() => ({}));
     const parsed = bodySchema.safeParse(raw);
     if (!parsed.success) {

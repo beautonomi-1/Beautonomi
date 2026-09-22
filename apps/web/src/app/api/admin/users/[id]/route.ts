@@ -11,6 +11,7 @@ import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-m
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { resolveAgeBand, readSafetySettingsStored, effectiveSafetySettings } from "@/lib/age-assurance";
+import { resolveUsersByWhatsAppPhone } from "@/lib/whatsapp/resolve-users-by-phone";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -234,6 +235,12 @@ export async function GET(
     const resolved_phone =
       (userData as { phone?: string | null }).phone || auth_phone || null;
 
+    let shared_phone_account_count = 0;
+    if (resolved_phone) {
+      const { users: phoneUsers } = await resolveUsersByWhatsAppPhone(admin, resolved_phone);
+      shared_phone_account_count = phoneUsers.length;
+    }
+
     const last_login_at =
       typeof (userData as { last_login_at?: string | null }).last_login_at === "string"
         ? (userData as { last_login_at?: string | null }).last_login_at
@@ -335,6 +342,21 @@ export async function GET(
           "string"
             ? (userData as { identity_verification_status?: string }).identity_verification_status
             : null,
+      },
+      whatsapp: {
+        opted_out_at:
+          typeof (userData as { whatsapp_opted_out_at?: string | null }).whatsapp_opted_out_at ===
+          "string"
+            ? (userData as { whatsapp_opted_out_at?: string }).whatsapp_opted_out_at
+            : null,
+        opt_in_at:
+          typeof (userData as { whatsapp_opt_in_at?: string | null }).whatsapp_opt_in_at === "string"
+            ? (userData as { whatsapp_opt_in_at?: string }).whatsapp_opt_in_at
+            : null,
+        notifications_enabled: Boolean(
+          (userData as { whatsapp_notifications_enabled?: boolean }).whatsapp_notifications_enabled,
+        ),
+        shared_phone_account_count,
       },
       stats,
       addresses: addresses ?? [],

@@ -40,6 +40,12 @@ vi.mock("@/lib/auth/effective-provider-role", () => ({
   persistJoinedProviderRole: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/tenant/market-availability", () => ({
+  assertTransactionalMarketAllowedForTenantId: vi.fn().mockResolvedValue(null),
+  assertTransactionalMarketAllowed: vi.fn().mockReturnValue(null),
+  assertSupportedMarketAddressCountry: vi.fn().mockReturnValue(null),
+}));
+
 /** Required by onboardingSchema since provider card images became mandatory. */
 const onboardingProfileImages = {
   thumbnail_url: "https://example.com/thumbnail.jpg",

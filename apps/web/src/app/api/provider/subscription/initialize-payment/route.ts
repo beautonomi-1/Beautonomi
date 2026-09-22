@@ -19,6 +19,8 @@ import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscrip
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -38,6 +40,13 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);

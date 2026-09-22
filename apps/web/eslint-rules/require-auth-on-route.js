@@ -43,7 +43,11 @@
  *   requirePermission, requireProviderReportsAccess, requirePublicTenant, validatePortalToken, usePortalToken,
  *   checkPortalRateLimit, verifyEmbedRefreshToken, parseRetentionToken,
  *   verifyCronSecret, verifyWebhookSignature, verifyPaystackSignature,
- *   verifyCronRequest, requireTerminalMerchantAdmin.
+ *   verifyCronRequest, requireTerminalMerchantAdmin,
+ *   requireOpsDesk, requireOpsManagers, requireProviderOpsSection,
+ *   requireProviderOpsSales, requireProviderOpsOnboarding, requireProviderOpsRetention,
+ *   requireProviderOpsAnyDesk, requireProviderOpsManagersOnly,
+ *   requireProviderOpsSalesOrOnboarding.
  *
  * Additional inline patterns (text match): `auth.getUser`, `auth.getSession`,
  * `Bearer ${cronSecret}`, and explicit HMAC signature verification via the
@@ -78,6 +82,15 @@ const GUARD_IDENTIFIERS = new Set([
   "verifyPaycloudWebhookSignature",
   "verifyPaystackSignature",
   "requireTerminalMerchantAdmin",
+  "requireOpsDesk",
+  "requireOpsManagers",
+  "requireProviderOpsSection",
+  "requireProviderOpsSales",
+  "requireProviderOpsOnboarding",
+  "requireProviderOpsRetention",
+  "requireProviderOpsAnyDesk",
+  "requireProviderOpsManagersOnly",
+  "requireProviderOpsSalesOrOnboarding",
 ]);
 
 /**

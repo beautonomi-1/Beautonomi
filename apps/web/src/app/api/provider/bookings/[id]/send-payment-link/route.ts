@@ -213,12 +213,16 @@ export async function POST(
       // Send push notification via OneSignal using template
       try {
         const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const channels: ("push" | "email" | "sms")[] = ["push"];
-        if (delivery_method === 'email' || delivery_method === 'both') {
-          channels.push("email");
+        const { customerBookingChannels } = await import(
+          "@/lib/notifications/customer-booking-channels"
+        );
+        const tenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+        let channels = await customerBookingChannels(tenantId);
+        if (delivery_method !== "both" && delivery_method !== "email") {
+          channels = channels.filter((c) => c !== "email");
         }
-        if (delivery_method === 'sms' || delivery_method === 'both') {
-          channels.push("sms");
+        if (delivery_method !== "both" && delivery_method !== "sms") {
+          channels = channels.filter((c) => c !== "sms");
         }
 
         await sendTemplateNotification(

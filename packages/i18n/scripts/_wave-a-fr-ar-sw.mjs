@@ -1003,7 +1003,10 @@ export function translate(en, locale, depth = 0) {
 
 export function loadExternalMaps(mapDir, fs, path) {
   if (!fs.existsSync(mapDir)) return;
-  const files = fs.readdirSync(mapDir).filter((f) => f.startsWith("t-") && f.endsWith(".json")).sort();
+  const files = fs
+    .readdirSync(mapDir)
+    .filter((f) => f.startsWith("t-") && f.endsWith(".json") && f !== "t-mobile-fr-ar.json")
+    .sort();
   for (const file of files) {
     const chunk = JSON.parse(fs.readFileSync(path.join(mapDir, file), "utf8"));
     for (const [en, row] of Object.entries(chunk)) {
@@ -1015,5 +1018,21 @@ export function loadExternalMaps(mapDir, fs, path) {
         sw: typeof row.sw === "string" ? row.sw : cur.sw,
       });
     }
+  }
+}
+
+/** Load mobile phrase map (fr/ar only) into EXACT. */
+export function loadFrArMobileMaps(mapDir, fs, path) {
+  const file = path.join(mapDir, "t-mobile-fr-ar.json");
+  if (!fs.existsSync(file)) return;
+  const chunk = JSON.parse(fs.readFileSync(file, "utf8"));
+  for (const [en, row] of Object.entries(chunk)) {
+    if (!row || typeof row !== "object") continue;
+    const cur = EXACT.get(en) || {};
+    EXACT.set(en, {
+      fr: typeof row.fr === "string" ? row.fr : cur.fr,
+      ar: typeof row.ar === "string" ? row.ar : cur.ar,
+      sw: cur.sw,
+    });
   }
 }

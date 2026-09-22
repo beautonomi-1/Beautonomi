@@ -67,6 +67,11 @@ export interface ProductOrder {
     state?: string | null;
     postal_code: string | null;
     country?: string | null;
+    apartment_unit?: string | null;
+    building_name?: string | null;
+    access_codes?: string | null;
+    parking_instructions?: string | null;
+    location_landmarks?: string | null;
   } | null;
   collection_location?: {
     id: string;
@@ -76,8 +81,11 @@ export interface ProductOrder {
     city: string;
     state?: string | null;
     postal_code?: string | null;
+    country?: string | null;
     phone: string | null;
     working_hours: Record<string, unknown>;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
   } | null;
   returns?: {
     id: string;
@@ -100,6 +108,7 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+  fulfilment_status?: string | null;
   product_variant?: { id: string; option_values?: Record<string, string> } | null;
 }
 

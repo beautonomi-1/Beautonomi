@@ -75,7 +75,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "fingerprint",
   },
-  version: "1.0.93",
+  version: "1.0.94",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -196,7 +196,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "286",
+    buildNumber: "287",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -271,7 +271,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 286,
+    versionCode: 287,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -332,8 +332,7 @@ module.exports = () => {
     APP_ENV: appEnv,
     EXPO_PUBLIC_DEFAULT_PHONE_REGION:
       envFromFile.EXPO_PUBLIC_DEFAULT_PHONE_REGION ??
-      process.env.EXPO_PUBLIC_DEFAULT_PHONE_REGION ??
-      "ZA",
+      process.env.EXPO_PUBLIC_DEFAULT_PHONE_REGION,
     EXPO_PUBLIC_WEB_API_TENANT_HOST:
       envFromFile.EXPO_PUBLIC_WEB_API_TENANT_HOST ??
       process.env.EXPO_PUBLIC_WEB_API_TENANT_HOST,

@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -6,7 +7,6 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { searchReferrersInTenant } from "@/lib/provider-ops/resolve-referrer";
 
@@ -16,7 +16,7 @@ import { searchReferrersInTenant } from "@/lib/provider-ops/resolve-referrer";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsSales(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);

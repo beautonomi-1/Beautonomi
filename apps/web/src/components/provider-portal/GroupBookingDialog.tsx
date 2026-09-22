@@ -66,6 +66,12 @@ import Link from "next/link";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
 import { useTranslation } from "@beautonomi/i18n";
+import {
+  buildGroupBookingCreateReadiness,
+  validateGroupBookingCreateStepDetailed,
+  type GroupBookingCreateValidationField,
+} from "@beautonomi/provider-booking";
+import { BookingCreateReadinessStrip } from "@/components/provider/booking/ui/BookingCreateReadinessStrip";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -163,6 +169,9 @@ export function GroupBookingDialog({
   // Payment methods mirror the single-booking screen so providers see the
   // same set everywhere (pay_later, cash, manual card, Yoco terminal, link).
   const [createStep, setCreateStep] = useState<"form" | "review">("form");
+  const [createReadinessExpanded, setCreateReadinessExpanded] = useState(false);
+  const [createValidationField, setCreateValidationField] =
+    useState<GroupBookingCreateValidationField | null>(null);
   type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal" | "paycloud_terminal";
   const [createPaymentMethod, setCreatePaymentMethod] = useState<GroupCreatePaymentMethod>("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
@@ -194,6 +203,8 @@ export function GroupBookingDialog({
   useEffect(() => {
     if (open) {
       setCreateStep("form");
+      setCreateReadinessExpanded(false);
+      setCreateValidationField(null);
       setCreatePaymentMethod("pay_later");
       setCreateSendNotification(true);
       setPostCreatePaystackData(null);
@@ -804,6 +815,52 @@ export function GroupBookingDialog({
     ), 0),
   [formData.duration_minutes, participants]);
 
+  const groupCreateValidationInput = useMemo(
+    () => ({
+      date: formData.scheduled_date,
+      time: (formData.scheduled_time ?? "").substring(0, 5),
+      duration: String(formData.duration_minutes),
+      serviceId: formData.service_id,
+      staffId: formData.team_member_id,
+      locationType: formData.location_type,
+      addressLine1: formData.address_line1,
+      addressLatitude: formData.address_latitude ?? null,
+      addressLongitude: formData.address_longitude ?? null,
+      participants: participants.map((p) => ({
+        name: p.client_name.trim(),
+        phone: p.client_phone.trim(),
+        email: p.client_email.trim(),
+        serviceId: p.service_id || formData.service_id,
+      })),
+      validatePhone: (phone: string) => {
+        const trimmed = phone.trim();
+        if (!trimmed) return "Phone is required";
+        if (!isCompleteE164(trimmed)) return "Phone must be in E.164 format";
+        return null;
+      },
+    }),
+    [formData, participants],
+  );
+
+  const groupCreateReadiness = useMemo(
+    () => buildGroupBookingCreateReadiness(groupCreateValidationInput),
+    [groupCreateValidationInput],
+  );
+
+  const scrollToGroupCreateSection = useCallback(
+    (sectionKey: string, participantIndex?: number) => {
+      const suffix =
+        sectionKey === "participants" && participantIndex != null ?
+          `participant-${participantIndex}`
+        : sectionKey;
+      document.getElementById(`group-create-section-${suffix}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    },
+    [],
+  );
+
   // ─── Filtered services/products ────────────────────────────────────────
   const filteredServices = useMemo(() => {
     return services.filter(s => {
@@ -829,15 +886,17 @@ export function GroupBookingDialog({
     // validate everything client-side then transition to the review step.
     // Only the second submit (from the review block) actually posts.
     if (createStep === "form" && !booking) {
-      for (let i = 0; i < participants.length; i++) {
-        const ph = participants[i].client_phone?.trim();
-        if (ph && !isCompleteE164(ph)) {
-          toast.error(t("web.provider.portal.groupBookingDialog.invalidParticipantPhone", { n: i + 1 }));
-          return;
-        }
-      }
-      if (!formData.scheduled_date?.trim() || !formData.scheduled_time?.trim()) {
-        toast.error(t("web.provider.portal.groupBookingDialog.chooseDateTime"));
+      const validationErr = validateGroupBookingCreateStepDetailed(groupCreateValidationInput);
+      if (validationErr) {
+        setCreateValidationField(validationErr.field);
+        setCreateReadinessExpanded(true);
+        toast.error(validationErr.message);
+        scrollToGroupCreateSection(
+          validationErr.field.startsWith("participant:") ? "participants" : validationErr.field,
+          validationErr.field.startsWith("participant:") ?
+            Number(validationErr.field.split(":")[1])
+          : undefined,
+        );
         return;
       }
       const parsedStart = parseSelectedDatetimeInProviderTz(
@@ -849,10 +908,7 @@ export function GroupBookingDialog({
         toast.error(t("web.provider.portal.groupBookingDialog.invalidDateTime"));
         return;
       }
-      if (participants.length === 0) {
-        toast.error(t("web.provider.portal.groupBookingDialog.addParticipantBeforeReview"));
-        return;
-      }
+      setCreateValidationField(null);
       setCreateStep("review");
       return;
     }
@@ -1150,6 +1206,13 @@ export function GroupBookingDialog({
             onSubmit={handleSubmit}
             className={`p-4 sm:p-6 space-y-4 sm:space-y-5 box-border w-full max-w-full overflow-x-hidden min-w-0 ${createStep === "review" && !booking ? "hidden" : ""}`}
           >
+            {createStep === "form" && !booking ? (
+              <BookingCreateReadinessStrip
+                summary={groupCreateReadiness}
+                forceExpanded={createReadinessExpanded}
+                onJumpToSection={scrollToGroupCreateSection}
+              />
+            ) : null}
 
             {/* Title */}
             <div className="space-y-2">
@@ -1199,7 +1262,10 @@ export function GroupBookingDialog({
                 </div>
               )}
               {formData.location_type === "at_home" && (
-                <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                <div
+                  id="group-create-section-address"
+                  className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100"
+                >
                   <div>
                     <div className="mb-1 flex items-center justify-between">
                       <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.addressRequired")}</Label>
@@ -1283,7 +1349,7 @@ export function GroupBookingDialog({
                 {t("web.provider.portal.groupBookingDialog.serviceDetailsHint")}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div id="group-create-section-staffId">
                   <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.teamMemberRequired")}</Label>
                   <Select value={formData.team_member_id} onValueChange={v => setFormData({ ...formData, team_member_id: v })} required>
                     <SelectTrigger className="mt-1 h-10"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectTeamMember")} /></SelectTrigger>
@@ -1292,7 +1358,7 @@ export function GroupBookingDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div id="group-create-section-serviceId">
                   <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.prefillService")}</Label>
                   <div className="relative mt-1">
                     <Search className="absolute start-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
@@ -1335,10 +1401,12 @@ export function GroupBookingDialog({
 
             {/* ─── Schedule ─────────────────────────────────────────── */}
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div
+                id="group-create-section-date"
+                className="flex items-center gap-2 text-sm font-medium text-gray-700"
+              >
                 <CalendarIcon className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.schedule")}
               </div>
-
               {!formData.team_member_id && (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   {t("web.provider.portal.groupBookingDialog.selectTeamMemberForSlots")}
@@ -1346,7 +1414,10 @@ export function GroupBookingDialog({
               )}
 
               {formData.team_member_id && (
-                <div className="bg-purple-50/50 rounded-xl border border-purple-100 p-3">
+                <div
+                  id={manualScheduleOpen ? undefined : "group-create-section-time"}
+                  className="bg-purple-50/50 rounded-xl border border-purple-100 p-3"
+                >
                   <p className="text-xs font-medium text-purple-900 mb-2">{t("web.provider.portal.groupBookingDialog.availableSlots")}</p>
                   <AvailabilitySlotPicker
                     staffId={formData.team_member_id}
@@ -1397,7 +1468,7 @@ export function GroupBookingDialog({
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <div>
+                  <div id={manualScheduleOpen ? "group-create-section-time" : undefined}>
                     <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.timeRequired")}</Label>
                     <Input
                       type="time"
@@ -1407,7 +1478,7 @@ export function GroupBookingDialog({
                       required
                     />
                   </div>
-                  <div>
+                  <div id="group-create-section-duration">
                     <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.durationMinRequired")}</Label>
                     <Input
                       type="number"
@@ -1424,7 +1495,7 @@ export function GroupBookingDialog({
 
               {!manualScheduleOpen && (
                 <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
-                  <div>
+                  <div id="group-create-section-duration">
                     <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.durationMinRequired")}</Label>
                     <Input
                       type="number"
@@ -1443,7 +1514,7 @@ export function GroupBookingDialog({
             <Separator />
 
             {/* ─── Participants ───────────────────────────────────── */}
-            <div className="space-y-3">
+            <div id="group-create-section-participants" className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <Users className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.participants")}
@@ -1510,7 +1581,11 @@ export function GroupBookingDialog({
                     const isLastParticipant = index === participants.length - 1;
 
                     return (
-                      <div key={index} className="p-3 bg-gray-50 rounded-xl border space-y-2.5">
+                      <div
+                        key={index}
+                        id={`group-create-section-participant-${index}`}
+                        className="p-3 bg-gray-50 rounded-xl border space-y-2.5"
+                      >
                         {/* Header */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -2164,8 +2239,20 @@ export function GroupBookingDialog({
               {t("web.provider.portal.groupBookingDialog.cancel")}
             </Button>
           )}
-          <Button type="submit" form="group-booking-form" disabled={isLoading || isValidatingAddress || participants.length === 0}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10">
+          <Button
+            type="submit"
+            form="group-booking-form"
+            disabled={
+              isLoading ||
+              isValidatingAddress ||
+              participants.length === 0 ||
+              (createStep === "form" &&
+                !booking &&
+                groupCreateReadiness.total > 0 &&
+                groupCreateReadiness.completed < groupCreateReadiness.total)
+            }
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10"
+          >
             {isLoading
               ? t("web.provider.portal.groupBookingDialog.saving")
               : isValidatingAddress
@@ -2174,7 +2261,14 @@ export function GroupBookingDialog({
                   ? t("web.provider.portal.groupBookingDialog.updateGroupBooking")
                   : createStep === "review"
                     ? t("web.provider.portal.groupBookingDialog.confirmAndCreate")
-                    : t("web.provider.portal.groupBookingDialog.reviewAndCreate")}
+                    : createStep === "form" &&
+                        !booking &&
+                        groupCreateReadiness.total > 0 &&
+                        groupCreateReadiness.completed < groupCreateReadiness.total
+                      ? t("web.provider.portal.groupBookingDialog.reviewAndCreateRemaining", {
+                          count: groupCreateReadiness.total - groupCreateReadiness.completed,
+                        })
+                      : t("web.provider.portal.groupBookingDialog.reviewAndCreate")}
           </Button>
         </div>
 

@@ -17,16 +17,10 @@ function getRegionIsoFromTimeZone(): string | null {
   return null;
 }
 
-/** ISO 3166-1 alpha-2 from device locale / timezone. Defaults to ZA. */
-export function getDeviceRegionCountryIso(): string {
-  const envIso = process.env.EXPO_PUBLIC_DEFAULT_PHONE_REGION?.trim().toUpperCase();
-  if (envIso && /^[A-Z]{2}$/.test(envIso)) return envIso;
-
+function resolveLocaleCountryIso(): string {
   try {
     const localeIso = Localization.getLocales?.()?.[0]?.regionCode?.toUpperCase();
     const tzIso = getRegionIsoFromTimeZone();
-    // Timezone beats locale when it's in our known hint map (e.g. Africa/Johannesburg → ZA).
-    // This means a user on an emulator/device with US locale but SA timezone still gets +27.
     if (tzIso) return tzIso;
     if (localeIso && /^[A-Z]{2}$/.test(localeIso)) return localeIso;
   } catch {
@@ -35,11 +29,24 @@ export function getDeviceRegionCountryIso(): string {
   return FALLBACK_ISO;
 }
 
-/** Default calling code from device. Override via EXPO_PUBLIC_DEFAULT_PHONE_DIAL / EXPO_PUBLIC_DEFAULT_PHONE_REGION. */
+export function getDeviceLocaleCountryIso(): string {
+  return resolveLocaleCountryIso();
+}
+
+export function getDevicePhoneRegionIso(): string {
+  const envIso = process.env.EXPO_PUBLIC_DEFAULT_PHONE_REGION?.trim().toUpperCase();
+  if (envIso && /^[A-Z]{2}$/.test(envIso)) return envIso;
+  return resolveLocaleCountryIso();
+}
+
+export function getDeviceRegionCountryIso(): string {
+  return getDeviceLocaleCountryIso();
+}
+
 export function getDeviceDefaultCountryDial(): string {
   const envDial = process.env.EXPO_PUBLIC_DEFAULT_PHONE_DIAL?.trim();
   if (envDial && /^\+\d{1,4}$/.test(envDial)) return envDial;
 
-  const dial = dialCodeForIso3166Alpha2(getDeviceRegionCountryIso());
+  const dial = dialCodeForIso3166Alpha2(getDevicePhoneRegionIso());
   return dial || "+27";
 }

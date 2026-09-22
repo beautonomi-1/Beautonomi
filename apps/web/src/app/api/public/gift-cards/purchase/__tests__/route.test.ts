@@ -54,6 +54,11 @@ vi.mock("@/lib/gift-cards/gift-card-purchase-caps", () => ({
   enforceGiftCardPurchaseCaps: (...args: unknown[]) => mockEnforceGiftCardPurchaseCaps(...args),
 }));
 
+vi.mock("@/lib/tenant/market-availability", () => ({
+  assertTransactionalMarketAllowedForTenantId: vi.fn().mockResolvedValue(null),
+  assertTransactionalMarketAllowed: vi.fn().mockReturnValue(null),
+}));
+
 const DEFAULT_CAPS = { minAmount: 50, maxAmount: 5000, maxPerDay: 10, maxAmountPerDay: 20000 };
 
 function makeOrderCapturingAdmin(insertedOrders: any[], orderId = "order-1") {

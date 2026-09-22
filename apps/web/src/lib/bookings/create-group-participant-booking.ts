@@ -348,13 +348,55 @@ export async function notifyGroupParticipantBooking(
     action_url: `/account-settings/bookings/${bookingId}`,
   }).catch((e) => console.warn("Group participant in-app notification:", e));
 
-  await notifyBookingConfirmed(bookingId, ["email", "push"]).catch((e) =>
-    console.warn("Group participant confirmation:", e)
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const admin = getSupabaseAdmin();
+  const { data: bookingMeta } = await admin
+    .from("bookings")
+    .select("tenant_id, booking_number, scheduled_at")
+    .eq("id", bookingId)
+    .maybeSingle();
+  const tenantId = (bookingMeta?.tenant_id as string | null) ?? null;
+  const { customerConfirmChannelsForGuestDedupe } = await import(
+    "@/lib/notifications/customer-booking-channels"
   );
+  await notifyBookingConfirmed(
+    bookingId,
+    await customerConfirmChannelsForGuestDedupe(admin, customerId, tenantId),
+  ).catch((e) => console.warn("Group participant confirmation:", e));
 
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const admin = getSupabaseAdmin();
+    const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
+      "@/lib/portal/guest-booking-link-delivery"
+    );
+    if (await shouldDeliverGuestLinkForCustomer(admin, customerId) && bookingMeta?.scheduled_at) {
+      const { data: customerRow } = await admin
+        .from("users")
+        .select("full_name, email, phone")
+        .eq("id", customerId)
+        .maybeSingle();
+      const { data: providerRow } = await admin
+        .from("providers")
+        .select("business_name")
+        .eq("id", providerId)
+        .maybeSingle();
+      await deliverGuestBookingLink({
+        supabaseAdmin: admin,
+        bookingId,
+        bookingNumber: (bookingMeta.booking_number as string) || bookingId.slice(0, 8),
+        scheduledAt: String(bookingMeta.scheduled_at),
+        customerId,
+        customerName: (customerRow?.full_name as string) || "Guest",
+        customerEmail: (customerRow?.email as string) || null,
+        customerPhone: (customerRow?.phone as string) || null,
+        providerName: (providerRow?.business_name as string) || "Your provider",
+        tenantId,
+      });
+    }
+  } catch (guestErr) {
+    console.warn("Group participant guest link:", guestErr);
+  }
+
+  try {
     const { data: bookingRow } = await admin
       .from("bookings")
       .select("booking_number, tenant_id, providers(business_name)")

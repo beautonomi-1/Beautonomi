@@ -45,9 +45,12 @@ import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import {
+  buildGroupBookingCreateReadiness,
   validateGroupBookingCreateStepDetailed,
   type GroupBookingCreateValidationField,
 } from "@/features/group-bookings/validateGroupBookingCreate";
+import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
+import { useCreateFormSections } from "@/hooks/useCreateFormSections";
 import {
   participantsEqual,
   patchGroupMarkPaid,
@@ -972,8 +975,10 @@ export default function GroupBookingsScreen() {
   const [createFieldError, setCreateFieldError] =
     useState<GroupBookingCreateValidationField | null>(null);
   const [checkingCreateReview, setCheckingCreateReview] = useState(false);
+  const [createReadinessExpanded, setCreateReadinessExpanded] = useState(false);
   const createFormScrollRef = useRef<ScrollView>(null);
-  const createSectionY = useRef<Partial<Record<string, number>>>({});
+  const { registerSection, registerParticipantRow, scrollToSection, resetSections } =
+    useCreateFormSections();
   const [pendingParticipantId, setPendingParticipantId] = useState<string | null>(null);
   const [refundParticipant, setRefundParticipant] = useState<ParticipantRefundTarget | null>(null);
   const [paymentRecordedNotice, setPaymentRecordedNotice] = useState<string | null>(null);
@@ -1082,6 +1087,42 @@ export default function GroupBookingsScreen() {
     services,
     selectedLocationId,
   ]);
+
+  const createReadiness = useMemo(
+    () =>
+      buildGroupBookingCreateReadiness({
+        date: createForm.date,
+        time: createForm.time,
+        duration: createForm.duration,
+        serviceId: createForm.serviceId,
+        staffId: createForm.staffId,
+        locationType: createForm.locationType,
+        addressLine1: createForm.addressLine1,
+        addressLatitude: createForm.addressLatitude,
+        addressLongitude: createForm.addressLongitude,
+        participants: createParticipants
+          .map((p) => ({
+            name: p.name.trim(),
+            phone: p.phone.trim(),
+            email: p.email.trim(),
+            serviceId: p.serviceId || createForm.serviceId,
+          }))
+          .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
+        validatePhone: validateE164Phone,
+      }),
+    [
+      createForm.date,
+      createForm.time,
+      createForm.duration,
+      createForm.serviceId,
+      createForm.staffId,
+      createForm.locationType,
+      createForm.addressLine1,
+      createForm.addressLatitude,
+      createForm.addressLongitude,
+      createParticipants,
+    ],
+  );
 
   const createSlotQuery = useMemo(() => {
     if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return null;
@@ -1779,9 +1820,11 @@ export default function GroupBookingsScreen() {
     setCreateStep("form");
     setCreateReviewError(null);
     setCreateFieldError(null);
+    setCreateReadinessExpanded(false);
     setCreatePaymentMethod("pay_later");
     setCreateSendNotification(true);
     setValidatingCreateAddress(false);
+    resetSections();
     setShowCreate(true);
   }
 
@@ -1828,14 +1871,13 @@ export default function GroupBookingsScreen() {
 
   function scrollToCreateField(field: GroupBookingCreateValidationField) {
     const sectionKey = validationFieldSectionKey(field);
-    if (sectionKey === "participants") {
-      createFormScrollRef.current?.scrollToEnd({ animated: true });
-      return;
+    let participantIndex: number | undefined;
+    if (field.startsWith("participant:")) {
+      participantIndex = Number(field.split(":")[1]);
     }
-    const y = createSectionY.current[sectionKey];
-    if (y != null) {
-      createFormScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-    }
+    requestAnimationFrame(() =>
+      scrollToSection(createFormScrollRef, sectionKey, participantIndex),
+    );
   }
 
   function clearCreateFieldError(field?: GroupBookingCreateValidationField) {
@@ -1843,10 +1885,6 @@ export default function GroupBookingsScreen() {
       setCreateFieldError(null);
     }
     setCreateReviewError(null);
-  }
-
-  function registerCreateSection(sectionKey: string, y: number) {
-    createSectionY.current[sectionKey] = y;
   }
 
   function applyGroupPatch(groupId: string, patchFn: (group: GroupBooking) => GroupBooking) {
@@ -2044,7 +2082,7 @@ export default function GroupBookingsScreen() {
       team_member_id: args.staffId || undefined,
       service_id: args.serviceId,
       offering_id: args.serviceId,
-      package_id: args.packageId || undefined,
+      // Package is stored on group_bookings; do not re-validate package entitlements on each child booking.
       // Tell the availability engine to ignore the parent group booking so
       // participant bookings at the same time slot are not falsely blocked.
       // allow_override is a safety net in case the exclude param is insufficient
@@ -2206,6 +2244,7 @@ export default function GroupBookingsScreen() {
     setCreateFieldError(null);
     const validationErr = validateGroupBookingCreateStepDetailed(buildCreateValidationInput());
     if (validationErr) {
+      setCreateReadinessExpanded(true);
       fail(validationErr.message, validationErr.field);
       return;
     }
@@ -2238,6 +2277,7 @@ export default function GroupBookingsScreen() {
     const validationErr = validateGroupBookingCreateStepDetailed(buildCreateValidationInput());
     if (validationErr) {
       setCreateStep("form");
+      setCreateReadinessExpanded(true);
       setCreateReviewError(validationErr.message);
       setCreateFieldError(validationErr.field);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -4718,9 +4758,20 @@ export default function GroupBookingsScreen() {
         footer={
           createStep === "form" ? (
             <ActionButton
-              label={validatingCreateAddress ? gb("checkingAddress") : gb("reviewAndCreate")}
+              label={
+                validatingCreateAddress ?
+                  gb("checkingAddress")
+                : createReadiness.completed < createReadiness.total ?
+                  `${gb("reviewAndCreate")} · ${createReadiness.total - createReadiness.completed}`
+                : gb("reviewAndCreate")
+              }
               onPress={handleOpenCreateReview}
               loading={validatingCreateAddress || checkingCreateReview}
+              disabled={
+                !validatingCreateAddress &&
+                !checkingCreateReview &&
+                createReadiness.completed < createReadiness.total
+              }
               fullWidth
             />
           ) : (
@@ -4766,6 +4817,15 @@ export default function GroupBookingsScreen() {
             <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewError}</Text>
             </View>
+          ) : null}
+          {createStep === "form" && createReadiness.total > 0 ? (
+            <BookingCreateReadinessStrip
+              summary={createReadiness}
+              forceExpanded={createReadinessExpanded}
+              onJumpToSection={(sectionKey, participantIndex) =>
+                scrollToSection(createFormScrollRef, sectionKey, participantIndex)
+              }
+            />
           ) : null}
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{gb("titleLabel")}</Text>
           <TextInput
@@ -4833,7 +4893,7 @@ export default function GroupBookingsScreen() {
             {createForm.locationType === "at_home" ? (
               <View
                 style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}
-                onLayout={(e) => registerCreateSection("address", e.nativeEvent.layout.y)}
+                onLayout={(e) => registerSection("address", e.nativeEvent.layout.y)}
               >
                 <Text style={twStyle("mb-2 text-xs text-blue-800")}>
                   {gb("addressSearchHint")}
@@ -5047,7 +5107,7 @@ export default function GroupBookingsScreen() {
           {services.length > 0 ? (
             <View
               style={twStyle("mb-3")}
-              onLayout={(e) => registerCreateSection("serviceId", e.nativeEvent.layout.y)}
+              onLayout={(e) => registerSection("serviceId", e.nativeEvent.layout.y)}
             >
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 {gb("defaultService")} <Text style={twStyle("text-red-600")}>*</Text>
@@ -5122,7 +5182,7 @@ export default function GroupBookingsScreen() {
           {teamMembers.length > 0 ? (
             <View
               style={twStyle("mb-3")}
-              onLayout={(e) => registerCreateSection("staffId", e.nativeEvent.layout.y)}
+              onLayout={(e) => registerSection("staffId", e.nativeEvent.layout.y)}
             >
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
                 {gb("staff")} <Text style={twStyle("text-red-600")}>*</Text>
@@ -5225,6 +5285,7 @@ export default function GroupBookingsScreen() {
             )}
           </View>
 
+          <View onLayout={(e) => registerSection("date", e.nativeEvent.layout.y)}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{gb("dateRequired")}</Text>
           <ScrollView
             horizontal
@@ -5264,9 +5325,10 @@ export default function GroupBookingsScreen() {
               );
             })}
           </ScrollView>
+          </View>
           <View
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}
-            onLayout={(e) => registerCreateSection("time", e.nativeEvent.layout.y)}
+            onLayout={(e) => registerSection("time", e.nativeEvent.layout.y)}
           >
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>{gb("timeSlotRequired")}</Text>
             <BookingTimeSlotGrid
@@ -5278,7 +5340,10 @@ export default function GroupBookingsScreen() {
               showNextAvailable
             />
           </View>
-          <View style={twStyle("mb-3 flex-row")}>
+          <View
+            style={twStyle("mb-3 flex-row")}
+            onLayout={(e) => registerSection("duration", e.nativeEvent.layout.y)}
+          >
             <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 {gb("durationMinRequired")}
@@ -5362,7 +5427,7 @@ export default function GroupBookingsScreen() {
 
           <View
             style={twStyle("mb-4 rounded-2xl border border-purple-100 bg-purple-50 p-3")}
-            onLayout={(e) => registerCreateSection("participants", e.nativeEvent.layout.y)}
+            onLayout={(e) => registerSection("participants", e.nativeEvent.layout.y)}
           >
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <View style={twStyle("flex-row items-center")}>
@@ -5408,6 +5473,7 @@ export default function GroupBookingsScreen() {
                 <View
                   key={participant.id}
                   style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}
+                  onLayout={(e) => registerParticipantRow(idx, e.nativeEvent.layout.y)}
                 >
                   <View style={twStyle("mb-2 flex-row items-center justify-between")}>
                     <View style={twStyle("flex-row items-center gap-2")}>

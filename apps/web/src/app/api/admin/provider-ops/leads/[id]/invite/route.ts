@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -7,7 +8,6 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
@@ -32,10 +32,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: adminUser } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user: adminUser } = await requireProviderOpsSales(request);
     const { id } = await params;
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json().catch(() => ({}));

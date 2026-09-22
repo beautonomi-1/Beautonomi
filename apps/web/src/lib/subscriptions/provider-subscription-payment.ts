@@ -787,6 +787,11 @@ export async function reverseProviderSubscriptionPayment(params: {
         }),
       )
       .catch(() => undefined);
+    void import("@/lib/provider-ops/ops-case")
+      .then(({ markCaseChurned }) =>
+        markCaseChurned(supabase, subscription.tenant_id, resolvedProviderId),
+      )
+      .catch(() => undefined);
   }
 
   return { reversed: true, alreadyReversed: false, ledgerReversed, providerId: resolvedProviderId };

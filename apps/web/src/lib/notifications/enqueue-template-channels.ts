@@ -36,6 +36,7 @@ export interface TemplateChannelContext {
   data: Record<string, unknown>;
   url?: string;
   dedupePrefix?: string;
+  scheduleAt?: Date | null;
 }
 
 export function buildTemplateChannelQueueRows(
@@ -70,6 +71,7 @@ export function buildTemplateChannelQueueRows(
         tenantId: ctx.tenantId ?? null,
         payload,
         dedupeKey: `${prefix}:${ctx.templateKey}:${userId}:${channel}:${ctx.bookingId ?? "none"}`,
+        scheduleAt: ctx.scheduleAt ?? null,
       });
     }
   }
@@ -91,7 +93,10 @@ function buildTemplateChannelPayload(
     const contentSid = ctx.whatsappContentSid?.trim();
     const fallbackBody = ctx.whatsappBody || ctx.smsBody || ctx.body || "";
     if (!contentSid && !fallbackBody) return null;
+    const explicitTo =
+      typeof ctx.data?.to === "string" && ctx.data.to.trim() ? ctx.data.to.trim() : undefined;
     return {
+      to: explicitTo,
       content_sid: contentSid || null,
       content_variables: ctx.whatsappContentVariables ?? {},
       category: ctx.whatsappCategory ?? "utility",

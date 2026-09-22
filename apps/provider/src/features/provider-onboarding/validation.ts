@@ -1,6 +1,7 @@
-import { parseLegalDobIso, validateLegalDobParts } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage, parseLegalDobIso, validateLegalDobParts } from "@beautonomi/utils";
 import type { OnboardingFormData } from "./types";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
+import { effectiveZoneSuggestStatus, hasValidAddressCoords } from "./state";
 
 export type ValidateStepOptions = {
   /** Skip Apple-provided identity fields (name, email, email OTP). */
@@ -43,10 +44,15 @@ export function validateStep(
       break;
     case 4:
       if (formData.is_vat_registered === true) {
-        if (!formData.vat_number?.trim()) errors.push("VAT number is required when VAT registered");
-        else if (formData.vat_number.length !== 10) errors.push("VAT number must be 10 digits");
-        else if (!formData.vat_number.startsWith("4")) {
-          errors.push("South African VAT numbers must start with 4");
+        const addressCountry = formData.address?.country?.trim() || "South Africa";
+        const isZa = countryFilterIso2FromStorage(addressCountry) === "ZA";
+        if (!formData.vat_number?.trim()) {
+          errors.push("VAT number is required when VAT registered");
+        } else if (isZa) {
+          if (formData.vat_number.length !== 10) errors.push("VAT number must be 10 digits");
+          else if (!formData.vat_number.startsWith("4")) {
+            errors.push("South African VAT numbers must start with 4");
+          }
         }
       }
       break;
@@ -54,6 +60,14 @@ export function validateStep(
       if (!formData.address?.line1?.trim()) errors.push("Street address is required");
       if (!formData.address?.city?.trim()) errors.push("City is required");
       if (!formData.address?.country?.trim()) errors.push("Country is required");
+      if (
+        (formData.business_type === "mobile" || formData.business_type === "both") &&
+        !hasValidAddressCoords(formData.address?.latitude, formData.address?.longitude)
+      ) {
+        errors.push(
+          "Please complete the location step first. We need your address coordinates to find matching service zones.",
+        );
+      }
       break;
     case 8:
       if (!formData.thumbnail_url?.trim()) {
@@ -65,7 +79,8 @@ export function validateStep(
       break;
     case 9:
       if (formData.business_type === "mobile" || formData.business_type === "both") {
-        if (!formData.selected_zone_ids?.length) {
+        const zoneStatus = effectiveZoneSuggestStatus(formData);
+        if (zoneStatus !== "none" && zoneStatus !== "error" && !formData.selected_zone_ids?.length) {
           errors.push("Please select at least one service zone");
         }
       }

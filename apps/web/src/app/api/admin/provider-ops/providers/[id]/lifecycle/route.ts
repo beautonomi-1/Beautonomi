@@ -1,3 +1,4 @@
+import { requireProviderOpsRetention } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -6,7 +7,6 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import {
   computeActivationGates,
@@ -25,7 +25,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsRetention(request);
     const { id: providerId } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);

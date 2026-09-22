@@ -1,3 +1,4 @@
+import { requireProviderOpsOnboarding } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -7,9 +8,9 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { ensureProviderOpsCase, transitionCaseDesk } from "@/lib/provider-ops/ops-case";
 import crypto from "crypto";
 
 /**
@@ -21,10 +22,7 @@ import crypto from "crypto";
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user: adminUser } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user: adminUser } = await requireProviderOpsOnboarding(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
@@ -205,6 +203,34 @@ export async function POST(request: NextRequest) {
       retention_tier: "access",
       metadata: { email, lead_id: body.lead_id || null, password_reset_sent: passwordResetSent },
       ...extractRequestMeta(request),
+    });
+
+    const { data: leadRow } = body.lead_id
+      ? await supabase
+          .from("provider_leads")
+          .select("assigned_to")
+          .eq("id", body.lead_id)
+          .eq("tenant_id", tenantId)
+          .maybeSingle()
+      : { data: null };
+
+    const { caseId } = await ensureProviderOpsCase(supabase, {
+      tenantId,
+      leadId: body.lead_id || null,
+      userId: newUserId,
+      currentDesk: "sales",
+      salesOwnerId: (leadRow?.assigned_to as string | null) ?? null,
+      tryAutoAssign: true,
+      actorUserId: adminUser.id,
+    });
+
+    await transitionCaseDesk(supabase, {
+      tenantId,
+      caseId,
+      toDesk: "onboarding",
+      fromUserId: (leadRow?.assigned_to as string | null) ?? null,
+      actorUserId: adminUser.id,
+      note: "Admin create account",
     });
 
     return successResponse({

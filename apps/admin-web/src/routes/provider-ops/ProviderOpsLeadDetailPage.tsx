@@ -38,6 +38,7 @@ import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
 import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
+import { ProviderOpsCasePanel } from "@/components/provider-ops/ProviderOpsCasePanel";
 import { ReferrerPicker, referrerSelectionFromLead, type ReferrerSelection } from "@/components/provider-ops/ReferrerPicker";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import {
@@ -794,6 +795,8 @@ export function ProviderOpsLeadDetailPage() {
           </div>
         </AdminPanel>
       )}
+
+      <ProviderOpsCasePanel leadId={id} />
 
       {/* Stage progress bar — scroll horizontally on narrow viewports */}
       <AdminPanel className="overflow-hidden">

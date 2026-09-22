@@ -109,7 +109,19 @@ export async function PATCH(
         if (delayIncreased) {
           await notifyProviderRunningLate(id, Math.round(etaMinutes), etaDate, ["push"]);
         } else {
-          await notifyProviderEnRoute(id, etaDate.toISOString(), ["push"]);
+          const { customerBookingChannels } = await import(
+            "@/lib/notifications/customer-booking-channels"
+          );
+          const { data: bRow } = await supabaseAdmin
+            .from("bookings")
+            .select("tenant_id")
+            .eq("id", id)
+            .maybeSingle();
+          await notifyProviderEnRoute(
+            id,
+            etaDate.toISOString(),
+            await customerBookingChannels((bRow?.tenant_id as string | null) ?? null),
+          );
         }
       } catch (notifErr) {
         console.warn("[PATCH eta] customer notify failed:", notifErr);

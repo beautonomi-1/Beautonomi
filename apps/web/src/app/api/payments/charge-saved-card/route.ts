@@ -32,6 +32,7 @@ import {
 } from "@/lib/http/idempotency";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 const chargeSavedCardSchema = z
   .object({
@@ -96,6 +97,13 @@ export async function POST(request: NextRequest) {
       request
     );
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
