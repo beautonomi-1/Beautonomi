@@ -77,8 +77,11 @@ const BASE_EXPO_CONFIG = {
   updates: {
     url: "https://u.expo.dev/434ef972-0597-4d93-9c09-ff7b9e11b149",
   },
+  // appVersion (not fingerprint): pnpm peer-hash paths and CNG ios/ created
+  // during EAS prebuild otherwise make local vs EAS runtime hashes diverge
+  // and fail production builds. OTA still targets this expo.version.
   runtimeVersion: {
-    policy: "fingerprint",
+    policy: "appVersion",
   },
   version: "1.0.94",
   orientation: "default",
