@@ -11,6 +11,7 @@ import {
 } from '@/lib/security/csp-nonce';
 import { enforceAdminIpAllowlist, isAdminScopedPath } from '@/lib/security/admin-ip-allowlist';
 import { getServerUserSafe } from '@/lib/supabase/auth-errors';
+import { ALL_ADMIN_ROLES } from '@beautonomi/admin-access';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -662,20 +663,7 @@ export async function proxy(request: NextRequest) {
         }
 
         // Allow any admin role (superadmin + section admins); RoleGuard enforces section access client-side
-        const adminRoles = [
-          'superadmin',
-          'support_agent',
-          'admin_support',
-          'admin_finance',
-          'admin_trust',
-          'admin_content',
-          'admin_ecommerce',
-          'admin_marketing',
-          'admin_integrations',
-          'admin_operations',
-          'admin_platform_config',
-        ];
-        if (!adminRoles.includes(userRole)) {
+        if (!(ALL_ADMIN_ROLES as readonly string[]).includes(userRole as (typeof ALL_ADMIN_ROLES)[number])) {
           return redirectToHome();
         }
 

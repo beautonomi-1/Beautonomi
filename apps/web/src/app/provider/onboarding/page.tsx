@@ -3,7 +3,17 @@
 import { useTranslation } from "@beautonomi/i18n";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage, getDefaultMoneyLocale, isMailableEmail } from "@beautonomi/utils";
+import {
+  effectiveZoneSuggestStatus,
+  hasValidAddressCoords,
+  ensureHttpsUrl,
+  wizardStepIdForKey,
+  wizardStepKeyForId,
+  zoneSuggestInvalidationPatch,
+  type WizardStepKey,
+} from "./onboarding-helpers";
+import { suggestZonesForOnboardingAddress } from "./suggest-zones-client";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Image from "next/image";
@@ -68,13 +78,11 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { countryFilterIso2FromStorage, isMailableEmail } from "@beautonomi/utils";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { currencySelectLabel } from "@/lib/locale/currency";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
-import { ProviderAppDownloadNudge } from "@/components/provider/ProviderAppDownloadNudge";
 import { useAuth } from "@/providers/AuthProvider";
 import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 
@@ -191,6 +199,8 @@ interface OnboardingData {
 
   // Step 9: Service Zones
   selected_zone_ids?: string[];
+  zone_suggest_status?: "matched" | "none" | "error" | "no_coords";
+  current_step_key?: WizardStepKey;
 
   // Step 10: Service Categories
   global_category_ids: string[];
@@ -477,7 +487,8 @@ const STEPS = [
     titleKey: "web.provider.onboarding.steps.zones.title",
     descriptionKey: "web.provider.onboarding.steps.zones.description",
     conditional: (data: Partial<OnboardingData>) =>
-      data.business_type === "mobile" || data.business_type === "both",
+      (data.business_type === "mobile" || data.business_type === "both") &&
+      effectiveZoneSuggestStatus(data) !== "matched",
   },
   { id: 10, titleKey: "web.provider.onboarding.steps.categories.title", descriptionKey: "web.provider.onboarding.steps.categories.description" },
   { id: 11, titleKey: "web.provider.onboarding.steps.catalog.title", descriptionKey: "web.provider.onboarding.steps.catalog.description", canSkip: true },
@@ -494,7 +505,7 @@ export default function ProviderOnboarding() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [inAppFromUrl, setInAppFromUrl] = useState(false);
-  const [onboardingSuccessMessage, setOnboardingSuccessMessage] = useState<string | null>(null);
+  const [isAdvancingStep, setIsAdvancingStep] = useState(false);
   const [formData, setFormData] = useState<Partial<OnboardingData>>(() => ({
     ...INITIAL_ONBOARDING_DATA,
   }));
@@ -638,6 +649,18 @@ export default function ProviderOnboarding() {
     scrubPlaceholderEmailsFromOnboardingForm(merged);
     applySignupPhoneHandoffToForm(merged);
 
+    if (merged.current_step_key) {
+      step = wizardStepIdForKey(merged.current_step_key, "web");
+    }
+    while (step <= STEPS.length) {
+      const stepMeta = STEPS[step - 1];
+      if (stepMeta?.conditional && !stepMeta.conditional(merged)) {
+        step++;
+      } else {
+        break;
+      }
+    }
+
     setFormData(merged);
     setCurrentStep(step);
     if (resumed === "server") {
@@ -660,6 +683,8 @@ export default function ProviderOnboarding() {
     sanitized.thumbnail_url = stripDataUrl(formData.thumbnail_url);
     sanitized.avatar_url = stripDataUrl(formData.avatar_url);
     sanitized.gallery = stripDataUrlsFromArray(formData.gallery);
+    const stepKey = wizardStepKeyForId(currentStep, "web");
+    if (stepKey) sanitized.current_step_key = stepKey;
     return sanitized;
   };
 
@@ -720,14 +745,20 @@ export default function ProviderOnboarding() {
         if (!formData.business_name?.trim()) errors.push(t("web.provider.onboarding.validation.businessName"));
         break;
       case 4: // Payment Setup
-        // Validate VAT registration if selected
+        // Validate VAT registration if selected (South Africa only)
         if (formData.is_vat_registered === true) {
-          if (!formData.vat_number?.trim()) {
+          const addressCountry = formData.address?.country?.trim() || "South Africa";
+          const isZa = countryFilterIso2FromStorage(addressCountry) === "ZA";
+          if (isZa) {
+            if (!formData.vat_number?.trim()) {
+              errors.push(t("web.provider.onboarding.validation.vatRequired"));
+            } else if (formData.vat_number.length !== 10) {
+              errors.push(t("web.provider.onboarding.validation.vatDigits"));
+            } else if (!formData.vat_number.startsWith("4")) {
+              errors.push(t("web.provider.onboarding.validation.vatStartsWith4"));
+            }
+          } else if (!formData.vat_number?.trim()) {
             errors.push(t("web.provider.onboarding.validation.vatRequired"));
-          } else if (formData.vat_number.length !== 10) {
-            errors.push(t("web.provider.onboarding.validation.vatDigits"));
-          } else if (!formData.vat_number.startsWith("4")) {
-            errors.push(t("web.provider.onboarding.validation.vatStartsWith4"));
           }
         }
         break;
@@ -741,6 +772,12 @@ export default function ProviderOnboarding() {
         if (!formData.address?.line1?.trim()) errors.push(t("web.provider.onboarding.validation.streetRequired"));
         if (!formData.address?.city?.trim()) errors.push(t("web.provider.onboarding.validation.cityRequired"));
         if (!formData.address?.country?.trim()) errors.push(t("web.provider.onboarding.validation.countryRequired"));
+        if (
+          (formData.business_type === "mobile" || formData.business_type === "both") &&
+          !hasValidAddressCoords(formData.address?.latitude, formData.address?.longitude)
+        ) {
+          errors.push(t("web.provider.onboarding.zones.completeLocationFirst"));
+        }
         break;
       case 8: // Photos
         if (!formData.thumbnail_url?.trim()) {
@@ -752,7 +789,8 @@ export default function ProviderOnboarding() {
         break;
       case 9: // Service Zones
         if (formData.business_type === "mobile" || formData.business_type === "both") {
-          if (!formData.selected_zone_ids?.length) {
+          const zoneStatus = effectiveZoneSuggestStatus(formData);
+          if (zoneStatus !== "none" && zoneStatus !== "error" && !formData.selected_zone_ids?.length) {
             errors.push(t("web.provider.onboarding.validation.selectZone"));
           }
         }
@@ -791,7 +829,7 @@ export default function ProviderOnboarding() {
     return { valid: errors.length === 0, errors };
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const validation = validateStep(currentStep);
 
     if (!validation.valid) {
@@ -799,11 +837,36 @@ export default function ProviderOnboarding() {
       return;
     }
 
+    let navFormData = formData;
+
+    if (
+      currentStep === 7 &&
+      (formData.business_type === "mobile" || formData.business_type === "both")
+    ) {
+      setIsAdvancingStep(true);
+      try {
+        const result = await suggestZonesForOnboardingAddress(formData.address ?? {});
+        const updates: Partial<OnboardingData> = { zone_suggest_status: result.status };
+        if (result.status === "matched" && !(formData.selected_zone_ids?.length ?? 0)) {
+          updates.selected_zone_ids = result.zoneIds;
+          toast.success(
+            t("web.provider.onboarding.zones.autoSelectedZones", {
+              count: result.zoneIds.length,
+            }),
+          );
+        }
+        navFormData = { ...formData, ...updates };
+        setFormData(navFormData);
+      } finally {
+        setIsAdvancingStep(false);
+      }
+    }
+
     // Skip conditional steps
     let nextStep = currentStep + 1;
     while (nextStep <= STEPS.length) {
       const step = STEPS[nextStep - 1];
-      if (step.conditional && !step.conditional(formData)) {
+      if (step.conditional && !step.conditional(navFormData)) {
         nextStep++;
       } else {
         break;
@@ -1049,8 +1112,7 @@ export default function ProviderOnboarding() {
         sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
         sessionStorage.removeItem(ONBOARDING_INVITE_TOKEN_STORAGE_KEY);
       } catch {}
-      // Show app-download nudge before the optional verification step.
-      setOnboardingSuccessMessage(successMessage);
+      router.push("/provider/get-started");
     } catch (error) {
       let errorMessage = t("web.provider.onboarding.toast.submitFailed");
 
@@ -1130,28 +1192,6 @@ export default function ProviderOnboarding() {
   const totalVisibleSteps = STEPS.filter(
     (s) => !s.conditional || (s.conditional && s.conditional(formData))
   ).length;
-
-  if (onboardingSuccessMessage) {
-    return (
-      <RoleGuard
-        allowedRoles={["customer", "provider_owner", "provider_staff", "provider_onboarding"]}
-        redirectTo="/become-a-partner"
-        showLoading={true}
-      >
-        <div className={ONBOARDING_PAGE_BG}>
-          <div className={`${ONBOARDING_CONTAINER} max-w-2xl`}>
-            <ProviderAppDownloadNudge
-              successHeadline={t("web.provider.onboarding.successHeadline")}
-              subtitle={onboardingSuccessMessage}
-              showContinue
-              continueLabel={t("web.provider.onboarding.continueVerification")}
-              onContinue={() => router.push("/provider/settings/verification?onboarding=1")}
-            />
-          </div>
-        </div>
-      </RoleGuard>
-    );
-  }
 
   return (
     <RoleGuard
@@ -1271,12 +1311,19 @@ export default function ProviderOnboarding() {
                 )}
                 {currentStep < STEPS.length ? (
                   <Button
-                    onClick={handleNext}
-                    disabled={!canProceed}
+                    onClick={() => void handleNext()}
+                    disabled={!canProceed || isAdvancingStep}
                     className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50`}
                   >
-                    {t("common.next")}
-                    <ChevronRight className="ms-2 h-5 w-5" aria-hidden />
+                    {isAdvancingStep ? (
+                      <>
+                        <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
+                        {t("web.provider.onboarding.zones.findingZones")}
+                      </>
+                    ) : (
+                      t("common.next")
+                    )}
+                    {!isAdvancingStep ? <ChevronRight className="ms-2 h-5 w-5" aria-hidden /> : null}
                   </Button>
                 ) : (
                   <Button
@@ -2524,7 +2571,7 @@ function Step3BusinessDetails({
           </p>
           {data.description != null &&
             data.description.length > 0 &&
-            data.description.length < 50 && (
+            data.description.length < 10 && (
               <p className="text-sm font-medium text-amber-600">
 {t("web.provider.onboarding.business.considerMoreDetail")}
               </p>
@@ -2672,10 +2719,11 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.facebook || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
+                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      facebook: e.target.value.trim() || undefined,
+                      facebook: value || undefined,
                     },
                   });
                 }}
@@ -2693,10 +2741,11 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.instagram || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
+                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      instagram: e.target.value.trim() || undefined,
+                      instagram: value || undefined,
                     },
                   });
                 }}
@@ -2714,10 +2763,11 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.twitter || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
+                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      twitter: e.target.value.trim() || undefined,
+                      twitter: value || undefined,
                     },
                   });
                 }}
@@ -2735,10 +2785,11 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.linkedin || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
+                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      linkedin: e.target.value.trim() || undefined,
+                      linkedin: value || undefined,
                     },
                   });
                 }}
@@ -2761,6 +2812,8 @@ function Step4PaymentSetup({
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
   const { t } = useTranslation();
+  const isZaBusiness =
+    countryFilterIso2FromStorage(data.address?.country?.trim() || "South Africa") === "ZA";
   const TERMINAL_OWNERSHIP_OPTIONS = [
   {
     id: "has_terminal" as const,
@@ -2973,9 +3026,11 @@ function Step4PaymentSetup({
       <div className="mt-8 pt-6 border-t border-gray-200">
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">{t("web.provider.onboarding.payment.vatRegistration")}</h3>
-          <p className="text-sm text-gray-600 mb-4">
-{t("web.provider.onboarding.payment.vatSarsHint")}
-          </p>
+          {isZaBusiness ? (
+            <p className="text-sm text-gray-600 mb-4">
+              {t("web.provider.onboarding.payment.vatSarsHint")}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-3">
@@ -3065,7 +3120,8 @@ function Step4PaymentSetup({
             <p className="text-xs text-gray-600 mt-2">
               {t("web.provider.onboarding.payment.vatNumberHint")}
             </p>
-            {data.vat_number &&
+            {isZaBusiness &&
+              data.vat_number &&
               data.vat_number.length === 10 &&
               !data.vat_number.startsWith("4") && (
                 <p className="text-xs text-red-600 mt-1">
@@ -3420,7 +3476,16 @@ function Step7Location({
         (prev?.line1 ?? "").trim() ||
         (addressData.place_name || "").trim() ||
         "";
+      const nextLat = coordsOk ? addressData.latitude : (prev?.latitude ?? undefined);
+      const nextLng = coordsOk ? addressData.longitude : (prev?.longitude ?? undefined);
+      const zonePatch = zoneSuggestInvalidationPatch(
+        prev?.latitude,
+        prev?.longitude,
+        nextLat,
+        nextLng,
+      );
       updateData({
+        ...(zonePatch ?? {}),
         address: {
           line1,
           line2: prev?.line2 || undefined,
@@ -3428,8 +3493,8 @@ function Step7Location({
           state: addressData.state ?? prev?.state ?? "",
           postal_code: addressData.postal_code ?? prev?.postal_code ?? "",
           country: addressData.country?.trim() || defaultCountryDisplay,
-          latitude: coordsOk ? addressData.latitude : (prev?.latitude ?? undefined),
-          longitude: coordsOk ? addressData.longitude : (prev?.longitude ?? undefined),
+          latitude: nextLat,
+          longitude: nextLng,
         },
       });
     },
@@ -3787,6 +3852,12 @@ function Step9ServiceZones({
 
   useEffect(() => {
     const loadZones = async () => {
+      if (effectiveZoneSuggestStatus(data) === "matched") {
+        setSuggestedZones([]);
+        setSelectedZoneIds(data.selected_zone_ids || []);
+        setIsLoading(false);
+        return;
+      }
       if (!data.address?.latitude || !data.address?.longitude) {
         setIsLoading(false);
         return;
@@ -3794,7 +3865,7 @@ function Step9ServiceZones({
 
       try {
         setIsLoading(true);
-        // Call onboarding-specific suggest endpoint
+        // Display-only fetch for manual zone step (suggest runs on Location Next).
         const response = await fetcher.post<{ data: { suggested_zones: any[] } }>(
           "/api/provider/onboarding/suggest-zones",
           {
@@ -3808,16 +3879,6 @@ function Step9ServiceZones({
         );
         const zones = response.data?.suggested_zones || [];
         setSuggestedZones(zones);
-
-        // Auto-select all suggested zones
-        if (zones.length > 0) {
-          const autoSelected = zones.map((z: any) => z.id);
-          setSelectedZoneIds(autoSelected);
-          updateData({ selected_zone_ids: autoSelected });
-          toast.success(
-            t("web.provider.onboarding.zones.autoSelectedZones", { count: autoSelected.length })
-          );
-        }
       } catch (error) {
         console.error("Error loading suggested zones:", error);
         // If suggest endpoint fails, we'll skip zone selection
@@ -4886,6 +4947,14 @@ function Step12Hours({
 
 function Step13Review({ data }: { data: Partial<OnboardingData> }) {
   const { t } = useTranslation();
+  const businessTypeLabel =
+    data.business_type === "salon"
+      ? t("provider.mobile.screens.onboardingWizard.business.salonLabel")
+      : data.business_type === "mobile"
+        ? t("provider.mobile.screens.onboardingWizard.business.mobileLabel")
+        : data.business_type === "both"
+          ? t("provider.mobile.screens.onboardingWizard.business.bothLabel")
+          : data.business_type;
   return (
     <div className="space-y-5 sm:space-y-6">
       <div>
@@ -4895,7 +4964,8 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
             <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.nameColon")}</span> {data.business_name}
           </p>
           <p>
-            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.typeColon")}</span> {data.business_type}
+            <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.typeColon")}</span>{" "}
+            {businessTypeLabel}
           </p>
           <p>
             <span className="font-semibold text-slate-900">{t("web.provider.onboarding.review.phoneColon")}</span> {data.phone}

@@ -1,3 +1,4 @@
+import { requireProviderOpsManagersOnly } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -5,12 +6,12 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 import { loadProviderOpsStallSettings } from "@/lib/provider-ops/stall-thresholds";
+import { autoAssignOnboardingTrackingOwners } from "@/lib/provider-ops/ops-case";
 
 /**
  * On-demand stall detection. Scans all in-progress onboarding drafts,
@@ -20,13 +21,14 @@ import { loadProviderOpsStallSettings } from "@/lib/provider-ops/stall-threshold
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsManagersOnly(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
     const {
       stall_threshold_hours: stallThresholdHours,
       dropoff_threshold_hours: dropoffThresholdHours,
+      auto_assign_enabled: autoAssignEnabled,
       auto_sms_on_stall: autoSmsEnabled,
     } = await loadProviderOpsStallSettings(supabase, tenantId);
 
@@ -180,6 +182,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let auto_assigned = 0;
+    if (autoAssignEnabled) {
+      const assignUserIds = [
+        ...stalled.map((e) => e.user_id as string),
+        ...droppedOff.map((e) => e.user_id as string),
+      ];
+      const assignTrackingMap = new Map(
+        [...trackingMap.entries()].map(([uid, t]) => [uid, { assigned_to: t?.assigned_to ?? null }]),
+      );
+      auto_assigned = await autoAssignOnboardingTrackingOwners(
+        supabase,
+        tenantId,
+        assignUserIds,
+        assignTrackingMap,
+      );
+    }
+
     return successResponse({
       stalled,
       dropped_off: droppedOff,
@@ -188,6 +207,8 @@ export async function POST(request: NextRequest) {
         dropped_off: droppedOff.length,
         stall_threshold_hours: stallThresholdHours,
         dropoff_threshold_hours: dropoffThresholdHours,
+        auto_assign_enabled: autoAssignEnabled,
+        auto_assigned,
         auto_sms_enabled: autoSmsOnStall,
         sms_sent: smsSentCount,
       },

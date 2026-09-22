@@ -414,6 +414,9 @@ export const BroadcastHubPage = lazy(() =>
 export const MarketingOpsHubPage = lazy(() =>
   import("@/routes/marketing/MarketingOpsHubPage").then((m) => ({ default: m.MarketingOpsHubPage }))
 );
+export const MarketWaitlistPage = lazy(() =>
+  import("@/routes/marketing/MarketWaitlistPage").then((m) => ({ default: m.MarketWaitlistPage }))
+);
 export const IntegrationsHubPage = lazy(() =>
   import("@/routes/integrations/IntegrationsHubPage").then((m) => ({ default: m.IntegrationsHubPage }))
 );
@@ -498,6 +501,12 @@ export const AdsCampaignDetailPage = lazy(() =>
 );
 export const AnalyticsGeoPage = lazy(() =>
   import("@/routes/AnalyticsGeoPage").then((m) => ({ default: m.AnalyticsGeoPage }))
+);
+export const ProviderOpsMyDayPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsMyDayPage").then((m) => ({ default: m.ProviderOpsMyDayPage }))
+);
+export const ProviderOpsRetentionPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsRetentionPage").then((m) => ({ default: m.ProviderOpsRetentionPage }))
 );
 export const ProviderOpsDashboardPage = lazy(() =>
   import("@/routes/provider-ops/ProviderOpsDashboardPage").then((m) => ({ default: m.ProviderOpsDashboardPage }))

@@ -52,6 +52,7 @@ describe("notifyProductOrderStatusChange", () => {
       orderId: "order-2",
       orderNumber: "PO-200",
       trackingNumber: "TRK123",
+      trackingUrl: "https://track.example/TRK123",
       carrier: "DHL",
       estimatedDelivery: "2026-07-30",
     });
@@ -61,6 +62,7 @@ describe("notifyProductOrderStatusChange", () => {
       ["cust-1"],
       expect.objectContaining({
         tracking_number: "TRK123",
+        tracking_url: "https://track.example/TRK123",
         carrier: "DHL",
         estimated_delivery: "2026-07-30",
         estimated_info: "Estimated delivery: 2026-07-30",

@@ -263,6 +263,13 @@ async function runJob(request: NextRequest) {
             }),
           )
           .catch(() => undefined);
+        if (prov?.tenantId && sub.provider_id) {
+          void import("@/lib/provider-ops/ops-case")
+            .then(({ markCaseChurned }) =>
+              markCaseChurned(supabase, prov.tenantId as string, sub.provider_id as string),
+            )
+            .catch(() => undefined);
+        }
         if (!prov?.userId) continue;
 
         try {

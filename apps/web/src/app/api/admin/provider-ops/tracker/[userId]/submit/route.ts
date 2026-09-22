@@ -1,3 +1,4 @@
+import { requireProviderOpsOnboarding } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -7,22 +8,19 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTeamSizeFromOnboardingDraft } from "@/lib/provider-ops/resolve-team-size-from-draft";
 import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
+import { applyProviderSignupCaseHooks } from "@/lib/provider-ops/ops-case";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user } = await requireProviderOpsOnboarding(request);
     const { userId } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -281,7 +279,7 @@ async function matchLeadToProvider(
   targetUser: { id: string; email: string; phone: string },
   tenantId: string
 ) {
-  await consolidateLeadsOnSignup({
+  const matchResult = await consolidateLeadsOnSignup({
     supabase,
     tenantId,
     providerId: provider.id,
@@ -289,5 +287,13 @@ async function matchLeadToProvider(
     email: targetUser.email,
     phone: targetUser.phone,
     matchContext: "admin_assisted",
+  });
+
+  await applyProviderSignupCaseHooks(supabase, {
+    tenantId,
+    userId: targetUser.id,
+    providerId: provider.id,
+    leadId: matchResult.primaryLeadId,
+    providerStatus: "pending_approval",
   });
 }

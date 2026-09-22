@@ -26,7 +26,7 @@ import {
   lookupIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/http/idempotency";
-import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -265,33 +265,15 @@ async function handlePost(request: NextRequest) {
         }
         const { tenantId } = tenantRes;
 
-        const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
-        if (marketAvailability.status === "restricted") {
-          return handleApiError(
-            new Error("Access unavailable for this country"),
-            "Access unavailable in your country due to legal or regulatory restrictions.",
-            "COUNTRY_RESTRICTED",
-            451,
-          );
-        }
-
         const supabase = getSupabaseAdmin();
+        const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+          request,
+          supabase,
+          tenantId,
+        );
+        if (marketGuard) return marketGuard;
+
         const nowIso = new Date().toISOString();
-
-        const { data: tenant } = await supabase
-          .from("tenants")
-          .select("slug")
-          .eq("id", tenantId)
-          .maybeSingle();
-
-        if ((tenant as { slug?: string } | null)?.slug === "global") {
-          return handleApiError(
-            new Error("Bookings are unavailable on global entry"),
-            "Please switch to an available market to continue booking.",
-            "MARKET_SWITCH_REQUIRED",
-            403,
-          );
-        }
 
         // Rate limiting
         const rateLimit = await checkHoldRateLimit(request, guest_fingerprint_hash || null);

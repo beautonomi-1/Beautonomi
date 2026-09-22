@@ -53,10 +53,11 @@ export async function GET(
           approved_at, rejected_at, item_received_at, refunded_at, escalated_at
         ),
         delivery_address:user_addresses (
-          id, label, address_line1, address_line2, city, state, postal_code, country
+          id, label, address_line1, address_line2, city, state, postal_code, country,
+          apartment_unit, building_name, access_codes, parking_instructions, location_landmarks
         ),
         collection_location:provider_locations (
-          id, name, address_line1, address_line2, city, state, postal_code, phone, working_hours
+          id, name, address_line1, address_line2, city, state, postal_code, country, phone, working_hours, latitude, longitude
         ),
         customer:users!product_orders_customer_id_fkey (
           id, full_name, email, phone

@@ -104,6 +104,7 @@ import { ReassignStaffSheet } from "@/components/bookings/ReassignStaffSheet";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { BookingPaymentTimeline } from "@/components/bookings/BookingPaymentTimeline";
 import { buildBookingCompletionChecklist } from "@/lib/booking-completion-checklist";
+import { RequirementChecklist } from "@/components/bookings/RequirementChecklist";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
@@ -3657,21 +3658,16 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               ) : null}
               {!completionChecklist.allDone && (isActive || isStarted) ? (
-                <View style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
-                  <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>{bk("beforeYouFinish")}</Text>
-                  {completionChecklist.items.map((item) => (
-                    <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
-                      <Ionicons
-                        name={item.done ? "checkmark-circle" : "ellipse-outline"}
-                        size={14}
-                        color={item.done ? "#16a34a" : "#d97706"}
-                      />
-                      <Text style={twStyle("ms-1.5 text-xs text-amber-950")}>
-                        {item.label}
-                        {!item.done && item.detail ? ` — ${item.detail}` : ""}
-                      </Text>
-                    </View>
-                  ))}
+                <View style={twStyle("mt-3")}>
+                  <RequirementChecklist
+                    title={bk("beforeYouFinish")}
+                    items={completionChecklist.items.map((item) => ({
+                      id: item.id,
+                      label: item.label,
+                      done: item.done,
+                      detail: item.detail,
+                    }))}
+                  />
                 </View>
               ) : null}
             </View>
@@ -3876,23 +3872,16 @@ export default function BookingDetailScreen() {
                   </Text>
                 </View>
                 {!completionChecklist.allDone ? (
-                  <View style={twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 mb-3")}>
-                    <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>
-                      {bk("beforeYouFinish")}
-                    </Text>
-                    {completionChecklist.items.map((item) => (
-                      <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
-                        <Ionicons
-                          name={item.done ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={item.done ? "#16a34a" : "#d97706"}
-                        />
-                        <Text style={twStyle("ms-1.5 text-xs text-amber-950")}>
-                          {item.label}
-                          {!item.done && item.detail ? ` — ${item.detail}` : ""}
-                        </Text>
-                      </View>
-                    ))}
+                  <View style={twStyle("mb-3")}>
+                    <RequirementChecklist
+                      title={bk("beforeYouFinish")}
+                      items={completionChecklist.items.map((item) => ({
+                        id: item.id,
+                        label: item.label,
+                        done: item.done,
+                        detail: item.detail,
+                      }))}
+                    />
                   </View>
                 ) : null}
                 {outstanding > 0 && canProcessPayments ? (

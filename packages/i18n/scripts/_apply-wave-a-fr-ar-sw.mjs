@@ -10,7 +10,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXACT, extractVars, isIdentity, loadExternalMaps, translate } from "./_wave-a-fr-ar-sw.mjs";
+import {
+  EXACT,
+  extractVars,
+  isIdentity,
+  loadExternalMaps,
+  loadFrArMobileMaps,
+  translate,
+} from "./_wave-a-fr-ar-sw.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -29,6 +36,7 @@ const namespaces = nsArg
   .filter(Boolean);
 
 loadExternalMaps(path.join(root, "_maps"), fs, path);
+loadFrArMobileMaps(path.join(root, "_maps"), fs, path);
 
 function flatten(obj, prefix = "", out = new Map()) {
   for (const [key, value] of Object.entries(obj)) {

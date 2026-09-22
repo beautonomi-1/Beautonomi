@@ -88,7 +88,15 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
         const { notifyProviderNewBooking } = await import(
           "@/lib/notifications/notification-service"
         );
-        await notifyProviderNewBooking(booking.id, ["push"]);
+        const { providerBookingChannels } = await import(
+          "@/lib/notifications/customer-booking-channels"
+        );
+        await notifyProviderNewBooking(
+          booking.id,
+          await providerBookingChannels(
+            (booking as { tenant_id?: string | null }).tenant_id ?? null,
+          ),
+        );
       },
       { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyProviderNewBooking" } },
     );
@@ -98,7 +106,15 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
         const { notifyBookingConfirmed } = await import(
           "@/lib/notifications/notification-service"
         );
-        await notifyBookingConfirmed(booking.id, ["push", "email"]);
+        const { customerBookingChannels } = await import(
+          "@/lib/notifications/customer-booking-channels"
+        );
+        await notifyBookingConfirmed(
+          booking.id,
+          await customerBookingChannels(
+            (booking as { tenant_id?: string | null }).tenant_id ?? null,
+          ),
+        );
       },
       { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyBookingConfirmed" } },
     );

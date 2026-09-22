@@ -8,6 +8,7 @@ import {
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { z } from "zod";
 import {
@@ -27,7 +28,10 @@ import {
   lookupIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/http/idempotency";
-import { calculateProductDeliveryFee, distanceKmBetween } from "@/lib/orders/delivery-fee";
+import {
+  computeProductOrderDeliveryQuote,
+  validateCollectionLocationForProvider,
+} from "@/lib/orders/product-order-delivery-quote";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { applyProductOrderPromotion } from "@/lib/ecommerce/product-order-promotion";
 import {
@@ -104,6 +108,12 @@ export async function GET(request: NextRequest) {
         provider:providers (
           id, business_name, slug
         ),
+        collection_location:provider_locations (
+          id, name, city
+        ),
+        delivery_address:user_addresses (
+          id, city
+        ),
         returns:product_return_requests (
           id, status
         )
@@ -157,12 +167,28 @@ export async function POST(request: NextRequest) {
     }
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
 
     if (parsed.fulfillment_type === "delivery" && !parsed.delivery_address_id) {
       return errorResponse("Delivery address is required for delivery orders", "VALIDATION", 400);
     }
     if (parsed.fulfillment_type === "collection" && !parsed.collection_location_id) {
       return errorResponse("Collection location is required", "VALIDATION", 400);
+    }
+    if (parsed.fulfillment_type === "collection" && parsed.collection_location_id) {
+      const locOk = await validateCollectionLocationForProvider(
+        supabase,
+        parsed.provider_id,
+        parsed.collection_location_id,
+      );
+      if (!locOk) {
+        return errorResponse("Invalid collection location for this provider", "VALIDATION", 400);
+      }
     }
 
     const { data: providerForTenant } = await supabase
@@ -293,58 +319,26 @@ export async function POST(request: NextRequest) {
     let deliveryFee = 0;
     let deliveryFeeType: string | null = null;
     let deliveryDistanceKm: number | null = null;
-    if (parsed.fulfillment_type === "delivery") {
-      const { data: shipConfig } = await (supabase.from("provider_shipping_config") as any)
-        .select("delivery_fee, delivery_fee_type, free_delivery_threshold, delivery_radius_km, weight_rate_per_kg, distance_rate_per_km")
-        .eq("provider_id", parsed.provider_id)
-        .maybeSingle();
-
-      if (shipConfig) {
-        const subtotalCalc = validatedCartItems.reduce(
-          (sum: number, ci: any) => {
-            const price = ci.product_variant ? ci.product_variant.retail_price : ci.product.retail_price;
-            return sum + (parseFloat(price) || 0) * ci.quantity;
-          },
-          0,
-        );
-        const [{ data: addressRow }, { data: originRow }] = await Promise.all([
-          parsed.delivery_address_id
-            ? (supabase.from("user_addresses") as any)
-                .select("latitude, longitude")
-                .eq("id", parsed.delivery_address_id)
-                .eq("user_id", user.id)
-                .maybeSingle()
-            : Promise.resolve({ data: null }),
-          (supabase.from("provider_locations") as any)
-            .select("latitude, longitude")
-            .eq("provider_id", parsed.provider_id)
-            .eq("is_active", true)
-            .order("is_primary", { ascending: false })
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle(),
-        ]);
-        deliveryDistanceKm = distanceKmBetween(originRow as any, addressRow as any);
-        const radiusKm = Number(shipConfig.delivery_radius_km ?? 0) || 0;
-        if (radiusKm > 0 && deliveryDistanceKm != null && deliveryDistanceKm > radiusKm) {
-          return errorResponse(
-            "Delivery address is outside this provider's delivery radius.",
-            "DELIVERY_RADIUS_EXCEEDED",
-            400,
-          );
-        }
-        const delivery = calculateProductDeliveryFee({
-          subtotal: subtotalCalc,
-          config: shipConfig,
-          distanceKm: deliveryDistanceKm,
-          items: validatedCartItems.map((ci: any) => ({
-            quantity: ci.quantity,
-            weight_grams: ci.product?.weight_grams,
-          })),
-        });
-        deliveryFee = delivery.fee;
-        deliveryFeeType = delivery.feeType;
+    if (parsed.fulfillment_type === "delivery" && parsed.delivery_address_id) {
+      const quoteResult = await computeProductOrderDeliveryQuote({
+        supabase,
+        userId: user.id,
+        providerId: parsed.provider_id,
+        deliveryAddressId: parsed.delivery_address_id,
+        cartItems: validatedCartItems,
+      });
+      if (quoteResult.ok === false) {
+        const messages: Record<string, string> = {
+          ADDRESS_NOT_FOUND: "Delivery address not found.",
+          DELIVERY_RADIUS_EXCEEDED: "Delivery address is outside this provider's delivery radius.",
+          DELIVERY_ADDRESS_UNVERIFIED:
+            "We could not verify this address for delivery. Please confirm it on the map.",
+        };
+        return errorResponse(messages[quoteResult.code], quoteResult.code, 400);
       }
+      deliveryFee = quoteResult.quote.fee;
+      deliveryFeeType = quoteResult.quote.feeType;
+      deliveryDistanceKm = quoteResult.quote.distanceKm;
     }
 
     // Calculate totals
@@ -689,6 +683,8 @@ export async function POST(request: NextRequest) {
           });
         } else if (!isPaystackCheckoutPending && isPayOnDelivery) {
           await notifyProductOrderPlacedPendingPayment({
+            supabase: supabase as any,
+            customerId: user.id,
             providerId: parsed.provider_id,
             productOrderId: order.id,
             orderNumber: orderNum,

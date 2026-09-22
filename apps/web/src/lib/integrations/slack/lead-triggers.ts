@@ -10,6 +10,24 @@ function eventEnv(): "production" | "staging" | "development" {
   return "production";
 }
 
+export async function slackNotifyLeadCreatedForTenant(
+  tenantId: string,
+  lead: { id: string; business_name?: string | null; assigned_to?: string | null },
+) {
+  if (lead.assigned_to) return;
+  void tryNotifySlackEvent({
+    tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.PROVIDER_LEAD_CREATED_UNASSIGNED,
+    dedupeKey: `lead:${lead.id}:created`,
+    entityType: "provider_lead",
+    entityId: lead.id,
+    title: `New unassigned lead`,
+    detailLines: [lead.business_name || "(unnamed)", `Lead ID: ${lead.id.slice(0, 8)}…`],
+    actionUrl: `/provider-ops/leads/${lead.id}`,
+  });
+}
+
 export async function slackNotifyLeadCreated(
   request: NextRequest,
   lead: { id: string; business_name?: string | null; assigned_to?: string | null }
@@ -73,6 +91,32 @@ export async function slackNotifyLeadMilestone(
       lead.business_name || "(unnamed)",
       previousStage ? `Stage: ${previousStage} → ${stage}` : `Stage: ${stage}`,
       "Action: confirm onboarding handoff is complete",
+    ],
+    actionUrl: `/provider-ops/leads/${lead.id}`,
+  });
+}
+
+export async function slackNotifyHighValueLeadForTenant(
+  tenantId: string,
+  lead: {
+    id: string;
+    business_name?: string | null;
+    deal_value?: number | null;
+    assigned_to?: string | null;
+  },
+) {
+  void tryNotifySlackEvent({
+    tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.PROVIDER_LEAD_HIGH_VALUE,
+    dedupeKey: `lead:${lead.id}:high-value`,
+    entityType: "provider_lead",
+    entityId: lead.id,
+    title: "High-value provider lead",
+    detailLines: [
+      lead.business_name || "(unnamed)",
+      `Deal value: ${lead.deal_value ?? "—"}`,
+      lead.assigned_to ? "Assigned" : "Unassigned",
     ],
     actionUrl: `/provider-ops/leads/${lead.id}`,
   });

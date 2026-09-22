@@ -8,6 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { usePageContent } from "@/hooks/usePageContent";
 import { CmsHtml } from "@/components/cms/CmsHtml";
 import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
+import { PartnerTalkToUsForm } from "./partner-talk-to-us-form";
 
 export default function CTASection() {
   const router = useRouter();
@@ -59,6 +60,9 @@ export default function CTASection() {
             Get started
             <ArrowRight className="ms-2 w-5 h-5" />
           </Button>
+        </div>
+        <div className="mt-10 px-4">
+          <PartnerTalkToUsForm />
         </div>
       </div>
     </div>

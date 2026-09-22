@@ -1,6 +1,90 @@
-import type { OnboardingFormData, OnboardingStepMeta } from "./types";
+import type { OnboardingFormData, OnboardingStepMeta, WizardStepKey, ZoneSuggestStatus } from "./types";
 
 export const DEFAULT_COUNTRY_NAME = "South Africa";
+
+export function hasValidAddressCoords(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): boolean {
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return true;
+}
+
+export function effectiveZoneSuggestStatus(
+  data: Pick<OnboardingFormData, "zone_suggest_status" | "selected_zone_ids">,
+): ZoneSuggestStatus | undefined {
+  if (data.zone_suggest_status) return data.zone_suggest_status;
+  if ((data.selected_zone_ids?.length ?? 0) > 0) return "matched";
+  return undefined;
+}
+
+const MOBILE_STEP_KEY_TO_ID: Record<WizardStepKey, number> = {
+  team_size: 1,
+  identity: 2,
+  business: 3,
+  payment: 4,
+  software: 5,
+  payroll: 6,
+  location: 7,
+  photos: 8,
+  zones: 9,
+  travel_fees: 10,
+  categories: 11,
+  catalog: 12,
+  hours: 13,
+  review: 14,
+  plan: 15,
+};
+
+const MOBILE_STEP_ID_TO_KEY: Array<[WizardStepKey, number]> = [
+  ["team_size", 1],
+  ["identity", 2],
+  ["business", 3],
+  ["payment", 4],
+  ["software", 5],
+  ["payroll", 6],
+  ["location", 7],
+  ["photos", 8],
+  ["zones", 9],
+  ["travel_fees", 10],
+  ["categories", 11],
+  ["catalog", 12],
+  ["hours", 13],
+  ["review", 14],
+  ["plan", 15],
+];
+
+export function wizardStepIdForKey(key: WizardStepKey): number {
+  return MOBILE_STEP_KEY_TO_ID[key];
+}
+
+export function wizardStepKeyForId(stepId: number): WizardStepKey | null {
+  for (const [key, id] of MOBILE_STEP_ID_TO_KEY) {
+    if (id === stepId) return key;
+  }
+  return null;
+}
+
+export function zoneSuggestInvalidationPatch(
+  prevLat: number | null | undefined,
+  prevLng: number | null | undefined,
+  nextLat: number | null | undefined,
+  nextLng: number | null | undefined,
+): Pick<OnboardingFormData, "zone_suggest_status" | "selected_zone_ids"> | null {
+  if (!hasValidAddressCoords(nextLat, nextLng)) {
+    return { zone_suggest_status: undefined, selected_zone_ids: [] };
+  }
+  if (
+    hasValidAddressCoords(prevLat, prevLng) &&
+    prevLat === nextLat &&
+    prevLng === nextLng
+  ) {
+    return null;
+  }
+  return { zone_suggest_status: undefined, selected_zone_ids: [] };
+}
 
 export const INITIAL_FORM: OnboardingFormData = {
   owner_name: "",
@@ -58,7 +142,9 @@ export const STEPS: OnboardingStepMeta[] = [
     id: 9,
     title: "Service zones",
     description: "Where you offer mobile visits",
-    conditional: (d) => d.business_type === "mobile" || d.business_type === "both",
+    conditional: (d) =>
+      (d.business_type === "mobile" || d.business_type === "both") &&
+      effectiveZoneSuggestStatus(d) !== "matched",
   },
   {
     id: 10,

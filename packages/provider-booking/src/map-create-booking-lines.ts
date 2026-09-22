@@ -11,9 +11,17 @@ export interface RawServiceLineInput {
   serviceName: string;
   price: number;
   duration: number;
+  isCustom?: boolean;
+  customName?: string;
   staffId?: string;
   customization?: string;
   addons?: RawServiceAddonLine[];
+}
+
+const CUSTOM_SERVICE_ID_PREFIX = /^custom[-:]/;
+
+export function isCustomPlaceholderServiceId(serviceId: string): boolean {
+  return CUSTOM_SERVICE_ID_PREFIX.test(serviceId.trim());
 }
 
 export interface RawProductLineInput {
@@ -46,11 +54,21 @@ export function mapCreateBookingServiceLines(
     const addOnIds = (line.addons ?? []).map((a) => a.addonId).filter(Boolean);
     const staff = line.staffId || fallbackStaffId || null;
     const durationMinutes = line.duration + addonDuration;
+    const isCustomLine =
+      line.isCustom === true || isCustomPlaceholderServiceId(line.serviceId);
+    const customLabel = (line.customName ?? line.serviceName).trim();
     return {
       serviceId: line.serviceId,
       service_id: line.serviceId,
       serviceName: line.serviceName,
       service_name: line.serviceName,
+      ...(isCustomLine
+        ? {
+            isCustom: true,
+            customName: customLabel || line.serviceName,
+            name: customLabel || line.serviceName,
+          }
+        : {}),
       price: line.price + addonPrice,
       duration: durationMinutes,
       duration_minutes: durationMinutes,

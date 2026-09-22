@@ -26,6 +26,8 @@ export interface NotifyProductOrderStatusChangeParams {
   estimatedDelivery?: string | null;
   collectionLocationName?: string | null;
   collectionLocationAddress?: string | null;
+  locationPhone?: string | null;
+  trackingUrl?: string | null;
   refundAmountFormatted?: string | null;
 }
 
@@ -41,6 +43,7 @@ export interface DispatchProductOrderStatusNotificationParams {
   cancellationReason?: string | null;
   trackingNumber?: string | null;
   carrier?: string | null;
+  trackingUrl?: string | null;
   estimatedDelivery?: string | null;
   refundAmount?: number | null;
 }
@@ -58,6 +61,7 @@ export async function notifyProductOrderStatusChange(
   const estimatedDelivery = params.estimatedDelivery ?? "";
   const trackingNumber = params.trackingNumber ?? "";
   const carrier = params.carrier ?? "";
+  const trackingUrl = params.trackingUrl ?? "";
 
   try {
     await dispatchTemplateNotification(
@@ -69,9 +73,11 @@ export async function notifyProductOrderStatusChange(
         provider_name: params.providerName ?? "",
         cancellation_reason: params.cancellationReason ?? "",
         tracking_number: trackingNumber,
+        tracking_url: trackingUrl,
         estimated_delivery: estimatedDelivery,
         location_name: params.collectionLocationName ?? "",
         location_address: params.collectionLocationAddress ?? "",
+        location_phone: params.locationPhone ?? "",
         refund_amount: params.refundAmountFormatted ?? "",
         estimated_info: estimatedDelivery ? `Estimated delivery: ${estimatedDelivery}` : "",
         carrier,
@@ -116,6 +122,7 @@ export async function dispatchProductOrderStatusNotification(
     cancellationReason,
     trackingNumber,
     carrier,
+    trackingUrl,
     estimatedDelivery,
     refundAmount,
   } = params;
@@ -132,14 +139,16 @@ export async function dispatchProductOrderStatusNotification(
 
   let collectionLocationName: string | null = null;
   let collectionLocationAddress: string | null = null;
+  let locationPhone: string | null = null;
   if (status === "ready_for_collection" && collectionLocationId) {
     const { data: loc } = await (supabase.from("provider_locations") as any)
-      .select("name, address_line1, address_line2, city, state, postal_code")
+      .select("name, address_line1, address_line2, city, state, postal_code, phone")
       .eq("id", collectionLocationId)
       .maybeSingle();
     if (loc) {
       collectionLocationName = (loc as { name?: string }).name ?? null;
       collectionLocationAddress = formatCollectionAddress(loc as Record<string, string | null>);
+      locationPhone = (loc as { phone?: string | null }).phone ?? null;
     }
   }
 
@@ -159,9 +168,11 @@ export async function dispatchProductOrderStatusNotification(
     cancellationReason,
     trackingNumber,
     carrier,
+    trackingUrl,
     estimatedDelivery,
     collectionLocationName,
     collectionLocationAddress,
+    locationPhone,
     refundAmountFormatted,
   });
 }

@@ -17,6 +17,7 @@ export const SLACK_EVENT_KEYS = {
   PROVIDER_LEAD_MILESTONE: "provider_ops.lead.milestone",
   PROVIDER_PIPELINE_HEALTH: "provider_ops.pipeline.health",
   PROVIDER_LEAD_REASSIGNED: "provider_ops.lead.reassigned",
+  PROVIDER_LEAD_HIGH_VALUE: "provider_ops.lead.high_value_created",
   FINANCE_PAYOUT_REQUESTED: "finance.payout.requested",
   FINANCE_PAYOUT_EXCEPTION: "finance.payout.exception",
   FINANCE_REFUND_REVIEW: "finance.refund.manual_review",

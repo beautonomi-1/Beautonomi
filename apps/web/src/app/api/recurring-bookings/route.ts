@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { addMonths, addWeeks, format, parseISO } from "date-fns";
 import { nextUpcomingOccurrenceYmd } from "@/lib/recurring/next-due-date";
 
@@ -159,6 +161,13 @@ export async function GET(request: NextRequest) {
     const { user } = await requireAuthInApi(request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 

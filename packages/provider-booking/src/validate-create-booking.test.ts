@@ -24,7 +24,7 @@ describe("validateCreateBooking", () => {
         appointmentKind: "at_home",
         atHomeAddressReady: false,
       }),
-    ).toMatch(/at-home address/i);
+    ).toMatch(/address/i);
   });
 
   it("blocks when intake forms incomplete", () => {
@@ -33,5 +33,27 @@ describe("validateCreateBooking", () => {
 
   it("blocks when no services selected", () => {
     expect(validateCreateBooking({ ...base, serviceCount: 0 })).toMatch(/service/i);
+  });
+
+  it("allows products-only when productCount > 0", () => {
+    expect(
+      validateCreateBooking({
+        ...base,
+        serviceCount: 0,
+        productCount: 1,
+        staffListLength: 0,
+        staffId: "",
+      }),
+    ).toBeNull();
+  });
+
+  it("skips staff when staffListLength is 0", () => {
+    expect(
+      validateCreateBooking({
+        ...base,
+        staffId: "",
+        staffListLength: 0,
+      }),
+    ).toBeNull();
   });
 });

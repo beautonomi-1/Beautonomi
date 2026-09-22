@@ -1,0 +1,13 @@
+{
+  "web": {
+    "cards": {
+      "viewListingA11y": "View {{name}}, {{rating}}, {{reviews}}",
+      "listingPhotoA11y": "{{name}} listing photo",
+      "ratingA11y": "Rating: {{rating}}, {{reviews}}",
+      "kmAway": "{{km}} km away"
+    },
+    "categories": {
+      "afro": "Afro"
+    }
+  }
+}

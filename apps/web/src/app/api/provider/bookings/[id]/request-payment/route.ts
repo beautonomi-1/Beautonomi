@@ -193,8 +193,12 @@ export async function POST(
           booking_id: id,
           charge_id: newCharge.id,
         },
-        ["push", "email"],
-        // In-app bell row inserted manually above; skip template auto-insert.
+        await (async () => {
+          const { customerBookingChannels } = await import(
+            "@/lib/notifications/customer-booking-channels"
+          );
+          return customerBookingChannels(tenantId);
+        })(),
         { appType: "customer", tenantId, skipInApp: true }
       );
     } catch (notifError) {

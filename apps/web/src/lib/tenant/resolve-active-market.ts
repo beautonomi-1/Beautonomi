@@ -87,6 +87,64 @@ function countryFromGeoHeaders(h: Headers): string | null {
   return null;
 }
 
+/**
+ * Visitor country for availability gates: evaluates CDN geo before host map so
+ * a foreign visitor on beautonomi.co.za still sees "not available yet".
+ */
+export function resolveVisitorCountryFromRequest(
+  request: Request,
+  explicitCountryRaw: string | null,
+): ResolvedActiveMarket {
+  const h = request.headers;
+  const explicit = explicitCountryRaw?.trim().toUpperCase() ?? null;
+  const explicitOk = explicit && ISO2.test(explicit) ? explicit : null;
+
+  if (explicitOk) {
+    return {
+      countryCode: explicitOk,
+      source: "query",
+      host: normalizeHost(h.get("x-forwarded-host") || h.get("host")),
+    };
+  }
+
+  const headerHint = (h.get("x-active-market-country") || "").trim().toUpperCase();
+  if (ISO2.test(headerHint)) {
+    return {
+      countryCode: headerHint,
+      source: "header_hint",
+      host: normalizeHost(h.get("x-forwarded-host") || h.get("host")),
+    };
+  }
+
+  const fwd = normalizeHost(h.get("x-forwarded-host"));
+  const host = fwd || normalizeHost(h.get("host"));
+
+  const geo = countryFromGeoHeaders(h);
+  if (geo) {
+    return { countryCode: geo, source: "geo_header", host };
+  }
+
+  const fromHost = mapHostToCountry(host);
+  if (fromHost) {
+    return { countryCode: fromHost, source: "host", host };
+  }
+
+  const globalHost = globalEntryHost();
+  if (globalHost && host && (host === globalHost || host === `www.${globalHost}`)) {
+    return {
+      countryCode: "",
+      source: "default",
+      host,
+    };
+  }
+
+  return {
+    countryCode: defaultMarketCountryCode(),
+    source: "default",
+    host,
+  };
+}
+
 function mapHostToCountry(host: string | null): string | null {
   if (!host) return null;
   const global = globalEntryHost();

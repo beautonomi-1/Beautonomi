@@ -1,6 +1,6 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { csvWithBom } from "@/lib/utils/csv";
 
@@ -113,7 +113,7 @@ function escapeField(val: string): string {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsSales(request);
 
     const { searchParams } = new URL(request.url);
     const includeCats = searchParams.get("format") === "with-categories";

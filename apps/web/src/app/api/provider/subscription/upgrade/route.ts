@@ -18,6 +18,8 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
@@ -65,6 +67,13 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);

@@ -15,6 +15,7 @@ import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import type { TimeSlot } from "@/lib/availability/types";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import type { AvailabilitySlot } from "@/types/beautonomi";
+import { isPlaceholderOfferingIdForResourceCheck } from "@/lib/bookings/walk-in-custom-service";
 
 export type ProviderBookingSlotGridArgs = {
   supabase: SupabaseClient;
@@ -239,7 +240,9 @@ export async function computeProviderBookingSlotGrid(
     publicSlots = publicSlots.filter((s) => new Date(s.start) >= cutoff);
   }
 
-  const resourceCheckOfferingIds = resourceOfferingIds;
+  const resourceCheckOfferingIds = resourceOfferingIds.filter(
+    (id) => !isPlaceholderOfferingIdForResourceCheck(id),
+  );
 
   if (resourceCheckOfferingIds.length > 0 && publicSlots.length > 0) {
     const { data: ownedOfferings } = await supabase

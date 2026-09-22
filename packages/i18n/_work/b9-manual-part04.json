@@ -1,0 +1,211 @@
+{
+  "Use the Refund participant button on the specific participant row to refund the correct booking.": {
+    "af": "Gebruik die Refund participant-knoppie op die spesifieke deelnemer-ry om die regte bespreking terug te betaal.",
+    "zu": "Sebenzisa inkinobho ye-Refund participant emgqeni womhlanganyeli othile ukuze ubuyisele ukubhuka okufanele.",
+    "xh": "Sebenzisa iqhosha le-Refund participant kumqolo womhlanganyeli othile ukuze ubuyisele ukubhukisha okuchanekileyo.",
+    "st": "Sebelisa konopo ea Refund participant mola oa motho ea khethehileng ho khutlisa booking e nepahetseng.",
+    "nso": "Šomiša konope ya Refund participant mola wa motho yo a kgethegilego go bušetša booking ye e nepagetšego.",
+    "tn": "Dirisa konopo ya Refund participant mola wa motho yo o kgethegileng go busetsa booking e e nepagetseng.",
+    "ts": "Tirhisa batani ya Refund participant eka layini ya muhlangi loyi a hlawulekeke ku vuyisela ku veka loku lulameke.",
+    "ve": "Shumisani batani ya Refund participant kha layini ya muhlangi ane a hlawulea u vhuyisela u vhiga hu teaho.",
+    "ss": "Sebentisa inkinobho ye-Refund participant emugqeni wesihlanganyeli lesithile kute ubuyisele kubhuka lokufanele."
+  },
+  "You do not have permission to reschedule this booking. Ask an owner for appointment permissions.": {
+    "af": "Jy het nie toestemming om hierdie bespreking te herskeduleer nie. Vra 'n eienaar om afspraaktoestemmings.",
+    "zu": "Awunayo imvume yokuhlela kabusha lokhu ukubhuka. Cela umnikazi imvume yezikhathi.",
+    "xh": "Awunayo imvume yokuhlela kwakhona eli bhukisho. Cela umnini imvume yeedinga.",
+    "st": "Ha u na tumello ea ho fetola nako ea booking ena. Kopa mong'a hore a u fe tumello ea likopano.",
+    "nso": "Ga o na tumelelo ya go fetola nako ya booking ye. Kgopela mong wa hore a go fe tumelelo ya dipeeletšo.",
+    "tn": "Ga o na tetla ya go fetola nako ya booking eno. Kopa mongwe gore a go ne tetla ya dipeelano.",
+    "ts": "A u na mpfumelelo wo cinca nkarhi wa ku veka loku. Kombela munhu loyi a nga ni xandla a ku nyika mpfumelelo wa swihlangano.",
+    "ve": "A ni na thendelo dza u shandukisa naho ha u vhiga uhu. Kombelani munna wa tshigwada a ni fhe thendelo dza u vhewa.",
+    "ss": "Awunayo imvume yekuhlela kabusha lokubhuka. Cel umnikati imvume yekuhlangana."
+  },
+  "You have read-only team access. Ask an owner or manager with Manage team to add or edit members.": {
+    "af": "Jy het lees-alleen-spantoegang. Vra 'n eienaar of bestuurder met Manage team om lede by te voeg of te wysig.",
+    "zu": "Unokufinyelela eqenjini okufunda kuphela. Cela umnikazi noma umphathi ono-Manage team ukungeza noma uhlele amalungu.",
+    "xh": "Unokufikelela eqenjini okufunda kuphela. Cela umnini okanye umlawuli ono-Manage team ukongeza okanye uhlele amalungu.",
+    "st": "U na phihlelo ea sehlopha sa ho bala feela. Kopa mong kapa molaoli ea nang le Manage team ho eketsa kapa ho fetola litho.",
+    "nso": "O na phihlelo ya sehlopha ya go bala fela. Kgopela mong goba molaodi yo a nago le Manage team go oketša goba go fetola ditho.",
+    "tn": "O na phihlelo ya sehlopha ya go bala fela. Kopa mong kgotsa molaodi yo o nang le Manage team go oketsa kgotsa go fetola ditho.",
+    "ts": "U na ku fikelela ka ntlawa loku hlayisiweke ntsena. Kombela munhu loyi a nga ni xandla kumbe mufambisi loyi a nga na Manage team ku engetela kumbe ku lulamisa swirho.",
+    "ve": "Ni na u swikelela tshigwada tsha u vhala fhedzi. Kombelani munna kana mudzulatshidza lye a na Manage team u engedza kana u lulamisa zwithu.",
+    "ss": "Unokufinyelela esigabeni lokufundza kuphela. Cel umnikati noma umphatsi lonalo-Manage team kute wengeze noma alungise emalungu."
+  },
+  "Ops still needs to add or refresh Paystack-generated assets before this terminal is fully ready.": {
+    "af": "Ops moet nog Paystack-gegenereerde bates byvoeg of verfris voordat hierdie terminal volledig gereed is.",
+    "zu": "I-Ops isadinga ukwengeza noma ukuvuselela izimpahla ezikhiqizwe yi-Paystack ngaphambi kokuba le terminal ilunge ngokuphelele.",
+    "xh": "I-Ops isadinga ukongeza okanye ukuvuselela izinto ezikhiqizwe yi-Paystack ngaphambi kokuba le terminal ilunge ngokupheleleyo.",
+    "st": "Ops e ntse e hloka ho eketsa kapa ho nchafatsa thepa e entsoeng ke Paystack pele terminal ena e lokile ka botlalo.",
+    "nso": "Ops e sa nyaka go oketša goba go mpshafatša diasset tše di hlagišitšweng ke Paystack pele terminal ye e lokile ka botlalo.",
+    "tn": "Ops e sa tlhoka go oketsa kgotsa go ntšhwafatsa diasset tse di tlhagisitsweng ke Paystack pele terminal eno e siametse ka botlalo.",
+    "ts": "Ops yi sa lavaka ku engetela kumbe ku pfuxeta swilo leswi endliweke hi Paystack ku nga si lungela terminal leyi hi ku helela.",
+    "ve": "Ops i sa ṱoḓea u engedza kana u pfuxa zwifha zwo bveledzwa nga Paystack u swika terminal iyi i lugela nga u fhelela.",
+    "ss": "I-Ops isatidzinga kufaka noma kuvuselela timphahla letikhiqizwe yi-Paystack ngaphambi kule terminal ilunge ngakuphelele."
+  },
+  "We sent a password reset link to {{email}}. Open the link in your browser to set a new password.": {
+    "af": "Ons het 'n wagwoord-herstelskakel na {{email}} gestuur. Maak die skakel in jou blaaier oop om 'n nuwe wagwoord te stel.",
+    "zu": "Sithumele isixhumanisi sokusetha kabusha iphasiwedi ku-{{email}}. Vula isixhumanisi kusiphequluli sakho ukuze usethe iphasiwedi entsha.",
+    "xh": "Sithumele ikhonkco lokuseta kwakhona iphasiwedi ku-{{email}}. Vula ikhonkco kwisikhangeli sakho ukuze usete iphasiwedi entsha.",
+    "st": "Re rometse sehokelo sa ho seta bocha password ho {{email}}. Bula sehokelo sebatling sa hau ho beha password e ncha.",
+    "nso": "Re rometše kgokagano ya go bea gape password go {{email}}. Bula kgokagano go sephephediši sa gago go bea password ye mpsha.",
+    "tn": "Re rometse kgokagano ya go bea gape password go {{email}}. Bula kgokagano mo sebatling sa gago go bea password e ntšha.",
+    "ts": "Hi rhumile xixunxo xo veka password nakambe eka {{email}}. Pfula xixunxo eka browser ya wena ku veka password yintshwa.",
+    "ve": "Ro rumela ḽiṅwale la u veka password hafhu kha {{email}}. Vulani ḽiṅwale kha browser yanu u itela u veka password ntswa.",
+    "ss": "Sitfumele sixhumanisi sekubuyisela iphasiwedi ku-{{email}}. Vula lesixhumanisi kusiphequluli sakho kute usete iphasiwedi lesha."
+  },
+  "Enter the email address linked to your account and we'll send you a link to reset your password.": {
+    "af": "Voer die e-posadres wat aan jou rekening gekoppel is in en ons stuur vir jou 'n skakel om jou wagwoord te herstel.",
+    "zu": "Faka ikheli le-imeyili elixhunyiwe ne-akhawunti yakho futhi sizokuthumelela isixhumanisi sokusetha kabusha iphasiwedi.",
+    "xh": "Ngenisa idilesi ye-imeyili edityanisiweyo ne-akhawunti yakho siza kukuthumelela ikhonkco lokuseta kwakhona iphasiwedi.",
+    "st": "Kenya aterese ea imeile e hokahileng le akhaonto ea hau mme re tla u romella sehokelo sa ho seta bocha password.",
+    "nso": "Tsenya aterese ya imeile ye e kgokagantšwego le akhaonto ya gago mme re tla go romela kgokagano ya go bea gape password.",
+    "tn": "Tsenya aterese ya imeile e e kgokagantsweng le akhaonto ya gago mme re tla go romela kgokagano ya go bea gape password.",
+    "ts": "Nghenisa adirese ya imeyili leyi hlanganisiweke na akhawunti ya wena naswona hi ta ku rhumela xixunxo xo veka password nakambe.",
+    "ve": "Dzhenisani adrese ya imeile ine yo hlanganiswa na akhaunthu yanu ri do ni rumela ḽiṅwale la u veka password hafhu.",
+    "ss": "Faka likheli le-imeyili lehlobene ne-akhawunti yakho bese sitawukutfumela sixhumanisi sekubuyisela iphasiwedi."
+  },
+  "This time reservation is no longer active (expired or cancelled). Go back and pick another time.": {
+    "af": "Hierdie tydreservering is nie meer aktief nie (verval of gekanselleer). Gaan terug en kies 'n ander tyd.",
+    "zu": "Lokhu ukugcinwa kwesikhathi akusekusebenzi (kuphelelwe yisikhathi noma kukhanseliwe). Buyela emuva ukhethe esinye isikhathi.",
+    "xh": "Le ndlela yokugcina ixesha ayisasebenzi (iphelelwe lixesha okanye irhoxisiwe). Buyela umva ukhethe elinye ixesha.",
+    "st": "Ho boloka nako hona ha ho sa sebetse (ho felile kapa ho hlakotsoe). Boela morao u khethe nako e 'ngoe.",
+    "nso": "Go boloka nako go ga go sa šome (go feletše goba go khansetšwe). Boela morago o kgethe nako ye nngwe.",
+    "tn": "Go boloka nako go ga go sa dire (go fedile kgotsa go khansetswe). Boela morago o tlhophe nako e nngwe.",
+    "ts": "Ku hlayisa nkarhi loku a ku sa tirhi (swi herile kumbe swi khanseriwe). Vuyela u hlawula nkarhi wun'wana.",
+    "ve": "U vhulunga naho uhu a hu sa shuma (hu fhelile kana hu khanselwa). Vhuyani ni khethe naho in'we.",
+    "ss": "Lokugcina sikhati akusasebenti (kuphelelwe sikhatsi noma kukhanseliwe). Buyela emuva ukhetse lesinye sikhati."
+  },
+  "You just left {{stars}} stars — that means a lot. A quick store rating helps more people find us.": {
+    "af": "Jy het sopas {{stars}} sterre gelaat — dit beteken baie. 'n Vinnige winkelgradering help meer mense om ons te vind.",
+    "zu": "Usanda kushiya ama-{{stars}} stars — lokho kusho kakhulu. Isilinganiso esisheshayo sesitolo siyasiza abantu abaningi basithole.",
+    "xh": "Usanda kushiya i-{{stars}} stars — oko kuthetha kakhulu. Umnqaku wesitolo osheshayo unceda abantu abaninzi basifumane.",
+    "st": "O sa tlohela linaleli tse {{stars}} — seo se bolela haholo. Teko e potlakileng ea lebenkele e thusa batho ba bangata ho re fumana.",
+    "nso": "O sa tlogela dinaleli tše {{stars}} — seo se bolela haholo. Teko ya lebenkele ye e potlakileng e thuša batho ba bantši go re hwetša.",
+    "tn": "O sa tlogela dinaleli tse {{stars}} — seo se bolela thata. Teko ya lebenkele e e bonako e thusa batho ba ba farologaneng go re bona.",
+    "ts": "U ha u siya tinhlaleni ta {{stars}} — swi vula swinene. Nhluvuko wa levenkele lowu hatlisa wu pfuna vanhu vo tala ku hi kuma.",
+    "ve": "No sa shiya tinaleli dza {{stars}} — zwo vhumbwa zwinzhi. U sedzulusa levenkele hi u fhira zwi thusa vhanhu vhanzhi u ri wana.",
+    "ss": "Usandze kusiya ema-{{stars}} stars — lokusho kakhulu. Silinganiso lesisheshayo sesitolo sisita bantfu labanyenti basitfola."
+  },
+  "Run a custom CPC campaign with full control over your total budget, daily cap, and bid per click.": {
+    "af": "Hardloop 'n pasgemaakte CPC-veldtog met volle beheer oor jou totale begroting, daaglikse limiet en bod per klik.",
+    "zu": "Qhubeka nokhampeni ye-CPC eyenziwe ngokwezifiso nolawulo oluphelele lwebhajethi yakho, umkhawulo wansuku zonke, nokubhida ngeklikhi.",
+    "xh": "Qhuba ikhampeni ye-CPC eyenziwe ngokwezifiso nolawulo olupheleleyo lwebhajethi yakho, umkhawulo wemihla ngemihla, nokubhida ngokucofa.",
+    "st": "Tsamaisa lets'olo la CPC le ikhethileng ka taolo e felletseng ea chelete ea hau, moeli oa letsatsi le ho beha theko ka ho tobetsa.",
+    "nso": "Tsamaisa lets'olo la CPC le le ikgethileng ka taolo e feleletšego ya tšhelete ya gago, moedi wa letšatši le go bea theko ka go tlanya.",
+    "tn": "Tsamaisa lets'olo la CPC le le kgethegileng ka taolo e e feletseng ya madi a gago, moedi wa letsatsi le go bea theko ka go tlanya.",
+    "ts": "Endla khampeni ya CPC leyi hlawulekeke hi ku lawula hinkwaswo bya tibajeti ta wena, xikombiso xa siku na ku hakela hi ku koma.",
+    "ve": "Shumisani khampeni ya CPC yo khetheaho nga u langula hinkwavho bajete yanu, mugaganyagwama wa ḓuvha na u bvisa nga u dzhia.",
+    "ss": "Chuba ikhempeni ye-CPC leyentelwe wena ngelawulo lephelele lebhajethi yakho, umkhawulo wemalanga, nekubhida ngeklikhi."
+  },
+  "{{rangeCaption}} · Pending & schedule use the range above · Physical check-in queue is today only": {
+    "af": "{{rangeCaption}} · Hangend en skedule gebruik die reeks hierbo · Fisiese inboek-waglys is net vandag",
+    "zu": "{{rangeCaption}} · Okulindile nokuhlela kusebenzisa ibanga elingenhla · Ulayini wokungena ngokomzimba unamuhla kuphela",
+    "xh": "{{rangeCaption}} · Okulindileyo nokuhlela kusebenzisa uluhlu olungasentla · Ulayini wokungena ngokomzimba unamhlanje kuphela",
+    "st": "{{rangeCaption}} · Tse emetseng le kemiso li sebelisa sebaka se ka holimo · Molomo oa ho kena ka 'mele ke kajeno feela",
+    "nso": "{{rangeCaption}} · Tše di emetšego le kemiso di šomiša sebaka se ka godimo · Molomo wa go tsena ka 'mele ke lehono fela",
+    "tn": "{{rangeCaption}} · Tse di emetseng le kemiso di dirisa sebaka se fa godimo · Molomo wa go tsena ka 'mele ke gompieno fela",
+    "ts": "{{rangeCaption}} · Leswi yimelaka na xiyimo swi tirhisa xiyenge lexi henhla · Layini ya ku nghena hi miri i namuntlha ntsena",
+    "ve": "{{rangeCaption}} · Zwi re zwine zwi lindela na u hlela zwi shumisa xiyenge xo heha · Layini ya u nghena hi miri i namusi fhedzi",
+    "ss": "{{rangeCaption}} · Lokulindile nekuhlela kusebentisa libanga lelingenhla · Ulayini wekungena ngokomzimba unamuhla kuphela"
+  },
+  "This booking was fully refunded. Record a new payment only if you are collecting again in person.": {
+    "af": "Hierdie bespreking is volledig terugbetaal. Teken slegs 'n nuwe betaling aan as jy weer persoonlik invorder.",
+    "zu": "Lokhu ukubhuka kubuyiselwe ngokuphelele. Rekhoda inkokhelo entsha kuphela uma uqoqa futhi ngokomuntu siqu.",
+    "xh": "Eli bhukisho libuyiselwe ngokupheleleyo. Rekhoda intlawulo entsha kuphela ukuba uqoqa kwakhona ngokomntu.",
+    "st": "Booking ena e khutlisitsoe ka botlalo. Ngola tefo e ncha feela haeba u bokella hape ka sebeho.",
+    "nso": "Booking ye e bušetšwe ka botlalo. Ngwala tefo ye mpsha fela ge o bokella gape ka sebele.",
+    "tn": "Booking eno e busetswe ka botlalo. Kwala tefo e ntšha fela fa o bokella gape ka sebele.",
+    "ts": "Ku veka loku ku vuyisiwile mali hinkwayo. Tsala ku hakela ku ntshwa ntsena loko u hoxa nakambe hi wexe.",
+    "ve": "U vhiga uhu ho vhuyiswa mali yo fhelelaho. Rekodani u badela muswa fhedzi arali ni khou hoxa hafhu ni nwe.",
+    "ss": "Lokubhuka kubuyiselwe ngakuphelele. Rekhoda inkokhelo lesha kuphela uma uqoqa futsi ngokomuntfu."
+  },
+  "Works with WordPress, Wix, Squarespace, and other site builders. Pay-at-venue stays on your site.": {
+    "af": "Werk met WordPress, Wix, Squarespace en ander webwerfbouers. Betaal-by-lokaal bly op jou webwerf.",
+    "zu": "Isebenza ne-WordPress, i-Wix, i-Squarespace nezinye izakhi zewebhusayithi. Ukukhokha endaweni kuhlala kusayithi lakho.",
+    "xh": "Isebenza ne-WordPress, i-Wix, i-Squarespace nezinye izakhi zewebhusayithi. Ukuhlawula endaweni kuhlala kwisayithi lakho.",
+    "st": "E sebetsa le WordPress, Wix, Squarespace le baahi ba sebaka ba bang. Ho lefa sebakeng se lula sebakeng sa hau.",
+    "nso": "E šoma le WordPress, Wix, Squarespace le baagi ba sebaka ba bangwe. Go lefa sebakeng go dula sebakeng sa gago.",
+    "tn": "E dira le WordPress, Wix, Squarespace le baagi ba sebaka ba bangwe. Go lefa sebakeng go nna sebakeng sa gago.",
+    "ts": "Yi tirha na WordPress, Wix, Squarespace na vaki va web sayiti van'wana. Ku hakela ndhawuni ku tshama eka sayiti ya wena.",
+    "ve": "I shuma na WordPress, Wix, Squarespace na vhaaki vha ṅwe vha sayiti. U badela fhethu hu tshila kha sayiti yanu.",
+    "ss": "Isebenta ne-WordPress, i-Wix, i-Squarespace nezinye zakhi zewebhusayithi. Kukhokha endzaweni kuhlala kusayithi lakho."
+  },
+  "Sum of provider_earnings in finance_transactions (platform-settled). Cash walk-ins may be absent.": {
+    "af": "Som van provider_earnings in finance_transactions (platform-vereffen). Kontant-instappers kan afwesig wees.",
+    "zu": "Isamba se-provider_earnings ku-finance_transactions (kuxazululwe yipulatifomu). Ukungena ngekhashi kungase kungabi khona.",
+    "xh": "Isibalo se-provider_earnings kwi-finance_transactions (kuxazululwe yipulatifomu). Ukungena ngekhashi kungase kungabi khona.",
+    "st": "Kakaretso ea provider_earnings ho finance_transactions (e rarollotsoe ke platform). Ho kena ka chelete e ka se be teng.",
+    "nso": "Kakaretšo ya provider_earnings go finance_transactions (e rarollotšwe ke platform). Go tsena ka chelete go ka no go be gona.",
+    "tn": "Kakaretso ya provider_earnings mo finance_transactions (e rarollotswe ke platform). Go tsena ka madi go ka se be teng.",
+    "ts": "Nhlayo ya provider_earnings eka finance_transactions (yi rarollotiwile hi platform). Ku nghena hi mali swi nga ha no va swi nga kona.",
+    "ve": "Miholo ya provider_earnings kha finance_transactions (i rarollotiwaho nga platform). U ngena hi mali zwi nga si vhe hone.",
+    "ss": "Sihlanganiso se-provider_earnings ku-finance_transactions (kuxazululwe yipulatifomu). Kungena ngekhashi kungase kungabi khona."
+  },
+  "Your plan payment was confirmed. Next, verify your identity (optional) or skip to your dashboard.": {
+    "af": "Jou planbetaling is bevestig. Volgende, verifieer jou identiteit (opsioneel) of slaan oor na jou dashboard.",
+    "zu": "Inkokhelo yohlelo lwakho iqinisekisiwe. Okulandelayo, qinisekisa ubuqiniso bakho (okukhethwayo) noma weqe uye ku-dashboard yakho.",
+    "xh": "Intlawulo yesicwangciso iqinisekisiwe. Okulandelayo, qinisekisa isazisi sakho (okukhethwayo) okanye tsiba uye kwi-dashboard yakho.",
+    "st": "Tefo ea moralo oa hau e netefalitsoe. E 'ngoe, netefatsa boitsebiso ba hau (ka boikgethelo) kapa tlola u ee dashboard ea hau.",
+    "nso": "Tefo ya leano la gago e netefaditšwe. Se se latelago, netefatša boitsebiso bja gago (ka boikgethelo) goba o tlola o ya dashboard ya gago.",
+    "tn": "Tefo ya thulaganyo ya gago e netefaditswe. Se se latelang, netefatsa boitsebiso jwa gago (ka boikgethelo) kgotsa o tlola o ya dashboard ya gago.",
+    "ts": "Ku hakela ka pulani ya wena ku tiyisisiwile. Leswi landzelaka, tiyisisa vutivi bya wena (swi nga ni nkateko) kumbe tlula u ya eka dashboard ya wena.",
+    "ve": "U badela ha pulani yanu wo khwaṱhisedzwa. Zwithu zwi tevhelaho, khwaṱhisedzani identiti yanu (zwi nga si dzhii) kana ni tlule ni ya kha dashboard yanu.",
+    "ss": "Inkokhelo yeluhlelo lwakho icinisekisiwe. Okulandzelako, cinisekisa bunikati bakho (ngokukhetsako) noma weqe uye ku-dashboard yakho."
+  },
+  "The subscription payment did not go through. Check your card funds or try another payment method.": {
+    "af": "Die intekeningbetaling het nie deurgegaan nie. Gaan jou kaartfondse na of probeer 'n ander betaalmetode.",
+    "zu": "Inkokhelo yokubhalisa ayiphumelelanga. Hlola imali ekhadini lakho noma uzame enye indlela yokukhokha.",
+    "xh": "Intlawulo yokubhalisa ayiphumelelanga. Jonga imali ekhadini lakho okanye uzame enye indlela yokuhlawula.",
+    "st": "Tefo ea peeletso ha e a atleha. Sheba chelete e kareting ea hau kapa leka mokhoa o mong oa ho lefa.",
+    "nso": "Tefo ya peeletso ga e a atlega. Lekola tšhelete kareting ya gago goba o leke mokgwa wo mongwe wa go lefa.",
+    "tn": "Tefo ya peeletso ga e a atlega. Lebelela madi mo kareteng ya gago kgotsa o leke tsela e nngwe ya go lefa.",
+    "ts": "Ku hakela ka ku tsarisa a ku nga hundzanga. Languta mali eka khadi ra wena kumbe ringeta ndlela yin'wana ya ku hakela.",
+    "ve": "U badela ha u ṱanganedza a u ngo fhelela. Sedzani mali kha khadi yanu kana ni lingedze ndila yin'we ya u badela.",
+    "ss": "Inkokhelo yekubhalisa ayiphumelelanga. Hlola imali yelikhadi lakho noma uzame lindlela leyehlukile yekukhokha."
+  },
+  "Rules apply on top of your base booking price. Disabled rules are saved but not used at checkout.": {
+    "af": "Reëls geld bo-op jou basiese besprekingsprys. Gedeaktiveerde reëls word gestoor maar nie by betaalpunt gebruik nie.",
+    "zu": "Imithetho isebenza phezu kwentengo yakho yokubhuka eyisisekelo. Imithetho ekhutshaziwe ilondolozwa kodwa ayisetshenziswa lapho ukhokha.",
+    "xh": "Imigaqo isebenza phezu kwexabiso lakho lokubhukisha elisisiseko. Imigaqo ecinyiweyo igcinwa kodwa ayisetyenziswa xa uhlawula.",
+    "st": "Melao e sebetsa holim'a theko ea hau ea motheo ea booking. Melao e timileng e bolokoa empa ha e sebetsoe ha u lefa.",
+    "nso": "Melao e šoma godimo ga theko ya gago ya motheo ya booking. Melao ye e timilwego e bolokwa eupša ga e šomišwe ge o lefa.",
+    "tn": "Melao e dira godimo ga tlhwatlhwa ya gago ya motheo ya booking. Melao e e timilweng e bolokwa mme e sa dirisiwe fa o lefa.",
+    "ts": "Milawu yi tirha henhla ka nxavo wa wena wa masungulo wa ku veka. Milawu leyi pfimbiweke yi hlayisiwa kambe a yi tirhisiwi loko u hakela.",
+    "ve": "Milayo i shuma heha ha mutengo wanu wa u thoma wa u vhiga. Milayo yo thivhelwaho i vhulungwa fhedzi a i shumiswi musi ni badela.",
+    "ss": "Imibandzela isebenza ngaphezulu kwentengo yakho yekubhuka eyisisekelo. Imibandzela lecishwe ilondolozwa kepha ayisetsentiswa lapho ukhokha."
+  },
+  "When clients message you (e.g. from a booking or custom request), conversations will appear here.": {
+    "af": "Wanneer kliënte vir jou boodskappe stuur (bv. vanaf 'n bespreking of pasgemaakte versoek), verskyn gesprekke hier.",
+    "zu": "Lapho amakhasimende ekuthumela imilayezo (isb. kusuka ekubhukeni noma isicelo esenziwe ngokwezifiso), izingxoxo zizovela lapha.",
+    "xh": "Xa abathengi bekuthumela imiyalezo (umz. ukusuka ekubhukishweni okanye isicelo esenziwe ngokwezifiso), iincoko ziya kuvela apha.",
+    "st": "Ha bareki ba romella melaetsa (mohl. ho tsoa booking kapa kopo e ikhethileng), lipuisano li tla hlaha mona.",
+    "nso": "Ge bareki ba romela melaetša (mohl. go tšwa go booking goba kgopelo ye e ikgethileng), dipuisano di tla bonala fao.",
+    "tn": "Fa bareki ba romela melaetsa (mme. go tswa mo booking kgotsa kopo e e kgethegileng), dipuisano di tla bonala fa.",
+    "ts": "Loko vaxavi va ku rhumela mahungu (sw.v. ku suka eka ku veka kumbe xikombelo lexi hlawulekeke), swibumabumelo swi ta humelela laha.",
+    "ve": "Musi vha rengi vha ni rumela mulaedza (s.v. u bva kha u vhiga kana khumbelo yo khetheaho), mbudzano dzi do vhonala afha.",
+    "ss": "Lapho bakhasimende bekutfumela imilayeto (isb. kusuka ekubhukeni noma sicelo lesenziwe ngokwezifiso), tingxoxo titawuvela lapha."
+  },
+  "Create your business profile first. You can leave setup any time and come back when you're ready.": {
+    "af": "Skep eers jou besigheidsprofiel. Jy kan enige tyd opstelling verlaat en terugkom wanneer jy gereed is.",
+    "zu": "Dala iphrofayili yebhizinisi lakho kuqala. Ungashiya ukusetha noma nini bese ubuya lapho ukulungele.",
+    "xh": "Yenza iprofayile yeshishini lakho kuqala. Ungashiya ukuseta nangaliphi na ixesha uze ubuye xa ukulungele.",
+    "st": "Theha profaele ea khoebo ea hau pele. O ka tlohela ho theha neng kapa neng mme o khutlele ha u lokile.",
+    "nso": "Hlola profaele ya kgwebo ya gago pele. O ka tlogela go hloma nako efe goba efe gomme o boele ge o lokile.",
+    "tn": "Tlhama profaele ya kgwebo ya gago pele. O ka tlogela go tlhoma nako nngwe le nngwe mme o boele fa o siametse.",
+    "ts": "Endla profayili ya bindzuri bya wena ku sungula. U nga ha tshama u huma eka ku vekiwa nkarhi wun'wana na wun'wana u vuya loko u lungile.",
+    "ve": "Itani profayili ya bisinesi yanu u thoma. Ni nga si ni tshama ni huma eka u ita naho ni tshi khou lindela.",
+    "ss": "Dala iphrofayili yelibhizinisi lakho kuqala. Ungashiya kusetjwa noma nini bese ubuya lapho ulungile."
+  },
+  "Your account is signed in but we couldn't confirm a provider role. Retry or sign out and back in.": {
+    "af": "Jou rekening is aangemeld maar ons kon nie 'n verskafferrol bevestig nie. Probeer weer of teken uit en weer in.",
+    "zu": "I-akhawunti yakho ingene kodwa asikwazanga ukuqinisekisa indima yomhlinzeki. Zama futhi noma phuma ungene futhi.",
+    "xh": "I-akhawunti yakho ingene kodwa asikwazanga ukuqinisekisa indima yomboneleli. Zama kwakhona okanye uphume ungene kwakhona.",
+    "st": "Akhaonto ea hau e kentsoe empa ha rea khona ho netefatsa karolo ea mofani. Leka hape kapa tsoa o kene hape.",
+    "nso": "Akhaonto ya gago e tsentšwe eupša ga re a kgona go netefatša karolo ya mofani. Leka gape goba o tswa o tsene gape.",
+    "tn": "Akhaonto ya gago e tsentswe mme ga re a kgona go netefatsa karolo ya mofani. Leka gape kgotsa o tswa o tsene gape.",
+    "ts": "Akhawunti ya wena yi ngene kambe a hi kotanga ku tiyisisa xiyimo xa mupfuni. Ringeta nakambe kumbe huma u nghena nakambe.",
+    "ve": "Akhaunthu yanu yo dzhena fhedzi a ri ngo kona u khwaṱhisedza tshifhinganyana tsha muṋe wa tshumelo. Lingedzeni hafhu kana bvani ni dzheneni hafhu.",
+    "ss": "I-akhawunti yakho ingene kepha asikwati kucinisekisa indzima yomhlinzeki. Zama futsi noma phuma ungene futsi."
+  }
+}

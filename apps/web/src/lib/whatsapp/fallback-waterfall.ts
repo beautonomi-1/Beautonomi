@@ -81,16 +81,28 @@ export async function maybeEnqueueWaterfallFallback(queueRowId: string): Promise
   if (!queueRow || queueRow.channel !== "whatsapp") return;
 
   const templateKey = queueRow.template_key as string;
-  const { data: template } = await supabase
+  const queueTenantId = (queueRow.tenant_id as string | null) ?? null;
+  let templateQuery = supabase
     .from("notification_templates")
     .select("channel_waterfall, sms_body, email_subject, email_body, body, title")
-    .eq("key", templateKey)
-    .is("tenant_id", null)
-    .maybeSingle();
+    .eq("key", templateKey);
+  if (queueTenantId) {
+    templateQuery = templateQuery.or(`tenant_id.eq.${queueTenantId},tenant_id.is.null`);
+  } else {
+    templateQuery = templateQuery.is("tenant_id", null);
+  }
+  const { data: templates } = await templateQuery.limit(5);
+  const template =
+    (templates ?? []).find((t) => (t as { tenant_id?: string | null }).tenant_id === queueTenantId) ??
+    (templates ?? []).find((t) => !(t as { tenant_id?: string | null }).tenant_id) ??
+    null;
 
-  const waterfall: string[] = Array.isArray(template?.channel_waterfall)
+  let waterfall: string[] = Array.isArray(template?.channel_waterfall)
     ? (template.channel_waterfall as string[])
     : ["whatsapp", "sms", "email"];
+  if (waterfall.length === 0) {
+    waterfall = ["whatsapp", "sms", "email"];
+  }
 
   const currentIdx = waterfall.indexOf("whatsapp");
   if (currentIdx < 0 || currentIdx >= waterfall.length - 1) return;
@@ -105,11 +117,22 @@ export async function maybeEnqueueWaterfallFallback(queueRowId: string): Promise
 
   let nextPayload: Record<string, unknown> = { data: payload.data ?? {} };
   if (nextChannel === "sms") {
-    const body = String(
+    let body = String(
       template?.sms_body ?? template?.body ?? payload.body ?? "",
     );
+    const data = (payload.data as Record<string, unknown> | undefined) ?? {};
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === "string" || typeof value === "number") {
+        body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), String(value));
+      }
+    }
+    const portalUrl = typeof data.portal_url === "string" ? data.portal_url : "";
+    if (portalUrl) {
+      body = body.replace(/\{\{portal_url\}\}/g, portalUrl);
+    }
     if (!body) return;
-    nextPayload = { body, data: payload.data ?? {} };
+    const to = typeof payload.to === "string" ? payload.to : undefined;
+    nextPayload = { body, data: payload.data ?? {}, ...(to ? { to } : {}) };
   } else {
     const subject = String(template?.email_subject ?? template?.title ?? "Beautonomi");
     const html = String(template?.email_body ?? template?.body ?? "");
@@ -144,4 +167,22 @@ export async function handleWhatsAppStatusCallback(input: {
   if (!queueRowId) return;
 
   await maybeEnqueueWaterfallFallback(queueRowId);
+}
+
+/** Terminal WhatsApp skip: SMS/email fallback now, do not retry the WA row. */
+export async function handleWhatsAppQueueSkip(
+  queueRowId: string,
+  skipReason: string,
+): Promise<void> {
+  await maybeEnqueueWaterfallFallback(queueRowId);
+  const supabase = getSupabaseAdmin();
+  await supabase
+    .from("notification_delivery_queue")
+    .update({
+      status: "delivered",
+      last_error: `whatsapp_skip: ${skipReason}`.slice(0, 2000),
+      delivered_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", queueRowId);
 }

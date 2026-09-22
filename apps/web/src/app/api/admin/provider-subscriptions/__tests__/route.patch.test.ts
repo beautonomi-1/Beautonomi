@@ -46,6 +46,10 @@ vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn().mockResolvedValue("tenant-1"),
 }));
 
+vi.mock("@/lib/iap/apple/resync-subscription-from-log", () => ({
+  providerHasEntitledAppleSubscriptionInLog: vi.fn().mockResolvedValue(false),
+}));
+
 const SUB_ID = "f47ac10b-58cc-4372-a567-0e02b2c3d480";
 const PROVIDER_ID = "f47ac10b-58cc-4372-a567-0e02b2c3d481";
 const FREE_PLAN = "f47ac10b-58cc-4372-a567-0e02b2c3d482";

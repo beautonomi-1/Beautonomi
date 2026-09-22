@@ -20,6 +20,7 @@ import { AssigneeSearchPanel, type AssignableUser } from "@/components/provider-
 import { MessageCircle, Send, UserCog, UserPlus } from "lucide-react";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { Entity360CompactLink, Entity360Layout } from "@/components/admin/Entity360Layout";
+import { ProviderOpsCasePanel } from "@/components/provider-ops/ProviderOpsCasePanel";
 import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 
 interface TrackerUser {
@@ -274,6 +275,7 @@ export function ProviderOpsTrackerDetailPage() {
   }
 
   return (
+    <>
     <Entity360Layout
       backLink={
         <Link to={adminSpaTo("/admin/provider-ops/tracker")} className="text-sm text-gray-500 hover:text-gray-700">
@@ -735,6 +737,8 @@ export function ProviderOpsTrackerDetailPage() {
 
       <ConfirmDialog />
     </Entity360Layout>
+    {userId ? <ProviderOpsCasePanel userId={userId} providerId={provider?.id ?? null} /> : null}
+    </>
   );
 }
 

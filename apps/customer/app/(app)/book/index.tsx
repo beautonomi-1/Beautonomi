@@ -25,7 +25,7 @@ import {
   isProviderUnavailableError,
   reportProviderUnavailable,
 } from "@/lib/provider-availability";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getShopCountryIsoForForms } from "@/lib/market-country";
 import { trackBookingStarted, trackBookingHoldCreated } from "@/lib/analytics";
 import {
   buildRetailCartRowsFromPublicPackage,
@@ -635,7 +635,7 @@ export default function BookScreen() {
     reload: reloadSavedAddresses,
   } = useAddresses(!!user);
   const { state: atHomePrefillState, tryAutoPrefill, prefillFromCurrentLocation } = useAtHomeAddressPrefill({
-    defaultCountry: getDeviceRegionCountryIso(),
+    defaultCountry: getShopCountryIsoForForms(),
   });
 
   const validSteps: Step[] = ["service", "venue", "staff", "date", "time", "addons"];
@@ -659,7 +659,7 @@ export default function BookScreen() {
     line1: "",
     line2: "",
     city: "",
-    country: getDeviceRegionCountryIso(),
+    country: getShopCountryIsoForForms(),
     postal_code: "",
     apartment_unit: "",
     building_name: "",
@@ -2961,7 +2961,7 @@ export default function BookScreen() {
                           line1: primaryAddress.displayName || primaryAddress.label || "",
                           line2: "",
                           city: "",
-                          country: getDeviceRegionCountryIso(),
+                          country: getShopCountryIsoForForms(),
                           postal_code: "",
                           apartment_unit: "",
                           building_name: "",
@@ -3039,7 +3039,7 @@ export default function BookScreen() {
                                   line1: addr.address_line1,
                                   line2: addr.address_line2 ?? "",
                                   city: addr.city,
-                                  country: addr.country || getDeviceRegionCountryIso(),
+                                  country: addr.country || getShopCountryIsoForForms(),
                                   postal_code: addr.postal_code ?? "",
                                 }));
                                 setAtHomeCoords(
@@ -4159,7 +4159,7 @@ accessibilityLabel={t("booking.nextAddExtras")}
               line1: addr.structured!.address_line1,
               line2: addr.structured!.address_line2 ?? "",
               city: addr.structured!.city,
-              country: addr.structured!.country || getDeviceRegionCountryIso(),
+              country: addr.structured!.country || getShopCountryIsoForForms(),
               postal_code: addr.structured!.postal_code ?? "",
             }));
           } else {
@@ -4169,7 +4169,7 @@ accessibilityLabel={t("booking.nextAddExtras")}
               ...prev,
               line1: parts[0] || display || "",
               city: parts[1] || parts[0] || "",
-              country: getDeviceRegionCountryIso(),
+              country: getShopCountryIsoForForms(),
             }));
           }
           setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });

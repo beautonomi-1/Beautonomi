@@ -64,6 +64,7 @@ import {
   Plug,
   Sparkles,
   Bot,
+  Sun,
   ScrollText,
   BookOpen,
   Lock,
@@ -102,7 +103,13 @@ export interface NavItemConfig {
   subheader?: string;
   /** Nested sub-pages shown under an expandable hub row in the sidebar. */
   children?: NavItemConfig[];
+  /** Provider Ops desk specialists who can see this item (managers see all). */
+  opsDesks?: OpsDesk[];
+  /** Provider Ops settings / quotas — managers only. */
+  opsManagersOnly?: boolean;
 }
+
+export type OpsDesk = "sales" | "onboarding" | "retention";
 
 export interface NavGroupConfig {
   label: string;
@@ -129,9 +136,18 @@ export function flattenNavItems(groups: NavGroupConfig[]): FlatNavItem[] {
 /** RBAC-filter a nav tree; keeps hub rows when any child is visible. */
 export function filterNavTree(
   item: NavItemConfig,
-  opts: { isSuperadmin: boolean; canAccess: (section: AdminSection) => boolean },
+  opts: {
+    isSuperadmin: boolean;
+    canAccess: (section: AdminSection) => boolean;
+    opsDesk: OpsDesk | null;
+    isOpsManager: boolean;
+  },
 ): NavItemConfig | null {
   if (item.superadminOnly && !opts.isSuperadmin) return null;
+  if (item.opsManagersOnly && !opts.isOpsManager && !opts.isSuperadmin) return null;
+  if (item.opsDesks?.length && !opts.isOpsManager && !opts.isSuperadmin) {
+    if (!opts.opsDesk || !item.opsDesks.includes(opts.opsDesk)) return null;
+  }
   const filteredChildren = (item.children ?? [])
     .map((child) => filterNavTree(child, opts))
     .filter((child): child is NavItemConfig => child != null);
@@ -189,14 +205,16 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         icon: Radio,
         section: ADMIN_SECTION_PROVIDER_OPS,
         children: [
-          { title: "Provider AI queue", href: "/admin/provider-ops/ai-queue", icon: Bot, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserCheck, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Columns3, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: GitMerge, section: ADMIN_SECTION_PROVIDER_OPS },
+          { title: "My Day", href: "/admin/provider-ops/my-day", icon: Sun, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["sales", "onboarding", "retention"] },
+          { title: "Provider AI queue", href: "/admin/provider-ops/ai-queue", icon: Bot, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["retention"] },
+          { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserCheck, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["sales"] },
+          { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Columns3, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["sales"] },
+          { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["onboarding"] },
+          { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["onboarding"] },
+          { title: "Retention Queue", href: "/admin/provider-ops/retention", icon: TrendingUp, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["retention"] },
+          { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: GitMerge, section: ADMIN_SECTION_PROVIDER_OPS, opsDesks: ["sales"] },
           { title: "Provider Ops Reports", href: "/admin/provider-ops/reports", icon: BarChart3, section: ADMIN_SECTION_PROVIDER_OPS },
-          { title: "Provider Ops Settings", href: "/admin/provider-ops/settings", icon: Settings, section: ADMIN_SECTION_PROVIDER_OPS },
+          { title: "Provider Ops Settings", href: "/admin/provider-ops/settings", icon: Settings, section: ADMIN_SECTION_PROVIDER_OPS, opsManagersOnly: true },
         ],
       },
     ],
@@ -314,6 +332,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         children: [
           { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Promotions", href: "/admin/promotions", icon: Gift, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Market waitlist", href: "/admin/marketing/market-waitlist", icon: MapPinned, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Email Templates", href: "/admin/email-templates", icon: Mail, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "SMS Templates", href: "/admin/sms-templates", icon: MessageSquare, section: ADMIN_SECTION_MARKETING_COMMS },

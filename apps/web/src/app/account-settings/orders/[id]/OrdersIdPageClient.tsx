@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -18,6 +18,7 @@ import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
 interface ProductOrder {
   id: string;
@@ -56,6 +57,7 @@ interface ProductOrder {
     quantity: number;
     unit_price: number;
     total_price: number;
+    fulfilment_status?: string | null;
     product_variant?: { id: string; option_values?: Record<string, string> } | null;
   }>;
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
@@ -68,15 +70,25 @@ interface ProductOrder {
     state?: string | null;
     postal_code: string | null;
     country?: string | null;
+    apartment_unit?: string | null;
+    building_name?: string | null;
+    access_codes?: { gate?: string; buzzer?: string; door?: string } | string | null;
+    parking_instructions?: string | null;
+    location_landmarks?: string | null;
   } | null;
   collection_location?: {
+    id?: string;
     name: string;
     address_line1: string;
     address_line2?: string | null;
     city: string;
     state?: string | null;
     postal_code?: string | null;
+    country?: string | null;
     phone: string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    working_hours?: unknown;
   } | null;
   returns?: {
     id: string;
@@ -96,6 +108,23 @@ interface ProductOrder {
     refunded_at?: string | null;
     escalated_at?: string | null;
   }[] | null;
+}
+
+function formatAccessCodes(
+  raw: { gate?: string; buzzer?: string; door?: string } | string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as { gate?: string; buzzer?: string; door?: string };
+      const parts = [parsed.gate, parsed.buzzer, parsed.door].filter(Boolean);
+      return parts.length ? parts.join(" · ") : null;
+    } catch {
+      return raw.trim() || null;
+    }
+  }
+  const parts = [raw.gate, raw.buzzer, raw.door].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function absoluteTrackingUrl(raw: string | null | undefined): string {
@@ -183,7 +212,16 @@ export default function OrderDetailPage() {
   const locale = useTenantLocaleTag();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts) as string,
+    [t],
+  );
   const [order, setOrder] = useState<ProductOrder | null>(null);
+  const [trackingEvents, setTrackingEvents] = useState<
+    { status: string; message: string; occurredAt: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -222,7 +260,28 @@ export default function OrderDetailPage() {
       }
       setLoading(false);
     })();
-  }, [params.id]);
+  }, [params.id, t]);
+
+  useEffect(() => {
+    const orderId = typeof params.id === "string" ? params.id : null;
+    if (!orderId || !order) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const json = await fetcher.get<{
+          data?: { live?: boolean; events?: { status: string; message: string; occurredAt: string }[] };
+        }>(`/api/me/orders/${orderId}/tracking`, { staleTimeMs: 0 });
+        if (!cancelled) {
+          setTrackingEvents(json?.data?.events ?? []);
+        }
+      } catch {
+        if (!cancelled) setTrackingEvents([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id, order?.id]);
 
   // §Product-refund-confirmation: notification deep links land here with a
   // ?refund_confirm=1 or ?refund_dispute=1 query param. Fire the response then
@@ -496,6 +555,15 @@ export default function OrderDetailPage() {
               })}
             </div>
           )}
+          {trackingEvents.length > 0 ? (
+            <div className="mt-4 space-y-1 border-t border-gray-100 pt-4">
+              {trackingEvents.slice(0, 5).map((event, index) => (
+                <p key={`${event.occurredAt}-${index}`} className="text-xs text-gray-600">
+                  {event.message}
+                </p>
+              ))}
+            </div>
+          ) : null}
           {(order.tracking_number || order.tracking_url) && (
             <div className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">
               {order.tracking_url ? (
@@ -642,6 +710,11 @@ export default function OrderDetailPage() {
                     )}
                   </p>
                   <p className="text-xs text-gray-400">{t("web.accountSettings.orderDetail.qtyPrice", { quantity: item.quantity, currency: sym, price: Number(item.unit_price).toFixed(2) })}</p>
+                  {item.fulfilment_status ? (
+                    <p className="mt-0.5 text-xs font-medium capitalize text-gray-500">
+                      {item.fulfilment_status.replace(/_/g, " ")}
+                    </p>
+                  ) : null}
                 </div>
                 <p className="font-semibold text-gray-900">{sym} {Number(item.total_price).toFixed(2)}</p>
               </div>
@@ -663,45 +736,56 @@ export default function OrderDetailPage() {
                 {isDel ? t("web.accountSettings.orderDetail.deliveryDetails") : t("web.accountSettings.orderDetail.collectionDetails")}
               </h2>
               {isDel && addr && (
-                <div className="flex gap-3 text-sm text-gray-700">
-                  <span className="text-gray-400" aria-hidden>
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="font-semibold text-gray-900">{addr.label ?? t("web.accountSettings.orderDetail.deliveryAddress")}</p>
-                    <p className="mt-1 text-gray-600">
-                      {addr.address_line1}
-                      {addr.address_line2 ? `, ${addr.address_line2}` : ""}
+                <div className="text-sm text-gray-700">
+                  <p className="font-semibold text-gray-900">{addr.label ?? t("web.accountSettings.orderDetail.deliveryAddress")}</p>
+                  <p className="mt-1 text-gray-600">
+                    {addr.address_line1}
+                    {addr.address_line2 ? `, ${addr.address_line2}` : ""}
+                  </p>
+                  <p className="mt-1 text-gray-600">
+                    {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ")}
+                    {addr.country ? ` · ${addr.country}` : ""}
+                  </p>
+                  {addr.building_name ? (
+                    <p className="mt-2 text-gray-600">
+                      <span className="font-medium text-gray-700">Building:</span> {addr.building_name}
                     </p>
+                  ) : null}
+                  {addr.apartment_unit ? (
                     <p className="mt-1 text-gray-600">
-                      {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ")}
-                      {addr.country ? ` · ${addr.country}` : ""}
+                      <span className="font-medium text-gray-700">Unit:</span> {addr.apartment_unit}
                     </p>
-                  </div>
+                  ) : null}
+                  {formatAccessCodes(addr.access_codes) ? (
+                    <p className="mt-1 text-gray-600">
+                      <span className="font-medium text-gray-700">Access:</span> {formatAccessCodes(addr.access_codes)}
+                    </p>
+                  ) : null}
+                  {addr.parking_instructions ? (
+                    <p className="mt-1 text-gray-600">
+                      <span className="font-medium text-gray-700">Parking:</span> {addr.parking_instructions}
+                    </p>
+                  ) : null}
+                  {addr.location_landmarks ? (
+                    <p className="mt-1 text-gray-600">
+                      <span className="font-medium text-gray-700">Landmarks:</span> {addr.location_landmarks}
+                    </p>
+                  ) : null}
                 </div>
               )}
               {!isDel && coll && (
-                <div className="flex gap-3 text-sm text-gray-700">
-                  <span className="text-gray-400" aria-hidden>
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="font-semibold text-gray-900">{coll.name}</p>
-                    <p className="mt-1 text-gray-600">
-                      {coll.address_line1}
-                      {coll.address_line2 ? `, ${coll.address_line2}` : ""}
-                    </p>
-                    <p className="mt-1 text-gray-600">
-                      {[coll.city, coll.state, coll.postal_code].filter(Boolean).join(", ")}
-                    </p>
-                    {coll.phone && <p className="mt-2 text-gray-600">{t("web.accountSettings.orderDetail.tel", { phone: coll.phone })}</p>}
-                  </div>
-                </div>
+                <PickupStoreCard
+                  location={{
+                    ...coll,
+                    address_line1: coll.address_line1,
+                    city: coll.city,
+                  }}
+                  timezone={providerTimezone}
+                  variant="full"
+                  showPhone
+                  showMapLink
+                  t={shopT}
+                />
               )}
               {isDel && (est || instr) && (
                 <div className="mt-5 border-t border-gray-100 pt-5">

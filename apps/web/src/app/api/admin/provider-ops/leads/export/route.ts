@@ -1,7 +1,7 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { arrayToCSV, csvWithBom, generateCSVFilename } from "@/lib/utils/csv";
 import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
@@ -28,7 +28,7 @@ const ID_CHUNK_SIZE = 200;
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsSales(request);
     if (!user) return unauthorizedResponse("Authentication required");
 
     const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:provider-leads");

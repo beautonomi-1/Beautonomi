@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
-import { getDefaultPublicAppsResponse } from "@/lib/store/native-app-store";
+import {
+  getDefaultPublicAppsResponse,
+  mergePublicAppsWithDefaults,
+} from "@/lib/store/native-app-store";
 
 /**
  * GET /api/public/apps
@@ -70,14 +73,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (appsSettings && typeof appsSettings === "object" && appsSettings !== null) {
-      const apps = appsSettings as Record<string, Record<string, any>>;
+      const merged = mergePublicAppsWithDefaults(
+        appsSettings as Record<string, Record<string, unknown>>,
+      );
       if (platform) {
-        const platformData = apps?.[appType]?.[platform] as { enabled?: boolean } | undefined;
-        if (platformData && platformData.enabled) {
-          return safeJson(apps[appType]?.[platform]);
+        const platformData = merged?.[appType as keyof typeof merged]?.[
+          platform as "android" | "ios" | "huawei"
+        ] as { enabled?: boolean } | undefined;
+        if (platformData && platformData.enabled !== false) {
+          return safeJson(platformData);
         }
       } else {
-        const appTypeData = apps?.[appType];
+        const appTypeData = merged?.[appType as keyof typeof merged];
         if (appTypeData) return safeJson(appTypeData);
       }
     }

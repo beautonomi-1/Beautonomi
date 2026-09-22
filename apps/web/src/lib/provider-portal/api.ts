@@ -1039,6 +1039,9 @@ export class ProviderApiClient implements ProviderApi {
         services: servicesArray.map((s: any) => ({
           serviceId: s.serviceId || s.service_id,
           serviceName: s.serviceName || s.service_name,
+          ...(s.isCustom === true ? { isCustom: true } : {}),
+          ...(s.customName?.trim() ? { customName: String(s.customName).trim() } : {}),
+          ...(s.name?.trim() ? { name: String(s.name).trim() } : {}),
           duration: s.duration || s.duration_minutes,
           price: s.price,
           customization: s.customization || null,

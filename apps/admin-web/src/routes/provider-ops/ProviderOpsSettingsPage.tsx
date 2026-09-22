@@ -4,6 +4,8 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { isOpsDeskManager } from "@/lib/providerOpsDeskNav";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
@@ -19,10 +21,21 @@ interface OpsSettings {
   auto_sms_on_stall: boolean;
   sla_contact_stalled_hours: number;
   sla_contact_dropped_hours: number;
+  sla_first_contact_hours: number;
+  sla_stage_stale_hours: number;
+  high_value_threshold: number;
 }
+
+type QuotaRow = {
+  user_id: string;
+  desk: "sales" | "onboarding" | "retention";
+  metric: string;
+  target: number;
+};
 
 export function ProviderOpsSettingsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const { bootstrap } = useAdminSession();
   const qc = useQueryClient();
   const [localSettings, setLocalSettings] = useState<OpsSettings | null>(null);
 
@@ -31,6 +44,21 @@ export function ProviderOpsSettingsPage() {
     queryFn: () => adminApi.getJson<OpsSettings>("/api/admin/provider-ops/settings", { timeoutMs: 30_000 }),
     enabled: allowed,
   });
+
+  const quotasQ = useQuery({
+    queryKey: adminQueryKeys.providerOps.quotas(),
+    queryFn: () =>
+      adminApi.getJson<{ period_start: string; quotas: QuotaRow[] }>(
+        "/api/admin/provider-ops/quotas",
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed,
+  });
+
+  const [quotaDraft, setQuotaDraft] = useState<QuotaRow[]>([]);
+  useEffect(() => {
+    if (quotasQ.data?.quotas) setQuotaDraft(quotasQ.data.quotas);
+  }, [quotasQ.data]);
 
   useEffect(() => {
     if (q.data) setLocalSettings(q.data);
@@ -44,6 +72,19 @@ export function ProviderOpsSettingsPage() {
       adminToast.success("Settings saved");
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to save settings"),
+  });
+
+  const saveQuotas = useMutation({
+    mutationFn: () =>
+      adminApi.patchJson("/api/admin/provider-ops/quotas", {
+        period_start: quotasQ.data?.period_start,
+        quotas: quotaDraft,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.quotas() });
+      adminToast.success("Quotas saved");
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to save quotas"),
   });
 
   const runStallCheck = useMutation({
@@ -64,6 +105,11 @@ export function ProviderOpsSettingsPage() {
   });
 
   if (denied) return denied;
+  if (bootstrap && !isOpsDeskManager(bootstrap.role)) {
+    return (
+      <PermissionDenied message="Provider Ops settings are limited to operations managers." />
+    );
+  }
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Provider Ops Settings" /><AdminPanel><AdminPageSkeleton rows={6} /></AdminPanel></div>;
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
@@ -120,8 +166,105 @@ export function ProviderOpsSettingsPage() {
         <div className="space-y-4">
           <NumberField label="SLA: Contact stalled within (hours)" desc="Admin should contact stalled signups within this many hours." value={localSettings.sla_contact_stalled_hours} onChange={(v) => update("sla_contact_stalled_hours", v)} min={1} />
           <NumberField label="SLA: Contact dropped-off within (hours)" desc="Escalate if no admin contact within this many hours." value={localSettings.sla_contact_dropped_hours} onChange={(v) => update("sla_contact_dropped_hours", v)} min={1} />
+          <NumberField label="SLA: First sales contact (hours)" desc="Target time to first contact on new leads." value={localSettings.sla_first_contact_hours} onChange={(v) => update("sla_first_contact_hours", v)} min={1} />
+          <NumberField label="SLA: Stage stale (hours)" desc="Flag leads with no progress beyond this window." value={localSettings.sla_stage_stale_hours} onChange={(v) => update("sla_stage_stale_hours", v)} min={1} />
+          <NumberField label="High-value deal threshold" desc="Optional Slack alert when deal_value meets or exceeds this amount." value={localSettings.high_value_threshold} onChange={(v) => update("high_value_threshold", v)} min={0} />
           <ToggleField label="Send automated SMS on stall" desc="Automatically send a check-in SMS when a signup stalls. Requires Twilio." checked={localSettings.auto_sms_on_stall} onChange={(v) => update("auto_sms_on_stall", v)} />
         </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Monthly quotas</h2>
+            <p className="text-xs text-gray-500">
+              Per-rep targets for {quotasQ.data?.period_start ?? "this month"} (managers only).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+            onClick={() =>
+              setQuotaDraft((prev) => [
+                ...prev,
+                { user_id: "", desk: "sales", metric: "leads_contacted", target: 0 },
+              ])
+            }
+          >
+            Add row
+          </button>
+        </div>
+        {quotasQ.isLoading ? (
+          <p className="text-sm text-gray-500">Loading quotas…</p>
+        ) : (
+          <div className="space-y-2">
+            {quotaDraft.map((row, idx) => (
+              <div key={idx} className="flex flex-wrap gap-2 items-center">
+                <input
+                  className="min-w-[12rem] flex-1 rounded border px-2 py-1 text-sm"
+                  placeholder="User ID"
+                  value={row.user_id}
+                  onChange={(e) =>
+                    setQuotaDraft((prev) =>
+                      prev.map((r, i) => (i === idx ? { ...r, user_id: e.target.value } : r)),
+                    )
+                  }
+                />
+                <select
+                  className="rounded border px-2 py-1 text-sm"
+                  value={row.desk}
+                  onChange={(e) =>
+                    setQuotaDraft((prev) =>
+                      prev.map((r, i) =>
+                        i === idx ? { ...r, desk: e.target.value as QuotaRow["desk"] } : r,
+                      ),
+                    )
+                  }
+                >
+                  <option value="sales">Sales</option>
+                  <option value="onboarding">Onboarding</option>
+                  <option value="retention">Retention</option>
+                </select>
+                <select
+                  className="rounded border px-2 py-1 text-sm"
+                  value={row.metric}
+                  onChange={(e) =>
+                    setQuotaDraft((prev) =>
+                      prev.map((r, i) => (i === idx ? { ...r, metric: e.target.value } : r)),
+                    )
+                  }
+                >
+                  <option value="leads_contacted">Leads contacted</option>
+                  <option value="leads_won">Leads won</option>
+                  <option value="providers_activated">Providers activated</option>
+                  <option value="first_bookings">First bookings</option>
+                  <option value="at_risk_saves">At-risk saves</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-20 rounded border px-2 py-1 text-sm"
+                  value={row.target}
+                  onChange={(e) =>
+                    setQuotaDraft((prev) =>
+                      prev.map((r, i) =>
+                        i === idx ? { ...r, target: parseInt(e.target.value, 10) || 0 } : r,
+                      ),
+                    )
+                  }
+                />
+              </div>
+            ))}
+            <button
+              type="button"
+              disabled={saveQuotas.isPending || quotaDraft.length === 0}
+              onClick={() => saveQuotas.mutate()}
+              className="mt-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {saveQuotas.isPending ? "Saving quotas…" : "Save quotas"}
+            </button>
+          </div>
+        )}
       </AdminPanel>
     </div>
   );

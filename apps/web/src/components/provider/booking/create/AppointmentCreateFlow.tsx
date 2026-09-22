@@ -24,8 +24,11 @@ import {
   PROVIDER_BOOKING_DRAFT_KEY,
   PROVIDER_BOOKING_DRAFT_TTL_MS,
   BOOKING_ERROR_CODES,
-  validateCreateBooking,
+  buildSingleBookingCreateReadiness,
+  validateProviderBookingCreateDetailed,
+  type ProviderBookingCreateValidationInput,
 } from "@beautonomi/provider-booking";
+import { BookingCreateReadinessStrip } from "../ui/BookingCreateReadinessStrip";
 import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
 import {
   BookingBottomSheet,
@@ -39,7 +42,11 @@ import {
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { AppointmentReviewStep } from "./AppointmentReviewStep";
 import { AppointmentKindSelector, type AppointmentKindValue } from "./AppointmentKindSelector";
-import { CreateFormIntakeSection, type IntakeFormResponses } from "./CreateFormIntakeSection";
+import {
+  CreateFormIntakeSection,
+  type IntakeFormResponses,
+  type ProviderIntakeForm,
+} from "./CreateFormIntakeSection";
 import { MembershipPreviewPill } from "./MembershipPreviewPill";
 import { ResourceRequirementsPreview } from "./ResourceRequirementsPreview";
 import { CreatePaymentSection, type CreatePaymentMethod } from "./CreatePaymentSection";
@@ -65,6 +72,39 @@ import { SubscriptionRequiredSheet } from "../scenario/SubscriptionRequiredSheet
 import { PermissionGateInline } from "../scenario/PermissionGateInline";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslation } from "@beautonomi/i18n";
+import { isCustomServicePlaceholderId } from "@/lib/bookings/walk-in-custom-service";
+
+function mapWebIntakeForPackageReadiness(
+  forms: ProviderIntakeForm[],
+  responses: IntakeFormResponses,
+): Pick<ProviderBookingCreateValidationInput, "intakeForms" | "intakeResponses"> {
+  const intakeForms = forms.map((form) => ({
+    id: form.id,
+    title: form.title,
+    fields: (form.fields ?? []).map((field) => ({
+      id: field.id,
+      name: field.name,
+      field_type: field.field_type ?? "text",
+      is_required: Boolean(field.is_required),
+    })),
+  }));
+  const intakeResponses: ProviderBookingCreateValidationInput["intakeResponses"] = {};
+  for (const form of forms) {
+    const src = responses[form.id];
+    if (!src) continue;
+    intakeResponses[form.id] = {};
+    for (const field of form.fields ?? []) {
+      const raw = src[field.name] ?? src[field.id];
+      if (raw === undefined || raw === null) continue;
+      if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
+        intakeResponses[form.id][field.id] = raw;
+      } else {
+        intakeResponses[form.id][field.id] = String(raw);
+      }
+    }
+  }
+  return { intakeForms, intakeResponses };
+}
 
 interface DraftPayload {
   savedAt: number;
@@ -106,6 +146,7 @@ export function AppointmentCreateFlow({
   const [appointmentKind, setAppointmentKind] = useState<AppointmentKindValue>("in_salon");
   const [clientId, setClientId] = useState("");
   const [intakeResponses, setIntakeResponses] = useState<IntakeFormResponses>({});
+  const [intakeFormsLoaded, setIntakeFormsLoaded] = useState<ProviderIntakeForm[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<CreatePaymentMethod>("pay_later");
   const [collectDeposit, setCollectDeposit] = useState(false);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
@@ -120,7 +161,6 @@ export function AppointmentCreateFlow({
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<DraftPayload | null>(null);
-  const [intakeValid, setIntakeValid] = useState(true);
   const [atHomeAddress, setAtHomeAddress] = useState<AtHomeAddressValue>({
     addressLine1: "",
     addressLine2: "",
@@ -230,7 +270,6 @@ export function AppointmentCreateFlow({
     setConflictMessage(null);
     setShowDraftBanner(false);
     setPendingDraft(null);
-    setIntakeValid(true);
     setAtHomeAddress({
       addressLine1: "",
       addressLine2: "",
@@ -401,7 +440,7 @@ export function AppointmentCreateFlow({
       [
         ...new Set(
           selectedServices
-            .filter((s) => !s.serviceId.startsWith("custom-"))
+            .filter((s) => s.serviceId && !isCustomServicePlaceholderId(s.serviceId))
             .map((s) => s.serviceId)
             .filter(Boolean),
         ),
@@ -421,34 +460,68 @@ export function AppointmentCreateFlow({
     return 30;
   }, [appointmentKind, atHomeAddress.travelPreviewMinutes]);
 
-  const createValidationInput = useMemo(
-    () => ({
-      clientName,
-      staffId: slotStaffIds[0] ?? staffId,
-      date,
-      startTime,
+  const providerBookingCreateInput = useMemo((): ProviderBookingCreateValidationInput => {
+    const kind = appointmentKind;
+    const { intakeForms, intakeResponses: intakeResponsesForPackage } =
+      mapWebIntakeForPackageReadiness(intakeFormsLoaded, intakeResponses);
+    const locationType: ProviderBookingCreateValidationInput["locationType"] =
+      kind === "at_home" ? "at_home" : kind === "walk_in" ? "walk_in" : "at_salon";
+    return {
+      clientMode: clientId ? "search" : "new",
+      hasSelectedClient: Boolean(clientId && clientName.trim()),
+      newClientFirstName: clientName.trim(),
+      isWalkIn: kind === "walk_in",
+      validatePhone: () => null,
+      newClientPhone: "",
       serviceCount: selectedServices.length,
-      intakeValid,
-      appointmentKind,
-      atHomeAddressReady: atHomeReady,
-    }),
-    [
-      clientName,
-      staffId,
-      slotStaffIds,
-      date,
-      startTime,
-      selectedServices.length,
-      intakeValid,
-      appointmentKind,
-      atHomeReady,
-    ],
+      productCount: selectedProducts.length,
+      hasDate: Boolean(date?.trim()),
+      hasTime: Boolean(startTime?.trim()),
+      isRecurring,
+      recurringHasSavedClient: Boolean(clientId.trim()),
+      recurringOccurrences: recurrenceOccurrences,
+      staffListLength: teamMembers.length,
+      allServicesHaveStaff:
+        teamMembers.length === 0 ||
+        selectedServices.length === 0 ||
+        !selectedServices.some((s) => !s.staffId),
+      intakeForms,
+      intakeResponses: intakeResponsesForPackage,
+      locationType,
+      addressLine1: atHomeReady ? "ok" : "",
+      addressLatitude: atHomeReady ? 0 : null,
+      addressLongitude: atHomeReady ? 0 : null,
+    };
+  }, [
+    appointmentKind,
+    clientId,
+    clientName,
+    selectedServices,
+    selectedProducts.length,
+    date,
+    startTime,
+    teamMembers.length,
+    atHomeReady,
+    isRecurring,
+    recurrenceOccurrences,
+    intakeFormsLoaded,
+    intakeResponses,
+  ]);
+
+  const createReadiness = useMemo(
+    () => buildSingleBookingCreateReadiness(providerBookingCreateInput),
+    [providerBookingCreateInput],
   );
 
-  const createValidationError = useMemo(
-    () => validateCreateBooking(createValidationInput),
-    [createValidationInput],
-  );
+  const scrollToBookingSection = useCallback((sectionKey: string) => {
+    const el = document.getElementById(`booking-create-section-${sectionKey}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const createValidationError = useMemo(() => {
+    const err = validateProviderBookingCreateDetailed(providerBookingCreateInput);
+    return err?.message ?? null;
+  }, [providerBookingCreateInput]);
 
   const canContinue = createValidationError == null;
 
@@ -479,7 +552,9 @@ export function AppointmentCreateFlow({
       if (slotStaffIds.length) params.set("staff_ids", slotStaffIds.join(","));
       else if (staffId) params.set("staff_ids", staffId);
       if (appointmentKind !== "at_home" && locationId) params.set("location_id", locationId);
-      const offeringIds = selectedServices.map((s) => s.serviceId).filter(Boolean);
+      const offeringIds = selectedServices
+        .map((s) => s.serviceId)
+        .filter((id): id is string => Boolean(id) && !isCustomServicePlaceholderId(id));
       if (offeringIds.length) params.set("offering_ids", offeringIds.join(","));
       params.set("mode", appointmentKind === "at_home" ? "mobile" : "salon");
       params.set("travel_buffer", String(atHomeTravelBufferMinutes));
@@ -696,9 +771,19 @@ export function AppointmentCreateFlow({
         ) : null}
 
         {step === "form" ? (
+          <>
+          <BookingCreateReadinessStrip
+            summary={createReadiness}
+            onJumpToSection={scrollToBookingSection}
+          />
+          {!canContinue && createValidationError ? (
+            <p className="mb-3 text-sm text-amber-800" role="alert">
+              {createValidationError}
+            </p>
+          ) : null}
           <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-4 lg:space-y-0">
             <div className="space-y-4">
-            <BookingSectionCard>
+            <BookingSectionCard id="booking-create-section-client">
               <BookingSectionLabel className="mb-2">{t(`${ac}.appointmentType`)}</BookingSectionLabel>
               <AppointmentKindSelector value={appointmentKind} onChange={setAppointmentKind} />
             </BookingSectionCard>
@@ -724,7 +809,9 @@ export function AppointmentCreateFlow({
             </button>
 
             {appointmentKind === "at_home" ? (
-              <AtHomeAddressSection value={atHomeAddress} onChange={setAtHomeAddress} />
+              <div id="booking-create-section-location">
+                <AtHomeAddressSection value={atHomeAddress} onChange={setAtHomeAddress} />
+              </div>
             ) : null}
 
             {locations.length > 1 ? (
@@ -745,19 +832,21 @@ export function AppointmentCreateFlow({
               </BookingSectionCard>
             ) : null}
 
-            <CreateServicesSection
-              catalog={services}
-              services={selectedServices}
-              teamMembers={teamMembers}
-              defaultStaffId={staffId}
-              onChange={setSelectedServices}
-            />
+            <div id="booking-create-section-services">
+              <CreateServicesSection
+                catalog={services}
+                services={selectedServices}
+                teamMembers={teamMembers}
+                defaultStaffId={staffId}
+                onChange={setSelectedServices}
+              />
 
-            <ServiceAddonsSection services={selectedServices} onChange={setSelectedServices} />
+              <ServiceAddonsSection services={selectedServices} onChange={setSelectedServices} />
+            </div>
 
             <CreateProductsSection products={selectedProducts} onChange={setSelectedProducts} />
 
-            <BookingSectionCard>
+            <BookingSectionCard id="booking-create-section-staff">
               <BookingSectionLabel className="mb-2">{t(`${ac}.defaultStaff`)}</BookingSectionLabel>
               <Select value={staffId} onValueChange={setStaffId}>
                 <SelectTrigger className="rounded-xl min-h-[44px]">
@@ -776,7 +865,7 @@ export function AppointmentCreateFlow({
               </p>
             </BookingSectionCard>
 
-            <BookingSectionCard>
+            <BookingSectionCard id="booking-create-section-schedule">
               <BookingSectionLabel className="mb-2">{t(`${ac}.dateAndTime`)}</BookingSectionLabel>
               <ProviderBookingDateTimePicker
                 date={date || new Date().toISOString().split("T")[0]}
@@ -885,18 +974,20 @@ export function AppointmentCreateFlow({
 
             <ReferralSourceSelect value={referralSourceId} onChange={setReferralSourceId} />
 
-            <RecurrenceSection
-              enabled={isRecurring}
-              onEnabledChange={setIsRecurring}
-              pattern={recurrencePattern}
-              onPatternChange={setRecurrencePattern}
-              endDate={recurrenceEndDate}
-              onEndDateChange={setRecurrenceEndDate}
-              occurrenceCount={recurrenceOccurrences}
-              onOccurrenceCountChange={setRecurrenceOccurrences}
-              hasSavedClient={Boolean(clientId.trim())}
-              isWalkIn={appointmentKind === "walk_in"}
-            />
+            <div id="booking-create-section-recurring">
+              <RecurrenceSection
+                enabled={isRecurring}
+                onEnabledChange={setIsRecurring}
+                pattern={recurrencePattern}
+                onPatternChange={setRecurrencePattern}
+                endDate={recurrenceEndDate}
+                onEndDateChange={setRecurrenceEndDate}
+                occurrenceCount={recurrenceOccurrences}
+                onOccurrenceCountChange={setRecurrenceOccurrences}
+                hasSavedClient={Boolean(clientId.trim())}
+                isWalkIn={appointmentKind === "walk_in"}
+              />
+            </div>
 
             <BookingSectionCard>
               <BookingSectionLabel htmlFor="notes" className="mb-2">
@@ -954,7 +1045,7 @@ export function AppointmentCreateFlow({
             <CreateFormIntakeSection
               responses={intakeResponses}
               onChange={setIntakeResponses}
-              onValidationChange={setIntakeValid}
+              onFormsLoaded={setIntakeFormsLoaded}
             />
 
             <CreatePaymentSection
@@ -970,6 +1061,7 @@ export function AppointmentCreateFlow({
             />
             </div>
           </div>
+          </>
         ) : (
           <AppointmentReviewStep
             clientName={clientName}

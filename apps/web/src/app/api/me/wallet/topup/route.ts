@@ -7,6 +7,8 @@ import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 const schema = z.object({
   amount: z.coerce.number().min(1, "Minimum top up amount is 1"),
@@ -30,6 +32,13 @@ export async function POST(request: NextRequest) {
     if (!email) throw new Error("User email is required");
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = tenantId ? await getTenantRegionConfig(tenantId) : null;
     const currency =
       (userRow as any)?.preferred_currency ||

@@ -121,6 +121,20 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
           <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>
             {order.provider?.business_name}
           </Text>
+          {order.fulfillment_type === "collection" && order.collection_location ? (
+            <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }} numberOfLines={1}>
+              {t("customer.mobile.screens.productOrders.collectAt", {
+                name: order.collection_location.name,
+                city: order.collection_location.city,
+              })}
+            </Text>
+          ) : order.fulfillment_type === "delivery" && order.delivery_address?.city ? (
+            <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }} numberOfLines={1}>
+              {t("customer.mobile.screens.productOrders.deliverTo", {
+                city: order.delivery_address.city,
+              })}
+            </Text>
+          ) : null}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
             <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
               {t(

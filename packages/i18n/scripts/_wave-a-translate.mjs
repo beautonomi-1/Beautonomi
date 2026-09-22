@@ -527,6 +527,47 @@ export function translate(en, locale) {
   return glossed;
 }
 
+/** Like translate but keeps partial glossary/pattern output when it differs from English. */
+export function translateBestEffort(en, locale) {
+  if (typeof en !== "string") return en;
+  if (isIdentity(en)) return en;
+  const exact = lookupExact(en);
+  if (exact?.[locale]) return restorePunct(en, exact[locale]);
+  const patterned = applyPattern(en, locale);
+  if (patterned && patterned !== en) return restorePunct(en, patterned);
+  const glossed = applyGlossary(en, locale);
+  if (glossed !== en) return restorePunct(en, glossed);
+  return en;
+}
+
+const SA_LANGS = ["af", "zu", "xh", "st", "nso", "tn", "ts", "ve", "ss"];
+
+/** Merge _maps/t-sa-*.json { "English": { af, zu, ... } } into ALL_EXACT. */
+export function loadSaExternalMaps(mapDir, fs, path) {
+  if (!fs.existsSync(mapDir)) return;
+  const files = fs
+    .readdirSync(mapDir)
+    .filter((f) => f.startsWith("t-sa-") && f.endsWith(".json") && !f.includes(".built."))
+    .sort((a, b) => {
+      const ar = a.includes("refined") ? 1 : 0;
+      const br = b.includes("refined") ? 1 : 0;
+      if (ar !== br) return ar - br;
+      return a.localeCompare(b);
+    });
+  for (const file of files) {
+    const chunk = JSON.parse(fs.readFileSync(path.join(mapDir, file), "utf8"));
+    for (const [en, row] of Object.entries(chunk)) {
+      if (!row || typeof row !== "object") continue;
+      const cur = ALL_EXACT.get(en) || {};
+      const merged = { ...cur };
+      for (const loc of SA_LANGS) {
+        if (typeof row[loc] === "string") merged[loc] = row[loc];
+      }
+      ALL_EXACT.set(en, merged);
+    }
+  }
+}
+
 export function assertVars(en, translated, locale, pathKey, errors) {
   const enVars = extractVars(en);
   const locVars = extractVars(translated);
@@ -542,7 +583,10 @@ export function stillMostlyEnglish(en, out) {
   if (isIdentity(en)) return false;
   if (en.length < 28) return false;
   const brands = new Set(BRANDS.map((b) => b.toLowerCase()));
-  const keep = (w) => !brands.has(w) && !/^\{\{/.test(w);
+  const varNames = new Set(
+    [...String(en).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1].toLowerCase()),
+  );
+  const keep = (w) => !brands.has(w) && !varNames.has(w) && !/^\{\{/.test(w);
   const enWords = (en.toLowerCase().match(/[a-z]{4,}/g) || []).filter(keep);
   const outWords = (out.toLowerCase().match(/[a-z]{4,}/g) || []).filter(keep);
   const leftover = outWords.filter((w) => enWords.includes(w));

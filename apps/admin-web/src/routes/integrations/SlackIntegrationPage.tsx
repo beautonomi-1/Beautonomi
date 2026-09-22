@@ -48,6 +48,7 @@ const EVENT_LABELS: Record<string, string> = {
   "provider_ops.lead.blocked_stage": "Ops: lead blocked in critical stage",
   "provider_ops.lead.overdue_next_step": "Ops: lead overdue next step",
   "provider_ops.lead.milestone": "Ops: lead onboarding milestone",
+  "provider_ops.lead.high_value_created": "Ops: high-value lead created",
   "provider_ops.pipeline.health": "Ops: pipeline health threshold",
   "provider_ops.lead.reassigned": "Ops: lead reassigned",
   "finance.payout.requested": "Finance: payout request",
@@ -92,6 +93,7 @@ const EVENT_LABELS: Record<string, string> = {
   "finance.unrecognized_payments": "Finance: unrecognized payments",
   "finance.fx.stale": "Finance: FX reference rates stale or incomplete",
   "subscription.churned": "Subscriptions: churned",
+  "subscription.apple_refund_failed": "Subscriptions: Apple refund failed",
 };
 
 /** Mirrors apps/web default-routing.ts defaultDedupeWindowSeconds for consistent DB/API/UI saves. */

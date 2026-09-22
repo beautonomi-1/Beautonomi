@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
+import { markCaseActivatedForProvider } from "@/lib/provider-ops/ops-case";
 
 /**
  * Mark provider onboarding lifecycle complete when the provider becomes active
@@ -49,4 +50,14 @@ export async function markProviderOnboardingLifecycleComplete(
   // Bust the public discovery feed so the newly-active provider appears immediately
   // on both the web home page and the customer app Home tab.
   invalidatePublicProviderCache(params.tenantId);
+
+  if (params.tenantId) {
+    void markCaseActivatedForProvider(supabase, {
+      tenantId: params.tenantId,
+      providerId: params.providerId,
+      userId: params.userId,
+    }).catch((err) => {
+      console.error("[markProviderOnboardingLifecycleComplete] ops case:", err);
+    });
+  }
 }

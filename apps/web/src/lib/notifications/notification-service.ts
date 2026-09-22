@@ -6,6 +6,7 @@
  */
 
 import { type NotificationChannel } from "./onesignal";
+import type { TemplateDispatchChannel } from "./channel-types";
 import {
   dispatchTemplateNotification,
   withTenantVariable,
@@ -26,6 +27,7 @@ import {
   computePackageAppliedForDisplay,
   DEFAULT_BOOKING_DISPLAY_TIMEZONE,
 } from "@/lib/bookings/display-invariants";
+import { resolveBookingServiceDisplayName } from "@/lib/bookings/walk-in-custom-service";
 
 /**
  * §Cross-app audit 2026-04 (multi-staff push): historically every
@@ -216,13 +218,19 @@ async function getBookingDetails(bookingId: string): Promise<any> {
     .eq("id", bookingId)
     .single();
   
-  type BookingServiceRow = { offerings?: { title?: string; price?: number; duration_minutes?: number } };
+  type BookingServiceRow = {
+    customization?: string | null;
+    offerings?: { title?: string; price?: number; duration_minutes?: number };
+  };
   if (booking) {
     if (booking.booking_services && Array.isArray(booking.booking_services)) {
       booking.services = (booking.booking_services as BookingServiceRow[]).map((bs) => ({
         ...bs,
         service: {
-          name: bs.offerings?.title ?? "Service",
+          name: resolveBookingServiceDisplayName({
+            offeringTitle: bs.offerings?.title,
+            customization: bs.customization,
+          }),
           price: bs.offerings?.price ?? 0,
           duration: bs.offerings?.duration_minutes ?? 60,
         },
@@ -236,8 +244,8 @@ async function getBookingDetails(bookingId: string): Promise<any> {
   return booking;
 }
 
-/** Services line for email/push templates; prefixes package only when a package actually applied. */
-function formatBookingServicesLineForTemplates(booking: {
+/** Services line for email/push/SMS templates; prefixes package only when a package actually applied. */
+export function formatBookingServicesLineForTemplates(booking: {
   services?: { service?: { name?: string } }[];
   package?: { name?: string } | null;
   package_id?: string | null;
@@ -313,7 +321,7 @@ function buildCustomerPricingBreakdownHtml(booking: Record<string, unknown>, cur
  */
 export async function notifyBookingConfirmed(
   bookingId: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   options?: { skipInApp?: boolean },
 ) {
   const booking = await getBookingDetails(bookingId);
@@ -345,11 +353,33 @@ export async function notifyBookingConfirmed(
   const pkgDisplayName =
     pkgApplied && booking.package?.name ? String(booking.package.name).trim() : "";
 
+  let portal_url = "";
+  let maps_url = "";
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { buildPortalAndMapsUrlsForBooking } = await import(
+      "@/lib/whatsapp/booking-ticket-variables"
+    );
+    const ticketUrls = await buildPortalAndMapsUrlsForBooking({
+      supabaseAdmin: getSupabaseAdmin(),
+      bookingId,
+      scheduledAt: String(booking.scheduled_at),
+      latitude: (booking as { service_latitude?: number | null }).service_latitude,
+      longitude: (booking as { service_longitude?: number | null }).service_longitude,
+    });
+    portal_url = ticketUrls.portal_url;
+    maps_url = ticketUrls.maps_url;
+  } catch {
+    /* optional */
+  }
+
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: formatBookingServicesLineForTemplates(booking),
+    portal_url,
+    maps_url,
     total_amount: fmt(booking.total_amount || 0, currency),
     subtotal: subtotalAmt > 0 ? fmt(subtotalAmt, currency) : "",
     tax_amount: taxAmt > 0 ? fmt(taxAmt, currency) : "",
@@ -388,7 +418,7 @@ export async function notifyBookingConfirmed(
 export async function notifyBookingReminder(
   bookingId: string,
   hoursUntilAppointment: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   // Route to appropriate reminder function based on hours
   if (hoursUntilAppointment <= 2) {
@@ -401,9 +431,42 @@ export async function notifyBookingReminder(
 /**
  * Send booking reminder (24 hours before)
  */
-export async function notifyBookingReminder24h(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyBookingReminder24h(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { seedBookingReminderButtonIntents } = await import(
+      "@/lib/whatsapp/reminder-button-intents"
+    );
+    await seedBookingReminderButtonIntents(
+      getSupabaseAdmin(),
+      bookingId,
+      booking.customer_id ?? null,
+    );
+  } catch {
+    /* best-effort */
+  }
+
+  let portal_url = "";
+  let maps_url = "";
+  try {
+    const { buildPortalAndMapsUrlsForBooking } = await import(
+      "@/lib/whatsapp/booking-ticket-variables"
+    );
+    const ticketUrls = await buildPortalAndMapsUrlsForBooking({
+      supabaseAdmin: getSupabaseAdmin(),
+      bookingId,
+      scheduledAt: String(booking.scheduled_at),
+      latitude: (booking as { service_latitude?: number | null }).service_latitude,
+      longitude: (booking as { service_longitude?: number | null }).service_longitude,
+    });
+    portal_url = ticketUrls.portal_url;
+    maps_url = ticketUrls.maps_url;
+  } catch {
+    /* optional */
+  }
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
@@ -413,6 +476,9 @@ export async function notifyBookingReminder24h(bookingId: string, channels?: Not
       ? booking.service_address || "Your location"
       : booking.provider?.business_name || "Salon",
     booking_id: bookingId,
+    portal_url,
+    maps_url,
+    booking_number: booking.booking_number || "",
   };
 
   const _url = replaceUrlVariables("/bookings/{{booking_id}}", variables);
@@ -429,9 +495,28 @@ export async function notifyBookingReminder24h(bookingId: string, channels?: Not
 /**
  * Send booking reminder (2 hours before)
  */
-export async function notifyBookingReminder2h(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyBookingReminder2h(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
+
+  let portal_url = "";
+  let maps_url = "";
+  try {
+    const { buildPortalAndMapsUrlsForBooking } = await import(
+      "@/lib/whatsapp/booking-ticket-variables"
+    );
+    const ticketUrls = await buildPortalAndMapsUrlsForBooking({
+      supabaseAdmin: getSupabaseAdmin(),
+      bookingId,
+      scheduledAt: String(booking.scheduled_at),
+      latitude: (booking as { service_latitude?: number | null }).service_latitude,
+      longitude: (booking as { service_longitude?: number | null }).service_longitude,
+    });
+    portal_url = ticketUrls.portal_url;
+    maps_url = ticketUrls.maps_url;
+  } catch {
+    /* optional */
+  }
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
@@ -440,6 +525,9 @@ export async function notifyBookingReminder2h(bookingId: string, channels?: Noti
       ? booking.service_address || "Your location"
       : booking.provider?.business_name || "Salon",
     booking_id: bookingId,
+    portal_url,
+    maps_url,
+    booking_number: booking.booking_number || "",
   };
 
   return await dispatchTemplateNotification(
@@ -465,7 +553,7 @@ export async function notifyBookingCancelled(
   bookingId: string,
   cancelledBy: "customer" | "provider" | "system",
   refundInfo: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   options?: BookingCancelledNotifyOptions,
 ) {
   const booking = await getBookingDetails(bookingId);
@@ -546,7 +634,7 @@ export async function notifyBookingRescheduled(
   bookingId: string,
   oldDate: Date,
   newDate: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -603,7 +691,7 @@ export async function notifyBookingRescheduled(
 export async function notifyProviderEnRoute(
   bookingId: string,
   estimatedArrival?: Date | string | null,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
@@ -633,7 +721,7 @@ export async function notifyProviderEnRoute(
 /**
  * Notify customer that provider is arriving soon (at-home service)
  */
-export async function notifyProviderArrivingSoon(bookingId: string, minutes: number, channels?: NotificationChannel[]) {
+export async function notifyProviderArrivingSoon(bookingId: string, minutes: number, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -663,7 +751,7 @@ export async function notifyProviderArrivingSoon(bookingId: string, minutes: num
 export async function notifyProviderArrived(
   bookingId: string,
   options?: { hasOtp?: boolean },
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
@@ -691,7 +779,7 @@ export async function notifyProviderArrived(
 /**
  * Send home service location details
  */
-export async function notifyHomeServiceLocationDetails(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyHomeServiceLocationDetails(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -718,7 +806,7 @@ export async function notifyHomeServiceLocationDetails(bookingId: string, channe
 /**
  * Request service location from customer (at-home service)
  */
-export async function notifyServiceLocationRequired(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyServiceLocationRequired(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -747,7 +835,7 @@ export async function notifyServiceLocationChanged(
   bookingId: string,
   oldAddress: string,
   newAddress: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -773,7 +861,7 @@ export async function notifyServiceLocationChanged(
 /**
  * Notify customer that provider needs directions (at-home service)
  */
-export async function notifyProviderNeedsDirections(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderNeedsDirections(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -797,7 +885,7 @@ export async function notifyProviderNeedsDirections(bookingId: string, channels?
 /**
  * Share provider live location (at-home service)
  */
-export async function notifyProviderLocationShared(bookingId: string, trackingUrl: string, channels?: NotificationChannel[]) {
+export async function notifyProviderLocationShared(bookingId: string, trackingUrl: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -825,7 +913,7 @@ export async function notifyProviderLocationShared(bookingId: string, trackingUr
 /**
  * Send salon directions to customer
  */
-export async function notifySalonDirections(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifySalonDirections(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_salon") {
     return { success: false, error: "Booking not found or not at-salon service" };
@@ -866,7 +954,7 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
 /**
  * Send salon arrival reminder
  */
-export async function notifySalonArrivalReminder(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifySalonArrivalReminder(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_salon") {
     return { success: false, error: "Booking not found or not at-salon service" };
@@ -899,7 +987,7 @@ export async function notifySalonArrivalReminder(bookingId: string, channels?: N
 /**
  * Notify customer has arrived at salon
  */
-export async function notifyCustomerArrivedSalon(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyCustomerArrivedSalon(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_salon") {
     return { success: false, error: "Booking not found or not at-salon service" };
@@ -930,7 +1018,7 @@ export async function notifyCustomerArrivedSalon(bookingId: string, channels?: N
 /**
  * Notify customer about waiting area
  */
-export async function notifyWaitingArea(bookingId: string, waitingArea: string, channels?: NotificationChannel[]) {
+export async function notifyWaitingArea(bookingId: string, waitingArea: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_salon") {
     return { success: false, error: "Booking not found or not at-salon service" };
@@ -966,7 +1054,7 @@ export async function notifyWaitingArea(bookingId: string, waitingArea: string, 
 /**
  * Notify service started
  */
-export async function notifyServiceStarted(bookingId: string, serviceDuration: string, channels?: NotificationChannel[]) {
+export async function notifyServiceStarted(bookingId: string, serviceDuration: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -988,7 +1076,7 @@ export async function notifyServiceStarted(bookingId: string, serviceDuration: s
 /**
  * Notify service in progress
  */
-export async function notifyServiceInProgress(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyServiceInProgress(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1009,7 +1097,7 @@ export async function notifyServiceInProgress(bookingId: string, channels?: Noti
 /**
  * Notify service almost done
  */
-export async function notifyServiceAlmostDone(bookingId: string, remainingTime: string, channels?: NotificationChannel[]) {
+export async function notifyServiceAlmostDone(bookingId: string, remainingTime: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1036,7 +1124,7 @@ export async function notifyServiceExtended(
   extensionTime: string,
   newEndTime: Date,
   additionalCharge: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1061,7 +1149,7 @@ export async function notifyServiceExtended(
 /**
  * Notify service completed
  */
-export async function notifyServiceCompleted(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyServiceCompleted(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1091,7 +1179,7 @@ export async function notifyProviderRunningLate(
   bookingId: string,
   delayMinutes: number,
   newArrivalTime: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1116,7 +1204,7 @@ export async function notifyProviderRunningLate(
 /**
  * Notify customer that provider arrived early
  */
-export async function notifyProviderArrivedEarly(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderArrivedEarly(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1141,7 +1229,7 @@ export async function notifyProviderArrivedEarly(bookingId: string, channels?: N
 /**
  * Notify customer they are running late
  */
-export async function notifyCustomerRunningLate(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyCustomerRunningLate(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1171,7 +1259,7 @@ export async function notifyCustomerRunningLate(bookingId: string, channels?: No
 export async function notifyProviderCustomerRunningLate(
   bookingId: string,
   delayMinutes: number,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1185,11 +1273,17 @@ export async function notifyProviderCustomerRunningLate(
     booking_id: bookingId,
   };
 
-  const recipients = await resolveProviderRecipients(
+  let recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider?.user_id,
     booking,
   );
+  if (channels?.includes("whatsapp")) {
+    const { filterProviderOwnerOnlyUserIds } = await import(
+      "@/lib/notifications/provider-whatsapp-recipients"
+    );
+    recipients = await filterProviderOwnerOnlyUserIds(booking.provider_id, recipients);
+  }
 
   return await dispatchTemplateNotification(
     "provider_customer_running_late",
@@ -1207,7 +1301,7 @@ export async function notifyProviderCustomerRunningLate(
  */
 export async function notifyCustomerCheckoutNotCompleted(
   bookingId: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1236,7 +1330,7 @@ export async function notifyCustomerCheckoutNotCompleted(
 export async function notifyCustomerRunningLateAck(
   bookingId: string,
   adjustedTime: Date,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1259,7 +1353,7 @@ export async function notifyCustomerRunningLateAck(
 /**
  * Notify customer about no-show
  */
-export async function notifyCustomerNoShow(bookingId: string, noShowFee: number, channels?: NotificationChannel[]) {
+export async function notifyCustomerNoShow(bookingId: string, noShowFee: number, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1292,7 +1386,7 @@ export async function notifyPaymentSuccessful(
   amount: number,
   paymentMethod: string,
   transactionId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1321,7 +1415,7 @@ export async function notifyPaymentFailed(
   bookingId: string,
   amount: number,
   failureReason: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1349,7 +1443,7 @@ export async function notifyPaymentPending(
   bookingId: string,
   amount: number,
   paymentMethod: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1377,7 +1471,7 @@ export async function notifyPaymentPending(
 /**
  * Notify payment method expired
  */
-export async function notifyPaymentMethodExpired(bookingId: string, amount: number, channels?: NotificationChannel[]) {
+export async function notifyPaymentMethodExpired(bookingId: string, amount: number, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -1403,7 +1497,7 @@ export async function notifyPartialPayment(
   bookingId: string,
   partialAmount: number,
   remainingBalance: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1431,7 +1525,7 @@ export async function notifyRefundProcessed(
   bookingId: string,
   amount: number,
   refundReason: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1459,7 +1553,7 @@ export async function notifyInvoiceGenerated(
   bookingId: string,
   totalAmount: number,
   invoiceNumber: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1487,7 +1581,7 @@ export async function notifyReceiptSent(
   bookingId: string,
   totalAmount: number,
   paymentDate: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -1550,10 +1644,23 @@ export async function notifyReceiptSent(
 /**
  * Notify provider of new booking request
  */
-export async function notifyProviderNewBooking(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderNewBooking(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || !booking.provider?.user_id) {
     return { success: false, error: "Booking or provider not found" };
+  }
+
+  const { shouldSkipProviderNewBookingWhatsApp, filterProviderOwnerOnlyUserIds } = await import(
+    "@/lib/notifications/provider-whatsapp-recipients"
+  );
+  if (
+    channels?.includes("whatsapp") &&
+    (await shouldSkipProviderNewBookingWhatsApp({
+      customerId: booking.customer_id,
+      providerOwnerUserId: booking.provider.user_id,
+    }))
+  ) {
+    channels = channels.filter((c) => c !== "whatsapp");
   }
 
   const variables = {
@@ -1570,11 +1677,14 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
   // provider team (owner + active linked `provider_staff.user_id`) so a
   // co-owner, manager, or front-desk logged into the provider app
   // doesn't miss the push on non-owner logins.
-  const recipients = await resolveProviderRecipients(
+  let recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
     booking,
   );
+  if (channels?.includes("whatsapp")) {
+    recipients = await filterProviderOwnerOnlyUserIds(booking.provider_id, recipients);
+  }
 
   return await dispatchTemplateNotification(
     "provider_booking_request",
@@ -1588,7 +1698,7 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
 /**
  * Notify provider of new customer (first booking)
  */
-export async function notifyProviderNewCustomer(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderNewCustomer(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || !booking.provider?.user_id) {
     return { success: false, error: "Booking or provider not found" };
@@ -1634,7 +1744,7 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
 /**
  * Notify provider of returning customer
  */
-export async function notifyProviderReturningCustomer(bookingId: string, visitNumber: number, channels?: NotificationChannel[]) {
+export async function notifyProviderReturningCustomer(bookingId: string, visitNumber: number, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || !booking.provider?.user_id) {
     return { success: false, error: "Booking or provider not found" };
@@ -1667,7 +1777,7 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
 /**
  * Notify provider of preferred customer booking
  */
-export async function notifyProviderPreferredCustomer(bookingId: string, totalBookings: number, channels?: NotificationChannel[]) {
+export async function notifyProviderPreferredCustomer(bookingId: string, totalBookings: number, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || !booking.provider?.user_id) {
     return { success: false, error: "Booking or provider not found" };
@@ -1705,7 +1815,7 @@ export async function notifyProviderPayoutProcessed(
   amount: number,
   payoutDate: Date,
   transactionId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1725,13 +1835,19 @@ export async function notifyProviderPayoutProcessed(
     transaction_id: transactionId,
   };
 
-  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  let recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  if (channels?.includes("whatsapp")) {
+    const { filterProviderOwnerOnlyUserIds } = await import(
+      "@/lib/notifications/provider-whatsapp-recipients"
+    );
+    recipients = await filterProviderOwnerOnlyUserIds(providerId, recipients);
+  }
   return await dispatchTemplateNotification(
     "provider_payout_processed",
     recipients,
     withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
-    { appType: "provider" }
+    { appType: "provider", tenantId: (provider as { tenant_id?: string | null }).tenant_id },
   );
 }
 
@@ -1749,7 +1865,7 @@ export async function notifyProviderInvoiceIssued(
     period_start?: string | null;
     period_end?: string | null;
   },
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1784,7 +1900,7 @@ export async function notifyProviderInvoiceIssued(
 export async function notifyProviderInvoicePaid(
   providerId: string,
   invoice: { invoice_number: string; total_amount: number; payment_date: string },
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1821,7 +1937,7 @@ export async function notifyProviderPayoutScheduled(
   payoutAmount: number,
   payoutDate: Date,
   paymentMethod: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1858,7 +1974,7 @@ export async function notifyProviderPayoutFailed(
   providerId: string,
   payoutAmount: number,
   failureReason: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1877,13 +1993,19 @@ export async function notifyProviderPayoutFailed(
     failure_reason: failureReason,
   };
 
-  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  let recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  if (channels?.includes("whatsapp")) {
+    const { filterProviderOwnerOnlyUserIds } = await import(
+      "@/lib/notifications/provider-whatsapp-recipients"
+    );
+    recipients = await filterProviderOwnerOnlyUserIds(providerId, recipients);
+  }
   return await dispatchTemplateNotification(
     "provider_payout_failed",
     recipients,
     withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
-    { appType: "provider" }
+    { appType: "provider", tenantId: (provider as { tenant_id?: string | null }).tenant_id },
   );
 }
 
@@ -1896,7 +2018,7 @@ export async function notifyProviderWeeklyEarnings(
   completedBookings: number,
   pendingPayout: number,
   payoutDate: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1932,7 +2054,7 @@ export async function notifyProviderWeeklyEarnings(
 export async function notifyProviderAvailabilityChanged(
   providerId: string,
   availabilityChanges: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1965,7 +2087,7 @@ export async function notifyProviderHolidayMode(
   providerId: string,
   startDate: Date,
   returnDate: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -1999,7 +2121,7 @@ export async function notifyProviderHolidayMode(
 export async function notifyProviderHolidayModeEnding(
   providerId: string,
   returnDate: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -2033,7 +2155,7 @@ export async function notifyProviderBreakScheduled(
   providerId: string,
   breakStart: Date,
   breakEnd: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
@@ -2068,7 +2190,7 @@ export async function notifyProviderBreakScheduled(
 /**
  * Send review reminder
  */
-export async function notifyReviewReminder(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyReviewReminder(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -2097,8 +2219,8 @@ export async function notifyProviderNewReview(
   rating: number,
   reviewText: string,
   providerUserId: string,
-  channels?: NotificationChannel[],
-  options?: { bookingId?: string }
+  channels?: TemplateDispatchChannel[],
+  options?: { bookingId?: string; tenantId?: string | null }
 ) {
   const bookingId = options?.bookingId;
   const variables = {
@@ -2114,14 +2236,14 @@ export async function notifyProviderNewReview(
     [providerUserId],
     variables,
     channels,
-    { appType: "provider" }
+    { appType: "provider", tenantId: options?.tenantId ?? null }
   );
 }
 
 /**
  * Send booking follow-up for feedback
  */
-export async function notifyBookingFollowUp(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyBookingFollowUp(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -2144,7 +2266,7 @@ export async function notifyBookingFollowUp(bookingId: string, channels?: Notifi
 /**
  * Send thank you message after service
  */
-export async function notifyThankYouAfterService(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyThankYouAfterService(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -2175,7 +2297,7 @@ export async function notifyAddonAdded(
   addonName: string,
   addonPrice: number,
   newTotal: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2206,7 +2328,7 @@ export async function notifyAddonRemoved(
   addonName: string,
   refundAmount: number,
   newTotal: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2235,7 +2357,7 @@ export async function notifyServiceUpgradeOffered(
   upgradeName: string,
   upgradePrice: number,
   upgradeBenefits: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2269,7 +2391,7 @@ export async function notifyTravelFeeApplied(
   travelFee: number,
   distance: number,
   totalAmount: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2301,7 +2423,7 @@ export async function notifyBookingTimeChanged(
   bookingId: string,
   oldTime: Date,
   newTime: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2347,7 +2469,7 @@ export async function notifyBookingDateChanged(
   oldDate: Date,
   newDate: Date,
   bookingTime: Date,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -2426,7 +2548,7 @@ export async function notifyEmailVerification(userId: string, verificationToken:
 /**
  * Notify account suspended
  */
-export async function notifyAccountSuspended(userId: string, suspensionReason: string, channels?: NotificationChannel[]) {
+export async function notifyAccountSuspended(userId: string, suspensionReason: string, channels?: TemplateDispatchChannel[]) {
   const variables = {
     suspension_reason: suspensionReason,
   };
@@ -2447,7 +2569,7 @@ export async function notifyAccountSuspended(userId: string, suspensionReason: s
 /**
  * Send welcome message to new user
  */
-export async function notifyWelcomeMessage(userId: string, channels?: NotificationChannel[]) {
+export async function notifyWelcomeMessage(userId: string, channels?: TemplateDispatchChannel[]) {
   return await dispatchTemplateNotification(
     "welcome_message",
     [userId],
@@ -2468,7 +2590,7 @@ export async function notifyPromotionAvailable(
   discountAmount: number,
   expiryDate: Date,
   promotionId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     promotion_title: promotionTitle,
@@ -2501,7 +2623,7 @@ export async function notifyLoyaltyPointsEarned(
   totalPoints: number,
   providerName: string,
   bookingDate: Date,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   // B13: optional provider IANA timezone so the earned-points push quotes the
   // right date when the customer is in a different zone from the server.
   timezone?: string | null,
@@ -2530,7 +2652,7 @@ export async function notifyLoyaltyPointsRedeemed(
   points: number,
   discountAmount: number,
   remainingPoints: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     points: points.toString(),
@@ -2555,7 +2677,7 @@ export async function notifyLoyaltyTierUpgraded(
   newTier: string,
   oldTier: string,
   tierBenefits: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     new_tier: newTier,
@@ -2580,7 +2702,7 @@ export async function notifyReferralBonusEarned(
   bonusAmount: number,
   referredName: string,
   referralCode: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     bonus_amount: fmt(bonusAmount),
@@ -2604,7 +2726,7 @@ export async function notifyReferralCodeUsed(
   userId: string,
   referrerName: string,
   bonusAmount: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     referrer_name: referrerName,
@@ -2634,7 +2756,7 @@ export async function notifyServicePackagePurchased(
   packageValue: number,
   expiryDate: Date,
   packageId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     package_name: packageName,
@@ -2662,7 +2784,7 @@ export async function notifyServicePackageExpiring(
   expiryDate: Date,
   remainingServices: number,
   packageId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     package_name: packageName,
@@ -2688,7 +2810,7 @@ export async function notifyServicePackageExpired(
   packageName: string,
   expiryDate: Date,
   unusedServices: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     package_name: packageName,
@@ -2713,7 +2835,7 @@ export async function notifyServicePackageUsed(
   packageName: string,
   remainingServices: number,
   packageId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     package_name: packageName,
@@ -2745,12 +2867,13 @@ export async function notifyOrderConfirmation(
   orderNumber: string,
   totalAmount: number,
   channels: NotificationChannel[] = ["push", "email"],
-  options?: { skipInApp?: boolean }
+  options?: { skipInApp?: boolean; fulfillmentSummary?: string }
 ) {
   const variables = {
     order_number: orderNumber,
     order_id: orderId,
     total_amount: fmt(totalAmount),
+    fulfillment_summary: options?.fulfillmentSummary?.trim() ?? "",
   };
 
   return await dispatchTemplateNotification(
@@ -2774,7 +2897,7 @@ export async function notifyGiftCardPurchased(
   giftCardAmount: number,
   recipientName: string,
   giftCardCode: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     gift_card_amount: fmt(giftCardAmount),
@@ -2800,7 +2923,7 @@ export async function notifyGiftCardReceived(
   giftCardAmount: number,
   giftCardCode: string,
   message: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     sender_name: senderName,
@@ -2830,7 +2953,7 @@ export async function notifyMembershipRenewalReminder(
   membershipName: string,
   renewalDate: Date,
   renewalAmount: number,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     membership_name: membershipName,
@@ -2854,7 +2977,7 @@ export async function notifyMembershipActivated(
   userId: string,
   membershipName: string,
   benefits: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     membership_name: membershipName,
@@ -2877,7 +3000,7 @@ export async function notifyMembershipPaymentFailed(
   userId: string,
   membershipName: string,
   providerName: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   return await dispatchTemplateNotification(
     "membership_payment_failed",
@@ -2895,7 +3018,7 @@ export async function notifyMembershipExpired(
   userId: string,
   membershipName: string,
   providerName: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   return await dispatchTemplateNotification(
     "membership_expired",
@@ -2913,7 +3036,7 @@ export async function notifyMembershipCardExpired(
   userId: string,
   membershipName: string,
   providerName: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   return await dispatchTemplateNotification(
     "membership_card_expired",
@@ -2937,7 +3060,7 @@ export async function notifyMembershipWinBack(
     providerId?: string | null;
     providerSlug?: string | null;
   },
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
 ) {
   // Deep link to the provider's profile → Memberships tab so the customer
   // lands directly on the plans they were invited to rejoin. Prefer the slug
@@ -2981,7 +3104,7 @@ export async function notifyProviderMembershipCancelled(params: {
   planName: string;
   customerId: string;
   subscriptionId: string;
-  channels?: NotificationChannel[];
+  channels?: TemplateDispatchChannel[];
 }) {
   const recipients = await resolveProviderRecipients(
     params.providerId,
@@ -3019,7 +3142,7 @@ export async function notifyNewMessage(
   senderName: string,
   messagePreview: string,
   conversationId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     sender_name: senderName,
@@ -3044,7 +3167,7 @@ export async function notifySupportTicketCreated(
   ticketNumber: string,
   ticketSubject: string,
   ticketId: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   /** Provider-opened tickets should target the provider OneSignal app; customers use the customer app. */
   recipientApp: "customer" | "provider" = "customer"
 ) {
@@ -3071,7 +3194,7 @@ export async function notifySupportTicketUpdated(
   ticketNumber: string,
   updateMessage: string,
   ticketId: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   recipientApp: "customer" | "provider" = "customer"
 ) {
   const variables = {
@@ -3142,7 +3265,7 @@ export async function notifyDisputeOpened(
   bookingId: string,
   disputeReason: string,
   disputeId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3188,7 +3311,7 @@ export async function notifyDisputeResolved(
   resolutionDetails: string,
   disputeOutcome: string,
   disputeId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3233,7 +3356,7 @@ export async function notifyComplaintFiled(
   bookingId: string,
   complaintDescription: string,
   complaintId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3260,7 +3383,7 @@ export async function notifyComplaintFiled(
 export async function notifyQualityIssueReported(
   bookingId: string,
   issueDescription: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3288,7 +3411,7 @@ export async function notifyQualityIssueReported(
 /**
  * Send safety check-in (at-home service)
  */
-export async function notifySafetyCheckIn(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifySafetyCheckIn(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -3311,7 +3434,7 @@ export async function notifySafetyCheckIn(bookingId: string, channels?: Notifica
 /**
  * Send safety alert if check-in not confirmed
  */
-export async function notifySafetyAlert(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifySafetyAlert(bookingId: string, channels?: TemplateDispatchChannel[]) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -3338,7 +3461,7 @@ export async function notifySafetyAlert(bookingId: string, channels?: Notificati
 export async function notifySpecialInstructionsAdded(
   bookingId: string,
   instructions: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3381,7 +3504,7 @@ export async function notifySpecialInstructionsAdded(
 export async function notifyAllergyAlert(
   bookingId: string,
   allergies: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || !booking.provider?.user_id) {
@@ -3422,7 +3545,7 @@ export async function notifyAllergyAlert(
 export async function notifyWeatherAlert(
   bookingId: string,
   weatherCondition: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
@@ -3467,7 +3590,7 @@ export async function notifyWeatherAlert(
 /**
  * Notify provider onboarding welcome
  */
-export async function notifyProviderOnboardingWelcome(providerUserId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderOnboardingWelcome(providerUserId: string, channels?: TemplateDispatchChannel[]) {
   return await dispatchTemplateNotification(
     "provider_onboarding_welcome",
     [providerUserId],
@@ -3480,7 +3603,7 @@ export async function notifyProviderOnboardingWelcome(providerUserId: string, ch
 /**
  * Notify provider profile approved
  */
-export async function notifyProviderProfileApproved(providerUserId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderProfileApproved(providerUserId: string, channels?: TemplateDispatchChannel[]) {
   return await dispatchTemplateNotification(
     "provider_profile_approved",
     [providerUserId],
@@ -3496,7 +3619,7 @@ export async function notifyProviderProfileApproved(providerUserId: string, chan
 export async function notifyProviderProfileRejected(
   providerUserId: string,
   rejectionReason: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     rejection_reason: rejectionReason,
@@ -3525,7 +3648,7 @@ export async function notifyBookingWaitlistAvailable(
   availableTime: Date,
   services: string,
   providerId: string,
-  channels?: NotificationChannel[],
+  channels?: TemplateDispatchChannel[],
   // B13: optional IANA provider timezone — recommended so the waitlist push
   // shows the time in the provider's zone rather than the Node server's.
   timezone?: string | null,
@@ -3566,7 +3689,7 @@ export async function notifyProviderRecommendation(
   rating: number,
   recommendationReason: string,
   providerId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     provider_name: providerName,
@@ -3595,7 +3718,7 @@ export async function notifyServiceSuggestion(
   servicePrice: number,
   serviceDescription: string,
   serviceId: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const variables = {
     suggested_service: suggestedService,
@@ -3625,7 +3748,7 @@ export async function notifyEmergencyCancellation(
   bookingId: string,
   emergencyReason: string,
   refundInfo: string,
-  channels?: NotificationChannel[]
+  channels?: TemplateDispatchChannel[]
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };

@@ -18,6 +18,8 @@ import { addMonths, addYears } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 /**
  * POST /api/provider/subscription/renew
@@ -29,6 +31,13 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);

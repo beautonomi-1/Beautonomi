@@ -1,3 +1,4 @@
+import { requireProviderOpsManagersOnly } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -5,7 +6,6 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import {
@@ -14,6 +14,11 @@ import {
   DEFAULT_SLA_CONTACT_STALLED_HOURS,
   DEFAULT_STALL_THRESHOLD_HOURS,
 } from "@/lib/provider-ops/stall-thresholds";
+import {
+  DEFAULT_HIGH_VALUE_THRESHOLD,
+  DEFAULT_SLA_FIRST_CONTACT_HOURS,
+  DEFAULT_SLA_STAGE_STALE_HOURS,
+} from "@/lib/provider-ops/ops-settings";
 
 const DEFAULT_SETTINGS = {
   stall_threshold_hours: DEFAULT_STALL_THRESHOLD_HOURS,
@@ -22,11 +27,14 @@ const DEFAULT_SETTINGS = {
   auto_sms_on_stall: false,
   sla_contact_stalled_hours: DEFAULT_SLA_CONTACT_STALLED_HOURS,
   sla_contact_dropped_hours: DEFAULT_SLA_CONTACT_DROPPED_HOURS,
+  sla_first_contact_hours: DEFAULT_SLA_FIRST_CONTACT_HOURS,
+  sla_stage_stale_hours: DEFAULT_SLA_STAGE_STALE_HOURS,
+  high_value_threshold: DEFAULT_HIGH_VALUE_THRESHOLD,
 };
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsManagersOnly(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
@@ -53,7 +61,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireProviderOpsManagersOnly(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();

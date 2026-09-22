@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import {
   View,
   ScrollView,
@@ -32,6 +33,7 @@ interface ScreenContainerProps {
   keyboardAvoiding?: boolean;
   /** Passed to `AppKeyboardAvoidingView` when `keyboardAvoiding` is true (stack headers, floating chrome). */
   keyboardVerticalOffset?: number;
+  scrollRef?: RefObject<ScrollView | null>;
 }
 
 export function ScreenContainer({
@@ -45,6 +47,7 @@ export function ScreenContainer({
   reserveTabBarSpace = true,
   keyboardAvoiding = true,
   keyboardVerticalOffset = 0,
+  scrollRef,
 }: ScreenContainerProps) {
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -58,6 +61,7 @@ export function ScreenContainer({
 
   const content = scrollable ? (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: "#ffffff" }}
       contentContainerStyle={{ paddingHorizontal: padding, paddingBottom: contentBottomPadding, backgroundColor: "#ffffff" }}
       showsVerticalScrollIndicator={false}

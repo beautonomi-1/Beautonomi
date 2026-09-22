@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -7,11 +8,11 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
 import { leadIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
+import { ensureProviderOpsCase, transitionCaseDesk } from "@/lib/provider-ops/ops-case";
 import crypto from "crypto";
 
 function getPublicSiteBaseUrl(request: NextRequest): string {
@@ -32,10 +33,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: adminUser } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user: adminUser } = await requireProviderOpsSales(request);
     const { id } = await params;
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json().catch(() => ({}));
@@ -249,6 +247,40 @@ async function handleAssistedConversion(
     .eq("id", lead.id as string)
     .eq("tenant_id", tenantId);
   if (leadUpErr) throw leadUpErr;
+
+  const assignedTo = (lead.assigned_to as string | null) ?? null;
+
+  await supabase.from("provider_onboarding_tracking").upsert(
+    {
+      user_id: userId,
+      tenant_id: tenantId,
+      lead_id: lead.id as string,
+      assigned_to: assignedTo,
+      admin_assisted: true,
+      wizard_status: "signed_up",
+    },
+    { onConflict: "user_id" },
+  );
+
+  const { caseId } = await ensureProviderOpsCase(supabase, {
+    tenantId,
+    leadId: lead.id as string,
+    userId,
+    currentDesk: "sales",
+    salesOwnerId: assignedTo,
+    matchedAt: new Date().toISOString(),
+    tryAutoAssign: false,
+    actorUserId: adminUser.id,
+  });
+
+  await transitionCaseDesk(supabase, {
+    tenantId,
+    caseId,
+    toDesk: "onboarding",
+    fromUserId: assignedTo,
+    actorUserId: adminUser.id,
+    note: "Assisted conversion",
+  });
 
   const { error: actErr } = await supabase.from("provider_lead_activities").insert({
     lead_id: lead.id as string,

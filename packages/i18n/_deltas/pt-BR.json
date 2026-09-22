@@ -1,0 +1,38 @@
+{
+  "common": {
+    "signOut": "Sair",
+    "save": "Salvar",
+    "loading": "Carregando…"
+  },
+  "auth": {
+    "password": "Senha",
+    "signup": "Cadastrar",
+    "forgotPassword": "Esqueceu a senha?",
+    "resetPassword": "Redefinir senha",
+    "createAccount": "Criar conta"
+  },
+  "provider": {
+    "mobile": {
+      "screens": {
+        "loginSecurity": {
+          "sectionPhone": "Número de celular",
+          "invalidPhone": "Informe um número de celular válido.",
+          "setPassword": "Definir senha",
+          "changePassword": "Alterar senha",
+          "newPhonePlaceholder": "Novo número de celular",
+          "newPhoneA11y": "Novo número de celular",
+          "phoneUpdatedTitle": "Celular atualizado",
+          "phoneUpdatedBody": "Seu número de celular foi atualizado com sucesso.",
+          "savePhoneFailed": "Não foi possível salvar o número de celular.",
+          "verifyAndSave": "Verificar e salvar",
+          "verifySavePhoneA11y": "Verificar e salvar o celular"
+        },
+        "walkInSale": {
+          "downloadPdf": "Baixar PDF",
+          "downloadReceiptTitle": "Baixar recibo",
+          "downloadReceiptA11y": "Baixar recibo do pedido"
+        }
+      }
+    }
+  }
+}

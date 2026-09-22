@@ -9,6 +9,7 @@ export { BookingNextStepCard } from "./BookingNextStepCard";
 export { BookingCompletionChecklist } from "./BookingCompletionChecklist";
 export { BookingEmptyState } from "./BookingEmptyState";
 export { BookingBottomSheet } from "./BookingBottomSheet";
+export { BookingCreateReadinessStrip } from "./BookingCreateReadinessStrip";
 export { VersionConflictDialog } from "./VersionConflictDialog";
 export { BookingErrorBanner } from "../scenario/BookingErrorBanner";
 export { PermissionGateInline } from "../scenario/PermissionGateInline";

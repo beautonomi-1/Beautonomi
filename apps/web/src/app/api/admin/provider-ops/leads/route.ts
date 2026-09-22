@@ -1,16 +1,17 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyLeadCreated } from "@/lib/integrations/slack/lead-triggers";
+import { ensureProviderOpsCase, syncLeadOwnerFromSalesCase } from "@/lib/provider-ops/ops-case";
+import { fetchSlaBreachedLeadIds, emitHighValueLeadSlackIfNeeded } from "@/lib/provider-ops/lead-sla";
 import {
   applyAssignedToFilter,
   applyActiveLeadFilter,
@@ -87,7 +88,7 @@ function getProvinceFromLeadRow(row: {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    await requireProviderOpsSales(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
@@ -102,6 +103,15 @@ export async function GET(request: NextRequest) {
     const province = searchParams.get("province")?.trim();
     const deletedMode = parseDeletedFilter(searchParams);
     const contactFilter = parseContactFilter(searchParams);
+    const slaBreached = searchParams.get("sla_breached") === "1";
+
+    let slaBreachedLeadIds: string[] | null = null;
+    if (slaBreached) {
+      slaBreachedLeadIds = await fetchSlaBreachedLeadIds(supabase, tenantId);
+      if (slaBreachedLeadIds.length === 0) {
+        slaBreachedLeadIds = ["00000000-0000-0000-0000-000000000000"];
+      }
+    }
 
     // Pre-resolve lead IDs for category filter
     // Multiple selected categories use OR semantics: a lead matching any selected
@@ -152,6 +162,9 @@ export async function GET(request: NextRequest) {
       );
     }
     query = applyContactFilter(query, contactFilter);
+    if (slaBreachedLeadIds) {
+      query = query.in("id", slaBreachedLeadIds);
+    }
 
     const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
@@ -379,10 +392,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user } = await requireProviderOpsSales(request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
@@ -439,6 +449,21 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    await ensureProviderOpsCase(supabase, {
+      tenantId,
+      leadId: lead.id as string,
+      currentDesk: "sales",
+      salesOwnerId: (lead.assigned_to as string | null) ?? null,
+      dealValue: body.deal_value ?? null,
+      tryAutoAssign: true,
+      actorUserId: user.id,
+    });
+
+    const syncedOwner = await syncLeadOwnerFromSalesCase(supabase, tenantId, lead.id as string);
+    if (syncedOwner && !lead.assigned_to) {
+      (lead as { assigned_to?: string | null }).assigned_to = syncedOwner;
+    }
+
     if (body.category_ids?.length > 0) {
       const categoryRows = body.category_ids.map((catId: string) => ({
         lead_id: lead.id,
@@ -471,6 +496,13 @@ export async function POST(request: NextRequest) {
     void slackNotifyLeadCreated(request, {
       id: lead.id as string,
       business_name: lead.business_name as string | null,
+      assigned_to: lead.assigned_to as string | null,
+    });
+
+    void emitHighValueLeadSlackIfNeeded(supabase, tenantId, {
+      id: lead.id as string,
+      business_name: lead.business_name as string | null,
+      deal_value: (lead as { deal_value?: number | null }).deal_value ?? body.deal_value ?? null,
       assigned_to: lead.assigned_to as string | null,
     });
 

@@ -84,6 +84,8 @@ function isLikelyCode(snippet) {
   if (/\*\/\s*(export\s+)?(type|interface)\b/.test(inner)) return true;
   if (/\bthe most compatible\b/.test(inner)) return true;
   if (/\[&>/.test(inner)) return true;
+  if (/\[&>/.test(snippet)) return true;
+  if (/button\]:hidden/.test(snippet)) return true;
   if (/\*\s+The\b/.test(inner)) return true;
   // JSX/JS identifier leftovers (`date <= startDate`)
   if (/^date$/.test(inner)) return true;

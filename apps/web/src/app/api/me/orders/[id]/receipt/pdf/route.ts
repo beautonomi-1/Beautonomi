@@ -44,7 +44,12 @@ type OrderReceiptPayload = {
     collection_location?: {
       name?: string | null;
       address_line1?: string | null;
+      address_line2?: string | null;
       city?: string | null;
+      state?: string | null;
+      postal_code?: string | null;
+      country?: string | null;
+      phone?: string | null;
     } | null;
     items?: Array<{ name?: string; quantity?: number; price?: number; total?: number }>;
     subtotal?: number;
@@ -156,10 +161,14 @@ export async function GET(
       if (receipt.delivery_address.country) doc.text(receipt.delivery_address.country);
     } else if (receipt.fulfillment_type === "collection" && receipt.collection_location) {
       drawPdfSectionTitle(doc, "Collection at");
-      if (receipt.collection_location.name) doc.text(receipt.collection_location.name);
-      if (receipt.collection_location.address_line1)
-        doc.text(receipt.collection_location.address_line1);
-      if (receipt.collection_location.city) doc.text(receipt.collection_location.city);
+      const loc = receipt.collection_location;
+      if (loc.name) doc.text(loc.name);
+      if (loc.address_line1) doc.text(loc.address_line1);
+      if (loc.address_line2) doc.text(loc.address_line2);
+      const cityLine = [loc.city, loc.state, loc.postal_code].filter(Boolean).join(", ");
+      if (cityLine) doc.text(cityLine);
+      if (loc.country) doc.text(loc.country);
+      if (loc.phone) doc.text(`Tel: ${loc.phone}`);
     }
 
     doc.moveDown();

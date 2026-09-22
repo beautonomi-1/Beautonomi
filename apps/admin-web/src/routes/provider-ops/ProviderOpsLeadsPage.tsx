@@ -57,6 +57,8 @@ import {
 } from "@/components/provider-ops/LeadAssigneeInline";
 import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { deskForAdminRole } from "@/lib/providerOpsDeskNav";
 
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
@@ -410,9 +412,11 @@ interface Activity {
 
 export function ProviderOpsLeadsPage() {
   const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
+  const { bootstrap } = useAdminSession();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
+  const defaultAssigneeApplied = useRef(false);
   const stage = sp.get("stage") || "all";
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const search = sp.get("search") || "";
@@ -422,10 +426,24 @@ export function ProviderOpsLeadsPage() {
   const categoryKey = categoryIds.join(",");
   const assignedToFilter = sp.get("assigned_to") || "";
   const contactFilter = normalizeContactFilterParam(sp.get("contact"));
+  const slaBreached = sp.get("sla_breached") === "1";
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
   const viewParam = sp.get("view");
   const deletedView = sp.get("deleted") === "only";
+
+  useEffect(() => {
+    if (defaultAssigneeApplied.current) return;
+    if (!bootstrap?.userId || deskForAdminRole(bootstrap.role) !== "sales") return;
+    if (sp.get("assigned_to")) {
+      defaultAssigneeApplied.current = true;
+      return;
+    }
+    defaultAssigneeApplied.current = true;
+    const n = new URLSearchParams(sp);
+    n.set("assigned_to", bootstrap.userId);
+    setSp(n, { replace: true });
+  }, [bootstrap?.userId, bootstrap?.role, sp, setSp]);
 
   const [searchInput, setSearchInput] = useState(search);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -507,6 +525,7 @@ export function ProviderOpsLeadsPage() {
       categoryIds.forEach((id) => p.append("category_ids", id));
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
       if (contactFilter) p.set("contact", contactFilter);
+      if (slaBreached) p.set("sla_breached", "1");
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
       if (deletedView) p.set("deleted", "only");
@@ -989,6 +1008,7 @@ export function ProviderOpsLeadsPage() {
       categoryIds.forEach((id) => p.append("category_ids", id));
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
       if (contactFilter) p.set("contact", contactFilter);
+      if (slaBreached) p.set("sla_breached", "1");
       if (deletedView) p.set("deleted", "only");
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
@@ -1264,7 +1284,26 @@ export function ProviderOpsLeadsPage() {
             <button type="button" className="min-h-11 shrink-0 touch-manipulation rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800" onClick={commitSearch}>Search</button>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-            <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation", filtersOpen || country || province || categoryIds.length > 0 || assignedToFilter || contactFilter ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
+            <button
+              type="button"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                if (slaBreached) n.delete("sla_breached");
+                else n.set("sla_breached", "1");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation",
+                slaBreached
+                  ? "border-rose-600 bg-rose-50 text-rose-800"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50",
+              )}
+            >
+              <AlertTriangle className="h-4 w-4" />
+              SLA breached
+            </button>
+            <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation", filtersOpen || country || province || categoryIds.length > 0 || assignedToFilter || contactFilter || slaBreached ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
               <Filter className="h-4 w-4" />
               Filters
               {(country || province || categoryIds.length > 0 || assignedToFilter || contactFilter) ? (

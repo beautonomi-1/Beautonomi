@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-market";
+import {
+  resolveActiveMarketFromRequest,
+  resolveVisitorCountryFromRequest,
+} from "@/lib/tenant/resolve-active-market";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -23,8 +26,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const market = resolveActiveMarketFromRequest(request, searchParams.get("country"));
+    const visitor = resolveVisitorCountryFromRequest(request, searchParams.get("country"));
     const tenant = await resolveTenantFromRequest(request);
-    const availability = evaluateMarketAvailability(market.countryCode);
+    const availability = evaluateMarketAvailability(visitor.countryCode);
     let preferredHomeTenantId: string | null = null;
     try {
       const userSupabase = await getSupabaseServer(request);
@@ -45,8 +49,8 @@ export async function GET(request: NextRequest) {
     }
     const routing = await resolveTenantRoutingDecision({
       request,
-      countryCode: market.countryCode,
-      marketSource: market.source,
+      countryCode: visitor.countryCode,
+      marketSource: visitor.source,
       availabilityStatus: availability.status,
       preferredHomeTenantId,
     });
@@ -111,6 +115,11 @@ export async function GET(request: NextRequest) {
         countryCode: market.countryCode,
         source: market.source,
         host: market.host,
+      },
+      visitor: {
+        countryCode: visitor.countryCode,
+        source: visitor.source,
+        host: visitor.host,
       },
       user: {
         preferredHomeTenantId,

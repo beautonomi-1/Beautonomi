@@ -1,0 +1,2791 @@
+Toggle {{label}} lock
+Country code {{code}}
+Verify and save phone
+Something went wrong.
+Order {{orderNumber}}
+Scan or enter barcode
+Search saved clients…
+Preparing terminal...
+Remove this campaign?
+sponsored impressions
+Group booking {{ref}}
+Group creation failed
+Group session created
+Participant service *
+Travel fee (optional)
+{{label}} ({{count}})
+{{name}} · {{amount}}
+View consent document
+Share receipt summary
+Pay now / update card
+Subscription checkout
+Payment action needed
+Billing action needed
+E-Commerce & Products
+Products & e-commerce
+Catalogue & offerings
+Identity verification
+Linked to this device
+{{name}} card machine
+Need another machine?
+Couldn't check status
+Connected as {{name}}
+How to find your keys
+How to find Yoco keys
+Public Key (optional)
+Payment not completed
+Select a card machine
+ · {{amount}} was due
+ · {{count}} payments
+Charges from checkout
+Could not place order
+Terminal integrations
+Customize Booking URL
+Select month of birth
+You travel to clients
+VAT registered (SARS)
+Finding nearby zones…
+No zones found nearby
+Add a custom category
+Enter an add-on name.
+Opening time too late
+Enter a service name.
+Booking limit reached
+Selected map location
+Fixed amount discount
+Tap a slot to confirm
+No packages available
+Failed to update link
+Activate express link
+Booking link: {{url}}
+Custom URL slug input
+Couldn't publish post
+Library ({{count}}/5)
+Available to withdraw
+Platform-held balance
+Open plan & billing →
+Online product orders
+No show rate: {{pct}}
+Select a staff member
+{{hours}} hours shift
+No upcoming days off.
+Select role {{label}}
+{{count}} subscribers
+Verified account name
+Account Holder Name *
+Field required toggle
+Remove {{name}} field
+View attachment image
+  + {{amount}} travel
+Commission {{amount}}
+Recurring appointment
+End date (YYYY-MM-DD)
+Save schedule changes
+Every {{count}} weeks
+Change profile circle
+Set as profile circle
+You're all caught up.
+Sent to admin review.
+Paystack ref: {{ref}}
+Send membership offer
+Remove from favorites
+Back to services list
+Back to products list
+No products available
+POS Sale for {{name}}
+. Note: {{reference}}
+Wrong number? Go back
+Add blocked time type
+No blocked time types
+Repeats every {{day}}
+← Continue with phone
+Use a different email
+Address (for at home)
+Additional details...
+{{count}} saved posts
+Completing sign in...
+Update Beautonomi now
+Checkout — {{amount}}
+Enter a friend's code
+Have a referral code?
+or sign up with email
+Full name is required
+Invalid email address
+Passwords don't match
+Send later (optional)
+Submit Return Request
+Requested on {{date}}
+{{count}} x {{price}}
+Pay {{amount}} online
+Search for an address
+Verification required
+Surname as on your ID
+Open terms of service
+Member since {{date}}
+Complete your profile
+Couldn't load product
+Browse other products
+📍 {{name}}, {{city}}
+Delivery · {{amount}}
+When's your birthday?
+Drop a pin on the map
+Could not save avatar
+Offers and promotions
+Share your experience
+Cart, {{count}} items
+Loyalty ({{pts}} pts)
+Book at Salon Instead
+Apartment/Unit Number
+e.g., Apt 5B, Unit 12
+Building/Complex Name
+Failed to remove card
+Wallet credit applied
+Detecting location...
+Browser notifications
+Gift card code copied
+Loading gift cards...
+Gift card code hidden
+Service Description *
+Complete Your Payment
+Online (deposit paid)
+Loyalty points earned
+Last updated {{date}}
+Failed to update card
+Plan change scheduled
+Delivered / Collected
+Discount ({{reason}})
+View booking payments
+Failed to set default
+Failed to resend code
+Welcome to Beautonomi
+Invalid date or time.
+Group booking updated
+Group booking created
+ · Travel fee {{fee}}
+· {{count}} remaining
+{{count}} participant
+Service added to cart
+Product added to cart
+Select product option
+Subscription required
+Max visits (optional)
+Card machine settings
+Last error: {{error}}
+Number of Occurrences
+Yoco checkout QR code
+Amount ({{currency}})
+Back to conversations
+View Customer Profile
+View Provider Profile
+Notify client on drag
+Failed to load profile
+Send verification code
+Download order receipt
+Select or add supplier
+Select unit of measure
+day in sponsored slots
+Create a group booking
+Outside service radius
+Travel fee unavailable
+Download group receipt
+Detach current package
+Where is it happening?
+Save address + map pin
+ · {{count}} spot open
+Customer notifications
+Could not load profile
+Start journey (no ETA)
+Mark product collected
+Client quotes & offers
+Assigned by Beautonomi
+Merchant setup pending
+Device model {{model}}
+Charge on card machine
+e.g. Aramex, DHL, Paxi
+Connect Yoco via OAuth
+After refund clawbacks
+Timezone: {{timezone}}
+{{base}} + {{tip}} tip
+Online Booking Enabled
+Advance Notice (hours)
+Deposit Percentage (%)
+2–10 staff or stylists
+Phone number verified.
+Resend in {{seconds}}s
+Other (please specify)
+Apt / suite (optional)
+Closing time too early
+• {{label}}: {{value}}
+Please select a client
+Resume previous draft?
+Remove selected client
+Selected time {{time}}
+~{{minutes}} min drive
+Select referral source
+No staff members found
+e.g. Colour correction
+Checking availability…
+Clear checkout prefill
+Loading express links…
+Edit booking link slug
+Selected photo preview
+Could not upload file.
+Rewards & achievements
+Upcoming (Next 7 Days)
+e.g. Signature Haircut
+Select or add category
+Description (optional)
+Could not save account
+Loading integration...
+Notification Templates
+Test {{channel}} sent!
+Send Test Notification
+Out of stock (preview)
+Form title is required
+Field name is required
+Failed to update offer
+Price ({{currency}}) *
+Proposed date and time
+Try a different filter
+e.g. Christmas Holiday
+Recurring Appointments
+LAST AUTO-BOOKED VISIT
+Preferred time (HH:MM)
+Every {{count}} months
+Pick an existing photo
+Salon account required
+Check for new payments
+Ambiguous amount match
+Setup request received
+Request terminal setup
+{{label}} · {{status}}
+Email marketing toggle
+Could not load options
+Select client {{name}}
+{{count}} transactions
+No sales in this range
+Edit blocked time type
+Failed to resend code.
+Login method selection
+Campaigns & automation
+Use a valid date/time.
+e.g. Haircut & Styling
+{{name}} x{{quantity}}
+Pay Order — {{amount}}
+Phone number, optional
+Please sign in to pay.
+Failed to load reviews
+Balance due {{amount}}
+{{name}} — {{service}}
+{{name}} ×{{quantity}}
+{{time}} — unavailable
+What should I include?
+Don't have an account?
+Code sent to {{email}}
+Code sent to {{phone}}
+No platform membership
+Could not save address
+Inspiration and offers
+Policies and reminders
+{{count}} pts required
+No support tickets yet
+Priority: {{priority}}
+Distance not available
+Service area: {{area}}
+Request custom service
+Failed to save address
+Amount due: {{amount}}
+Book at home or office
+Or choose a set amount
+Deposit ({{percent}}%)
+Info about saving card
+Pay Deposit {{amount}}
+Please enter your name
+View uploaded document
+Preferred name updated
+Beautonomi gift credit
+{{percent}}% remaining
+Apartment, suite, etc.
+Failed to load clients
+No custom requests yet
+Failed to create offer
+Failed to load booking
+Loading memberships...
+This month: {{amount}}
+Resolved by Beautonomi
+Item received {{date}}
+Failed to load receipt
+Payment method removed
+Use a different number
+Milestones ({{count}})
+Subtotal ({{details}})
+{{count}} participants
+Paystack Terminal (QR)
+Invalid gift card code
+No locations available
+Enter email (optional)
+Enter phone (optional)
+e.g., Custom Treatment
+Emergency contact name
+Team Member (Optional)
+Failed to accept offer
+Failed to upload files
+Failed to send message
+No specific assignment
+Process Refund / Return
+Select product category
+Brand name is required.
+Failed to update status
+days in sponsored slots
+ · Daily cap {{amount}}
+ · Bid {{amount}}/click
+{{count}} day remaining
+Group booking not found
+Group partially created
+{{label}} ({{variant}})
+Not separately invoiced
+Change attached package
+Confirm session details
+Use a provider location
+Change selected package
+Add initial participant
+Search existing client…
+Participant {{n}} phone
+Add another participant
+ · {{count}} spots open
+House call instructions
+Mark as no-show instead
+Manage recurring series
+Cancel in the App Store
+No subscription on file
+Social media (optional)
+Merchant setup complete
+Card machine {{serial}}
+Process refund / return
+Est. delivery: {{date}}
+Reason for cancellation
+Yoco reference required
+Charge on Yoco terminal
+e.g. 1Z999AA10123456784
+Tracking URL (optional)
+Yoco integration status
+Before refund clawbacks
+Waiting on card machine
+Beautonomi card machine
+Review in Card machines
+No active card machines
+Tracking: {{reference}}
+Booking link & settings
+Email address verified.
+App Review demo account
+Type the software name…
+Could not save service.
+Not added — recommended
+Failed to validate code
+Repeating visit created
+Show {{label}} services
+Calculating travel fee…
+Tip {{percent}} percent
+Show {{label}} products
+Confirm & Create Series
+Create new express link
+Staff member (optional)
+Go to subscription page
+Deactivate express link
+Create new Explore post
+Load more Explore posts
+{{current}} / {{total}}
+Complete your profile →
+Copy weekly schedule to
+Add date-specific shift
+Reassign and deactivate
+Failed to revoke invite
+Benefits (display only)
+Add your payout account
+{{bank}} ···· {{last4}}
+Full name as on account
+Account SID is required
+What this report counts
+Attach to every booking
+Preferred: {{datetime}}
+Offer expires in (days)
+Share your booking page
+UIF contribution amount
+That date is not valid.
+ · Last booked {{date}}
+Delete recurring series
+Could not upload photo.
+{{base}} · {{location}}
+Toggle email invitation
+Note from your request:
+Incorrect ref / decline
+Could not remove client
+Remove from client list
+Discount ({{currency}})
+Please enter your email
+Login verification code
+Email verification code
+Could not send campaign
+Top up marketing credit
+Service name (optional)
+Unit / suite (optional)
+Add an uppercase letter
+Add a special character
+Optional gift card code
+Could not start payment
+Request Return / Refund
+Group session not found
+Label (e.g. Home, Work)
+View my support tickets
+Change email or phone →
+Beautonomi v{{version}}
+Changes to {{planName}}
+Cancel salon membership
+No product ID provided.
+Add to cart · {{price}}
+No billing history yet.
+South Africa storefront
+Open international site
+Search for your address
+Hide manual edit fields
+Need {{min}}+ to redeem
+No milestones available
+Could not submit ticket
+Could not submit rating
+Product list pagination
+No categories available
+Retry loading providers
+Enter your full address
+Access Codes (Optional)
+Please select a service
+Failed to load document
+Failed to view document
+Gift card code {{code}}
+No items left to return
+Offer Expires In (days)
+No payment URL returned
+Failed to start payment
+Failed to decline offer
+Loyalty points redeemed
+Platform fee ({{pct}}%)
+Pay outstanding balance
+All fields are required
+Email address not found
+Enter verification code
+Phone verification code
+Deactivate Your Account
+Total saved: {{amount}}
+How Loyalty Points Work
+Need to return an item?
+PDF receipt downloaded.
+Invalid or expired code
+Redirecting to Apple...
+Failed to complete sale
+Download Beautonomi app
+Use onboarding deeplink
+Select salon location *
+🔗 Copy Onboarding Link
+Failed to create client
+Card machines not ready
+Enter a type name first
+Blocked time type added
+Add a new type directly
+Could not access camera
+{{name}}: Max {{size}}.
+{{count}} file selected
+Failed to load messages
+Failed to retract offer
+Start the conversation!
+Failed to upload images
+New client, notes, etc.
+Repeat until (optional)
+Invalid or expired code.
+{{quantity}} × {{price}}
+Could not share receipt.
+Scan barcode with camera
+Hide saved client picker
+Select or create a brand
+Confirming your payment…
+Couldn't reopen Paystack
+{{count}} days remaining
+Could not read location.
+ · Travel fee {{amount}}
+Remove participant {{n}}
+Participants ({{count}})
+Send cancellation notice
+Answers for this booking
+Scan QR (use mobile app)
+Switch to yearly billing
+Business, team & account
+https://x.com/yourhandle
+Linked to device {{id}}…
+Could not read device ID
+Product order {{number}}
+Device name is required.
+Dismiss reconnect banner
+Update Checkout API keys
+Remove Checkout API keys
+e.g. Front Desk Terminal
+Waiting for confirmation
+Waiting on card machine…
+Beautonomi card machines
+I am planning to get one
+Which provider or model?
+Some photos were skipped
+Menu category {{n}} name
+Add services now or skip
+Toggle {{day}} {{state}}
++ {{count}} more feature
+{{count}} add-on removed
+package no longer active
+— None / Not specified —
+No products in catalogue
+Review Repeating Booking
+Review the details below
+Confirm & Create Booking
+QR code for booking link
+Comma or space separated
+Also add to my portfolio
+Weekly revenue bar chart
+Retail sales, {{amount}}
+Performance ({{period}})
+Completion rate: {{pct}}
+{{points}} points earned
+No upcoming appointments
+Copy weekly schedule to…
+Edit date-specific shift
+Verification unavailable
+Connected since {{date}}
+${{amount}} {{currency}}
+Notification Preferences
+Get notified immediately
+Retail value by category
+{{count}} form templates
+Booking link is disabled
+End must be after start.
+Manual deductions amount
+From {{date}} · {{time}}
+Paste a link to an image
+Customer-managed profile
+Transactions ({{count}})
+Delete blocked time type
+Signup verification code
+Resend verification code
+Schedule send (optional)
+Or enter an amount (ZAR)
+No items for this seller
+Delivery fee: {{amount}}
+Place Order — {{amount}}
+Failed to load addresses
+No scheduled visits yet.
+Services for this person
+Turn on repeating visits
+Reschedule group session
+Last updated at {{time}}
+Become a beauty provider
+Invalid or missing link.
+Opening in your browser…
+Go back to previous step
+Booking confirmation SMS
+Your rating: {{score}}/5
+Thanks for your feedback
+Choose a specific option
+Copy promo code {{code}}
+Retry loading categories
+Failed to load locations
+Checking availability...
+Loading saved addresses…
+Label (e.g., Home, Work)
+Use a saved card instead
+Return Request Submitted
+Enter your VAT ID number
+Pay {{percent}}% Deposit
+Failed to withdraw offer
+Failed to cancel request
+Manage your account data
+Show my service duration
+Failed to cancel booking
+Could not start payment.
+{{minutes}} minutes late
+Appointment window ended
+to keep it from lapsing.
+Recurring booking paused
+No payment methods saved
+Redirecting to Google...
+Continue with email code
+← Back to phone & social
+Start your badge journey
+Search street address...
+Search existing clients…
+Redeem gift card balance
+Service at your location
+Search customer address…
+What are you blocking? *
+Leave empty for no limit
+Maximum 10 tags per post
+{{count}} files selected
+Client details & options
+Add a caption (optional)
+Maximum 6 images allowed
+Maximum 6 images reached
+Sign out from all devices
+Payment wasn't completed.
+Activating your campaign…
+Failed to create campaign
+Failed to update campaign
+Couldn't open the receipt
+Get found by more clients
+All impressions delivered
+Paystack Terminal Payment
+Open booking for {{name}}
+Calculating travel fee...
+Paystack Terminal QR Code
+Send reminder to customer
+Switch to monthly billing
+Payment was not completed
+This is your current plan
+Manage group appointments
+Inventory, orders & sales
+Open full setup checklist
+Card machines unavailable
+e.g. Front desk, Portable
+Card machine display name
+Please try again shortly.
+Record collection payment
+Mark ready for collection
+Window: {{from}} → {{to}}
+Select a pickup location.
+Terminal order confirmed.
+Close country code picker
+Description (recommended)
+{{name}}: larger than 5MB
+Couldn't add these photos
++ {{count}} more features
+{{count}} add-ons removed
+{{count}} product removed
+This package has no items
+Assign staff for {{name}}
+No sources configured yet
+Confirm Repeating Booking
+{{percent}}% ({{amount}})
+Link a service (optional)
+Total earned ({{period}})
+Top services ({{period}})
+{{count}} pts to level up
+No weekly shifts set yet.
+Failed to send invitation
+Plan benefits overview...
+Bank accounts for payouts
+Enable push notifications
+Failed to decline request
+Customer phone: {{phone}}
+Assigned staff (optional)
+Pay run item for {{name}}
+No recurring appointments
+Some files were too large
+Remove photo from gallery
+Dismiss add photo options
+Choose how to add a photo
+Choose from photo library
+No staff at this location
+Street address or search…
+Request branded QR/poster
+Send to admin to allocate
+No terminal payments yet.
+Tap to add private notes…
+Communication preferences
+{{name}} is out of stock.
+Payment method: {{label}}
+Go back to item selection
+Failed to update profile.
+e.g. Beauty Wholesale Co.
+Supplier name is required
+Forgot password? Reset it
+Could not create campaign
+Could not update campaign
+Create scheduled campaign
+Custom offers unavailable
+Failed to request changes
+Country code: {{country}}
+Recipient name (optional)
+Optional points to redeem
+Booking steps and options
+{{percent}}% off services
+See all {{count}} reviews
+Checkout cart ({{count}})
+Do not close this screen.
+Could not load providers.
+Share & Earn Bonus Points
+Load more support tickets
+Offers from this provider
+Show recent notifications
+Appointment with {{name}}
+Current location selected
+Service Areas ({{count}})
+Verifying your account...
+Emergency contact updated
+{{quantity}} × R{{price}}
+Budget: {{min}} - {{max}}
+{{count}}/4000 characters
+Password set successfully
+Failed to update password
+Confirm your new password
+Safety tips for customers
+Safety tips for providers
+No other plans available.
+Recurring booking resumed
+Failed to update schedule
+No recurring bookings yet
+= {{amount}} in discounts
+Failed to send email code
+Resend verification email
+Point history ({{count}})
+Select service (optional)
+Failed to validate coupon
+Complete OTP verification
+Client added successfully
+Communication Preferences
+{{count}} available slots
+Select variant — {{name}}
+Failed to save time block
+Failed to process payment
+Send receipt to {{email}}
+Sign out from all devices?
+Manage order in orders hub
+Complete sale · {{amount}}
+Category name is required.
+Supplier name is required.
+{{amount}} campaign budget
+Failed to create campaign.
+Couldn't open the receipt.
+Create a new group booking
+Could not load more groups
+Pay with Paystack Terminal
+Staff, shifts & time clock
+Late cancel & no-show fees
+Checking payout account...
+Accept platform gift cards
+Card machine serial number
+Page {{page}} of {{total}}
+Yoco payments are disabled
+Hosted checkout keys saved
+Connect Yoco for terminals
+Activate your card machine
+{{courier}}: {{reference}}
+Complete integration setup
+Instant digital activation
+Max Advance Booking (days)
+Just me, building my brand
+20+ staff across locations
+{{name}}: unsupported type
+Remove gallery image {{n}}
+Draft resumed with changes
+{{count}} products removed
+Some services were skipped
+Some products were skipped
+Previous selections saved.
+Search by name or phone...
+End after number of visits
+Recurring occurrence count
+{{pattern}} until {{date}}
+Failed to load short links
+Name and slug are required
+Retry loading booking link
+Draft — not on Explore yet
+{{prefix}}Owed to platform
+Rewards: {{points}} points
+Delete date-specific shift
+Update date-specific shift
+Failed to load preferences
+Turn on push notifications
+Push notifications enabled
+Unsubscribe from Marketing
+View responses on bookings
+Set form type to {{label}}
+Remove this closed period?
+{{count}} booking affected
+{{schedule}} · {{service}}
+What would you like to do?
+Poster ready · link needed
+Not available on your plan
+VAT ({{percent}}%) (incl.)
+Complete Sale - {{amount}}
+Sponsored listings and ads
+Try adjusting your filters
+Showing 4 months of blocks
+Please enter your password
+Sample shown for {{name}}.
+Retry account status check
+Copy booking number and ID
+End User License Agreement
+Type {{phrase}} to confirm
+Delete account permanently
+Paid {{paid}} of {{total}}
+Your selection ({{count}})
+Confirm your legal details
+🇿🇦 South Africa detected
+Step {{step}} of {{total}}
+Search for your address...
+Could not save preferences
+Earn points on every visit
+Paused — manage in account
+What this provider offers:
+App URL is not configured.
+{{name}} ({{minutes}} min)
+Failed to validate address
+Failed to set default card
+Percentages apply to your 
+{{percent}}% of {{amount}}
+Failed to resend gift card
+Enter your full legal name
+Loading custom requests...
+Request your personal data
+Permanently delete account
+Loading booking details...
+Failed to load memberships
+No active membership found
+Salon membership cancelled
+Could not load saved cards
+Please enter a coupon code
+Loading payment methods...
+Package "{{name}}" applied
+📱 Download Beautonomi App
+Please enter a valid price
+How they like to be called
+Preferred Staff (Optional)
+Failed to save appointment
+× {{quantity}} = {{total}}
+Open card machine settings
+Receipt sent successfully!
+Phone number not available
+Client details and options
+15-480 minutes (1-8 hours)
+Loading available times...
+Start typing an address...
+Smaller appointment blocks
+Tap to choose size / option
+Could not prepare card sale
+Product category, {{value}}
+Select or create a category
+Select or create a supplier
+Couldn't cancel the payment
+Choose how you want to grow
+Total budget ({{currency}})
+Daily budget ({{currency}})
+{{amount}} budget remaining
+Invalid schedule date/time.
+Could not add participants.
+Participant creation failed
+Additional location details
+{{currency}} {{amount}} due
+Collect payment for booking
+Restore App Store purchases
+Redeem App Store offer code
+Auto-renewable subscription
+Plan, invoices, bills & VAT
+Locations & operating hours
+Plan includes card machines
+At least one active machine
+Record payment / collection
+Distinct clients: {{count}}
+Cancel sent to card machine
+Payment already in progress
+Open card machines settings
+No card machines set up yet
+Card machines by Beautonomi
+What happens after purchase
+Cancellation Window (hours)
+Custom URL slug is required
+Enter a valid add-on price.
+Unit / apartment (optional)
+{{duration}} total duration
+Retry loading express links
+Booking status ({{period}})
+Top services (last 29 days)
+Unpaid bookings, {{amount}}
+Mon {{start}} – Sun {{end}}
+Changes saved successfully.
+Name and price are required
+Set field type to {{label}}
+· Budget: {{min}} – {{max}}
+{{count}} bookings affected
+Adjust deductions and notes
+Update & submit new request
+Could not download receipt.
+Could not open phone dialer
+Could not open email client
+{{month}} · {{count}} block
+e.g. Team meeting, training
+Optional note for your team
+Please enter your full name
+Resend code in {{seconds}}s
+Not enough marketing credit
+Service category (optional)
+Failed to send custom offer
+Sign in to place your order
+Taking longer than expected
+Personal message (optional)
+This offer is already paid.
+Could not display this PDF.
+No participants listed yet.
+Refresh verification status
+Submit a new support ticket
+How long does support take?
+At least {{min}} characters
+Dismiss announcement banner
+Enter {{digits}}-digit code
+Booking confirmation emails
+Failed to load more tickets
+{{count}} review.{{suffix}}
+{{minutes}} min · {{price}}
+for refund and fee details.
+We'll come to your location
+Additional Location Details
+Help us improve Beautonomi.
+Failed to update preference
+No usable balance right now
+Requested changes: {{note}}
+Additional Notes (optional)
+Customer requested changes:
+Offer updated successfully!
+Offer created successfully!
+Loading privacy settings...
+Failed to {{action}} charge
+Enter a valid email address
+Enter your current password
+Keeping your account secure
+Failed to cancel membership
+Failed to update auto-renew
+Failed to update membership
+No discounted bookings yet.
+Recurring booking cancelled
+Cancellation fee (retained)
+When you'll get your payout
+Email verification required
+Pin saved: {{lat}}, {{lng}}
+Coupon applied successfully
+Failed to prepare card sale
+Service at customer address
+Search clients, services...
+Please enter a valid amount
+Failed to save color scheme
+No active devices available
+•  matches booking location
+Failed to copy phone number
+{{name}}: Invalid file type
+Service Category (optional)
+Please select a team member
+Failed to delete time block
+Failed to save phone number.
+Code sent to {{destination}}
+Send phone verification code
+Update your account password
+Enter a valid email address.
+Process refund for this sale
+Booking/order note: {{note}}
+Leave empty to auto-generate
+Dismiss payment notification
+Target categories (optional)
+Bid per click ({{currency}})
+{{count}} participant added.
+Pinned location, {{country}}
+Participant name is required
+Max people for this session.
+Package booking (ID on file)
+Open App Store subscriptions
+Manage billing / update card
+Cancellation policies & fees
+Contact support & new ticket
+{{count}} order needs action
+{{count}} orders need action
+Delivery address · {{label}}
+Webhook Secret (recommended)
+Open card machines to review
+Send to card machine (Cloud)
+Allow clients to book online
+Book an appointment: {{url}}
+Enter a valid mobile number.
+Send email verification code
+Show {{count}} more features
+Add custom service line item
++ Custom service (in person)
+No services in this category
+Tip (optional, {{currency}})
+No products in this category
+Open Explore feed in browser
+Your account is under review
+Create a walk-in appointment
+Earnings trend (last 7 days)
+Please select a staff member
+e.g. Split shift, on call...
+{{count}} bookings this week
+Enter a phone number to test
+System notifications are off
+Booking URL slug is required
+Could not save closed period
+Next: {{reason}} on {{date}}
+Delete recurring appointment
+Name and email are required.
+Suggested target: {{target}}
+Add tags (e.g. VIP, Regular)
+Could not finalize card sale
+{{type}} · Qty: {{quantity}}
+Grow with sponsored listings
+Sale: {{client}}, {{amount}}
+No contact information added
+{{month}} · {{count}} blocks
+No time blocks in this range
+Custom type, e.g. Stock take
+Start typing street or area…
+Apartment, estate gate, etc.
+Pinch to zoom · drag to move
+I have read and agree to the
+Couldn't verify your account
+Code sent. Check your inbox.
+Save this card for next time
+This PDF could not be found.
+Prefer a break instead? Use 
+Could not cancel this order.
+Estimated delivery: {{date}}
+Verify your identity to book
+Could not load group booking
+{{unitPrice}} × {{quantity}}
+Change email or phone number
+Earn points on every booking
+Edit address fields manually
+Could not save date of birth
+System notification settings
+Rate this support experience
+Related reference (optional)
+Help with {{kind}} {{label}}
+{{count}} reviews.{{suffix}}
+Navigate to the Explore feed
+Address saved as "{{label}}"
+Failed to initialize payment
+Services, add-ons & products
+e.g., Spouse, Parent, Friend
+Failed to update preferences
+Failed to load offer details
+Setting updated successfully
+ are managed separately—use 
+✓ Your data export is ready!
+Refund confirmed. Thank you.
+Failed to deactivate account
+visiting the reactivate page
+Failed to load more activity
+Failed to save group booking
+Travel Fee (auto-calculated)
+Record card payment manually
+Instant EFT or bank transfer
+Failed to validate gift card
+Please add items to the sale
+Customer Onboarding Required
+Custom service added to cart
+No entries match your search
+Please select a team member.
+Failed to create appointment
+Add a service to get started
+{{duration}} min · {{price}}
+Failed to load card machines
+Please select a card machine
+Products & ecommerce payments
+{{count}} units (all options)
+Targeting: {{count}} category
+Participants not invoiced yet
+Time must be in HH:MM format.
+Session has been marked paid.
+{{count}} participants added.
+Services, products & packages
+All tickets, replies & status
+Order terminals from the shop
+Collect via Paystack Terminal
+Use Checkout API keys instead
+Net after refunds: {{amount}}
+Still waiting on card machine
+Pay {{amount}} on this device
+{{name}} is ready to activate
+How would you like to get it?
+Add-on description (optional)
+{{name}}, {{minutes}} minutes
+Start typing street or place…
+Failed to update express link
+Failed to create express link
+In-person sales you collected
+Failed to load · Tap to retry
+Loading date-specific shifts…
+Invitation sent to {{email}}.
+Set as primary payout account
+e.g. Full Name, Date of Birth
+Could not load offer details.
+⏳ Offer expires: {{datetime}}
+Could not withdraw the offer.
+For embedding on your website
+QR code for your booking page
+Paystack Terminal unavailable
+Remove client from saved list
+Start typing for suggestions…
+That variant is out of stock.
+JPG, PNG or GIF. Max size 2MB
+Manage subscription & billing
+Wrong email? Go back and edit
+Opens in Apple or Google Maps
+{{error}} Showing saved cart.
+Additional Details (optional)
+Loading verification options…
+Card on delivery / collection
+For faster checkout next time
+Booking details not available
+House call details (optional)
+Verification required to book
+Open Learning Centre articles
+📍 {{count}} pickup locations
+Booking confirmation WhatsApp
+Worth {{currency}} {{amount}}
+{{earned}} / {{required}} pts
+Both of you earn bonus points
+Set as default payment method
+Pay {{amount}} with Gift Card
+Account activity and policies
+Failed to load loyalty points
+Purchase your first gift card
+Which item are you returning?
+Additional details (optional)
+Failed to create custom offer
+Show my home city and country
+Could not report running late
+Appointment with {{provider}}
+Password updated successfully
+Could not sign out everywhere
+Scheduled plan change cleared
+Loading recurring bookings...
+Coupon redeemed successfully!
+Book a service to save a card
+Sign up with email & password
+Charge your Yoco card machine
+Please enter a gift card code
+Please enter a valid duration
+File too large. Max {{size}}.
+Send Custom Offer to {{name}}
+Inspiration Images (optional)
+Display canceled appointments
+Email change verification code
+Phone change verification code
+Select or add product category
+Has variants (sizes, volumes…)
+Processing App Store purchase…
+Boost for a set number of days
+Could not verify availability.
+Unsupported status transition.
+Start typing street address...
+Card machine payment received.
+Analytics, activity & insights
+Reviews, messaging & marketing
+All-time available to withdraw
+Track your application status.
+Activate your new card machine
+Accept in-person card payments
+ · {{count}} payment{{suffix}}
+Give this card machine a name.
+Business overview — {{period}}
+Complete the form to continue.
+Embed code copied to clipboard
+Resend email verification code
+Resend phone verification code
+Fixed location + mobile visits
+Staff earn a % of each service
+We'll discuss this after setup
+Copy {{day}} hours to all days
+Auto-generated from categories
+Please enter client first name
+Membership discount ({{name}})
+Pre-select services (optional)
+Clients can book via this link
+Online bookings need attention
+Upcoming: {{name}} at {{when}}
+Add team member and set shifts
+Delete this shift on {{date}}?
+Inherited from weekly schedule
+No specific services assigned.
+All services (tap to restrict)
+View subscribers for this plan
+Monthly Price ({{currency}}) *
+e.g. Priority booking, 10% off
+Account Number * (8–20 digits)
+Control how you receive alerts
+Toggle {{title}} active status
+COVID-19 safety acknowledgment
+Repeat this closure every year
+You’re set up as a freelancer.
+Search by name, email, role...
+Paystack Terminal payment link
+{{ref}} · {{date}} at {{time}}
+Your profile has been updated.
+{{date}} · {{start}} – {{end}}
+Please enter your phone number
+Go back to edit signup details
+Name and content are required.
+Write your campaign message...
+We couldn't place your account
+Free delivery to your address.
+Open tracking with {{carrier}}
+Failed to load available times
+{{count}} option · tap to hide
+Couldn't load profile details.
+Saved {{currency}} {{amount}}.
+Could not load more providers.
+Attempts to reload the content
+Available markets: {{markets}}
+Unsubscribe from all marketing
+Brief description of the issue
+Manage in Account → Membership
+No — pay with the method below
+How you'd like to be addressed
+Failed to load tax information
+Subscription renewal reminders
+Subscribed to marketing emails
+Failed to load custom requests
+Booking cancelled successfully
+Enter your password to confirm
+Failed to schedule plan change
+Failed to load payment methods
+Go to your transaction history
+Create Group from Appointments
+Gift card balance: {{balance}}
+Please select a salon location
+Repeating visit series created
+No in-flight payment to resume
+Failed to load payment devices
+Please select a payment device
+Payment could not be processed
+Split between multiple methods
+{{amount}} paid via {{method}}
+Photos · Videos · Max 5MB/50MB
+e.g. hair, braids, balayage...
+Add products above to continue.
+{{count}} sponsored impressions
+Targeting: {{count}} categories
+{{count}} impressions remaining
+Selected slot is not available.
+Tap to attach a service package
+View invoices & payment methods
+Set up bank account for payouts
+Serial number from device label
+Add tracking details (optional)
+Enter your Yoco API credentials
+In-person card payments are off
+Send {{amount}} to card machine
+No pickup locations configured.
+Card machine / payment terminal
+Not sure about my current setup
+How many terminals do you have?
+Review the series details below
+Add date-specific shift instead
+{{hours}} hours · ends next day
+View all membership subscribers
+Request Paystack Terminal setup
+Manage subscription and billing
+Add some message content first.
+Double tap to submit your order
+Remove card ending in {{last4}}
+{{count}} options · tap to hide
+How do I follow up on a ticket?
+1 booking used this membership.
+Push notifications for messages
+Booking/order/payment reference
+Sign in to see location details
+Not available for this provider
+Could not verify your slot hold
+ • Est. travel: {{minutes}} min
+Use wallet balance (no balance)
+You are signed in as a provider
+Please try refreshing the page.
+Failed to submit return request
+Could not submit return request
+Order {{number}} · {{provider}}
+Custom offer sent successfully!
+Permanently delete your account
+Could not update refund status.
+You will pay cash at the salon.
+2x points on your first booking
+Your latest points transactions
+Failed to remove payment method
+Tick the box below to continue.
+No service categories available
+Review in card machine settings
+Payment processed successfully!
+Temporarily disable your account
+Payment received — complete sale
+{{name}} has no available stock.
+Try a different search or filter
+Search by ref, service, staff...
+All locations · travels with you
+What makes up recognized revenue
+Hand the terminal to your client
+{{base}} + {{cashback}} cashback
+Sold and supported by Beautonomi
+Booking link copied to clipboard
+Uploading {{done}} of {{total}}…
+{{count}} staff assignment reset
+Enter a price greater than zero.
+Failed to create repeating visit
+Where did this client come from?
+Any special requests or notes...
+{{pattern}} for {{count}} visits
+Failed to copy link to clipboard
+Remove this field from the form?
+Responses appear on each booking
+Please enter start and end dates
+No active recurring appointments
+No paused recurring appointments
+Change the filter to see others.
+Assign services they can perform
+Failed to request terminal setup
+Failed to request branded assets
+Book appointment for this client
+Manage your personal information
+By continuing, you agree to our 
+Enter an amount of at least R10.
+Enter a valid price (0 or more).
+No categories match your search.
+Checkout for pickup — {{amount}}
+Why are you returning this item?
+Package · {{currency}} {{price}}
+{{count}} option · tap to choose
+Add {{name}} {{minutes}} minutes
+Open age suitability information
+Receive promotional SMS messages
+About {{km}} kilometres from you
+Booking #{{number}}
+{{services}}
+How would you like your service?
+This slot is no longer available
+Redirecting to complete payment…
+service subtotal after discounts
+Notification preferences updated
+{{rate}} points = 1 {{currency}}
+Failed to send verification code
+Account deactivated successfully
+Cancel your platform membership?
+50 bonus points on your birthday
+Invite Friends, Earn More Points
+Failed to sign in with {{label}}
+Confirm your address to continue
+Payment received on card machine
+Charge cancelled on card machine
+Add at least one photo or video.
+(helps customers find your post)
+Select a staff member (optional)
+Email, phone, password & sessions
+Failed to send verification code.
+Require {{label}} to open the app
+Could not send verification code.
+Pricing is set by the marketplace
+Payment is due from participants.
+Collect card payment for {{name}}
+Select a team member to continue.
+{{name}} · {{variant}} · ×{{qty}}
+Price increase needs your consent
+Appointments, waitlist & schedule
+Resources, intake & consent forms
+Earnings, ledger, sales & payouts
+Your feed posts, views & comments
+App language & market entry point
+Plans, perks & subscriber revenue
+Manage terminals, shop & payments
+Order from the Beautonomi catalog
+This device cannot open that URL.
+Could not open the tracking page.
+Link this device in Card machines
+Complete card machine application
+Fixed rate regardless of bookings
+{{count}} staff assignments reset
+Remove package and undo its items
+Deposit: {{deposit}} of {{total}}
+{{count}} appointments {{period}}
+End time must be after start time
+Aftercare instructions (optional)
+Optional notes for this line item
+Could not fetch current location.
+Could not check for new payments.
+Beautonomi Ops has been notified.
+Please choose an image under 2MB.
+Phone number without country code
+Delivered to {{count}} recipient.
+Tap or drag the pin, then confirm
+Estimated delivery: {{count}} day
+Sign in to add a delivery address
+{{count}} options · tap to choose
+Add {{name}}, {{minutes}} minutes
+Country that issued your document
+Show profile, opens personal info
+Offer your services on Beautonomi
+Lifetime: {{currency}} {{amount}}
+No providers in this section yet.
+Not available in your country yet
+Let's personalize your experience
+Apartment, suite, unit (optional)
+Hair type (select all that apply)
+Could not verify phone on server.
+Receive general Beautonomi emails
+Open system notification settings
+Add inspiration photos if helpful
+This provider services: {{zones}}
+Gift card resent to the recipient
+Full Name (as on tax documents) *
+No available slots for this date.
+Your appointment time has started
+Add this booking to your calendar
+Choose a saved card for {{name}}.
+Failed to load recurring bookings
+Referral link copied to clipboard
+Understanding the loyalty program
+Points expire after {{days}} days
+Could not start card verification
+Add clients to this group booking
+Apartment, Suite, etc. (Optional)
+At least one service is required.
+Try Send to card machine instead.
+Some images could not be uploaded
+Could not send offer: {{message}}
+Assign to Staff Member (optional)
+Apartment, suite, etc. (optional)
+Customize how your calendar looks
+Please select start and end times
+Please enter a valid phone number.
+Sale {{orderNumber}}, view details
+No bidding or daily caps to manage
+Couldn't restart App Store payment
+Update budget, bid, and targeting.
+Date must be in YYYY-MM-DD format.
+What does this participant want? *
+Send to customer — they pay in-app
+Cancelling — access until {{date}}
+Are you sure you want to sign out?
+Beautonomi in-person card machines
+{{count}} active machine{{suffix}}
+Growth vs prior window: {{value}}%
+Enter a valid email address first.
+Thumbnail + profile image uploaded
+Send a quote instead via messaging
+Add customization notes (optional)
+Product cart must be a JSON array.
+{{count}} booking awaiting payment
+Account number must be 8–20 digits
+ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Link ready · QR/poster in progress
+Search by reference or client name
+Search by name, email, or phone...
+{{start}} – {{end}} ({{duration}})
+End time must be after start time.
+Please enter a valid email address
+ (valid about {{minutes}} minutes)
+Email campaigns require a subject.
+Delivered to {{count}} recipients.
+Your message preview appears here…
+Expiration must be at least 1 day.
+Estimated delivery: {{count}} days
+Open your booking to view details.
+Final total includes taxes & fees.
+Access unavailable in your country
+SMS when you receive a new message
+Book a visit — then leave a review
+No membership plans available yet.
+Pay {{amount}} with •••• {{last4}}
+Unsubscribed from marketing emails
+{{current}} / {{threshold}} points
+You don't have any gift cards yet.
+ and quote reference {{reference}}
+Please fill in all required fields
+Phone number updated successfully.
+Plan change scheduled for {{date}}
+Failed to update recurring booking
+Failed to cancel recurring booking
+Failed to load loyalty points data
+Share your link and start earning!
+Pay {{currency}} {{amount}} online
+Quantity: {{quantity}} × {{price}}
+Failed to send verification email.
+Schedule multiple clients together
+{{current}} / {{cap}} spots filled
+Select a variant for this service.
+Unable to load service categories.
+Remove {{name}} from the waitlist?
+Failed to create blocked time type
+Customer information not available
+Provider information not available
+Click to upload inspiration photos
+PNG, JPG, WebP, GIF up to 5MB each
+Select an option to add to the cart
+No matches. Try a different search.
+Show Paystack Terminal · {{amount}}
+Failed to prepare terminal payment.
+Could not prepare Paystack Terminal
+No group booking selected for edit.
+Please enter a valid date and time.
+Could not calculate the travel fee.
+Pay via Paystack Terminal: {{link}}
+Branches, addresses & opening times
+Points, milestones & badge progress
+Search by order number or customer…
+Manage terminal integrations on web
+Clients can book without an account
+How far in advance clients can book
+Use country code {{label}} {{code}}
+I collect cash or use other methods
+Which terminal provider do you use?
+{{count}} of {{limit}} photos added
+YYYY-MM-DD, leave blank to continue
+Select at least one photo or video.
+{{count}} bookings awaiting payment
+Weekly schedule copied to {{name}}.
+Password reset email has been sent.
+Account number must be 8-20 digits.
+Remove account ending in {{last4}}?
+This device can receive push alerts
+Promotions, reminders and receipts.
+Payment received — finish recording
+Please enter a valid email address.
+Your phone number has been updated.
+Every {{day}} · {{start}} – {{end}}
+Enter duration in minutes (15–480).
+Use YYYY-MM-DD and HH:MM (24-hour).
+Remove {{name}} {{minutes}} minutes
+This month: {{currency}} {{amount}}
+Stop receiving promotional messages
+In-app push alerts for new messages
+Visit our location for your service
+Travel fee: {{amount}} {{currency}}
+Travel Fee: {{amount}} {{currency}}
+Redeem a prepaid package (optional)
+Booking subtotal (before discounts)
+Add services to use percentage tips
+Current location ({{lat}}, {{lng}})
+Verification Pending / Under Review
+Loading notification preferences...
+Change request sent to the provider
+Type {{phrase}} to confirm deletion
+Request permanent account deletion…
+No services connected at the moment
+Failed to send password reset email
+Email address updated successfully.
+{{digits}}-digit code from your SMS
+e.g. Bridal Party, Team Workshop...
+Service name and price are required
+Search client name, email or phone…
+Schedule this appointment to repeat
+Could not void on the card machine.
+Payment in progress on card machine
+Charge your Beautonomi card machine
+{{count}} / {{min}}-4000 characters
+Travel fee (optional, {{currency}})
+Display price on appointment blocks
+Could not sign out from all devices.
+Add password sign-in to your account
+Attach this sale to a client profile
+You only pay as your ad earns clicks
+Group created — payment not recorded
+Search clients for participant {{n}}
+Reset to confirmed (restart journey)
+Send cancellation notice to customer
+Payroll, team totals & your earnings
+Boost discovery & fill your calendar
+Connect Yoco and manage card devices
+Remove "{{name}}" from your account?
+OAuth required to add card terminals
+Book an appointment with us: {{url}}
+Fixed location — clients come to you
+{{count}} chars · 10 min recommended
+Are they actively used for payments?
+Thumbnail and profile image required
+Secure card payment after submitting
+Please assign staff for each service
+Street line (from search — editable)
+Edit checkout prefill for short link
+{{prefix}}{{amount}} in payout queue
+Open sell and point of sale checkout
+Appointments by channel ({{period}})
+{{count}} online bookings {{period}}
+Service consent and liability waiver
+Remove this photo from your gallery?
+Failed to update payment allocation.
+Booking confirmations and reminders.
+Walk-in customer, no client selected
+Your email address has been updated.
+Pay with a new card (secure browser)
+Contact support about this gift card
+Your product orders will appear here
+You're on {{host}} (ZAR). {{suffix}}
+Brand new programs and announcements
+Email when you receive a new message
+Push for deals, tips, and promotions
+Book again — review after your visit
+Share your vision and any must-haves
+Get a personalized offer in messages
+Attempts to reload the provider list
+Manage changes or cancellations from
+ • Est. travel time: {{minutes}} min
+Enter label (e.g., Mom's House, Gym)
+Missing required booking information
+Verifying your reserved time slot...
+Request timed out. Please try again.
+Describe the issue in more detail...
+Enter your tax identification number
++ {{currency}} {{amount}} travel fee
+Minimum redemption: {{count}} points
+Make all payments through Beautonomi
+Select add-ons for this participant.
+Onboarding link copied to clipboard!
+Opening card machine on this device…
+Finish card machine setup to collect
+(helps customers discover your post)
+Please describe the changes you want
+Payment received — booking confirmed
+Could not get your current location.
+No line items returned for this sale.
+Check the sale details and try again.
+Daily budget ({{currency}}, optional)
+{{days}} boost · {{paid}} paid{{end}}
+{{date}} at {{time}} · {{minutes}}min
+Could not create participant booking.
+Select a default service to continue.
+Confirming your subscription payment…
+Sponsored listings, campaigns & reach
+View full checklist · +{{count}} more
+From device label or activation email
+Card machines enabled for your market
+{{name}} card machine — setup pending
+Listed under “{{name}}” for discovery
+{{count}} walk-in bookings {{period}}
+Commission must be between 0 and 100.
+Customer address on file: {{address}}
+Add team members to manage your staff
+Your last setup request needs changes
+{{current}} / {{min}}–4000 characters
+Please describe the changes you want.
+Use a different card (secure browser)
+Log in to view your cart and checkout
+Out of stock — remove before checkout
+Remove out-of-stock items to checkout
+Be the first to share what you think.
+Login & security → Deactivate account
+Where are guides and how-to articles?
+Push for policy updates and check-ins
+Please enter a label for this address
+Unsubscribe from all marketing emails
+Your data request has been submitted.
+{{provider}} acknowledged your delay.
+Verification code sent to your email.
+Verification code sent to your phone.
+{{rate}} points = {{amount}} discount
+{{quantity}} x {{currency}} {{price}}
+Please enter your email address first
+A new verification code has been sent
+ — Add uppercase, numbers, or symbols
+Group booking created and marked paid
+Pre-fill service for all participants
+No add-ons available for this service
+First name and last name are required
+Please select or enter a client name.
+Upgrade required for repeating visits
+Payment not completed on this device.
+Payment timed out. You can try again.
+{{count}} image uploaded successfully
+The code was incorrect or has expired.
+Funding your ad budget — almost there.
+No paid order found for this campaign.
+Bid per click ({{currency}}, optional)
+Date, time, location, and participants
+Select a service for this participant.
+Edit appointment services and products
+Plans, benefits, pricing & subscribers
+Breaks, meetings & unavailable periods
+Add, verify and manage payout accounts
+Get your first Beautonomi card machine
+Order card machines from terminal shop
+No orders match your search or filter.
+Charge {{amount}} on your card machine
+Confirming your payment with Paystack…
+Complete your card machine application
+None / First time using salon software
+Please complete "{{field}}" ({{form}})
+Search and select the client's address
+Select an existing saved client first.
+The pending invite is no longer valid.
+Additional details for the customer...
+Express short links & checkout prefill
+Enter as YYYY-MM-DD (e.g. 2026-12-31).
+No results match your search or filter
+Enter the client's name before saving.
+Add private notes about this client...
+Sales created via POS will appear here
+Block off a slot so clients can't book
+End time must be after the start time.
+A new verification code has been sent.
+Verification failed. Please try again.
+Password must be at least 8 characters
+At-salon offers need a salon location.
+Happy birthday! Enjoy a treat on me 💛
+Your rating: {{score}}/5
+“{{comment}}”
+Filter providers by {{label}} category
+Please complete your information first
+Use credit — {{count}} session(s) left
+Refund disputed. Our team will review.
+Cannot pin: Conversation ID is missing
+{{count}} images uploaded successfully
+Additional Location Details (Optional)
+Includes travel to the client location.
+Preferences, allergies, add-on notes...
+{{name}} · {{minutes}} min · {{amount}}
+Resend booking confirmation to customer
+Payout accounts, terminals & gift cards
+Sell memberships: plans and subscribers
+Enter the serial number to finish setup
+Something went wrong. Please try again.
+Combination of commission and fixed pay
+Activates instantly — no payment needed
+Repeat count must be at least 2 visits.
+Use current location for client address
+e.g. braids, balayage (comma-separated)
+From your catalog · tap Explore to book
+{{count}} scheduled bookings {{period}}
+Inherited from location operating hours
+Revoke the pending invite for {{name}}?
+At-home price adjustment ({{currency}})
+Could not parse start or end date/time.
+Change listing image from photo library
+WhatsApp notifications ending {{last4}}
+Membership reminder sent to the client.
+Additional notes about this supplier...
+OAuth sign-in failed. Please try again.
+We sent a sample {{channel}} to {{to}}.
+Enter the {{digits}}-digit code sent to
+{{name}}, {{count}} service, {{action}}
+Receive general Beautonomi SMS messages
+Stay in touch with your beauty partner.
+WhatsApp when you receive a new message
+Choose any amount and send it digitally
+{{percent}}% deposit to confirm booking
+News, tips, and offers from Beautonomi.
+Stay up to date on travel requirements.
+Failed to load notification preferences
+{{count}} card ready to use at checkout
+Please describe what you'd like changed
+Your data export is ready for download!
+Include my listing(s) in search engines
+{{digits}}-digit code sent to {{email}}
+. Resume anytime to keep your benefits.
+{{brand}} •••• {{last4}} · exp. {{exp}}
+Check your email to claim your account.
+Email verified — welcome to Beautonomi!
+If you haven't verified your email yet:
+Add services or products to get started
+You have devices but they are inactive.
+Payment successful — booking confirmed!
+Goes live only after payment is verified
+Duration must be greater than 0 minutes.
+Could not add participants to the group.
+{{total}} groups · {{upcoming}} upcoming
+Adding {{name}} ({{current}}/{{total}})…
+Add a machine in Card machines settings.
+Payment in progress on this card machine
+Book an appointment with us! 💈✨
+{{url}}
+Enter the {{count}}-digit code from SMS.
+{{selected}} of {{total}} zones selected
+{{minutes}} min · {{currency}} {{price}}
+{{count}} service no longer in catalogue
+Add team member (set shifts in one step)
+Stop all promotional emails and messages
+Untracked SKUs contribute 0 to this sum.
+Camera access is needed to take a photo.
+Change profile circle from photo library
+Email a password reset link to {{name}}?
+Could not prepare Paystack Terminal sale
+Minimum R10. Paid securely via Paystack.
+Cash or card when you receive your order
+Could not remove card. Please try again.
+{{name}}, {{count}} services, {{action}}
+{{name}}, {{count}} options, tap to hide
+{{name}}, {{count}} options, tap to show
+Powered by Didit · takes about 2 minutes
+{{count}} bookings used this membership.
+Enable push notifications on this device
+Your rating has been updated. Thank you!
+{{name}}, {{minutes}} minutes, {{price}}
+e.g., Next to the blue mailbox, red door
+{{count}} cards ready to use at checkout
+More information on VAT IDs can be found
+⏳ Your data export is being processed...
+Must be at least {{min}} characters long
+Earn {{rate}} point per {{amount}} spent
+Something went wrong loading this order.
+Authentication failed. Please try again.
+Milestones you've unlocked along the way
+Receive push notifications on mobile app
+You can add up to {{count}} media files.
+Select a conversation to start messaging
+Session expired. Sign in again and retry.
+Sponsored placement for the full {{days}}
+Complete participant details to continue.
+Please provide a reason for cancellation:
+Collect payment ({{currency}} {{amount}})
+Dismiss subscription payment notification
+Could not load plans. Pull down to retry.
+Buy ads: sponsored listings and campaigns
+Finish card machine application ({{ref}})
+{{manufacturer}}{{model}} · ID {{serial}}
+Customer product orders will appear here.
+Track payment, integration, and delivery.
+Map preview · edit fields below if needed
+{{count}} services no longer in catalogue
+Book multiple participants in one session
+Book online — tap to pick a time:
+{{url}}
+Open this post on the public Explore site
+Overnight weekly shifts are not supported
+Push notifications enabled on this device
+Continue with {{count}} item ({{amount}})
+We sent a verification code to {{email}}.
+Enter a phone number to send the test to.
+Remove "{{name}}"? This cannot be undone.
+Scheduled {{date}} · {{count}} recipients
+House-call offers need a service address.
+How would you like to receive your order?
+Use wallet balance — {{amount}} available
+Pay with saved {{brand}} ending {{last4}}
+It will be removed from your saved cards.
++{{minutes}} min • {{currency}} {{price}}
+Could not load product. Please try again.
+Could not sync your name to your account.
+Email and SMS deals, tips, and promotions
+Share referral code and earn bonus points
+Log in to view and create support tickets
+Average rating and breakdown from clients
+Open saved providers, products, and posts
+{{currency}} {{price}} • {{minutes}} mins
+Something went wrong loading the receipt.
+Add any notes about this group booking...
+Create a new client profile for this sale
+Please enter client's first and last name
+Special requests, allergies, preferences…
+Failed to send receipt. Please try again.
+Cannot delete: Conversation ID is missing
+Could not enable biometric authentication.
+Could not complete sale. Please try again.
+Optional — scan packaging or type manually
+Failed to load ads data. Please try again.
+Enter a valid total budget ({{currency}}).
+{{count}} guaranteed sponsored impressions
+Time boost purchased and campaign created.
+This will cancel the entire group session.
+Staff (optional — defaults to group staff)
+Choose a custom URL for your booking page:
+We verify this number with a one-time code
+Already set up for in-person card payments
+Required hero image on your public listing
+Series created, with a note:
+
+{{warnings}}
+Copy or share for WhatsApp, Instagram, SMS
+Are you sure you want to delete this post?
+Complete your profile to speed up approval
+Rating {{rating}} from {{reviews}} reviews
+Could not load shifts. Pull down to retry.
+Book an appointment with {{name}}: {{url}}
+Continue with {{count}} items ({{amount}})
+Collect via Paystack Terminal - {{amount}}
+Secure payment with card (card, EFT, etc.)
+Confirm with a one-time verification code.
+No contact details on file for this order.
+SMS when a booking is confirmed or updated
+. Complete checkout before the timer ends.
+Your time slot still needs to be reserved.
+Learn about important Beautonomi policies.
+Customer custom requests will appear here.
+Provider notified that you're running late
+Check your phone for the verification code
+Check your email for the verification code
+Every level and what you're working toward
+Simple actions that move you up the ladder
+Service quantity updated ({{count}} items)
+Product quantity updated ({{count}} items)
+Search client or enter name for walk-in...
+Client created but no customer id returned
+Receive text message reminders and updates
+Failed to create client. Please try again.
+Could not open WiseCashier on this device.
+Failed to print receipt. Please try again.
+What would you like changed on this offer?
+Unable to start payment. Please try again.
+Could not disable biometric authentication.
+Booking was created without an id response.
+Payment outstanding — record when collected
+Collect in person (cash, card, or terminal)
+Your discounts—scoped to your bookings only
+Tap to select languages you communicate in.
+Merchant {{merchantNo}} · Store {{storeNo}}
+{{name}} is {{status}}. Choose next status.
+For cash/card-on-delivery collection orders
+Are you sure you want to delete "{{name}}"?
+Send this payment to a card machine instead
+Repeating visits need at least one service.
+Resource requirements for selected services
+{{message}}
+(Item {{current}} of {{total}})
+{{prefix}}Platform-held · not date-filtered
+{{prefix}}{{days}}-day hold on new earnings
+e.g. Morning split shift, event coverage...
+Assign services they are allowed to perform
+All provider locations or not assigned yet.
+Primary: {{name}} ({{bank}} ···· {{last4}})
+Verify account (optional — auto-fills name)
+Tracked products with effective quantity 0.
+Basic client information and health history
+Only lowercase letters, numbers, and dashes
+Add holiday closures or maintenance windows
+Enter an email address to send the test to.
+Tell the provider what you'd like adjusted.
+Code sent. Valid for about {{minutes}} min.
+Fetching price, taxes, and payment options.
+Promotions, tips, and news from Beautonomi.
+Reminders before your upcoming appointments
+Failed to create booking. Please try again.
+Booking confirmed! You'll pay at the salon.
+No prepaid sessions found for this package.
+This item is not eligible for a new return.
+Remaining {{amount}} due before appointment
+Optional reason for declining this request:
+Failed to update setting. Please try again.
+Password is required to delete your account
+Tell us why you're deleting your account...
+You're all set. Thanks for booking with us.
+Enter new password (min {{min}} characters)
+Failed to create account. Please try again.
+Participants will be notified after create.
+Please add at least one service or product.
+e.g., Hair Services, Completed Appointments
+{{name}}: File too large (max {{sizeMB}}MB)
+Could not load products. Pull down to retry.
+Flat fee — sponsored placement for {{days}}.
+This group booking has an invalid date/time.
+A payment link was sent to each participant.
+You have rated this client for this booking.
+Send this charge to the client to pay online
+Add a bank account before requesting payouts
+Ledger + scheduled bookings · period to date
+No products available yet — check back soon.
+We sent a {{count}}-digit code to {{email}}.
+Would like to accept card payments in future
+Couldn't upload the photo. Please try again.
+There is a scheduling conflict at this time.
+Selected location — {{km}} km from your base
+Split shifts and one-off overrides this week
+You will receive push alerts on this device.
+No staff items are included in this pay run.
+Choose an end date or turn on "No end date".
+Upgrade from freelancer to add team members.
+Remove this location? This cannot be undone.
+Add suppliers to manage your product vendors
+Sent {{date}} · {{sent}}/{{total}} delivered
+Duration must be between 15 and 480 minutes.
+We sent a {{digits}}-digit code to {{phone}}
+Email when a booking is confirmed or updated
+Thanks! We will notify you when we are back.
+View photo {{index}} of {{total}} fullscreen
+Shows all providers in the {{title}} section
+Failed to add to waitlist. Please try again.
+Geolocation is not supported by your browser
+ to adjust optional cookies on this browser.
+The booking you're looking for doesn't exist
+Choose an end date or turn on “No end date”.
+Keep track of all your payments and refunds.
+Preferences, allergies, add-on instructions…
+Please enter customer address for house call
+Only {{count}} more media file can be added.
+Your browser does not support the video tag.
+Please fill in all required fields correctly
+Enter the {{digits}}-digit code from your SMS
+Predictable flat price — no per-click charges
+Charge card on file (customer approves first)
+Email, phone, password, biometrics & sessions
+How was this refund returned to the customer?
+Could not share the report. Please try again.
+Clients must pay a deposit to confirm booking
+We sent a {{count}}-digit code to your phone.
+Yes, I have card machines / payment terminals
+Portfolio-style work photos · up to {{limit}}
+Closing time must be later than opening time.
+Please select at least one service or product
+No booking history for this staff member yet.
+Are you sure you want to withdraw this offer?
+Open express short links and checkout prefill
+{{count}} image exceeded 8MB and was skipped.
+Upload from your device or add a photo by URL
+Continue with phone, email, Google, or Apple.
+Reach all clients via email, SMS, or WhatsApp
+Description must be 4000 characters or fewer.
+We typically respond within 1–2 business days
+A deposit is required to confirm your booking
+Can't load categories. Check your connection.
+Enter a valid emergency contact phone number.
+You will pay cash when your provider arrives.
+100 bonus points for each successful referral
+Failed to download receipt. Please try again.
+Enter a valid phone number with country code.
+Customer pays on your Beautonomi card machine
+e.g. Lunch Break, Team Meeting, Personal Time
+Only {{count}} more media files can be added.
+Delivery starts only after payment is verified
+You do not have permission to record payments.
+Payment recorded for all participant bookings.
+Blocks adding participants beyond this number.
+Enter the serial number from the device label.
+{{base}} + {{tip}} tip + {{cashback}} cashback
+This device isn't linked to a card machine yet
+Terminal shop is not enabled for your account.
+Enables VAT on invoices and financial reports.
+You can add up to 5 photos or videos per post.
+Shows this photo in your provider gallery too.
+{{count}} provider-created bookings {{period}}
+Set Mon–Sat 08:00–20:00 for this staff member?
+Estimated cost amount: {{currency}} {{amount}}
+Test notification sent to all enabled channels
+Mute push notifications during specified hours
+Preview up to {{limit}} · full count {{count}}
+No active offer. You can send a new one below.
+Could not load booking link. Please try again.
+Update the blocked slot shown on your calendar
+Describe the service ({{min}}–4000 characters)
+Missing hold. Please start your booking again.
+Opens address selector to choose your location
+e.g., Free street parking, Visitor parking lot
+Get notified before your subscription expires.
+Describe the custom service you're offering...
+Failed to request your data. Please try again.
+New password and confirm password do not match
+Recent points earned from bookings and reviews
+Add at least one participant before reviewing.
+Create a one-time custom service for this sale
+Payment was not completed on the card machine.
+Failed to send custom offer. Please try again.
+Your email address has been verified and saved.
+Impression pack purchased and campaign created.
+QR and link payments through Beautonomi payouts
+Order card machines from the Beautonomi catalog
+Ready to collect with Beautonomi card machines.
+Enter the serial number from your device label.
+Get paid in person — tap, insert, swipe, and QR
+Percentage of service price required as deposit
+Enter the {{count}}-digit code from your email.
+Add a menu category in the previous step first.
+Opening time must be earlier than closing time.
+{{count}} payments still being reconciled today
+This staff member has no weekly shifts to copy.
+Tap to select services included in this package
+Inactive services won't appear in booking flows
+{{active}} active · {{subscribers}} subscribers
+{{count}} images exceeded 8MB and were skipped.
+You do not have permission to add team members.
+Enter a valid email address or clear the field.
+Remove "{{name}}" ({{date}} {{start}}–{{end}})?
+Phone sign-in is not enabled for this platform.
+Email sign-in is not enabled for this platform.
+Enter the {{digits}}-digit code from your email
+ to disable your account without deleting data.
+Your active salon memberships are listed below.
+WhatsApp when a booking is confirmed or updated
+Category: {{category}} · Priority: {{priority}}
+Address, city and country are required to save.
+Save this address for faster checkout next time
+Please select a location for your salon booking
+Storage not configured. Please contact support.
+ in your browser, or download a calendar file (
+Password is required to deactivate your account
+You don't have permission to view this receipt.
+An unexpected error occurred. Please try again.
+Process a card payment through your Yoco device
+"{{name}}" is over 5MB. Choose a smaller image.
+Your phone number has been updated successfully.
+Enter the {{digits}}-digit code from your email.
+Sponsored listings when available in your market
+No existing clients found — enter details below.
+Ready — {{count}} active card machine{{suffix}}.
+Tracking URL must start with http:// or https://
+Yoco secret key is required for hosted checkout.
+Tap Connect Yoco above to add Web POS terminals.
+Add a Web POS device; Yoco assigns the device ID
+Service earnings (provider_earnings): {{amount}}
+Set opening time for {{day}}, currently {{time}}
+Set closing time for {{day}}, currently {{time}}
+{{name}} — activates instantly, no card required
+Book with {{name}} — tap to pick a time:
+{{url}}
+Embed URL copied. Use it in your website iframe.
+Delete this {{day}} shift ({{start}} - {{end}})?
+We sent a {{digits}}-digit verification code to:
+Browse the shop and add products to get started.
+You cancelled the payment. Tap Pay to try again.
+Select the reason that best describes your issue
+Beautonomi is not available in your country yet.
+Push reminders before your upcoming appointments
+Points will appear here after your first booking
+Payment initialization failed. Please try again.
+Failed to delete your account. Please try again.
+Make your first booking to start earning points!
+You already have {{amount}} points — keep going!
+Failed to calculate travel fee for this address.
+{{message}}
+
+Resume waiting on the card machine?
+Failed to delete conversation. Please try again.
+Tap "New sale" to sell retail products in person.
+Sponsored placement in eligible category searches
+Campaign created (draft). Activate it when ready.
+Pack pricing is locked. You can refine targeting.
+Collect via Paystack Virtual Terminal (QR / link)
+Capacity reached ({{cap}}). Increase to add more.
+ for you to allocate to the participant bookings.
+Helps customers understand your experience level.
+Offer cashback when charging on the card machine.
+Checked {{count}} payment{{suffix}} — no changes.
+Beautonomi is finishing your card machine account
+A cancellation reason is required for paid orders
+Ask the customer to complete payment on {{name}}.
+Keep this screen open until the payment finishes.
+{{count}} device{{suffix}} active on your account
+{{name}}: {{count}} bookings, {{revenue}} revenue
+Add a weekly shift to override this for {{name}}.
+No Paystack Terminals yet. Request a setup above.
+Tap to set home address (Mapbox) for house calls…
+These fields are saved on the customer's profile.
+Enter the {{digits}}-digit code sent to {{email}}
+Your marketing credit balance has been topped up.
+Wallet applies first; you pay {{amount}} by card.
+About 2 minutes · Beauty preferences are optional
+Your name and email from Apple are already saved.
+Average rating {{rating}} out of five. {{suffix}}
+Can't connect. Check your internet and try again.
+Email updated. Please check your inbox to verify.
+Stop receiving promotional emails from Beautonomi
+The provider will review your request and respond
+Confirm your booking by completing payment below.
+Uncheck to stop the series after a specific date.
+after tapping the confirmation link in the email.
+Participant notifications are off for this group.
+Complete setup before charging on a card machine.
+Order {{orderNumber}} has been marked as refunded.
+This address is outside your active service zones.
+Returns to confirmed so you can start the journey.
+Events will appear here as the booking progresses.
+Turn off to hide this machine without removing it.
+Avg ledger per booking (with earnings): {{amount}}
+The card payment didn't go through on this device.
+Cancel the payment in progress on the card machine
+Mobile booking · using your portable card machine.
+Only the business owner can place terminal orders.
+The name clients see on your profile and bookings.
+Within {{km}} km. Tap to change distance settings.
+Select a staff member above to view their schedule
+Email may not have sent. Share this link:
+
+{{url}}
+Create plans to offer recurring client memberships
+Notifications are already allowed for this device.
+Enter a time as HH:MM (e.g. 14:30), 24-hour clock.
+Your legal or full name for your personal profile.
+Booking reminders, account activity, and policies.
+Manage OS-level permissions if push isn't arriving
+Support ticket {{number}}, {{subject}}, {{status}}
+Exact address available after booking confirmation
+Booking created! Payment processed from gift card.
+Quick amounts from this provider (fixed currency).
+You can upload a new document to replace this one.
+Keep in touch with your beauty partner or clients.
+Add any additional information about this offer...
+Secure instant confirmation · No balance due later
+Failed to load privacy settings. Please try again.
+Enter the verification code to delete your account
+Bookings where your {{planName}} discount applied.
+{{amount}} points to unlock — you're almost there!
+No existing clients found — fill in details below.
+Current location is not available in this browser.
+Boost discovery, target categories, and track reach
+Some ads data could not be loaded. Pull to refresh.
+Pause or end anytime — unspent budget stops serving
+Custom CPC budget is recommended by the marketplace
+Total for participant: {{minutes}} min · {{amount}}
+Complete your details so we can ship your terminal.
+Reference optional (terminal settles automatically)
+You'll need to reconnect to add new card terminals.
+Choose which card machine should take this payment.
+Resume the payment in progress and check its status
+No, I do not have card machines / payment terminals
+Choose all that apply — you can change these later.
+Use your card machine to complete payment.{{extra}}
+Membership expired — no member benefits will apply.
+You do not have permission to manage Explore posts.
+Explore posts can include up to 5 photos or videos.
+You do not have permission to create Explore posts.
+Completed appointments scheduled {{from}} – {{to}}.
+Update times, date or notes for this one-off shift.
+Payment marked as incorrect and blocked for review.
+Sale was saved but the receipt could not be opened.
+Try expanding the date range or switch to All time.
+ Marketing credit top-ups are not available on iOS.
+Sends one real message so you can check formatting.
+Add products from this provider to your cart first.
+Enter the verification code to delete your account.
+Request permission if you skipped push during setup
+If rejected, you can escalate to Beautonomi support
+Password reset email sent. Please check your inbox.
+No fixed end date — runs until you pause or cancel.
+{{count}} spot available once you add participants.
+Receive booking confirmations and updates via email
+Waiting on card machine (polls every {{seconds}}s)…
+Mobile booking · using your portable Yoco terminal.
+{{name}} is no longer available (retention policy).
+You do not have permission to cancel group bookings.
+Group booking has no id yet — refresh and try again.
+You do not have permission to update group bookings.
+You do not have permission to create group bookings.
+You do not have permission to check participants in.
+Cannot be less than current participants ({{count}})
+Complete the client address and map pin to continue.
+Extend your current plan for another billing period.
+Verify your identity (KYC) & earn the Verified badge
+Enter a short reason before cancelling a paid order.
+Check pending, processing, ready, or shipped orders.
+Use Checkout API keys instead (online payments only)
+Scheduled bookings: {{total}} ({{rate}}% completion)
+No orders yet — pick a machine above to get started.
+Could not start payment. Try again from Your orders.
+Only lowercase letters, numbers, and hyphens allowed
+Phone verified but could not save. Please try again.
+Email verified but could not save. Please try again.
+Interested in better or integrated terminal options?
+Open your bookings list to find the new appointment.
+Clients can scan this code to open your booking page
+Could not set hours for: {{days}}. Please try again.
+Your full account number is never shown after setup.
+Clients complete this form when booking any service.
+The customer will be notified of your revised offer.
+The end date cannot be before the series start date.
+App Review demo account — enter the review OTP code.
+e.g. 2026-05-01T09:00:00 — leave empty for draft now
+Reloads identity verification status from the server
+Most requests are answered within 1-2 business days.
+Cancel {{planName}} membership with {{providerName}}
+You must be at least 13 years old to use Beautonomi.
+WhatsApp reminders before your upcoming appointments
+Average rating not yet rated out of five. {{suffix}}
+Could not resolve street address. Enter it manually.
+Please enter a gift card code in the promotions step
+Enter a valid phone number or leave the field blank.
+Items must be unused and in their original packaging
+Confirm with a one-time verification code. {{hint}}.
+Manage salon memberships, auto-renewal, and billing.
+Could not load your referral link. Please try again.
+Could not copy your referral link. Please try again.
+Manage your payment methods, coupons, and gift cards
+Are you sure you want to remove this payment method?
+Enter a valid phone number or clear the phone field.
+Account created successfully! Welcome to Beautonomi.
+Group booking created — preparing Paystack Terminal…
+{{count}} spots available once you add participants.
+Please enter the {{digits}}-digit code from your SMS.
+Pay {{amount}} using Paystack Terminal code {{code}}.
+Purchase completed. Your campaign will start shortly.
+You do not have permission to check participants out.
+Something went wrong while opening the group receipt.
+e.g. Bridal Party (defaults to service name if empty)
+Yoco refused our last token refresh ({{error}}). Tap 
+The card payment didn't go through. Please try again.
+We need a few details before we can ship your device.
+Membership cancelled — no member benefits will apply.
+Choose another category or add services in Catalogue.
+Time adjusted to {{time}} — previous slot unavailable
+Short code must contain at least one letter or number
+You can still enter your account name manually below.
+Are you sure you want to decline this custom request?
+Confirm that this pay run has been paid out to staff.
+You will complete payment in a secure browser window.
+Promotions and news from Beautonomi will appear here.
+Submit a ticket from Help → New ticket, or tap below.
+Photo {{index}} of {{total}}. Tap to view all photos.
+Get important reminders about your upcoming bookings.
+Enter the verification code before setting a password
+New password must be at least {{min}} characters long
+Enter the code below to finish creating your account.
+{{count}} participant · {{duration}} min · {{amount}}
+Could not cancel charge — check card machine settings
+Tip from checkout is already included in this amount.
+Search products, choose variants when needed, then pay
+Select what this participant wants before adding them.
+e.g. wants gel removal, allergy, prefers quiet service
+Let customers pay with mobile wallet QR on the device.
+{{count}} payment{{suffix}} waiting on a card machine.
+Used server-side to create Yoco hosted checkout links.
+Check the card machine — the charge may still be open.
+Complete the payment in WiseCashier, then return here.
+Minimum hours before appointment that clients can book
+This is shown to clients on your profile and bookings.
+Anything about schedules, commission splits, or tools.
+Current balances are not filtered by the period above.
+Add a phone number for shift and booking communication
+Remove {{name}} from your team? This cannot be undone.
+Can be a first name, nickname, or whatever you prefer.
+We'll personalise service recommendations just for you
+No visible messages are available for this ticket yet.
+Your hold expired. Please select your time slot again.
+Your account has been deleted. You will be signed out.
+Enter the verification code to deactivate your account
+Enter the {{digits}}-digit code we sent to your email.
+Enter the {{digits}}-digit code we sent to your phone.
+No saved cards. Add one in Payments, then return here.
+Cards are saved automatically when you pay with a card
+{{amount}} points to unlock — keep the momentum going.
+{{count}} participants · {{duration}} min · {{amount}}
+Could not reach the card machine — check it is online.
+Email/SMS the customer when you reschedule by dragging
+Variants not loaded — open product in catalogue to fix.
+Paystack didn't return a payment URL. Please try again.
+{{count}} impressions · {{paid}} paid · {{spent}} spent
+Use the Payment Inbox to collect via Paystack Terminal.
+{{count}} amount mismatch{{suffix}} in recent payments.
+Enter the Yoco reference before recording this payment.
+We'll send a {{count}}-digit code to verify your email.
+No clients found. Switch to "New Client" to create one.
+{{day}} inherited {{source}} hours {{start}} to {{end}}
+The customer will be notified and can accept the offer.
+Pay securely using this Paystack Terminal link: {{url}}
+A platform fee of {{amount}} applies to online payments
+No payment link returned from server. Please try again.
+Sign in to see your saved providers, products and posts
+Required so providers can recognise you at appointments
+Receive promotional WhatsApp messages (requires opt-in)
+Push when a booking is confirmed, updated, or cancelled
+Please provide an address for your home service booking
+Tell us why you're deactivating your account (optional)
+Are you sure you want to cancel this recurring booking?
+Earn {{amount}} more points to unlock Platinum benefits
+Book regularly to maximize your point earning potential
+Appointment booked once. Repeat not created: {{reason}}
+Opens WiseCashier on this terminal (same as mobile app)
+QR payments are sent to the card machine in cloud mode.
+Test card machine — void charges when finished testing.
+Minimum hours before appointment that clients can cancel
+Bookings exist on this weekday. Delete the hours anyway?
+Slug must be lowercase letters, numbers, and dashes only
+Opens settings where you can buy sponsored listing packs
+Payment may still be processing. Check Bookings shortly.
+Biometric authentication is not available on this device
+We'll send a {{digits}}-digit code to verify your email.
+Wallet fully covers this booking — no card charge needed
+Code copied — pick a service and it'll apply at checkout
+The {{days}}-day return window from delivery has passed.
+This offer has expired. The provider may send a new one.
+Maximum: {{percent}}% of booking can be paid with points
+Derived from your active service zones for this address.
+Add clients who want to be notified when a spot opens up
+You declined this offer. The provider has been notified.
+Total budget {{budget}} · Spent {{spent}}{{daily}}{{bid}}
+This tries to cancel the open charge on the card machine.
+Enter a delivery address (line 1, city, and postal code).
+Determines which features are enabled and how zones work.
+Tell clients what you offer and what makes you stand out.
+We restored your draft, but updated it because {{drops}}.
+Use your Yoco terminal to complete card payment.{{extra}}
+{{likes}} likes · {{comments}} comments · {{views}} views
+{{count}} shift(s) could not be copied. Please try again.
+Only owners or managers with “Manage team” can add staff.
+Subscription changes are available to the business owner.
+You deactivated your account. Log in again to reactivate.
+Pick at least one client, or choose a different audience.
+Add at least {{count}} more character to the description.
+Enter how many days until the offer expires (at least 1).
+Missing seller information. Open checkout from your cart.
+Your session expired while we were checking your account.
+Could not load booking details. Check your bookings list.
+Your rating has been saved and this ticket is now closed.
+You'll receive a confirmation email with all the details.
+Booking confirmed! You'll pay when your provider arrives.
+Add at least one service to enable percentage-based tips.
+Decline this custom offer? The provider will be notified.
+Control who can see your profile and account information.
+Decide how your profile and activity are shown to others.
+Manage your password, email, phone, and login preferences
+We'll text a {{digits}}-digit code. Standard rates apply.
+Refresh after recent bookings if points look out of date.
+Unable to load team members. You can still create a sale.
+Payment timed out — check the card machine or tap Resume.
+Resuming payment already in progress on this card machine
+Void sent to card machine — follow prompts on the device.
+Pay {{amount}} using this Paystack Terminal link: {{link}}
+Checked {{count}} payment{{suffix}} — {{settled}} settled.
+Buy it outright or include it in your plan when available.
+Recent clients — or type 2+ characters to search everyone.
+Add photos or videos from your library or camera (up to 5)
+Use a full image URL that starts with https:// or http://.
+Turn on system permission if you skipped push during setup
+We sent a verification code to your phone. Enter it below.
+Sign in or create an account · Beautonomi for service pros
+Send this {{channel}} campaign to {{count}} recipient now?
+Add at least {{count}} more characters to the description.
+Still loading account security settings. Please try again.
+This product is no longer available or could not be found.
+Used for house-call bookings and finding services near you
+Tap “Submit rating” below to send your {{score}}/5 rating.
+Choose between visiting our salon or having us come to you
+That time slot was just taken. Please choose another time.
+Earn points with every booking and redeem them for rewards
+Convert your points into wallet credit for future bookings
+Returns must be requested within {{days}} days of delivery
+Manage what information is visible on your public profile.
+Cancel your {{planName}} membership with {{providerName}}?
+Add a payment card in Payments before enabling auto-renew.
+Phone number must be in E.164 format (e.g., +27821234567).
+Card machine took a different amount — flagged for review.
+{{name}}: Invalid type. Use JPEG, PNG, WebP, MP4, or WebM.
+No active Paystack Terminal is available. Create one first.
+Stock issue — check quantities or refresh the product list.
+Reach, clicks, bookings, and spend for the selected window.
+Helpful info from the customer so you can find them easily.
+Subscription is cancelled — tap Reactivate free plan above.
+Turn on Accept in-person card payments to start collecting.
+Paystack Terminal payments are not enabled for this market.
+Send this {{channel}} campaign to {{count}} recipients now?
+Draft and scheduled campaigns can be updated before sending
+Download URL not available. Please request your data again.
+We'll create a file for you to download your personal data.
+Don't let your points expire! Use them within {{days}} days
+Unable to connect. Please check your network and try again.
+Any additional information, terms, or special conditions...
+Every machine works with Beautonomi checkout out of the box.
+Required avatar shown on cards, chats, reviews, and bookings
+Series created and the first appointment is on the calendar.
+Failed to load services. Pull down to refresh and try again.
+Ledger by payment date · excludes cash/Yoco service payments
+Add an avatar so clients and staff can identify them quickly
+This is what customers will see when browsing your services.
+Travel fee ({{currency}}) — from address (override optional)
+Use Face ID, fingerprint, or your device passcode to unlock.
+In-store collection required. No delivery for this provider.
+Please sign in or create an account to complete your booking
+Stay in the know about brand new programs and announcements.
+Couldn't copy automatically — long-press the code to copy it
+Verification code sent. Enter it below to set your password.
+Earn points with every booking and redeem them for discounts
+We could not start payment for this order. Please try again.
+Use a stronger password (add uppercase, numbers, or symbols)
+Group booking created — collect payment on your card machine
+Pay-per-click campaign with full control over spend and bids.
+Create a package from the Packages screen in More → Packages.
+Beautonomi card machines aren't available in your market yet.
+{{name}} is now linked to this device for Pay on this device.
+Activate the machine with its serial number in Card machines.
+Slug can only contain lowercase letters, numbers, and hyphens
+Email and phone are already verified for this review account.
+Active member{{plan}}. Member discount applied automatically.
+Last 14 days ({{window}}) · not filtered by the period above.
+Some upcoming bookings fall outside these hours. Save anyway?
+Assign locations before routing bookings to this staff member
+Please fill in all fields, including the account holder name.
+Pay {{amount}} using Paystack Terminal code {{code}}{{note}}.
+We sent a {{digits}}-digit code to {{email}}. Enter it below.
+Tap a tag to personalise. We swap them per recipient on send.
+This item must be collected in person. No delivery available.
+Your name and email from Apple are already saved ({{email}}).
+Confirm your phone number so you can book and receive updates
+{{count}} team members. Meet our professionals when you book.
+Help your provider find you easily by providing these details
+This slot is no longer available. Please choose another time.
+Booking created! Payment processed from wallet and gift card.
+Tell the provider what you would like adjusted on this offer.
+Confirm this sensitive action with a one-time code. {{hint}}.
+Share your referral link on social media to earn bonus points
+Failed to redeem coupon. Please check the code and try again.
+Complete verification in the new tab, then refresh this page.
+No milestones yet — complete bookings to unlock achievements.
+Add a travel fee for this house call. Leave empty for no fee.
+Images, description, variants, tax, retail settings, and stock
+Show Card machine at checkout when you have an active machine.
+Using your portable machine — none assigned to this salon yet.
+Enter the serial number from the device label to finish setup.
+{{failed}} of {{total}} photo could not be uploaded:
+{{names}}
+No banks returned for this country. Check your Paystack setup.
+Allow notifications in system settings to receive push alerts.
+This will lock the pay run for payment. This cannot be undone.
+Join Beautonomi and discover the best beauty services near you
+We've emailed the gift card to {{email}} with steps to redeem.
+Deposit option: {{deposit}} (pay now) · Full balance {{full}}.
+Access is unavailable due to legal or regulatory restrictions.
+View services that you've connected to your Beautonomi account
+This will deactivate your account. You can reactivate later by
+Enter the code below to finish creating your provider account.
+Every finished appointment adds points toward your next level.
+Appointment created. Process payment from appointment details.
+No active card machines — add one in Settings → Card machines.
+We'll email a {{digits}}-digit code to verify your new address.
+No retail products yet. Add products with retail sales enabled.
+This will stop the campaign. You can still view it in the list.
+Any tip entered at checkout is already included in this amount.
+{{failed}} of {{total}} photos could not be uploaded:
+{{names}}
+Create intake forms, consent forms, or waivers for your clients
+Use Paystack Terminal code {{code}} for this in-person payment.
+Payments appear in the inbox below once Paystack confirms them.
+Changing your email sends a {{digits}}-digit verification code.
+Opens a secure Paystack window. We never see your card details.
+Browse provider profiles to see membership plans and subscribe.
+Required for birthday perks and age-appropriate recommendations
+We may email your current and new address to confirm the change
+Enter a valid phone number in international format (e.g. +27…).
+This offer has been withdrawn. The provider may send a new one.
+Secure payment via Paystack. You will return here after paying.
+Add a verified email or phone number before setting a password.
+Deactivate your account if you no longer want to use Beautonomi
+Happy clients boost your rating and unlock higher tiers faster.
+Pick a length and we will set the end time from the start time.
+Could not load clients. You may need permission to view clients.
+Edit targeting, pause/activate, and track delivery per campaign.
+Finish acceptance and add an active machine to start collecting.
+Stored for reference. Hosted checkout only needs the secret key.
+There is a conflict at this time. Do you want to proceed anyway?
+Period earnings may be incomplete for very high-volume accounts.
+Additional charge (or discount if negative) for at-home service.
+Optionally tell the customer why you cannot fulfil this request.
+Your terminal will appear here once Ops has completed the setup.
+Saved by the customer in their account. Only they can change it.
+Confirm your email and phone so you can book and receive updates
+Tailored to you — {{name}} will reply with a quote or questions.
+We'll notify you when a spot becomes available for this service.
+Unable to get your location. Please enable location permissions.
+Get answers to questions about notifications in our Help Center.
+Manage your privacy settings and how your information is shared.
+Let {{provider}} know if you're running late so they can adjust.
+Invalid login credentials. Please check your email and password.
+This email is already registered. Sign in with the method below.
+Participant {{n}}: enter a valid phone number or leave it blank.
+We're verifying with Paystack — this usually takes a few seconds.
+Prepaid reach — placements deliver until the pack is fully shown.
+Impression packs keep their purchased impression count and price.
+Printed on the device label or included in your activation email.
+Turn on Accept in-person card payments in Card machines settings.
+{{name}} card machine — not available while paying on this device
+Search for the client's address, then edit lines below if needed.
+Auto-renew is off{{until}}. Resume anytime to keep your benefits.
+This is how you'll appear on your profile and to beauty providers
+Camera or photo library · Required · JPEG, PNG or WebP · max 5 MB
+Cancel this custom request? Any pending offers will be withdrawn.
+We could not verify this request. Refresh the page and try again.
+Unable to start payment. Please check your network and try again.
+Receipt not found. The booking may not exist or has been removed.
+Verification email sent! Please check your inbox and spam folder.
+Help service providers find you easily by providing these details
+For packs and boosts below. None selected = all category searches.
+Something went wrong creating the group session. Please try again.
+Add at least one card machine below to start taking card payments.
+You're almost there! Review your details — tap any row to edit it.
+{{warnings}}
+
+Open your bookings list to find the new appointment.
+Subscription required for online bookings. Opens plan and billing.
+No date-specific shifts this week. Weekly hours below still apply.
+Pay {{amount}} using this Paystack Terminal link: {{link}}{{note}}
+Use types to label lunch breaks, meetings, training, or admin time
+Your account has been suspended. Contact support if you need help.
+You already have a saved address. You can continue or add another.
+You cancelled the payment. Your membership has not been activated.
+Added to waitlist! We'll notify you when a spot becomes available.
+Add and verify an email or phone number before setting a password.
+Regular activity keeps your badge active and your profile visible.
+Yoco checkout link created. Ask the customer to pay from the link.
+Are you sure you want to cancel this order? Stock will be restored.
+Mobile booking · set a machine to "All Locations" for on-site work.
+We verify this number with a one-time code to protect your account.
+Remove promo, gift card, add-ons, and product lines from this link?
+When on, customers can book this service online through Beautonomi.
+This request is {{status}}. New offers cannot be sent from the app.
+We'll notify this client that they can rejoin your membership plan.
+Choose a type or enter what you are blocking (e.g. Lunch, Meeting).
+Delivered to {{count}} recipient. {{failed}} couldn't be delivered.
+Sends one real message so you can check formatting (uses 1 credit).
+Make booking easier and help providers give you the best experience
+Distance unknown. Set your address to see how far this provider is.
+Turn on auto-renew first. The new plan applies at the next renewal.
+You've hit the point threshold — badge updates after the next sync.
+You keep access until the date above. No further charges after that.
+Choose All locations for a portable machine you take to house calls.
+Creates a series and puts the first appointment on the calendar now.
+Comments and likes are turned off in your content & safety settings.
+Play a sound when a new product order arrives while the app is open.
+Email and phone sign-in are not enabled. Contact your administrator.
+Delivered to {{count}} recipients. {{failed}} couldn't be delivered.
+Tick the box below to continue with Google, Apple, or email sign up.
+Your payment was received. Your booking may take a moment to appear.
+Open My tickets, choose your ticket, and send a reply in the thread.
+Your time slot is not reserved yet. Please choose an available time.
+When this is on, we'll show people that you've read their messages. 
+We'll send a {{digits}}-digit code to your inbox (not a magic link).
+The in-progress payment did not complete. You can start a new charge.
+Pick a service first so we can show accurate times based on duration.
+Slots with a customer hold appear unavailable until the hold expires.
+Up to 5 total. Remove items or add new ones — matches the web editor.
+To add team members and unlock advanced features, upgrade to a salon.
+No transactions match "{{query}}". Try a different reference or name.
+This group booking no longer exists or you may not have access to it.
+Could not verify your reserved time slot. Please choose another time.
+Booking draft created. You can retry payment from your bookings page.
+Go back to the calendar and choose an available slot before checkout.
+Request a custom service from a provider to receive a tailored offer.
+This provider has no public profile, so other plans cannot be loaded.
+Add an email address to your account before paying this order online.
+Sponsored placements are not yet open in your market. Check back soon.
+Collect at a booking or sale to see recent card machine payments here.
+Turn on in-person acceptance and start charging at bookings and sales.
+Required for age assurance. You must be at least 13 to use Beautonomi.
+This is taking longer than usual. Check your connection and try again.
+Booking status counts may be incomplete for very high-volume accounts.
+This payout account is already linked. Pull down to refresh your list.
+{{failed}} of {{count}} photo could not be uploaded. Please try again.
+Running late reported{{minutes}}. Waiting for provider to acknowledge.
+Add a verified email or phone number before deactivating this account.
+Enter your new email. We'll send a {{digits}}-digit verification code.
+Your account will be deactivated immediately. To reactivate, go to the
+Group created. Use the Payment Inbox to collect via Paystack Terminal.
+Sends email + push to each participant with a linked customer account.
+Set a total budget ({{currency}}). You can pay now or add budget later.
+Order from the catalog — some plans include a machine at no extra cost.
+This product isn't configured for checkout. Contact Beautonomi support.
+Travel fee ({{currency}}) — calculated from address (override optional)
+Send confirmation & reminders. Turn off for silent front-desk bookings.
+Use this for split shifts, special event rosters, or one-off overrides.
+{{failed}} of {{count}} photos could not be uploaded. Please try again.
+Submit a new request and Beautonomi Ops will retry your terminal setup.
+Slots come from the same availability engine used for new appointments.
+Your device region suggests {{country}} — we may not be live there yet.
+No platform membership. Your active salon memberships are listed below.
+Select a team member to load real availability slots for this location.
+{{message}}
+
+Send this charge to the card machine instead (cloud mode)?
+Using your portable device — no terminal is assigned to this salon yet.
+Yoco walk-in sales need the terminal payment reference from the receipt.
+Leave blank to reach all searches. Select to target specific categories.
+You can lower this budget. To add more money, buy another boost or pack.
+This still marks the booking paid, so void it when you are done testing.
+If you skip, we'll draft starter services from your selected categories.
+The main link for your booking page — easy to paste in chats or your bio
+Lets customers tap through to book this look, same as on the web portal.
+Your bank account is already on file. We refreshed your payout accounts.
+Your reserved slot has expired. Go back and pick a new time to continue.
+This booking was modified by another user. Please refresh and try again.
+Any additional notes about this client (allergies, preferences, etc.)...
+Workspace configuration error. Check provider/tenant settings or support.
+The group will be marked paid immediately on every participant's booking.
+You’ll enter carrier / tracking next so the customer can follow delivery.
+Request is taking longer than usual. Check your connection and try again.
+Tracked products with quantity between 1 and low_stock_level (default 5).
+Are you sure you want to delete "{{name}}"? This action cannot be undone.
+ Enable this provider in Supabase Dashboard → Authentication → Providers.
+Phone should be {{digits}} digits for {{country}} (leading 0 is optional)
+Full payment summary — same taxes and platform fee as a standard booking.
+This ticket is closed. We appreciate you taking a moment to rate support.
+You earned {{points}} loyalty points. They've been added to your balance.
+Generate at least one variant row before saving, or turn off Has variants.
+Flat fee — your profile stays in sponsored placement for the whole window.
+Your name and email from Apple are already on your account{{emailSuffix}}.
+None of the photos could be uploaded. Check your connection and try again.
+Includes confirmed and in-progress appointments in your business timezone.
+Showing the last 29 days — the figures for this period couldn't be loaded.
+Payment details will appear once the provider finalises the group invoice.
+Sign in to read the full description, opening times, and location details.
+Keep in touch with your Beauty Partner before and during your appointment.
+We've notified the provider. You'll receive an update on your return soon.
+No code in your inbox? The Supabase "Confirm signup" template must include
+No transactions yet. Complete bookings and receive reviews to earn points.
+{{count}} spot still available after booking — you can add walk-ins later.
+Still waiting on the card machine — tap Resume when the customer has paid.
+Pick a boost or pack above to run another campaign with the same targeting.
+Role and commission can only be changed by someone with Manage team access.
+Play a sound when a client sends a message while you are on another screen.
+Your previous offer was withdrawn or expired. You can send a new one below.
+{{count}} services in this repeat visit (see client booking for full list).
+Only owners or managers with “Manage team” can edit or remove team members.
+Remove "{{name}}"? Existing blocks using this type may lose their category.
+Prepaid credit funds email, SMS and WhatsApp campaigns sent via Beautonomi.
+We couldn't reach our servers in time. Check your connection and try again.
+We found bookings under this email. Check your inbox to claim your account.
+Small differences can come from rounding or promotions applied at checkout.
+Wallet and gift card reduce your total; pay the remainder securely by card.
+We'll SMS a {{digits}}-digit code (valid about {{minutes}} {{minuteUnit}}).
+This ticket is {{status}}. Open Help → New ticket if you need further help.
+When the customer pays, the booking will show on the calendar at this time.
+Beautonomi is committed to keeping your data protected. See details in our 
+{{count}} spots still available after booking — you can add walk-ins later.
+This will permanently delete this time block. This action cannot be undone.
+Add retail products in inventory first, then attach them to a group booking.
+Create your first post to appear in the Explore feed and earn reward points.
+Upgrade from freelancer to add team members and unlock full team management.
+We couldn't verify your account status. Check your connection and try again.
+We couldn't use biometrics on this device. Sign out and back in to continue.
+Payment is still processing. Check Bookings in a moment or tap Pay to retry.
+Enter your details exactly as they appear on your government ID or passport.
+A clear description, affected booking/order id, and screenshots if relevant.
+Your exact address is only shared with providers when you book a house call.
+We don't service this area yet! Would you like to book at our Salon instead?
+Confirm your account activity and learn about important Beautonomi policies.
+e.g. Can you adjust the price or move the appointment to Saturday afternoon?
+Combine points with membership discounts and promo codes for maximum savings
+Choose a date and time (use available slots or open "Manual date and time").
+Recommended: buy a fixed impression pack and track delivery until it is used.
+JSON array: product_id (UUID), quantity (1–999), optional product_variant_id.
+Appointment counts — not revenue. Channel earnings are in Reports → Bookings.
+Pay-at-collection/delivery is disabled by platform policy. Please pay online.
+This provider does not offer delivery. You must collect your order in person.
+Tap an option, then confirm below — your booking uses the highlighted option.
+Opt in to receive updates on WhatsApp. You can reply STOP to opt out anytime.
+This request was not confirmed in time, so the appointment time was released.
+No account found with this email address. Please check your email or sign up.
+Slots are loaded from the same availability engine used for new appointments.
+No available slots for this date. Try another day, staff member, or duration.
+You don't have permission to record sales. Ask an owner to grant create_sales.
+Subscriptions on iOS are auto-renewable In-App Purchases billed through Apple.
+Payment started on this device. Tap Resume if it doesn't update automatically.
+e.g. Specialist in balayage and precision cuts, serving Cape Town for 8 years.
+Use a valid date/time (e.g. 2026-05-01T09:00:00 or your device locale format).
+No matches yet. Keep typing, press search on the keyboard, or use the map pin.
+Cancel this order? In-stock items will be restocked and paid tenders refunded.
+Log in to start booking beauty services, managing your appointments, and more.
+This booking is already being processed. Please wait a moment, then try again.
+Update the offer in place. The customer will be notified of the revised quote.
+The group was created, but the API did not return an id to attach participants.
+Package sets the default service + duration. You can still override them below.
+Pay for your order — we prepare it for delivery, pickup, or instant activation.
+Would you be interested in getting a platform-supported card machine in future?
+Some booking and ledger totals may be incomplete for very high-volume accounts.
+Maximum distance from your base for at-home bookings. Leave blank for no limit.
+Count = products in category; value sums retail stock value (untracked adds 0).
+Pay one-tap on your next booking. We store a secure token, never the full card.
+Temporarily disable your account. You can reactivate later by signing in again.
+All your offers have been withdrawn or expired. You can send a new offer below.
+Active memberships with providers. Discounts apply automatically when you book.
+Repeating visits require a saved client profile. Select the client from search.
+We'll SMS a {{digits}}-digit code to verify your number (valid {{minutes}} min).
+Refund order {{orderNumber}} ({{amount}})? Stock will be returned automatically.
+Prepaid reach — your sponsored placements deliver until the pack is fully shown.
+Paste the carrier's tracking page so customers can tap through from their order.
+Show the customer the Paystack Terminal QR or link to complete payment.{{extra}}
+Showing all-time totals (a per-period breakdown is not available for this view).
+No active team members. Add someone from Team, then set their weekly hours here.
+Activate {{name}}? They will appear in the team and can be assigned to bookings.
+Create the staff profile, assign services/locations, then set shifts and access.
+Choose a common block type or type your own. This label appears on the calendar.
+We sent a {{digits}}-digit code to your email (valid about {{minutes}} minutes).
+For ZAR pricing and local checkout, open the South Africa storefront ({{host}}).
+Repeating schedule saved. Manage it under Account settings → Recurring bookings.
+Get important reminders about your bookings, reservations, and account activity.
+Add at least one payout method so we know where to send your money via Paystack.
+Payment succeeded but updating the sale failed. Check Sales for a pending entry.

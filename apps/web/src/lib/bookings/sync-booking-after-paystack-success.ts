@@ -160,9 +160,18 @@ export async function syncBookingAfterPaystackSuccess(
       const { notifyProviderNewBooking, notifyBookingConfirmed } = await import(
         "@/lib/notifications/notification-service"
       );
+      const { customerBookingChannels, providerBookingChannels } = await import(
+        "@/lib/notifications/customer-booking-channels"
+      );
+      const { data: bookingRow } = await admin
+        .from("bookings")
+        .select("tenant_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+      const tenantId = (bookingRow?.tenant_id as string | null) ?? null;
       await Promise.allSettled([
-        notifyProviderNewBooking(bookingId, ["push"]),
-        notifyBookingConfirmed(bookingId, ["push", "email"]),
+        notifyProviderNewBooking(bookingId, await providerBookingChannels(tenantId)),
+        notifyBookingConfirmed(bookingId, await customerBookingChannels(tenantId)),
       ]);
     } catch (notifyErr) {
       console.warn(

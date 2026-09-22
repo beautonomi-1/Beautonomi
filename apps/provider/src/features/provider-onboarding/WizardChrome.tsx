@@ -8,7 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors, Shadows } from "@/constants/colors";
-import { STEPS, stepIsVisible } from "./state";
+import { STEPS, stepIsVisible, wizardStepKeyForId } from "./state";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingStepBody } from "./WizardSteps";
 import { validateStep } from "./validation";
@@ -66,6 +66,7 @@ export function WizardChrome() {
     stepMeta,
     canSkipCurrent,
     isSubmitting,
+    isAdvancingStep,
     loadingDraft,
     savingDraft,
     formData,
@@ -92,6 +93,13 @@ export function WizardChrome() {
   }
 
   const isLast = currentStep === STEPS.length;
+  const stepKey = wizardStepKeyForId(currentStep);
+  const headerTitle = stepKey
+    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.title`) as string)
+    : (stepMeta?.title ?? wc("setupFallback"));
+  const headerSubtitle = stepKey
+    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.description`) as string)
+    : stepMeta?.description;
   const milestoneLabel = getMilestoneLabel(currentStep);
   const milestoneProgress = getMilestoneProgress(currentStep);
   const currentStepValidation = validateStep(currentStep, formData, validateOptions);
@@ -125,10 +133,10 @@ export function WizardChrome() {
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding={false}>
       <ScreenHeader
-        title={stepMeta?.title ?? wc("setupFallback")}
+        title={headerTitle}
         showBack
         onBack={goBack}
-        subtitle={stepMeta?.description}
+        subtitle={headerSubtitle}
       />
       <KeyboardAvoidingView
         behavior="padding"
@@ -259,19 +267,29 @@ export function WizardChrome() {
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
-                  onPress={isLast ? submit : goNext}
-                  disabled={isSubmitting || !canProceed}
+                  onPress={isLast ? submit : () => void goNext()}
+                  disabled={isSubmitting || isAdvancingStep || !canProceed}
                   style={[
                     twStyle(
                       `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
                     ),
-                    { backgroundColor: Colors.primary, opacity: isSubmitting || !canProceed ? 0.5 : 1 },
-                    !isSubmitting ? Shadows.cardSmall : undefined,
+                    {
+                      backgroundColor: Colors.primary,
+                      opacity: isSubmitting || isAdvancingStep || !canProceed ? 0.5 : 1,
+                    },
+                    !isSubmitting && !isAdvancingStep ? Shadows.cardSmall : undefined,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={isLast ? wc("submitA11y") : wc("nextA11y")}
                 >
-                  {isSubmitting ? (
+                  {isAdvancingStep && !isLast ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={twStyle("text-[16px] font-semibold text-white")}>
+                        {t("provider.mobile.screens.onboardingWizard.zones.finding") as string}
+                      </Text>
+                    </>
+                  ) : isSubmitting ? (
                     <>
                       <ActivityIndicator color="#fff" size="small" />
                       <Text style={twStyle("text-[16px] font-semibold text-white")}>{submitBusyLabel}</Text>

@@ -207,10 +207,16 @@ export async function POST(
 
     try {
       const { notifyProviderPayoutFailed } = await import("@/lib/notifications/notification-service");
+      const { providerBookingChannels } = await import(
+        "@/lib/notifications/customer-booking-channels"
+      );
+      const payoutTenantId =
+        (payoutData as { tenant_id?: string | null }).tenant_id ?? tenantId ?? null;
       await notifyProviderPayoutFailed(
         payoutData.provider_id,
         Number(payoutData.amount),
         validationResult.data.failure_reason,
+        await providerBookingChannels(payoutTenantId),
       );
     } catch (templateErr) {
       console.warn("Template notification failed, falling back to inline:", templateErr);

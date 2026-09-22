@@ -4,6 +4,8 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { getProviderTeamUserIds, notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { notifyOrderConfirmation } from "@/lib/notifications/notification-service";
+import { buildProductOrderFulfillmentSummary } from "@/lib/notifications/product-order-fulfillment-summary";
+import { dispatchTemplateNotification } from "@/lib/notifications/dispatch-template-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { syncPushBadgeCount } from "@/lib/notifications/sync-push-badge-count";
 
@@ -190,10 +192,12 @@ export async function notifyProductOrderPaidIfTransitioned(
     }
 
     try {
+      const fulfillmentSummary = await buildProductOrderFulfillmentSummary(supabase, productOrderId);
       // The customer in-app bell row was inserted manually above; suppress the
       // template auto-insert so the customer doesn't get two "order" entries.
       await notifyOrderConfirmation(customerId, productOrderId, orderNumber, totalAmount, ["push", "email"], {
         skipInApp: true,
+        fulfillmentSummary,
       });
     } catch (e) {
       console.warn("[notifyProductOrderPaid] customer template notify failed:", e);
@@ -205,6 +209,8 @@ export async function notifyProductOrderPaidIfTransitioned(
  * Pay-on-delivery / cash orders: notify provider once at placement (not paid yet).
  */
 export async function notifyProductOrderPlacedPendingPayment(params: {
+  supabase: SupabaseClient;
+  customerId: string;
   providerId: string;
   productOrderId: string;
   orderNumber: string;
@@ -232,4 +238,28 @@ export async function notifyProductOrderPlacedPendingPayment(params: {
     link: actionUrl,
     action_url: actionUrl,
   });
+
+  if (params.customerId) {
+    try {
+      const fulfillmentSummary = await buildProductOrderFulfillmentSummary(
+        params.supabase,
+        params.productOrderId,
+      );
+      const { format: formatOrderTotal } = await getTenantMoneyFormatter(params.tenantId);
+      await dispatchTemplateNotification(
+        "order_confirmation",
+        [params.customerId],
+        {
+          order_number: params.orderNumber,
+          order_id: params.productOrderId,
+          total_amount: formatOrderTotal(params.totalAmount),
+          fulfillment_summary: fulfillmentSummary,
+        },
+        ["push", "email"],
+        { appType: "customer", tenantId: params.tenantId },
+      );
+    } catch (e) {
+      console.warn("[notifyProductOrderPlacedPendingPayment] customer notify failed:", e);
+    }
+  }
 }

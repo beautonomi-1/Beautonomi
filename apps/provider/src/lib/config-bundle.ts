@@ -8,7 +8,8 @@ import {
   DEFAULT_REGION_CURRENCY,
   MOBILE_WEB_USER_AGENT_TOKEN,
 } from "@/config/public-env";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { getDeviceLocaleCountryIso } from "@/lib/device-default-country-dial";
+import { getShopMarketHeaderSync } from "@/lib/market/shop-market-opt-in";
 
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
@@ -213,7 +214,8 @@ export async function fetchConfigBundle(params?: {
       url,
       withWebApiTenantHeaders({
         headers: {
-          "X-Active-Market-Country": getDeviceRegionCountryIso(),
+          "X-Active-Market-Country": getDeviceLocaleCountryIso(),
+          ...getShopMarketHeaderSync(),
           "User-Agent": MOBILE_WEB_USER_AGENT_TOKEN,
         },
       }),

@@ -55,6 +55,7 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
+import { mapProviderBookingServiceLineForApi } from "@/lib/bookings/walk-in-custom-service";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 
 function sumUnpaidAdditionalCharges(charges: unknown): number {
@@ -187,6 +188,7 @@ async function handleGetProviderBookings(request: NextRequest) {
           scheduled_start_at,
           scheduled_end_at,
           guest_name,
+          customization,
           offering:offerings(
             id,
             title,
@@ -383,21 +385,16 @@ async function handleGetProviderBookings(request: NextRequest) {
     // Transform to match Booking type
     const transformedBookings = (bookings || []).map((booking: any) => {
       // Transform booking_services to include staff info and guest_name for group bookings
-      const services = (booking.booking_services || []).map((bs: any) => ({
-        id: bs.offering_id || bs.id,
-        offering_id: bs.offering_id,
-        staff_id: bs.staff_id || null,
-        staff_name: bs.staff?.name || null,
-        name: bs.offering?.title || bs.offerings?.title || "Service",
-        offering_name: bs.offering?.title || bs.offerings?.title || "Service",
-        service_name: bs.offering?.title || bs.offerings?.title || "Service",
-        duration_minutes: bs.duration_minutes || bs.offering?.duration_minutes || 60,
-        price: bs.price || bs.offering?.price || 0,
-        currency: bs.currency || lastResortCurrency,
-        scheduled_start_at: bs.scheduled_start_at,
-        scheduled_end_at: bs.scheduled_end_at,
-        guest_name: bs.guest_name || null,
-      }));
+      const services = (booking.booking_services || []).map((bs: any) => {
+        const line = mapProviderBookingServiceLineForApi(bs, { listIdFallback: true });
+        return {
+          ...line,
+          duration_minutes: bs.duration_minutes || bs.offering?.duration_minutes || line.duration_minutes,
+          price: bs.price || bs.offering?.price || line.price,
+          currency: bs.currency || lastResortCurrency,
+          staff_name: bs.staff?.name || line.staff_name,
+        };
+      });
 
       // Transform booking_products for front desk and calendar display
       const products = (booking.booking_products || []).map((bp: any) => ({
@@ -2428,13 +2425,24 @@ async function handleCreateProviderBooking(request: NextRequest) {
         })
       );
 
-      void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
-        // In-app bell row inserted manually above (new_appointment); skip the
-        // template auto-insert so the customer doesn't get two bell entries.
-        notifyBookingConfirmed(booking.id, ["email", "push"], { skipInApp: true }).catch((e) =>
-          console.warn("Booking confirmation notification:", e)
-        )
-      );
+      void (async () => {
+        try {
+          const { notifyBookingConfirmed } = await import(
+            "@/lib/notifications/notification-service"
+          );
+          const { customerConfirmChannelsForGuestDedupe } = await import(
+            "@/lib/notifications/customer-booking-channels"
+          );
+          const channels = await customerConfirmChannelsForGuestDedupe(
+            supabaseAdmin,
+            customerId,
+            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          );
+          await notifyBookingConfirmed(booking.id, channels, { skipInApp: true });
+        } catch (e) {
+          console.warn("Booking confirmation notification:", e);
+        }
+      })();
 
       void (async () => {
         let providerBusinessName = "Your provider";

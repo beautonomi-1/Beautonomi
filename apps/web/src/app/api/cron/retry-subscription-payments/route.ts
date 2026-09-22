@@ -203,6 +203,13 @@ async function runJob(request: NextRequest) {
               }),
             )
             .catch(() => undefined);
+          if (prov?.tenant_id && row.provider_id) {
+            void import("@/lib/provider-ops/ops-case")
+              .then(({ markCaseChurned }) =>
+                markCaseChurned(supabase, prov.tenant_id as string, row.provider_id as string),
+              )
+              .catch(() => undefined);
+          }
         }
       }
       retried++;

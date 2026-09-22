@@ -39,7 +39,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/analytics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { distanceKmBetween, formatMoney } from "@beautonomi/utils";
+import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -61,21 +62,31 @@ interface Address {
   state: string | null;
   postal_code: string | null;
   is_default: boolean;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 }
 
 interface Location {
   id: string;
   name: string;
   address_line1: string;
+  address_line2?: string | null;
   city: string;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
   phone: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   working_hours: Record<string, unknown>;
+  is_primary?: boolean;
 }
 
 interface ShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
   delivery_fee: number;
+  delivery_fee_type?: string | null;
   free_delivery_threshold: number | null;
   estimated_delivery_days: number;
   collection_notes?: string | null;
@@ -204,6 +215,16 @@ export default function ProductCheckoutScreen() {
   }>({ type: "percentage", percentage: 5, fixed: 0, show: true });
   const [addressesLoadError, setAddressesLoadError] = useState<string | null>(null);
   const [refetchingAddresses, setRefetchingAddresses] = useState(false);
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
+  const [previewDeliveryFee, setPreviewDeliveryFee] = useState<number | null>(null);
+  const [deliveryPreviewBlocked, setDeliveryPreviewBlocked] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [providerTimezone] = useState("Africa/Johannesburg");
+  const shopT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
+    [t],
+  );
   const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
   const paystackHostedCheckout = useInAppPaystackCheckout();
@@ -298,11 +319,15 @@ export default function ProductCheckoutScreen() {
         `/api/public/provider-locations?provider_id=${provider_id}`
       );
       const locData = locRes.data;
-      const locList = Array.isArray(locData)
-        ? locData
-        : ((locData as any)?.locations ?? (locData as any)?.data?.locations ?? []);
+      const locPayload = locData as { locations?: Location[]; data?: { locations?: Location[] } } | Location[] | undefined;
+      const locList: Location[] = Array.isArray(locPayload)
+        ? locPayload
+        : (locPayload?.locations ?? locPayload?.data?.locations ?? []);
       setLocations(locList);
-      if (locList.length > 0) setSelectedLocation(locList[0].id);
+      if (locList.length > 0) {
+        const primary = locList.find((l) => l.is_primary) ?? locList[0];
+        setSelectedLocation(primary.id);
+      }
 
       // Fetch shipping config (API returns { data: { shipping: config } })
       const shipRes = await api.get<{
@@ -367,6 +392,65 @@ export default function ProductCheckoutScreen() {
   }, [provider_id, user, fetchCart, pcs]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
+
+  useEffect(() => {
+    if (!user || fulfillment !== "delivery" || !selectedAddress || !provider_id) {
+      setPreviewDeliveryFee(null);
+      setDeliveryPreviewBlocked(false);
+      setPreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    const timer = setTimeout(() => {
+      void api
+        .post<{ fee?: number }>("/api/me/orders/delivery-preview", {
+          provider_id,
+          delivery_address_id: selectedAddress,
+        })
+        .then((res) => {
+          if (cancelled) return;
+          if (res.error) {
+            setPreviewDeliveryFee(null);
+            setDeliveryPreviewBlocked(true);
+            return;
+          }
+          const fee = Number((res.data as { fee?: number } | undefined)?.fee ?? 0);
+          setPreviewDeliveryFee(Number.isFinite(fee) ? fee : 0);
+          setDeliveryPreviewBlocked(false);
+        })
+        .finally(() => {
+          if (!cancelled) setPreviewLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [user, fulfillment, selectedAddress, provider_id, providerCart?.items.length]);
+
+  useEffect(() => {
+    if (locations.length === 0 || fulfillment !== "collection") return;
+    const addr = addresses.find((a) => a.id === selectedAddress);
+    const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    if (!addr?.latitude || !addr?.longitude) {
+      if (!selectedLocation) setSelectedLocation(primary.id);
+      return;
+    }
+    let nearest = primary;
+    let best: number | null = null;
+    for (const loc of locations) {
+      const d = distanceKmBetween(
+        { latitude: addr.latitude, longitude: addr.longitude },
+        { latitude: loc.latitude, longitude: loc.longitude },
+      );
+      if (d != null && (best == null || d < best)) {
+        best = d;
+        nearest = loc;
+      }
+    }
+    setSelectedLocation(nearest.id);
+  }, [locations, selectedAddress, addresses, fulfillment]);
   const providerItems = providerCart?.items ?? [];
   const subtotal = providerCart?.subtotal ?? 0;
   const taxAmount = providerItems.reduce((s, i) => {
@@ -374,12 +458,29 @@ export default function ProductCheckoutScreen() {
     const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
     return s + Math.round(((linePrice * rate) / 100) * 100) / 100;
   }, 0);
-  const deliveryFee =
+  const guestDeliveryEstimate =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
         ? 0
-        : Number(shippingConfig.delivery_fee) || 0
+        : shippingConfig.delivery_fee_type &&
+            shippingConfig.delivery_fee_type !== "flat" &&
+            Number(shippingConfig.delivery_fee) >= 0
+          ? null
+          : Number(shippingConfig.delivery_fee) || 0
       : 0;
+  const deliveryFee =
+    fulfillment === "delivery"
+      ? user && previewDeliveryFee != null
+        ? previewDeliveryFee
+        : guestDeliveryEstimate ?? 0
+      : 0;
+  const deliveryFeePending =
+    fulfillment === "delivery" &&
+    Boolean(user) &&
+    Boolean(selectedAddress) &&
+    previewLoading &&
+    previewDeliveryFee == null &&
+    !deliveryPreviewBlocked;
   const platformFee =
     paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
@@ -421,6 +522,27 @@ export default function ProductCheckoutScreen() {
       Alert.alert(pc("locationRequiredTitle"), pc("locationRequiredBody"));
       return;
     }
+    if (fulfillment === "delivery" && deliveryPreviewBlocked) {
+      Alert.alert(
+        pc("addressRequiredTitle"),
+        pcs("deliveryOutsideRadius") || shopT("delivery.outsideRadius"),
+      );
+      return;
+    }
+    if (fulfillment === "delivery" && user && selectedAddress && deliveryFeePending) {
+      Alert.alert(pc("addressRequiredTitle"), pcs("deliveryFeeCalculating"));
+      return;
+    }
+    if (
+      fulfillment === "delivery" &&
+      user &&
+      selectedAddress &&
+      previewDeliveryFee == null &&
+      !deliveryPreviewBlocked
+    ) {
+      Alert.alert(pc("addressRequiredTitle"), pcs("deliveryFeeCalculating"));
+      return;
+    }
 
     placingRef.current = true;
     const idempotencyKey = createProductOrderIdempotencyKey();
@@ -438,6 +560,9 @@ export default function ProductCheckoutScreen() {
         fulfillment_type: fulfillment,
         delivery_address_id: fulfillment === "delivery" ? selectedAddress! : undefined,
         collection_location_id: fulfillment === "collection" ? selectedLocation! : undefined,
+        ...(fulfillment === "delivery" && deliveryInstructions.trim()
+          ? { delivery_instructions: deliveryInstructions.trim() }
+          : {}),
         payment_method: paymentMethod,
         use_wallet: paymentMethod === "paystack" ? useWallet : false,
         ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
@@ -1324,52 +1449,22 @@ export default function ProductCheckoutScreen() {
                 </View>
               ) : null}
               {locations.map((loc) => (
-                <TouchableOpacity
+                <PickupStoreCard
                   key={loc.id}
+                  location={loc}
+                  timezone={providerTimezone}
+                  collectionNotes={
+                    shippingConfig?.offers_collection && !shippingConfig?.offers_delivery
+                      ? shippingConfig.collection_notes
+                      : shippingConfig?.collection_notes
+                  }
+                  variant="full"
+                  selected={selectedLocation === loc.id}
                   onPress={() => setSelectedLocation(loc.id)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    padding: 14,
-                    borderRadius: 12,
-                    borderWidth: 1.5,
-                    borderColor: selectedLocation === loc.id ? PRIMARY : "#E5E7EB",
-                    marginBottom: 8,
-                    backgroundColor: selectedLocation === loc.id ? "rgba(255,0,119,0.04)" : "#fff",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      borderWidth: 2,
-                      borderColor: selectedLocation === loc.id ? PRIMARY : "#D1D5DB",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginEnd: 12,
-                    }}
-                  >
-                    {selectedLocation === loc.id && (
-                      <View
-                        style={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: 6,
-                          backgroundColor: PRIMARY,
-                        }}
-                      />
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                      {loc.name}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                      {loc.address_line1}, {loc.city}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                  showPhone
+                  showMap={selectedLocation === loc.id}
+                  t={shopT}
+                />
               ))}
             </View>
           )}
@@ -1509,6 +1604,42 @@ export default function ProductCheckoutScreen() {
                 : null}
             </View>
           )}
+
+          {fulfillment === "delivery" && shippingConfig ? (
+            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+              {shippingConfig.delivery_notes ? (
+                <View style={{ backgroundColor: "#EFF6FF", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>{shippingConfig.delivery_notes}</Text>
+                </View>
+              ) : null}
+              {shippingConfig.estimated_delivery_days != null && shippingConfig.estimated_delivery_days > 0 ? (
+                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
+                  {pcs("estimatedDelivery", { count: shippingConfig.estimated_delivery_days })}
+                </Text>
+              ) : null}
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>
+                {pcs("deliveryInstructionsLabel")}
+              </Text>
+              <TextInput
+                value={deliveryInstructions}
+                onChangeText={setDeliveryInstructions}
+                placeholder={pcs("deliveryInstructionsLabel")}
+                multiline
+                maxLength={500}
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 14,
+                  color: "#111827",
+                  minHeight: 88,
+                  textAlignVertical: "top",
+                }}
+              />
+            </View>
+          ) : null}
 
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
@@ -1939,9 +2070,25 @@ export default function ProductCheckoutScreen() {
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ fontSize: 14, color: "#6B7280" }}>{pcs("delivery")}</Text>
+                  <Text style={{ fontSize: 14, color: "#6B7280", flex: 1, marginEnd: 8 }}>
+                    {!user
+                      ? pcs("feeEstimateGuest")
+                      : deliveryFeePending
+                        ? pcs("deliveryFeeCalculating")
+                        : pcs("delivery")}
+                  </Text>
                   <Text style={{ fontSize: 14, color: deliveryFee === 0 ? "#22C55E" : "#111827" }}>
-                    {deliveryFee === 0 ? pcs("free") : fmt(deliveryFee)}
+                    {!user
+                      ? guestDeliveryEstimate == null
+                        ? "—"
+                        : deliveryFee === 0
+                          ? pcs("free")
+                          : fmt(deliveryFee)
+                      : deliveryFeePending
+                        ? "…"
+                        : deliveryFee === 0
+                          ? pcs("free")
+                          : fmt(deliveryFee)}
                   </Text>
                 </View>
               )}
@@ -1987,13 +2134,13 @@ export default function ProductCheckoutScreen() {
         >
           <TouchableOpacity
             onPress={handlePlaceOrder}
-            disabled={placing}
+            disabled={placing || deliveryPreviewBlocked || deliveryFeePending}
             style={{
               backgroundColor: PRIMARY,
               borderRadius: 14,
               paddingVertical: 16,
               alignItems: "center",
-              opacity: placing ? 0.7 : 1,
+              opacity: placing || deliveryPreviewBlocked || deliveryFeePending ? 0.7 : 1,
               ...constraintStyle,
             }}
             accessibilityRole="button"

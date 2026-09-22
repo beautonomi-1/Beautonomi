@@ -5,13 +5,35 @@ import {
   handleWhatsAppStatusCallback,
   updateWhatsAppDeliveryLog,
 } from "@/lib/whatsapp/fallback-waterfall";
-import {
-  normalizeWhatsAppPhone,
-  revokeWhatsAppOptIn,
-  upsertWhatsAppInboundSession,
-} from "@/lib/whatsapp/sessions";
+import { handleWhatsAppInboundMessage } from "@/lib/whatsapp/inbound-handler";
 
-const OPT_OUT_KEYWORDS = new Set(["stop", "unsubscribe", "cancel", "optout", "opt out"]);
+const OUTBOUND_STATUS = new Set([
+  "queued",
+  "sent",
+  "delivered",
+  "read",
+  "undelivered",
+  "failed",
+  "canceled",
+]);
+
+function isInboundWhatsApp(params: URLSearchParams): boolean {
+  const from = params.get("From") || "";
+  if (!from.startsWith("whatsapp:")) return false;
+
+  const buttonPayload = (params.get("ButtonPayload") || "").trim();
+  const body = (params.get("Body") || params.get("ButtonText") || "").trim();
+  if (!buttonPayload && !body) return false;
+
+  const messageStatus = (params.get("MessageStatus") || "").trim().toLowerCase();
+  const smsStatus = (params.get("SmsStatus") || "").trim().toLowerCase();
+  const status = messageStatus || smsStatus;
+
+  if (!status) return true;
+  if (status === "received") return true;
+  if (OUTBOUND_STATUS.has(status)) return false;
+  return true;
+}
 
 /**
  * POST /api/webhooks/twilio
@@ -49,27 +71,17 @@ export async function POST(request: NextRequest) {
     const messageStatus = params.get("MessageStatus") || params.get("SmsStatus") || "";
     const errorCode = params.get("ErrorCode");
     const from = params.get("From") || "";
-    const bodyText = (params.get("Body") || "").trim().toLowerCase();
 
     const supabase = getSupabaseAdmin();
 
-    // Inbound WhatsApp (no MessageStatus on some inbound events)
-    if (from.startsWith("whatsapp:") && bodyText && !messageStatus) {
-      const phone = normalizeWhatsAppPhone(from);
-      let userId: string | null = null;
-      const { data: userRow } = await supabase
-        .from("users")
-        .select("id")
-        .or(`phone.eq.${phone},phone.eq.${from.replace("whatsapp:", "")}`)
-        .limit(1)
-        .maybeSingle();
-      userId = userRow?.id ?? null;
-
-      await upsertWhatsAppInboundSession({ phone, userId });
-
-      if (OPT_OUT_KEYWORDS.has(bodyText) && userId) {
-        await revokeWhatsAppOptIn(userId);
-      }
+    if (isInboundWhatsApp(params)) {
+      await handleWhatsAppInboundMessage({
+        messageSid,
+        from,
+        body: params.get("Body") || "",
+        buttonPayload: params.get("ButtonPayload"),
+        buttonText: params.get("ButtonText"),
+      });
 
       return new NextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',

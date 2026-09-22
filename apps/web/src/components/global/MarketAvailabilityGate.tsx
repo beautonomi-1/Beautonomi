@@ -233,6 +233,7 @@ export default function MarketAvailabilityGate() {
   const [regionalStorefrontLabel, setRegionalStorefrontLabel] = useState("");
   const [tenantCurrencyCode, setTenantCurrencyCode] = useState("");
   const [liveHost, setLiveHost] = useState("");
+  const [shopMarketLabel, setShopMarketLabel] = useState<string | null>(null);
 
   const defaultMarketHost = useMemo(
     () =>
@@ -252,6 +253,17 @@ export default function MarketAvailabilityGate() {
     const qs = searchString ? `?${searchString}` : "";
     return `https://${globalEntryHost}${path}${qs}`;
   }, [globalEntryHost, pathname, searchString]);
+
+  useEffect(() => {
+    try {
+      const match = document.cookie.match(/(?:^|;\s*)beautonomi_shop_market=([^;]+)/i);
+      const code = match?.[1] ? decodeURIComponent(match[1]).trim().toUpperCase() : "";
+      if (code === "ZA") setShopMarketLabel("Shopping South Africa");
+      else if (/^[A-Z]{2}$/.test(code)) setShopMarketLabel(`Shopping ${code}`);
+    } catch {
+      setShopMarketLabel(null);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -415,6 +427,7 @@ export default function MarketAvailabilityGate() {
 
   const detectedCountryLabel = regionDisplayName(countryCode, i18n.language);
   const goToZaMarket = () => {
+    persistShopZaCookie();
     void persistPreferredHomeTenant(recommendedTenantId ?? defaultMarketTenantId);
     track("market_manual_switch", {
       platform: "web",
@@ -461,9 +474,19 @@ export default function MarketAvailabilityGate() {
     setZaSuggestVisible(false);
   };
 
+  const persistShopZaCookie = () => {
+    void fetch("/api/public/market-opt-in", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ country_code: "ZA" }),
+    });
+  };
+
   const switchToDefaultMarket = () => {
     const dest = defaultMarketSwitchHost;
     setManualOverride(dest);
+    persistShopZaCookie();
     void persistPreferredHomeTenant(defaultMarketTenantId);
     track("market_manual_switch", {
       platform: "web",
@@ -482,6 +505,15 @@ export default function MarketAvailabilityGate() {
 
   return (
     <>
+      {shopMarketLabel ? (
+        <div
+          className="fixed left-1/2 top-2 z-[115] -translate-x-1/2 rounded-full bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white shadow-md"
+          role="status"
+        >
+          {shopMarketLabel}
+        </div>
+      ) : null}
+
       {zaSuggestVisible ? (
         <div
           role="region"
@@ -636,7 +668,14 @@ export default function MarketAvailabilityGate() {
         </DialogContent>
       </Dialog>
 
-      <CityWaitlistModal open={waitlistOpen} onOpenChange={setWaitlistOpen} defaultCity="" />
+      <CityWaitlistModal
+        open={waitlistOpen}
+        onOpenChange={setWaitlistOpen}
+        defaultCity=""
+        countryCode={countryCode}
+        source="web"
+        persona="customer"
+      />
     </>
   );
 }

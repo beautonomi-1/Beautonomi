@@ -1,0 +1,123 @@
+{
+  "Open pay run for {{start}} through {{end}}, status {{status}}": {
+    "af": "Maak betaalrun oop vir {{start}} tot {{end}}, status {{status}}",
+    "zu": "Vula ukukhokha kwe-{{start}} kuya ku-{{end}}, isimo {{status}}",
+    "xh": "Vula ukuhlawulwa kwe-{{start}} ukuya ku-{{end}}, imeko {{status}}",
+    "st": "Bula ho lefa ho tloha {{start}} ho fihlela {{end}}, boemo {{status}}",
+    "nso": "Bula go lefa go tloga {{start}} go ya go {{end}}, maemo {{status}}",
+    "tn": "Bula go lefa go simolola {{start}} go ya go {{end}}, maemo {{status}}",
+    "ts": "Pfula ku hakela ku sukela {{start}} ku ya {{end}}, xiyimo {{status}}",
+    "ve": "Vulani u bvisa mali u bva {{start}} u swika {{end}}, tshiimo {{status}}",
+    "ss": "Vula kukhokha kusuka {{start}} kuya ku-{{end}}, simo {{status}}"
+  },
+  "Pay {{amount}} using Paystack Terminal code {{code}}{{note}}.": {
+    "af": "Betaal {{amount}} met Paystack Terminal-kode {{code}}{{note}}.",
+    "zu": "Khokha {{amount}} usebenzisa ikhodi ye-Paystack Terminal {{code}}{{note}}.",
+    "xh": "Hlawula {{amount}} usebenzisa ikhowudi ye-Paystack Terminal {{code}}{{note}}.",
+    "st": "Lefa {{amount}} o sebelisa khoutu ea Paystack Terminal {{code}}{{note}}.",
+    "nso": "Lefa {{amount}} o dirisa khoutu ya Paystack Terminal {{code}}{{note}}.",
+    "tn": "Lefa {{amount}} o dirisa khoutu ya Paystack Terminal {{code}}{{note}}.",
+    "ts": "Hakela {{amount}} u tirhisa khoutu ya Paystack Terminal {{code}}{{note}}.",
+    "ve": "Lifhani {{amount}} ni shumisa khoutu ya Paystack Terminal {{code}}{{note}}.",
+    "ss": "Khokha {{amount}} usebentisa ikhodi ye-Paystack Terminal {{code}}{{note}}."
+  },
+  "We sent a {{digits}}-digit code to {{email}}. Enter it below.": {
+    "af": "Ons het 'n {{digits}}-syfer-kode na {{email}} gestuur. Voer dit hieronder in.",
+    "zu": "Sithumele ikhodi enamadijithi angu-{{digits}} ku-{{email}}. Yifake ngezansi.",
+    "xh": "Sithumele ikhowudi enamadijithi angu-{{digits}} ku-{{email}}. Yifake ngezansi.",
+    "st": "Re rometse khoutu ea linomoro tse {{digits}} ho {{email}}. E kenye ka tlase.",
+    "nso": "Re rometše khoutu ya dinomoro tše {{digits}} go {{email}}. E tsenya ka fase.",
+    "tn": "Re rometse khoutu ya dinomoro tse {{digits}} go {{email}}. E tsenya fa fase.",
+    "ts": "Hi rhumile khoutu ya tinomboro ta {{digits}} eka {{email}}. Nghenisa laha hansi.",
+    "ve": "Ro rumela khoutu ya nomboro dza {{digits}} kha {{email}}. Dzhenisani afha fhasi.",
+    "ss": "Sitfumele ikhodi yemadijithi langu-{{digits}} ku-{{email}}. Yifaka ngezansi."
+  },
+  "Flag Explore posts, comments, or messages from their menu (⋯)": {
+    "af": "Merk Explore-plasings, opmerkings of boodskappe vanaf hul kieslys (⋯)",
+    "zu": "Phawula okuthunyelwe kwe-Explore, amazwana noma imilayezo kusuka kumenyu yabo (⋯)",
+    "xh": "Phawula izithunywa ze-Explore, amagqabiso okanye imiyalezo kwimenyu yabo (⋯)",
+    "st": "Tšoaea liphatlalatso tsa Explore, maikutlo kapa melaetsa ho tsoa lenaneng la bona (⋯)",
+    "nso": "Tšhupetša diphatlalatšo tša Explore, ditshwayotshwayo goba melaetša go tšwa go lenaneo la bona (⋯)",
+    "tn": "Tshupetsa diphatlalatso tsa Explore, ditshwayotshwayo kgotsa melaetsa go tswa mo lenaneng la bone (⋯)",
+    "ts": "Vonaka swi rhumeriwe swa Explore, swibumabumelo kumbe mahungu ku suka eka menyu ya vona (⋯)",
+    "ve": "Tshimbidzani zwi re zwine zwa Explore, mbudziso kana mulaedza u bva kha menyu yavho (⋯)",
+    "ss": "Phawula lokuthunyelwe kwe-Explore, tiphakamiso nemilayeto kusuka kumenyu yabo (⋯)"
+  },
+  "{{count}} booking requests from past dates need your attention": {
+    "af": "{{count}} besprekingsversoeke van vorige datums benodig jou aandag",
+    "zu": "Izicelo zokubhuka ezingu-{{count}} ezinsukwini ezedlule zidinga ukunakwa kwakho",
+    "xh": "Izicelo zokubhukisha ezingama-{{count}} ezimini ezidlulileyo zifuna ingqalelo yakho",
+    "st": "Likopo tse {{count}} tsa ho beha li tloha ka matsatsi a fetileng li hloka tlhokomelo ea hau",
+    "nso": "Dikgopelo tše {{count}} tša go beela di tšwa ka malatsi a fetilego di nyaka tlhokomelo ya gago",
+    "tn": "Dikopo tse {{count}} tsa go beela di tswa mo malatsing a a fetileng di tlhoka tlhokomelo ya gago",
+    "ts": "Swikombelo swa {{count}} swa ku veka swi huma eka masiku lama hundze swi lava nhluvuko wa wena",
+    "ve": "Khumbelo dza {{count}} dza u vhiga dzi bva kha ḓuvha dza kale dzi ṱoḓea ndondolo yawe",
+    "ss": "Ticelo leti-{{count}} tekubhuka letivela emalangeni lasendlulile tidzinga kunakwa kwakho"
+  },
+  "{{failed}} of {{total}} photo could not be uploaded:\n{{names}}": {
+    "af": "{{failed}} van {{total}} foto kon nie opgelaai word nie:\n{{names}}",
+    "zu": "Isithombe esingu-{{failed}} kwe-{{total}} asikwazanga ukulayishwa:\n{{names}}",
+    "xh": "Ifoto engu-{{failed}} kwe-{{total}} ayikwazanga ukulayishwa:\n{{names}}",
+    "st": "Setšoantšo sa {{failed}} ho tse {{total}} se sa khone ho kengoa:\n{{names}}",
+    "nso": "Seswantšho sa {{failed}} go tša {{total}} se sa kgona go tsenngwa:\n{{names}}",
+    "tn": "Setshwantsho sa {{failed}} mo go {{total}} se sa kgona go tsenngwa:\n{{names}}",
+    "ts": "Xifaniso xa {{failed}} eka {{total}} a xi kotanga ku layishiwaka:\n{{names}}",
+    "ve": "Tshifanyiso tsha {{failed}} tsha {{total}} tsho ngo kona u layishwa:\n{{names}}",
+    "ss": "Sithombe lesingu-{{failed}} kwe-{{total}} asikwati kufakwa:\n{{names}}"
+  },
+  "Revenue minus Σ(supply_price × qty) where supply_price exists.": {
+    "af": "Inkomste minus Σ(supply_price × qty) waar supply_price bestaan.",
+    "zu": "Imali engenayo minus Σ(supply_price × qty) lapho supply_price ikhona.",
+    "xh": "Imali engenayo minus Σ(supply_price × qty) apho supply_price ikhona.",
+    "st": "Chelete e kenang minus Σ(supply_price × qty) moo supply_price e leng teng.",
+    "nso": "Revenue minus Σ(supply_price × qty) moo supply_price e lego gona.",
+    "tn": "Revenue minus Σ(supply_price × qty) fa supply_price e le teng.",
+    "ts": "Revenue minus Σ(supply_price × qty) laha supply_price yi nga kona.",
+    "ve": "Revenue minus Σ(supply_price × qty) musi supply_price i khou vha hone.",
+    "ss": "Imali letingenako minus Σ(supply_price × qty) lapho supply_price ikhona."
+  },
+  "{{failed}} of {{total}} photos could not be uploaded:\n{{names}}": {
+    "af": "{{failed}} van {{total}} foto's kon nie opgelaai word nie:\n{{names}}",
+    "zu": "Izithombe ezingu-{{failed}} kwe-{{total}} azikwazanga ukulayishwa:\n{{names}}",
+    "xh": "Iifoto ezingama-{{failed}} kwe-{{total}} azikwazanga ukulayishwa:\n{{names}}",
+    "st": "Linepe tse {{failed}} ho tse {{total}} li sa khone ho kengoa:\n{{names}}",
+    "nso": "Difoto tše {{failed}} go tša {{total}} di sa kgona go tsenngwa:\n{{names}}",
+    "tn": "Difoto tse {{failed}} mo go {{total}} di sa kgona go tsenngwa:\n{{names}}",
+    "ts": "Tifoto ta {{failed}} eka {{total}} a ti kotanga ku layishiwaka:\n{{names}}",
+    "ve": "Dzifoto dza {{failed}} dza {{total}} dzo ngo kona u layishwa:\n{{names}}",
+    "ss": "Titfombe leti-{{failed}} kwe-{{total}} atikwati kufakwa:\n{{names}}"
+  },
+  "Likes and saves are turned off in your content & safety settings.": {
+    "af": "Hou van en stoor is af in jou inhoud- en veiligheidinstellings.",
+    "zu": "Ukuthandwa nokugcina kuvaliwe ezilungiselelweni zakho zokuqukethwe nokuphepha.",
+    "xh": "Ukuthandwa nokugcinwa kuvaliwe kwiisetingi zakho zomxholo nokhuseleko.",
+    "st": "Meraro le ho boloka ho timilwe litlhophisong tsa hau tsa litaba le polokeho.",
+    "nso": "Go rata le go boloka go timilwe go dipeakanyo tša gago tša diteng le polokego.",
+    "tn": "Go rata le go boloka go timilwe mo dipeakanyong tsa gago tsa diteng le polokego.",
+    "ts": "Ku rhandza na ku hlayisa swi pfimbiwile eka swileriso swa wena swa leswi nga endzeni na vuhlayiseki.",
+    "ve": "U funa na u vhulunga zwo timiswa kha zwiitisi zwa vhuvhili na tsireledzo.",
+    "ss": "Kutsandza nokugcina kucishwe kumatsetelo akho ekuqukethweni nekuphepha."
+  },
+  "Remit {{amount}} to SARS by the deadline. Submit via SARS eFiling.": {
+    "af": "Stuur {{amount}} aan SARS voor die sperdatum. Dien in via SARS eFiling.",
+    "zu": "Thumela {{amount}} ku-SARS ngaphambi kwesikhathi esimisiwe. Thumela nge-SARS eFiling.",
+    "xh": "Thumela {{amount}} ku-SARS ngaphambi kwexesha eliphela. Thumela nge-SARS eFiling.",
+    "st": "Romella {{amount}} ho SARS pele ho fihla nako. Romella ka SARS eFiling.",
+    "nso": "Romela {{amount}} go SARS pele ga nako e fela. Romela ka SARS eFiling.",
+    "tn": "Romela {{amount}} go SARS pele ga nako e fela. Romela ka SARS eFiling.",
+    "ts": "Rhumela {{amount}} eka SARS u nga si hela nkarhi. Rhumela hi SARS eFiling.",
+    "ve": "Rumelani {{amount}} kha SARS u si tshi fhela naho. Rumelani nga SARS eFiling.",
+    "ss": "Tfumela {{amount}} ku-SARS ngaphambi kwesikhathi lesiphelako. Tfumela nge-SARS eFiling."
+  },
+  "Pay {{amount}} using this Paystack Terminal link: {{link}}{{note}}": {
+    "af": "Betaal {{amount}} met hierdie Paystack Terminal-skakel: {{link}}{{note}}",
+    "zu": "Khokha {{amount}} usebenzisa lesi sixhumanisi se-Paystack Terminal: {{link}}{{note}}",
+    "xh": "Hlawula {{amount}} usebenzisa eli khonkco le-Paystack Terminal: {{link}}{{note}}",
+    "st": "Lefa {{amount}} o sebelisa sehokelo sena sa Paystack Terminal: {{link}}{{note}}",
+    "nso": "Lefa {{amount}} o dirisa kgokagano ye Paystack Terminal: {{link}}{{note}}",
+    "tn": "Lefa {{amount}} o dirisa kgokagano ye Paystack Terminal: {{link}}{{note}}",
+    "ts": "Hakela {{amount}} u tirhisa xixunxo xa Paystack Terminal: {{link}}{{note}}",
+    "ve": "Lifhani {{amount}} ni shumisa ḽiṅwale la Paystack Terminal: {{link}}{{note}}",
+    "ss": "Khokha {{amount}} usebentisa lesi sixhumanisi se-Paystack Terminal: {{link}}{{note}}"
+  }
+}

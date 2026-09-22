@@ -8,6 +8,10 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  assertSupportedMarketAddressCountry,
+  assertTransactionalMarketAllowedForTenantId,
+} from "@/lib/tenant/market-availability";
 
 /**
  * §Provider-launch (2026-05): force the Node.js runtime so we can rely on
@@ -103,6 +107,21 @@ export async function POST(request: NextRequest) {
     // such a draft would re-hydrate the bloated state and re-trigger the
     // FUNCTION_PAYLOAD_TOO_LARGE 413 on the next auto-save.
     const sanitizedDraft = sanitizeDraft(draft_data);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+      { messageContext: "provider" },
+    );
+    if (marketGuard) return marketGuard;
+
+    const address = (sanitizedDraft as { address?: { country?: string } }).address;
+    if (address?.country) {
+      const addressGuard = assertSupportedMarketAddressCountry(address.country);
+      if (addressGuard) return addressGuard;
+    }
+
     const serializedSize = Buffer.byteLength(JSON.stringify(sanitizedDraft), "utf8");
     if (serializedSize > MAX_DRAFT_BYTES) {
       return errorResponse(

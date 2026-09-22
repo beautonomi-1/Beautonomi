@@ -82,6 +82,9 @@ const MANAGEABLE_USER_ROLES = [
   "admin_operations",
   "admin_platform_config",
   "superadmin",
+  "admin_sales",
+  "admin_onboarding",
+  "admin_retention",
 ] as const;
 
 type ManageableUserRole = (typeof MANAGEABLE_USER_ROLES)[number];
@@ -165,6 +168,13 @@ type UserDetail = Record<string, unknown> & {
     customer_eula_version?: string | null;
     customer_eula_accepted_at?: string | null;
   };
+  whatsapp?: {
+    opted_out_at?: string | null;
+    opt_in_at?: string | null;
+    notifications_enabled?: boolean;
+    shared_phone_account_count?: number;
+  };
+  whatsapp_opted_out_at?: string | null;
 };
 
 function str(v: unknown): string {
@@ -248,6 +258,7 @@ export function UserDetailPage() {
   const [topUpReason, setTopUpReason] = useState("");
   const [showTopUp, setShowTopUp] = useState(false);
   const [warnReason, setWarnReason] = useState("");
+  const [whatsappClearReason, setWhatsappClearReason] = useState("");
 
   const q = useQuery({
     queryKey: adminQueryKeys.userDetail(id),
@@ -372,6 +383,20 @@ export function UserDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to reset identity verification: ${e.message}`),
   });
 
+  const clearWhatsappStop = useMutation({
+    mutationFn: (reason: string) =>
+      adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/whatsapp-opt-out`, {
+        action: "clear_stop",
+        reason,
+      }),
+    onSuccess: () => {
+      setWhatsappClearReason("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
+      adminToast.success("WhatsApp STOP cleared — transactional messages can send again if phone is present");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to clear WhatsApp STOP: ${e.message}`),
+  });
+
   const warnPost = useMutation({
     mutationFn: (reason: string) =>
       adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/warn`, {
@@ -466,6 +491,9 @@ export function UserDetailPage() {
   const stats = data?.stats ?? {};
   const isSuspended = data?.deactivated_at != null && String(data.deactivated_at).length > 0;
   const currentRole = str(data?.role);
+  const whatsappOptedOutAt =
+    data?.whatsapp?.opted_out_at ?? data?.whatsapp_opted_out_at ?? null;
+  const whatsappSharedPhoneCount = data?.whatsapp?.shared_phone_account_count ?? 0;
 
   useEffect(() => {
     if (!isSuspended) setSuspendReason("");
@@ -1534,6 +1562,69 @@ export function UserDetailPage() {
               {label}
             </label>
           ))}
+        </div>
+        <div className="mt-6 border-t border-gray-200 pt-4">
+          <h3 className="text-sm font-semibold text-gray-900">WhatsApp</h3>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-gray-500">STOP (opted out)</dt>
+              <dd className={whatsappOptedOutAt ? "font-medium text-red-700" : "text-green-700"}>
+                {whatsappOptedOutAt
+                  ? new Date(String(whatsappOptedOutAt)).toLocaleString()
+                  : "Not opted out"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">WhatsApp opt-in</dt>
+              <dd>
+                {data.whatsapp?.opt_in_at
+                  ? new Date(String(data.whatsapp.opt_in_at)).toLocaleString()
+                  : "—"}
+              </dd>
+            </div>
+            {whatsappSharedPhoneCount > 1 ? (
+              <div className="sm:col-span-2">
+                <dt className="text-gray-500">Shared phone</dt>
+                <dd className="text-amber-800">
+                  {whatsappSharedPhoneCount} accounts use this phone — inbound reminder buttons must match
+                  the booking customer.
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+          {whatsappOptedOutAt ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs text-gray-600">
+                Clearing STOP does not turn marketing WhatsApp back on; it only removes the user-level block
+                from replying STOP. Requires a support reason (audit logged).
+              </p>
+              <textarea
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                rows={2}
+                placeholder="Support reason (required)"
+                value={whatsappClearReason}
+                onChange={(e) => setWhatsappClearReason(e.target.value)}
+              />
+              <button
+                type="button"
+                className={adminToolbarButtonClass(clearWhatsappStop.isPending)}
+                disabled={clearWhatsappStop.isPending || whatsappClearReason.trim().length < 3}
+                onClick={() => {
+                  const reason = whatsappClearReason.trim();
+                  requestConfirm({
+                    title: "Clear WhatsApp STOP",
+                    consequence: `Remove STOP for ${str(data.full_name) || str(data.email)}? They may receive transactional WhatsApp again.`,
+                    confirmLabel: "Clear STOP",
+                    onConfirm: async () => {
+                      await clearWhatsappStop.mutateAsync(reason);
+                    },
+                  });
+                }}
+              >
+                Clear WhatsApp STOP
+              </button>
+            </div>
+          ) : null}
         </div>
       </AdminPanel>
 

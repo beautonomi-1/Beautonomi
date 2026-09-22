@@ -68,6 +68,8 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
 
   // Provider Onboarding
   "provider-ops": { label: "Dashboard", parentHref: null },
+  "provider-ops/my-day": { label: "My Day", parentHref: "/admin/provider-ops" },
+  "provider-ops/retention": { label: "Retention queue", parentHref: "/admin/provider-ops" },
   "provider-ops/leads": { label: "Lead Inbox", parentHref: "/admin/provider-ops" },
   "provider-ops/leads/new": { label: "New Lead", parentHref: "/admin/provider-ops/leads" },
   "provider-ops/leads/[id]": { label: "Lead", parentHref: "/admin/provider-ops/leads" },

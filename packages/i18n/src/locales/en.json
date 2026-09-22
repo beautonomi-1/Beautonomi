@@ -3187,6 +3187,7 @@
           "appleProductNotMappedBody": "This plan is not available as an iPhone purchase yet. Contact support.",
           "subscriptionCheckoutTitle": "Subscription checkout",
           "introPlansMatchRegion": "Choose Monthly or Yearly to compare plans and prices for your region.",
+          "introMarketingLinesNote": "Marketing lines on the website (e.g. hero text on /pricing) are edited in Admin → Content, not here.",
           "introIosAutoRenewable": "Subscriptions on iOS are auto-renewable In-App Purchases billed through Apple.",
           "termsOfUseA11y": "Terms of Use (EULA)",
           "termsOfUse": "Terms of Use (EULA)",
@@ -3897,6 +3898,7 @@
           "carrier": "Carrier / courier",
           "carrierPlaceholder": "e.g. Aramex, DHL, Paxi",
           "carrierA11y": "Carrier name",
+          "estimatedDeliveryDate": "Estimated delivery date (optional)",
           "trackingUrl": "Tracking URL (optional)",
           "trackingUrlPlaceholder": "https://…",
           "trackingUrlA11y": "Tracking URL",
@@ -13697,7 +13699,39 @@
           "noProductsTitle": "No products found",
           "tryDifferentSearch": "Try a different search term",
           "noProductsAvailable": "No products are available right now",
-          "soldOut": "Sold out"
+          "soldOut": "Sold out",
+          "locationHours": {
+            "notListed": "Hours not listed",
+            "openUntil": "Open until {{time}}",
+            "closed": "Closed now",
+            "closedOpens": "Closed · Opens {{day}} {{time}}",
+            "closedShort": "Closed",
+            "days": {
+              "sunday": "Sunday",
+              "monday": "Monday",
+              "tuesday": "Tuesday",
+              "wednesday": "Wednesday",
+              "thursday": "Thursday",
+              "friday": "Friday",
+              "saturday": "Saturday"
+            }
+          },
+          "pickupStore": {
+            "directions": "Directions",
+            "call": "Call",
+            "pickupInstructions": "Pickup instructions",
+            "viewAllLocations": "View all {{count}} locations",
+            "collectAt": "Collect at {{name}}, {{city}}",
+            "deliverTo": "Deliver to {{city}}"
+          },
+          "delivery": {
+            "feeEstimate": "Delivery fee estimate",
+            "calculatedAtCheckout": "Calculated at checkout",
+            "outsideRadius": "This address is outside the delivery area.",
+            "confirmOnMap": "Confirm this address on the map to check delivery.",
+            "instructionsLabel": "Delivery instructions (optional)",
+            "instructionsPlaceholder": "Gate code, landmarks, where to leave the order…"
+          }
         },
         "chats": {
           "searchPlaceholder": "Search providers or messages",
@@ -14028,7 +14062,9 @@
           "checkoutPickupCta": "Checkout for pickup — {{amount}}",
           "checkoutCta": "Checkout — {{amount}}",
           "total": "Total",
-          "alsoCheckoutOnWeb": "Also checkout on web"
+          "alsoCheckoutOnWeb": "Also checkout on web",
+          "pickupLocationsMore": "{{count}} pickup locations — choose at checkout",
+          "deliveryEtaDays": "Estimated delivery within {{days}} business day(s)"
         },
         "productCheckout": {
           "title": "Checkout",
@@ -14091,7 +14127,13 @@
           "placeOrderA11y": "Place order",
           "placeOrderHint": "Double tap to submit your order",
           "itemFallback": "Item",
-          "loadAddressesFailed": "Failed to load addresses"
+          "loadAddressesFailed": "Failed to load addresses",
+          "deliveryInstructionsLabel": "Delivery instructions (optional)",
+          "deliveryFeeCalculating": "Calculating delivery fee…",
+          "deliveryFeeEstimate": "Estimated delivery: {{amount}}",
+          "deliveryOutsideRadius": "Address is outside the delivery area.",
+          "deliveryConfirmMap": "Confirm your address on the map to enable delivery.",
+          "feeEstimateGuest": "Estimated delivery fee (sign in for exact quote)"
         },
         "authSignup": {
           "signUpFailedTitle": "Sign up failed",
@@ -14428,7 +14470,9 @@
           "itemCountOne": "{{count}} item",
           "itemCountOther": "{{count}} items",
           "returnLabel": "Return {{status}}",
-          "tracking": "Tracking: {{number}}"
+          "tracking": "Tracking: {{number}}",
+          "collectAt": "Collect at {{name}}, {{city}}",
+          "deliverTo": "Deliver to {{city}}"
         },
         "productReviews": {
           "title": "Reviews",
@@ -14751,7 +14795,14 @@
           "totalDifferenceHint": "Small differences can come from rounding or promotions applied at checkout.",
           "soldBy": "Sold by",
           "requestReturnCta": "Request Return / Refund",
-          "returnWindowPassed": "Return window ({{days}} days) has passed. For help, open Profile → Help centre → New ticket."
+          "returnWindowPassed": "Return window ({{days}} days) has passed. For help, open Profile → Help centre → New ticket.",
+          "readyForPickupTitle": "Ready for pickup",
+          "lineFulfilment": "Fulfilment: {{status}}",
+          "unitLabel": "Unit",
+          "buildingLabel": "Building",
+          "accessLabel": "Access",
+          "parkingLabel": "Parking",
+          "landmarksLabel": "Landmarks"
         },
         "customRequestsList": {
           "startPaymentFailed": "Failed to start payment",
@@ -16178,6 +16229,8 @@
           "inStorePickup": "In-store pickup",
           "deliveryWithFee": "Delivery · {{amount}}",
           "deliveryAvailable": "Delivery available",
+          "deliveryCalculatedAtCheckout": "Delivery fee calculated at checkout",
+          "estimatedDeliveryDays": "Estimated delivery within {{days}} business day(s)",
           "optionFallback": "Option",
           "variantFallback": "Variant {{id}}",
           "soldOutSuffix": " · Sold out",
@@ -21686,6 +21739,7 @@
           "updateGroupBooking": "Update Group Booking",
           "confirmAndCreate": "Confirm & create",
           "reviewAndCreate": "Review & create",
+          "reviewAndCreateRemaining": "Review & create ({{count}} left)",
           "paystackTerminalPayment": "Paystack Terminal Payment",
           "paystackQrDescription": "Show the QR code or share the payment link. Once the customer pays, allocate the payment from the Payment Inbox.",
           "amountDue": "Amount due",
@@ -28268,6 +28322,7 @@
           "trackingPlaceholder": "e.g. TRACK-12345",
           "carrier": "Carrier / courier",
           "carrierPlaceholder": "e.g. Aramex, DHL, Paxi",
+          "estimatedDeliveryDate": "Estimated delivery date (optional)",
           "trackingUrl": "Tracking URL",
           "trackingUrlHint": "Paste the carrier's tracking page so customers can click through from their order.",
           "trackingUrlInvalid": "Tracking URL must start with http:// or https://",
@@ -33215,6 +33270,7 @@
       "cityWaitlist": {
         "enterCity": "Please enter a city name",
         "enterName": "Please enter your name",
+        "contactRequired": "Email or phone is required.",
         "invalidPhone": "Enter a valid phone number or leave the field blank.",
         "joinedSuccess": "Successfully joined the waitlist!",
         "joinFailed": "Failed to join waitlist. Please try again.",

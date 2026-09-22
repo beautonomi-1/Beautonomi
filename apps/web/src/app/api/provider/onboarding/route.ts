@@ -18,6 +18,7 @@ import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 import { buildOnboardingCompletionResponse } from "@/lib/provider/build-onboarding-completion-response";
 import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark-provider-onboarding-lifecycle-complete";
 import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
+import { applyProviderSignupCaseHooks } from "@/lib/provider-ops/ops-case";
 import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 import { persistJoinedProviderRole } from "@/lib/auth/effective-provider-role";
@@ -27,6 +28,10 @@ import {
   APP_REVIEW_DEMO_PHONE,
   isAppReviewDemoProviderUserId,
 } from "@/lib/auth/app-review-demo";
+import {
+  assertSupportedMarketAddressCountry,
+  assertTransactionalMarketAllowedForTenantId,
+} from "@/lib/tenant/market-availability";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -348,6 +353,16 @@ export async function POST(request: NextRequest) {
     );
     const tenantId = await resolveTenantIdWithZaFallback(request);
 
+    const addressCountryGuard = assertSupportedMarketAddressCountry(address.country);
+    if (addressCountryGuard) return addressCountryGuard;
+
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      supabaseAdmin,
+      tenantId,
+      { messageContext: "provider" },
+    );
+    if (marketGuard) return marketGuard;
 
     // Check if provider already exists using admin client to avoid RLS recursion
     const { data: existingProvider, error: checkError } = await supabaseAdmin
@@ -1622,7 +1637,7 @@ export async function POST(request: NextRequest) {
       const userEmail = owner_email || legacyEmail;
       const userPhone = owner_phone || legacyPhone;
 
-      await consolidateLeadsOnSignup({
+      const matchResult = await consolidateLeadsOnSignup({
         supabase: supabaseAdmin,
         tenantId,
         providerId,
@@ -1631,6 +1646,20 @@ export async function POST(request: NextRequest) {
         email: userEmail,
         phone: userPhone,
         matchContext: "self_serve",
+      });
+
+      const { data: providerStatusRow } = await supabaseAdmin
+        .from("providers")
+        .select("status")
+        .eq("id", providerId)
+        .maybeSingle();
+
+      await applyProviderSignupCaseHooks(supabaseAdmin, {
+        tenantId,
+        userId: user.id,
+        providerId,
+        leadId: matchResult.primaryLeadId,
+        providerStatus: (providerStatusRow?.status as string | null) ?? null,
       });
     } catch (trackingErr) {
       console.warn("Provider Ops tracking/matching (non-fatal):", trackingErr);

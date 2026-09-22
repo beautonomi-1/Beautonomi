@@ -35,7 +35,21 @@ export async function sendCancellationNotification(
       walletRefund,
       currency,
     } = options;
-    await notifyBookingCancelled(bookingId, cancelledBy, refundInfo, ['email', 'push'], {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { customerBookingChannels } = await import(
+      "@/lib/notifications/customer-booking-channels"
+    );
+    const { data: b } = await getSupabaseAdmin()
+      .from("bookings")
+      .select("tenant_id")
+      .eq("id", bookingId)
+      .maybeSingle();
+    await notifyBookingCancelled(
+      bookingId,
+      cancelledBy,
+      refundInfo,
+      await customerBookingChannels((b?.tenant_id as string | null) ?? null),
+      {
       cancellationReason,
       feeRetained,
       walletRefund,
@@ -72,7 +86,19 @@ export async function sendBookingConfirmationNotification(
   bookingId: string
 ): Promise<void> {
   try {
-    await notifyBookingConfirmed(bookingId, ['email', 'push']);
+    const { customerBookingChannels } = await import(
+      "@/lib/notifications/customer-booking-channels"
+    );
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: b } = await getSupabaseAdmin()
+      .from("bookings")
+      .select("tenant_id")
+      .eq("id", bookingId)
+      .maybeSingle();
+    await notifyBookingConfirmed(
+      bookingId,
+      await customerBookingChannels((b?.tenant_id as string | null) ?? null),
+    );
   } catch (error) {
     // Log but don't throw - notification failure shouldn't break booking creation
     console.error('Failed to send booking confirmation notification:', error);

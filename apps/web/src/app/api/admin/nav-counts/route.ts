@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       paystackTerminalSetupResult,
       diditSessionsResult,
       terminalMerchantOnboardingResult,
+      cityWaitlistPendingResult,
     ] = await Promise.all([
       (async () => {
         const { data: rows, error } = await supabase
@@ -262,6 +263,10 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
+      supabase
+        .from("city_waitlist")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
     ]);
 
     const effectiveRoles = await getEffectiveAdminSectionRoles(request);
@@ -309,6 +314,7 @@ export async function GET(request: NextRequest) {
       "/admin/paystack-terminal": paystackTerminalSetupResult.count ?? 0,
       "/admin/identity-trust/sessions": diditSessionsResult.count ?? 0,
       "/admin/commercial/terminal-onboarding": terminalMerchantOnboardingResult.count ?? 0,
+      "/admin/marketing/market-waitlist": cityWaitlistPendingResult.count ?? 0,
       "/admin/control-plane/modules/agents": isSuperadmin ? agentProposalsPending : 0,
       "/admin/control-plane/integrations/ai": isSuperadmin ? agentProposalsPending : 0,
       ...agentProposalsBySection,

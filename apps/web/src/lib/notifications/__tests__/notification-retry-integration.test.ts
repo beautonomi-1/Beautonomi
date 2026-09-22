@@ -87,6 +87,22 @@ function createSupabaseForTemplateSend() {
           }),
         };
       }
+      if (table === "users") {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  id: USER_ID,
+                  phone: "+27123456789",
+                  whatsapp_opted_out_at: null,
+                },
+              ],
+              error: null,
+            }),
+          }),
+        };
+      }
       if (table === "notification_logs") {
         return { insert: vi.fn().mockResolvedValue({ error: null }) };
       }

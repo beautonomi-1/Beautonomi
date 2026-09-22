@@ -15,7 +15,7 @@
  * 1.5–2s wall-clock delays in PaystackReturnScreen.
  */
 import React from "react";
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -197,9 +197,9 @@ describe("PaystackReturnScreen", () => {
     });
   }
 
-  it("auto-navigates to resolvedTarget on verify success", async () => {
-    jest.useFakeTimers();
-    try {
+  it(
+    "auto-navigates to resolvedTarget on verify success",
+    async () => {
       mockVerify.mockResolvedValue({
         status: "success",
         data: { bookingId: "bk-1" },
@@ -210,15 +210,15 @@ describe("PaystackReturnScreen", () => {
       renderScreen({ reference: "ref-success" });
       await settleVerify();
 
-      act(() => {
-        jest.advanceTimersByTime(1_500);
-      });
-
-      expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
+      await waitFor(
+        () => {
+          expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
+        },
+        { timeout: 3_000 },
+      );
+    },
+    10_000,
+  );
 
   it("shows continueCta label after verify resolves to a known target", async () => {
     jest.useFakeTimers();

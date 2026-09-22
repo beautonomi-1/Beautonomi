@@ -13,11 +13,13 @@ export interface VerificationSettings {
   allow_provider_override: boolean;
   guest_link_email_enabled: boolean;
   guest_link_sms_enabled: boolean;
+  guest_link_whatsapp_enabled: boolean;
 }
 
 export interface GuestLinkDeliverySettings {
   guest_link_email_enabled: boolean;
   guest_link_sms_enabled: boolean;
+  guest_link_whatsapp_enabled: boolean;
 }
 
 async function loadActivePlatformSettings(): Promise<Record<string, unknown> | null> {
@@ -51,6 +53,7 @@ export async function getVerificationSettings(): Promise<VerificationSettings> {
     allow_provider_override: verification.allow_provider_override !== false,
     guest_link_email_enabled: verification.guest_link_email_enabled !== false,
     guest_link_sms_enabled: verification.guest_link_sms_enabled !== false,
+    guest_link_whatsapp_enabled: verification.guest_link_whatsapp_enabled !== false,
   };
 }
 
@@ -59,5 +62,6 @@ export async function getGuestLinkDeliverySettings(): Promise<GuestLinkDeliveryS
   return {
     guest_link_email_enabled: verification.guest_link_email_enabled,
     guest_link_sms_enabled: verification.guest_link_sms_enabled,
+    guest_link_whatsapp_enabled: verification.guest_link_whatsapp_enabled,
   };
 }

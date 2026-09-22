@@ -27,6 +27,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { activationGateLabels } from "@/lib/providerOpsActivationGates";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { ProviderOpsCasePanel } from "@/components/provider-ops/ProviderOpsCasePanel";
 
 interface TimelineEvent {
   type: string;
@@ -370,6 +371,8 @@ export function ProviderOpsLifecyclePage() {
           )}
         </div>
       </div>
+
+      <ProviderOpsCasePanel providerId={providerId} userId={user?.id ?? null} />
 
       {!ready_to_activate && provider.status !== "active" ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

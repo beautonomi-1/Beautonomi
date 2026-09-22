@@ -4,6 +4,8 @@ import { requireRoleInApi, handleApiError, successResponse, errorResponse } from
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { createMembershipPurchase } from "@/app/api/me/membership/_helpers/purchase-membership";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 const schema = z.object({
   membership_id: z.string().uuid(),
@@ -47,6 +49,13 @@ export async function POST(request: NextRequest) {
       request
     );
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      getSupabaseAdmin(),
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
+
     const body = await request.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success)

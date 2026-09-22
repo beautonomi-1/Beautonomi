@@ -12,8 +12,12 @@ const ABSOLUTE_MAX_BATCH = 100;
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
-    if (!["superadmin", "admin_operations"].includes(user.role ?? "")) {
-      return errorResponse("Bulk send requires superadmin or admin_operations role", "FORBIDDEN", 403);
+    if (!["superadmin", "admin_operations", "admin_sales"].includes(user.role ?? "")) {
+      return errorResponse(
+        "Bulk send requires superadmin, admin_operations, or admin_sales role",
+        "FORBIDDEN",
+        403,
+      );
     }
 
     const supabase = getSupabaseAdmin();

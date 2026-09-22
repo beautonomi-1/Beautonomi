@@ -67,8 +67,29 @@ vi.mock("@/lib/tenant/scoped-overrides", () => ({
   fetchScopedSingle: vi.fn(async () => ({ data: { settings: { payouts: {} } } })),
 }));
 
+vi.mock("@/lib/tenant/market-availability", () => ({
+  assertTransactionalMarketAllowedForTenantId: vi.fn().mockResolvedValue(null),
+  assertTransactionalMarketAllowed: vi.fn().mockReturnValue(null),
+}));
+
 const providerId = "22222222-2222-4222-8222-222222222222";
 const collectionLocationId = "33333333-3333-4333-8333-333333333333";
+
+function mockProviderLocationsTable() {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.eq = vi.fn(() => chain);
+  chain.maybeSingle = vi.fn(async () => ({
+    data: {
+      id: collectionLocationId,
+      provider_id: providerId,
+      is_active: true,
+      location_type: "salon",
+    },
+    error: null,
+  }));
+  return chain;
+}
 
 function buildHappyPathSupabase(opts?: { failItemsInsert?: boolean }) {
   const cartItem = {
@@ -108,6 +129,9 @@ function buildHappyPathSupabase(opts?: { failItemsInsert?: boolean }) {
             })),
           })),
         };
+      }
+      if (table === "provider_locations") {
+        return mockProviderLocationsTable();
       }
       if (table === "cart_items") {
         const chain: Record<string, unknown> = {};
@@ -187,6 +211,9 @@ describe("POST /api/me/orders", () => {
               })),
             })),
           };
+        }
+        if (table === "provider_locations") {
+          return mockProviderLocationsTable();
         }
         throw new Error(`Unexpected table ${table}`);
       }),

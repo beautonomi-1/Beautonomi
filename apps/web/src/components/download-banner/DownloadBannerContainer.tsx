@@ -9,7 +9,7 @@ import DownloadBanner from "./DownloadBanner";
 import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
-import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { coalesceStoreUrl, NATIVE_STORE } from "@/lib/store/native-app-store";
 import { isBookingEmbedSurface } from "@/lib/booking/embed-host";
 
 const DISMISS_KEY = "download_banner_dismissed";
@@ -60,14 +60,20 @@ function getStoreLinkFromEnv(appContext: "customer" | "provider", osType: "ios" 
 
 function getStoreLinkFromAppsData(
   data: Record<string, AppPlatformConfig> | null | undefined,
+  appContext: "customer" | "provider",
   osType: "ios" | "android" | "huawei"
 ): string | null {
   if (!data) return null;
   const platform = data[osType];
   if (!platform || platform.enabled === false) return null;
-  if (osType === "ios") return platform.app_store_url ?? null;
-  if (osType === "android") return platform.download_url ?? null;
-  return platform.app_gallery_url ?? null;
+  const staticLinks = STATIC_STORE_LINKS[appContext];
+  if (osType === "ios") {
+    return coalesceStoreUrl(platform.app_store_url, staticLinks.ios);
+  }
+  if (osType === "android") {
+    return coalesceStoreUrl(platform.download_url, staticLinks.android);
+  }
+  return coalesceStoreUrl(platform.app_gallery_url, staticLinks.huawei);
 }
 
 function resolveStoreUrl(
@@ -75,8 +81,9 @@ function resolveStoreUrl(
   appContext: "customer" | "provider",
   osType: "ios" | "android" | "huawei"
 ): string | null {
+  const fromApi = getStoreLinkFromAppsData(data, appContext, osType);
+  if (fromApi) return fromApi;
   return (
-    getStoreLinkFromAppsData(data, osType) ??
     getStoreLinkFromEnv(appContext, osType) ??
     STATIC_STORE_LINKS[appContext][osType]
   );

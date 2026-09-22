@@ -15178,7 +15178,13 @@
           "cancelReasonDefault": "Customer request",
           "providerReply": "Provider reply",
           "noComment": "No comment",
-          "editCta": "Edit"
+          "editCta": "Edit",
+          "cashRefundTitle": "Cash refund",
+          "cashRefundPrompt": "Confirm you received {{amount}} in cash from your provider.",
+          "cashRefundConfirm": "I received it",
+          "cashRefundDispute": "Dispute",
+          "cashRefundConfirmed": "Thank you — your refund is confirmed.",
+          "cashRefundDisputed": "We flagged this refund for review."
         },
         "groupBookingDetail": {
           "back": "Back",
@@ -21703,7 +21709,8 @@
           "reviewSpotsStill": "Review Spots Still",
           "spotsAvailable": "Spots Available",
           "subtotalParticipants": "Subtotal Participants",
-          "subtotalProducts": "Subtotal Products"
+          "subtotalProducts": "Subtotal Products",
+          "reviewAndCreateRemaining": "Review & create ({{count}} left)"
         },
         "newSaleDialog": {
           "variantFallback": "Variant",
@@ -33230,7 +33237,8 @@
         "notesPlaceholder": "Tell us more about your interest...",
         "cancel": "Cancel",
         "joining": "Joining...",
-        "joinWaitlist": "Join Waitlist"
+        "joinWaitlist": "Join Waitlist",
+        "contactRequired": "Email or phone is required."
       },
       "languagesModal": {
         "translation": "Translation",

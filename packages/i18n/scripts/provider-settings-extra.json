@@ -1,0 +1,119 @@
+{
+  "appointments/page.tsx": {
+    "defaultAppointmentStatus": "Default Appointment Status",
+    "defaultAppointmentStatusHint": "Choose the default status for new appointments when they are created",
+    "defaultStatusFootnote": "New appointments will be created with this status unless specified otherwise",
+    "autoConfirm": "Auto-Confirm Appointments",
+    "autoConfirmHint": "Automatically confirm appointments when they are created (if default status is \"Pending\")",
+    "requireConfirmation": "Require Confirmation",
+    "requireConfirmationHint": "Require manual confirmation before appointments are marked as \"Booked\"",
+    "requireConfirmationFootnote": "Applies to customer online booking requests only. Walk-ins and appointments you create in the provider portal are confirmed immediately.",
+    "lifecycleTitle": "Booking lifecycle timing",
+    "lifecycleHint": "Control how long customers wait for confirmation and when open appointments move into close-out.",
+    "confirmationSla": "Confirmation SLA (hours)",
+    "confirmationSlaHint": "Target time to respond to new online requests during business hours.",
+    "releaseUnconfirmed": "Release unconfirmed (hours before slot)",
+    "releaseUnconfirmedHint": "Pending online requests expire this many hours before the appointment time.",
+    "closeoutGraceSalon": "Close-out grace — salon (minutes)",
+    "closeoutGraceAtHome": "Close-out grace — at home (minutes)",
+    "lateArrivalGrace": "Late arrival grace (minutes)",
+    "lateArrivalGraceHint": "Extra minutes after the scheduled start before a salon client is treated as late.",
+    "acceptCustomRequests": "Accept custom service requests",
+    "acceptCustomRequestsHint": "When off, customers see that you are not accepting custom requests from the app or web profile.",
+    "infoAlert": "These settings apply to all new appointments created through the provider portal. Existing appointments are not affected.",
+    "lastUpdated": "Last updated: {{date}}",
+    "loadFailedTitle": "Failed to load settings"
+  },
+  "services/menu/page.tsx": {
+    "body": "Your services, categories, and pricing are managed from the catalogue. Use the button below to add, edit, or reorder your service menu.",
+    "manageCatalogue": "Manage Services in Catalogue"
+  },
+  "payments/page.tsx": {
+    "loadFailed": "Failed to load payment settings",
+    "enableAtLeastOne": "Enable at least one payment method",
+    "updated": "Payment methods updated",
+    "saveFailed": "Failed to save payment settings",
+    "yocoBanner": "In-person card payments are processed through your Yoco terminal.",
+    "manageYoco": "Manage Yoco terminals",
+    "cash": "Cash",
+    "cashDesc": "Accept cash at your business location.",
+    "yocoCard": "In-person Card (Yoco Terminal)",
+    "yocoCardDesc": "Accept in-person card payments via Yoco terminal.",
+    "online": "Online Payments",
+    "onlineDesc": "Accept online checkout payments.",
+    "paystackTerminal": "Paystack Terminal (in-person QR / link)",
+    "paystackTerminalDesc": "Let customers pay in person by scanning your Paystack Terminal QR or link. Payments arrive in your terminal inbox to allocate.",
+    "noActiveTerminal": "No active terminal yet. Request setup from",
+    "paystackTerminalSettings": "Paystack Terminal settings",
+    "noActiveTerminalSuffix": "so it becomes selectable at checkout.",
+    "giftCards": "Gift Cards",
+    "giftCardsDesc": "Allow customers to redeem platform gift cards at your business.",
+    "subtitle": "Choose how customers can pay your business"
+  },
+  "notifications/page.tsx": {
+    "requestTimeout": "Request timed out. Please try again.",
+    "loadFailed": "Failed to load notification preferences",
+    "updated": "Notification preferences updated",
+    "updateFailed": "Failed to update preferences",
+    "alertSoundEnabled": "Booking alert sound enabled",
+    "alertSoundDisabled": "Booking alert sound disabled",
+    "alertSoundUpdateFailed": "Failed to update booking alert preference",
+    "unsubscribedMarketing": "Unsubscribed from marketing",
+    "subscribedMarketing": "Subscribed to marketing",
+    "marketingUpdateFailed": "Failed to update marketing preferences",
+    "bookingAlertSound": "Booking alert sound",
+    "bookingAlertSoundDesc": "Play a short tone in this browser when a new booking arrives, if your market configures a normal-booking ringtone in Control Plane.",
+    "marketingComms": "Marketing Communications",
+    "marketingCommsDesc": "Unsubscribe from marketing emails and promotional offers",
+    "email": "Email",
+    "sms": "SMS",
+    "whatsapp": "WhatsApp",
+    "push": "Push Notifications",
+    "sections": {
+      "booking_updates": {
+        "title": "Booking Updates",
+        "description": "Get notified when bookings are created, updated, or rescheduled"
+      },
+      "booking_cancellations": {
+        "title": "Booking Cancellations",
+        "description": "Be notified when clients cancel their appointments"
+      },
+      "booking_reminders": {
+        "title": "Booking Reminders",
+        "description": "Receive reminders about upcoming appointments"
+      },
+      "new_reviews": {
+        "title": "New Reviews",
+        "description": "Get notified when customers leave reviews"
+      },
+      "review_responses": {
+        "title": "Review Responses",
+        "description": "Notifications about review interactions"
+      },
+      "client_messages": {
+        "title": "Client Messages",
+        "description": "Stay updated on messages from clients"
+      },
+      "payment_received": {
+        "title": "Payment Received",
+        "description": "Get notified when payments are received"
+      },
+      "payout_updates": {
+        "title": "Payout Updates",
+        "description": "Updates on payout requests and processing"
+      },
+      "waitlist_notifications": {
+        "title": "Waitlist Notifications",
+        "description": "Get notified about waitlist activity"
+      },
+      "system_updates": {
+        "title": "System Updates",
+        "description": "Important system announcements and updates"
+      },
+      "marketing": {
+        "title": "Marketing & Promotions",
+        "description": "Receive marketing emails and promotional offers"
+      }
+    }
+  }
+}

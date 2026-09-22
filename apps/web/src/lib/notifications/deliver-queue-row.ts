@@ -1,7 +1,9 @@
 import { parseQueuePayloadMeta } from "@/lib/notifications/enqueue";
 import type { QueuedNotificationRow } from "@/lib/notifications/queued-senders";
 
-export type QueueDeliveryResult = { ok: true } | { ok: false; error: string };
+export type QueueDeliveryResult =
+  | { ok: true }
+  | { ok: false; error: string; whatsAppSkip?: boolean };
 
 /**
  * Deliver a single notification_delivery_queue row via the appropriate channel.
@@ -104,7 +106,9 @@ export async function deliverQueueRow(
         return { ok: true };
       } catch (err) {
         if (err instanceof WhatsAppSkipError) {
-          return { ok: false, error: err.message };
+          const { handleWhatsAppQueueSkip } = await import("@/lib/whatsapp/fallback-waterfall");
+          await handleWhatsAppQueueSkip(row.id, err.message);
+          return { ok: true };
         }
         throw err;
       }

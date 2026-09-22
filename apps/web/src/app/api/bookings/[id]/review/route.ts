@@ -194,14 +194,24 @@ export async function POST(
             .select("full_name")
             .eq("id", user.id)
             .maybeSingle();
+          const { providerBookingChannels } = await import(
+            "@/lib/notifications/customer-booking-channels"
+          );
+          const { data: bookingTenant } = await supabaseNotify
+            .from("bookings")
+            .select("tenant_id")
+            .eq("id", bookingId)
+            .maybeSingle();
           await notifyProviderNewReview(
             review.id,
             customerUser?.full_name || "Customer",
             Number(rating),
             comment || "",
             providerData.user_id,
-            undefined,
-            { bookingId }
+            await providerBookingChannels(
+              (bookingTenant?.tenant_id as string | null) ?? null,
+            ),
+            { bookingId, tenantId: (bookingTenant?.tenant_id as string | null) ?? null },
           );
         } catch (pushErr) {
           console.warn("Failed to send provider push/email for new review:", pushErr);

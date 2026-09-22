@@ -20,7 +20,8 @@ const mockIncrementBookingCreation = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockRequirePublicTenant = vi.fn();
-const mockEvaluateMarketAvailabilityFromRequest = vi.fn();
+const mockAssertTransactionalMarketAllowed = vi.fn();
+const mockAssertTransactionalMarketAllowedForTenantId = vi.fn();
 const mockVerifyPublicBookingCaptcha = vi.fn();
 const mockEnsureUserProfileForAuthUser = vi.fn();
 const mockValidateBooking = vi.fn();
@@ -47,8 +48,10 @@ vi.mock("@/lib/tenant/require-public-tenant", () => ({
 }));
 
 vi.mock("@/lib/tenant/market-availability", () => ({
-  evaluateMarketAvailabilityFromRequest: (...args: unknown[]) =>
-    mockEvaluateMarketAvailabilityFromRequest(...args),
+  assertTransactionalMarketAllowed: (...args: unknown[]) =>
+    mockAssertTransactionalMarketAllowed(...args),
+  assertTransactionalMarketAllowedForTenantId: (...args: unknown[]) =>
+    mockAssertTransactionalMarketAllowedForTenantId(...args),
 }));
 
 vi.mock("@/lib/security/captcha", () => ({
@@ -156,7 +159,8 @@ describe("POST /api/public/bookings", () => {
     mockCheckBookingCreationRateLimit.mockResolvedValue({ allowed: true });
     mockIncrementBookingCreation.mockReturnValue(undefined);
     mockRequirePublicTenant.mockResolvedValue({ tenantId: TEST_TENANT_ID });
-    mockEvaluateMarketAvailabilityFromRequest.mockReturnValue({ status: "available" });
+    mockAssertTransactionalMarketAllowed.mockReturnValue(null);
+    mockAssertTransactionalMarketAllowedForTenantId.mockResolvedValue(null);
     mockVerifyPublicBookingCaptcha.mockResolvedValue({ ok: true });
     mockEnsureUserProfileForAuthUser.mockResolvedValue(undefined);
     mockGetSupabaseAdmin.mockReturnValue(buildSupabaseAdminMock());

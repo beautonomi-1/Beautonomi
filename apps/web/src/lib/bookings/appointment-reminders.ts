@@ -5,10 +5,11 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import type { TemplateDispatchChannel } from "@/lib/notifications/channel-types";
 
 export interface ReminderConfig {
   hoursBefore: number[]; // e.g., [24, 2] for 24 hours and 2 hours before
-  channels: ("push" | "email" | "sms")[];
+  channels: ("push" | "email" | "sms" | "whatsapp")[];
 }
 
 const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
@@ -41,6 +42,7 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
           scheduled_at,
           customer_id,
           provider_id,
+          tenant_id,
           location_type,
           customers:users!bookings_customer_id_fkey(
             id,
@@ -135,26 +137,43 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
           action_url: `/account-settings/bookings/${booking.id}`,
         });
 
-        // Send push/email/SMS notification
         try {
-          await sendTemplateNotification(
-            "appointment_reminder",
-            [booking.customer_id],
-            {
-              provider_name: provider.business_name,
-              appointment_date: dateStr,
-              appointment_time: timeStr,
-              services: services,
-              hours_before: hoursBefore.toString(),
-              booking_number: booking.booking_number || "",
-              booking_id: booking.id,
-            },
-            config.channels,
-            // The in-app bell row is inserted manually above with the
-            // reminder_key dedupe payload, so suppress the template's
-            // auto-insert to avoid a duplicate bell entry per reminder.
-            { appType: "customer", skipInApp: true }
-          );
+          const tenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+          let channels: TemplateDispatchChannel[] = [...config.channels];
+          if (config.channels.includes("whatsapp")) {
+            const { customerBookingChannels } = await import(
+              "@/lib/notifications/customer-booking-channels"
+            );
+            channels = await customerBookingChannels(tenantId);
+          }
+
+          if (hoursBefore === 24) {
+            const { notifyBookingReminder24h } = await import(
+              "@/lib/notifications/notification-service"
+            );
+            await notifyBookingReminder24h(booking.id, channels);
+          } else if (hoursBefore === 2) {
+            const { notifyBookingReminder2h } = await import(
+              "@/lib/notifications/notification-service"
+            );
+            await notifyBookingReminder2h(booking.id, channels);
+          } else {
+            await sendTemplateNotification(
+              "appointment_reminder",
+              [booking.customer_id],
+              {
+                provider_name: provider.business_name,
+                appointment_date: dateStr,
+                appointment_time: timeStr,
+                services: services,
+                hours_before: hoursBefore.toString(),
+                booking_number: booking.booking_number || "",
+                booking_id: booking.id,
+              },
+              channels.filter((c) => c !== "whatsapp"),
+              { appType: "customer", skipInApp: true, tenantId },
+            );
+          }
 
           remindersSent.push(booking.id);
         } catch (notifError) {
@@ -202,6 +221,7 @@ export async function sendRebookReminders() {
         `
         id,
         customer_id,
+        tenant_id,
         completed_at,
         providers!inner ( id, business_name, slug ),
         booking_services (
@@ -291,9 +311,14 @@ export async function sendRebookReminders() {
             booking_id: booking.id,
             booking_url: bookingUrlPath,
           },
-          ["push", "email"],
-          // In-app bell row inserted manually above (with reminder_key dedupe).
-          { appType: "customer", skipInApp: true }
+          await (async () => {
+            const tenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+            const { customerBookingChannels } = await import(
+              "@/lib/notifications/customer-booking-channels"
+            );
+            return customerBookingChannels(tenantId);
+          })(),
+          { appType: "customer", skipInApp: true, tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null }
         );
         sent.push(reminderKey);
       } catch (e) {

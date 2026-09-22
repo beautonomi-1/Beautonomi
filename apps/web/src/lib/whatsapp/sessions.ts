@@ -51,8 +51,15 @@ export async function revokeWhatsAppOptIn(userId: string): Promise<void> {
       whatsapp_notifications_enabled: false,
       whatsapp_opt_in_at: null,
       whatsapp_opt_in_source: null,
+      whatsapp_opted_out_at: new Date().toISOString(),
     })
     .eq("id", userId);
+}
+
+/** STOP from a shared number — opt out every account on that phone. */
+export async function revokeWhatsAppOptInForUserIds(userIds: string[]): Promise<void> {
+  const unique = [...new Set(userIds.filter(Boolean))];
+  await Promise.all(unique.map((id) => revokeWhatsAppOptIn(id)));
 }
 
 export async function userHasWhatsAppOptIn(userId: string): Promise<boolean> {

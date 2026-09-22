@@ -12,6 +12,7 @@ import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 import { multiplyMoney } from "@beautonomi/utils";
 import { enforceGiftCardPurchaseCaps } from "@/lib/gift-cards/gift-card-purchase-caps";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import {
   normalizeRecipientPhone,
   normalizeRequestedDeliverAt,
@@ -77,6 +78,14 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      supabaseAdmin,
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
 
     const flags = await getPaymentFeatureFlagsForTenant(tenantId);
     if (!flags.gift_cards) {

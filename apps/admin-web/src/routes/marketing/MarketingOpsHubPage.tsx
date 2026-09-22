@@ -44,6 +44,7 @@ export function MarketingOpsHubPage() {
 
   const counts = countsQ.data ?? {};
   const openPromotions = counts["/admin/promotions"] ?? 0;
+  const pendingWaitlist = counts["/admin/marketing/market-waitlist"] ?? 0;
 
   return (
     <AdminSectionQueueHub
@@ -54,6 +55,11 @@ export function MarketingOpsHubPage() {
           label: "Active promotions",
           value: openPromotions,
           href: "/admin/promotions",
+        },
+        {
+          label: "Market waitlist (pending)",
+          value: pendingWaitlist,
+          href: "/admin/marketing/market-waitlist",
         },
       ]}
       quickLinks={[

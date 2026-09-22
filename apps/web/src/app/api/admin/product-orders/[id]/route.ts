@@ -39,6 +39,7 @@ const patchOrderSchema = z.object({
     .enum(["pending", "paid", "refunded", "partially_refunded", "failed"])
     .optional(),
   tracking_number: z.string().optional().nullable(),
+  tracking_url: z.string().optional().nullable(),
   admin_notes: z.string().optional().nullable(),
   cancellation_reason: z.string().max(500).optional(),
 });
@@ -278,6 +279,11 @@ export async function PATCH(
           (data as { tracking_number?: string }).tracking_number ??
           orderRow.tracking_number,
         carrier: (data as { carrier?: string }).carrier ?? orderRow.carrier,
+        trackingUrl:
+          parsed.tracking_url ??
+          (data as { tracking_url?: string | null }).tracking_url ??
+          (orderRow as { tracking_url?: string | null }).tracking_url ??
+          null,
         estimatedDelivery:
           (data as { estimated_delivery_date?: string }).estimated_delivery_date ??
           orderRow.estimated_delivery_date,

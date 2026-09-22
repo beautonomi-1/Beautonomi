@@ -1,3 +1,4 @@
+import { requireProviderOpsSales } from "@/lib/provider-ops/ops-route-auth";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -7,10 +8,10 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyLeadMilestone } from "@/lib/integrations/slack/lead-triggers";
+import { syncCaseMilestonesForLeadStage } from "@/lib/provider-ops/ops-case";
 
 const VALID_STAGES = [
   "new",
@@ -29,10 +30,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(
-      ADMIN_SECTION_PROVIDER_OPS,
-      request
-    );
+    const { user } = await requireProviderOpsSales(request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -99,6 +97,8 @@ export async function PATCH(
       .eq("id", id)
       .eq("tenant_id", tenantId);
     if (updateErr) throw updateErr;
+
+    await syncCaseMilestonesForLeadStage(supabase, tenantId, id, newStage);
 
     const { error: actErr } = await supabase.from("provider_lead_activities").insert({
       lead_id: id,

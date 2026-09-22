@@ -6,6 +6,8 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { isOpsDeskManager } from "@/lib/providerOpsDeskNav";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
@@ -57,6 +59,8 @@ function leadsInboxHrefForAssignee(userId: string | null) {
 
 export function ProviderOpsReportsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const { bootstrap } = useAdminSession();
+  const showScorecard = bootstrap ? isOpsDeskManager(bootstrap.role) : false;
 
   const funnelQ = useQuery({
     queryKey: adminQueryKeys.providerOps.reportsFunnel(),
@@ -82,6 +86,16 @@ export function ProviderOpsReportsPage() {
         timeoutMs: 60_000,
       }),
     enabled: allowed,
+  });
+
+  const scorecardQ = useQuery({
+    queryKey: adminQueryKeys.providerOps.reportsScorecard(),
+    queryFn: () =>
+      adminApi.getJson<{
+        period_start: string;
+        rows: Array<{ label: string; desk: string; metric: string; target: number; actual: number }>;
+      }>("/api/admin/provider-ops/reports/scorecard"),
+    enabled: allowed && showScorecard,
   });
 
   if (denied) return denied;
@@ -344,6 +358,37 @@ export function ProviderOpsReportsPage() {
             </div>
           </AdminPanel>
         </div>
+      )}
+
+      {showScorecard && scorecardQ.data && scorecardQ.data.rows.length > 0 && (
+        <AdminPanel>
+          <h2 className="mb-1 text-base font-semibold text-gray-900">Ops scorecard</h2>
+          <p className="mb-4 text-xs text-gray-500">Quota attainment for {scorecardQ.data.period_start}</p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-gray-500">
+                  <th className="py-2 pr-4">Rep</th>
+                  <th className="py-2 pr-4">Desk</th>
+                  <th className="py-2 pr-4">Metric</th>
+                  <th className="py-2">Actual / target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scorecardQ.data.rows.map((row, i) => (
+                  <tr key={`${row.label}-${row.metric}-${i}`} className="border-b border-gray-100">
+                    <td className="py-2 pr-4 font-medium text-gray-900">{row.label}</td>
+                    <td className="py-2 pr-4 capitalize text-gray-600">{row.desk}</td>
+                    <td className="py-2 pr-4 text-gray-600">{row.metric.replace(/_/g, " ")}</td>
+                    <td className="py-2">
+                      {row.actual} / {row.target}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </AdminPanel>
       )}
     </div>
   );

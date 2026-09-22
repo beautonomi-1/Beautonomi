@@ -15178,7 +15178,13 @@
           "cancelReasonDefault": "Mteja request",
           "providerReply": "Mtoa huduma reply",
           "noComment": "Hapana comment",
-          "editCta": "Hariri"
+          "editCta": "Hariri",
+          "cashRefundTitle": "Cash refund",
+          "cashRefundPrompt": "Confirm you received {{amount}} in cash from your provider.",
+          "cashRefundConfirm": "I received it",
+          "cashRefundDispute": "Dispute",
+          "cashRefundConfirmed": "Thank you — your refund is confirmed.",
+          "cashRefundDisputed": "We flagged this refund for review."
         },
         "groupBookingDetail": {
           "back": "Rudi",
@@ -21703,7 +21709,8 @@
           "reviewSpotsStill": "Review Spots Still",
           "spotsAvailable": "Spots Available",
           "subtotalParticipants": "Subtotal Participants",
-          "subtotalProducts": "Subtotal Products"
+          "subtotalProducts": "Subtotal Products",
+          "reviewAndCreateRemaining": "Review & create ({{count}} left)"
         },
         "newSaleDialog": {
           "variantFallback": "Tofauti",
@@ -33230,7 +33237,8 @@
         "notesPlaceholder": "Tell us more about your interest...",
         "cancel": "Ghairi",
         "joining": "Joining...",
-        "joinWaitlist": "Jiunge na orodha ya kusubiri"
+        "joinWaitlist": "Jiunge na orodha ya kusubiri",
+        "contactRequired": "Email or phone is required."
       },
       "languagesModal": {
         "translation": "Translation",

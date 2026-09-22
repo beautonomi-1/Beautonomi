@@ -35,6 +35,10 @@ export const FEATURE_FLAG_KEYS = {
   YOCO_OAUTH_V2: "yoco_oauth_v2",
   /** Auto-send signed portal links to shadow/guest customers (email + SMS). */
   GUEST_BOOKING_PORTAL: "guest_booking_portal",
+  /** Customer WhatsApp tickets, reminders, inbound, retention. */
+  CUSTOMER_WHATSAPP_JOURNEY: "customer_whatsapp_journey",
+  /** Provider owner WhatsApp pager (high-value ops). */
+  PROVIDER_WHATSAPP_JOURNEY: "provider_whatsapp_journey",
   /**
    * Unified provider POS checkout (services + products without a booking).
    * Disabled by default — use bookings for service sales and walk-in retail for products.

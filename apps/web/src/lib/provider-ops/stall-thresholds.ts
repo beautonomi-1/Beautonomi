@@ -8,6 +8,7 @@ export const DEFAULT_SLA_CONTACT_DROPPED_HOURS = 24;
 export interface ProviderOpsStallSettings {
   stall_threshold_hours: number;
   dropoff_threshold_hours: number;
+  auto_assign_enabled: boolean;
   auto_sms_on_stall: boolean;
   sla_contact_stalled_hours: number;
   sla_contact_dropped_hours: number;
@@ -38,6 +39,7 @@ export async function loadProviderOpsStallSettings(
     dropoff_threshold_hours: Number(
       opsSettings.dropoff_threshold_hours ?? DEFAULT_DROPOFF_THRESHOLD_HOURS
     ),
+    auto_assign_enabled: Boolean(opsSettings.auto_assign_enabled ?? false),
     auto_sms_on_stall: Boolean(opsSettings.auto_sms_on_stall ?? false),
     sla_contact_stalled_hours: Number(
       opsSettings.sla_contact_stalled_hours ?? DEFAULT_SLA_CONTACT_STALLED_HOURS

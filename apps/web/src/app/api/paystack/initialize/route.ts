@@ -15,6 +15,7 @@ import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
+import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 const initializeSchema = z
   .object({
@@ -74,6 +75,14 @@ export async function POST(request: NextRequest) {
         503,
       );
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const marketGuard = await assertTransactionalMarketAllowedForTenantId(
+      request,
+      supabaseAdmin,
+      tenantId,
+    );
+    if (marketGuard) return marketGuard;
 
     const paystackEnabled = await isPaystackEnabledForTenant(tenantId);
     if (!paystackEnabled) {
