@@ -14,6 +14,11 @@ jobs:
     name: Production OTA (iOS)
     type: update
     environment: production
+    env:
+      APP_ENV: production
+      EXPO_NO_DOTENV: "1"
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
+      SENTRY_ALLOW_FAILURE: "true"
     hooks:
       after_install_node_modules:
         - name: Ensure babel-preset-expo resolves for Metro (monorepo)
@@ -21,11 +26,17 @@ jobs:
     params:
       channel: production
       platform: ios
-      message: Production OTA (EAS workflow)
+      message: Customer production OTA (iOS)
+      upload_sentry_sourcemaps: false
   update_android:
     name: Production OTA (Android)
     type: update
     environment: production
+    env:
+      APP_ENV: production
+      EXPO_NO_DOTENV: "1"
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
+      SENTRY_ALLOW_FAILURE: "true"
     hooks:
       after_install_node_modules:
         - name: Ensure babel-preset-expo resolves for Metro (monorepo)
@@ -33,4 +44,5 @@ jobs:
     params:
       channel: production
       platform: android
-      message: Production OTA (EAS workflow)
+      message: Customer production OTA (Android)
+      upload_sentry_sourcemaps: false

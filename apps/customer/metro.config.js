@@ -1,11 +1,13 @@
 const path = require("path");
-const { getSentryExpoConfig } = require("@sentry/react-native/metro");
+const { getDefaultConfig } = require("expo/metro-config");
 const { withNativeWind } = require("nativewind/metro");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
 
-const config = getSentryExpoConfig(projectRoot);
+// Match provider: Sentry metro wrapping can fail EAS Update before the bundle
+// uploads. Native Sentry still comes from the expo plugin on store builds.
+const config = getDefaultConfig(projectRoot);
 
 // Preserve Expo defaults and add monorepo root (expo doctor expects default watchFolders)
 config.watchFolders = [...(config.watchFolders || [projectRoot]), monorepoRoot];
