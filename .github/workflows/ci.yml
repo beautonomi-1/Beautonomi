@@ -271,6 +271,15 @@ jobs:
       - name: Validate Expo config (provider)
         run: pnpm --filter provider exec expo config --type public
 
+      # Same resolve Metro workers use on EAS Update — fail CI before production OTA
+      - name: Assert Babel JSX plugin (customer)
+        working-directory: apps/customer
+        run: node ../../tooling/expo/assert-babel-jsx-plugin.cjs
+
+      - name: Assert Babel JSX plugin (provider)
+        working-directory: apps/provider
+        run: node ../../tooling/expo/assert-babel-jsx-plugin.cjs
+
   security:
     name: Dependency Audit
     needs: install

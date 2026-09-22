@@ -35,6 +35,7 @@
     "@beautonomi/ui": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
+    "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@didit-protocol/sdk-react-native": "^4.0.9",
     "@expo/vector-icons": "^15.1.1",
     "babel-preset-expo": "~54.0.11",

@@ -58,7 +58,7 @@ overrides:
   ws@7: 7.5.11
   ws@8: 8.21.0
 
-packageExtensionsChecksum: sha256-fqEkNs3tMP5r13QLqH9cAyl9Gy5GJYyWmPDyN7EKTVI=
+packageExtensionsChecksum: sha256-eCsnLmy6k8VJYlPyWiM1iv2Oiiv2rKj9Ahtr/S7vZU4=
 
 importers:
 
@@ -203,6 +203,9 @@ importers:
 
   apps/customer:
     dependencies:
+      '@babel/plugin-transform-react-jsx':
+        specifier: ^7.28.6
+        version: 7.28.6(@babel/core@7.29.0)
       '@beautonomi/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
@@ -480,6 +483,9 @@ importers:
 
   apps/provider:
     dependencies:
+      '@babel/plugin-transform-react-jsx':
+        specifier: ^7.28.6
+        version: 7.28.6(@babel/core@7.29.0)
       '@beautonomi/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
@@ -730,9 +736,6 @@ importers:
       '@babel/core':
         specifier: 7.29.0
         version: 7.29.0
-      '@babel/plugin-transform-react-jsx':
-        specifier: ^7.28.6
-        version: 7.28.6(@babel/core@7.29.0)
       '@babel/types':
         specifier: ^7.29.7
         version: 7.29.7
@@ -12982,6 +12985,7 @@ snapshots:
       '@babel/helper-module-transforms': 7.28.6(@babel/core@7.29.0)
       '@babel/helpers': 7.29.2
       '@babel/parser': 7.29.7
+      '@babel/plugin-transform-react-jsx': 7.28.6(@babel/core@7.29.0)
       '@babel/template': 7.28.6
       '@babel/traverse': 7.29.0
       '@babel/types': 7.29.7

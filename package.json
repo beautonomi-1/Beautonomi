@@ -12,6 +12,11 @@
         "dependencies": {
           "@babel/types": "^7.29.0"
         }
+      },
+      "@babel/core": {
+        "dependencies": {
+          "@babel/plugin-transform-react-jsx": "^7.28.6"
+        }
       }
     },
     "overrides": {
