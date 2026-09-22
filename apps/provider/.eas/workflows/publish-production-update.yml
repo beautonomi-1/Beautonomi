@@ -1,14 +1,10 @@
 name: Publish Provider Production OTA
 
+# Manual only. Auto-OTA on every main push is not a CI gate — store binaries
+# come from Build Provider (Production). Publish JS updates on purpose via
+# Expo dashboard "Run" or `pnpm --filter provider update:production`.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - apps/provider/**
-      - packages/i18n/**
-      - package.json
-      - pnpm-lock.yaml
+  workflow_dispatch:
 
 jobs:
   update_ios:
