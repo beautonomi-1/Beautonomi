@@ -1,0 +1,10 @@
+# Generated native projects (CNG) — present on EAS after prebuild, not in git.
+ios
+ios/**/*
+android
+android/**/*
+
+# pnpm virtual-store peer hashes differ between local/CI and EAS.
+node_modules/.pnpm/**
+../../node_modules/.pnpm/**
+**/node_modules/.pnpm/**
