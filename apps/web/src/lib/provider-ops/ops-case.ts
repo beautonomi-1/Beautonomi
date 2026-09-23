@@ -4,6 +4,14 @@ import { deskForAdminRole, rolesForDesk } from "@/lib/provider-ops/ops-desk-role
 import { loadProviderOpsSettings } from "@/lib/provider-ops/ops-settings";
 import { roundRobinOpsOwner } from "@/lib/provider-ops/round-robin";
 import type { UserRole } from "@/types/beautonomi";
+import {
+  WINBACK_TASK_TITLE,
+  WINBACK_INVOLUNTARY_DUE_DAYS,
+  WINBACK_VOLUNTARY_DUE_DAYS,
+  addDaysIso,
+  type ChurnReason,
+} from "@/lib/provider-ops/retention-rules";
+import { QUALIFYING_BOOKING_STATUSES } from "@/lib/provider-ops/retention-rules";
 
 export type OpsCaseStatus = "open" | "lost" | "nurture" | "activated" | "churned";
 
@@ -311,7 +319,7 @@ export async function stampFirstBookingAtIfNeeded(
     .from("bookings")
     .select("created_at")
     .eq("provider_id", providerId)
-    .in("status", ["confirmed", "in_progress", "completed"])
+    .in("status", [...QUALIFYING_BOOKING_STATUSES])
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -391,10 +399,25 @@ export async function markCaseActivatedForProvider(
     actorUserId?: string | null;
   },
 ): Promise<void> {
+  const reopened = await reactivateChurnedCase(supabase, {
+    tenantId: params.tenantId,
+    providerId: params.providerId,
+    source: "admin_activate",
+  });
+  if (reopened) return;
+
   const { data: provider } = await supabase
     .from("providers")
     .select("lead_id, user_id")
     .eq("id", params.providerId)
+    .maybeSingle();
+
+  const { data: existingCase } = await supabase
+    .from("provider_ops_cases")
+    .select("id, current_desk")
+    .eq("tenant_id", params.tenantId)
+    .eq("provider_id", params.providerId)
+    .in("status", OPEN_STATUSES)
     .maybeSingle();
 
   const { caseId } = await ensureProviderOpsCase(supabase, {
@@ -408,6 +431,9 @@ export async function markCaseActivatedForProvider(
     tryAutoAssign: true,
     actorUserId: params.actorUserId ?? null,
   });
+
+  const desk = (existingCase?.current_desk as OpsDesk | undefined) ?? null;
+  if (desk === "retention") return;
 
   await transitionCaseDesk(supabase, {
     tenantId: params.tenantId,
@@ -515,24 +541,126 @@ export async function autoAssignOnboardingTrackingOwners(
   return assigned;
 }
 
-export async function markCaseChurned(
+async function completeOpenWinBackTasks(
   supabase: SupabaseClient,
   tenantId: string,
   providerId: string,
 ): Promise<void> {
-  const { data: caseRow } = await supabase
-    .from("provider_ops_cases")
-    .select("id, current_desk")
+  const now = new Date().toISOString();
+  await supabase
+    .from("provider_lead_tasks")
+    .update({ completed_at: now })
     .eq("tenant_id", tenantId)
     .eq("provider_id", providerId)
-    .in("status", ["open", "activated"])
+    .eq("title", WINBACK_TASK_TITLE)
+    .is("completed_at", null);
+}
+
+async function ensureWinBackTask(
+  supabase: SupabaseClient,
+  params: {
+    tenantId: string;
+    providerId: string;
+    retentionOwnerId: string | null;
+    churnReason: ChurnReason;
+  },
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from("provider_lead_tasks")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("provider_id", params.providerId)
+    .eq("title", WINBACK_TASK_TITLE)
+    .is("completed_at", null)
     .maybeSingle();
-  if (!caseRow) return;
+  if (existing) return;
+
+  const dueDays =
+    params.churnReason === "cancelled_expired"
+      ? WINBACK_VOLUNTARY_DUE_DAYS
+      : WINBACK_INVOLUNTARY_DUE_DAYS;
+  const dueAt = addDaysIso(Date.now(), dueDays);
+
+  await supabase.from("provider_lead_tasks").insert({
+    tenant_id: params.tenantId,
+    provider_id: params.providerId,
+    lead_id: null,
+    title: WINBACK_TASK_TITLE,
+    task_type: "winback",
+    due_at: dueAt,
+    assigned_to: params.retentionOwnerId,
+  });
+}
+
+export async function reactivateChurnedCase(
+  supabase: SupabaseClient,
+  params: { tenantId: string; providerId: string; source?: "payment" | "admin_activate" },
+): Promise<boolean> {
+  const { data: rows } = await supabase
+    .from("provider_ops_cases")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("provider_id", params.providerId)
+    .eq("status", "churned");
+  if (!rows?.length) return false;
+
+  const followUp = addDaysIso(Date.now(), 7);
+  const now = new Date().toISOString();
+  const ids = rows.map((r) => r.id as string);
 
   await supabase
     .from("provider_ops_cases")
-    .update({ status: "churned", current_desk: "retention" })
-    .eq("id", caseRow.id);
+    .update({
+      status: "activated",
+      churn_reason: null,
+      winback_step: 0,
+      returned_at: now,
+      next_follow_up_at: followUp,
+      current_desk: "retention",
+      updated_at: now,
+    })
+    .in("id", ids);
+
+  await completeOpenWinBackTasks(supabase, params.tenantId, params.providerId);
+  return true;
+}
+
+export async function markCaseChurned(
+  supabase: SupabaseClient,
+  tenantId: string,
+  providerId: string,
+  reason: ChurnReason,
+): Promise<void> {
+  const { data: caseRows } = await supabase
+    .from("provider_ops_cases")
+    .select("id, retention_owner_id")
+    .eq("tenant_id", tenantId)
+    .eq("provider_id", providerId)
+    .in("status", ["open", "activated"]);
+  if (!caseRows?.length) return;
+
+  const now = new Date().toISOString();
+  const ids = caseRows.map((r) => r.id as string);
+  const retentionOwner =
+    (caseRows.find((r) => r.retention_owner_id)?.retention_owner_id as string | null) ?? null;
+
+  await supabase
+    .from("provider_ops_cases")
+    .update({
+      status: "churned",
+      current_desk: "retention",
+      churn_reason: reason,
+      winback_step: 0,
+      updated_at: now,
+    })
+    .in("id", ids);
+
+  await ensureWinBackTask(supabase, {
+    tenantId,
+    providerId,
+    retentionOwnerId: retentionOwner,
+    churnReason: reason,
+  });
 }
 
 export type RecordAtRiskSaveResult =
@@ -541,69 +669,14 @@ export type RecordAtRiskSaveResult =
   | { error: "invalid_state"; message: string }
   | { error: "not_at_risk" };
 
-/** Stamp at_risk_saved_at for quota scorecard / My Day (retention desk). */
+/** Manual at-risk save removed; saves are recorded by the daily reconcile after touch + recovery. */
 export async function recordAtRiskSaveForCase(
-  supabase: SupabaseClient,
-  params: { tenantId: string; caseId: string; actorUserId: string },
+  _supabase: SupabaseClient,
+  _params: { tenantId: string; caseId: string; actorUserId: string },
 ): Promise<RecordAtRiskSaveResult> {
-  const { data: caseRow } = await supabase
-    .from("provider_ops_cases")
-    .select(
-      "id, tenant_id, provider_id, status, current_desk, at_risk_saved_at, retention_owner_id",
-    )
-    .eq("id", params.caseId)
-    .eq("tenant_id", params.tenantId)
-    .maybeSingle();
-
-  if (!caseRow) return { error: "not_found" };
-
-  if (caseRow.current_desk !== "retention") {
-    return { error: "invalid_state", message: "Case is not on the retention desk" };
-  }
-  if (caseRow.status === "churned" || caseRow.status === "lost") {
-    return { error: "invalid_state", message: "Case is closed" };
-  }
-  if (!caseRow.provider_id) {
-    return { error: "invalid_state", message: "Case has no linked provider" };
-  }
-
-  if (caseRow.at_risk_saved_at) {
-    return {
-      ok: true,
-      atRiskSavedAt: caseRow.at_risk_saved_at as string,
-      alreadyRecorded: true,
-    };
-  }
-
-  const { getProviderCompletedBookingTrend } = await import(
-    "@/lib/provider-ops/provider-booking-trend"
-  );
-  const trend = await getProviderCompletedBookingTrend(
-    supabase,
-    caseRow.provider_id as string,
-  );
-  if (!trend.concerning) {
-    return { error: "not_at_risk" };
-  }
-
-  const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    at_risk_saved_at: now,
-    at_risk_flagged_at: now,
-    updated_at: now,
+  return {
+    error: "invalid_state",
+    message:
+      "At-risk saves are recorded automatically when booking volume recovers after outreach. Log a touch instead.",
   };
-  if (!caseRow.retention_owner_id) {
-    patch.retention_owner_id = params.actorUserId;
-  }
-
-  const { error } = await supabase
-    .from("provider_ops_cases")
-    .update(patch)
-    .eq("id", params.caseId);
-  if (error) {
-    console.error("[recordAtRiskSaveForCase]", error);
-    return { error: "invalid_state", message: "Could not update case" };
-  }
-
-  return { ok: true, atRiskSavedAt: now };
 }

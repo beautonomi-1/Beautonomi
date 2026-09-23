@@ -242,6 +242,7 @@ export default function App() {
           <Route path="settings/tenant-domains" element={<P.TenantDomainsListPage />} />
           <Route path="settings/team-permissions" element={<P.TeamPermissionsMatrixPage />} />
           <Route path="settings/admin-team" element={<P.AdminTeamPage />} />
+          <Route path="content/learning/training-paths" element={<P.TrainingPathsEditorPage />} />
           <Route path="content/learning" element={<P.LearningArticlesPage />} />
           <Route path="content/resources" element={<P.ContentResourcesPage />} />
           <Route path="content/faqs" element={<P.ContentFaqsPage />} />

@@ -189,7 +189,13 @@ function fmt(n: number, currency = "ZAR"): string {
   return formatAdminCurrency(n, currency);
 }
 
-function ProviderFinanceSummaryCard({ summary }: { summary: ProviderFinanceSummary }) {
+function ProviderFinanceSummaryCard({
+  summary,
+  providerId,
+}: {
+  summary: ProviderFinanceSummary;
+  providerId?: string;
+}) {
   const tiles = [
     { label: "Gross revenue", value: fmt(summary.gross), hint: "Total charged to customers" },
     { label: "Platform fees", value: fmt(summary.fees + summary.commission), hint: "Fees + commission deducted by platform" },
@@ -203,9 +209,9 @@ function ProviderFinanceSummaryCard({ summary }: { summary: ProviderFinanceSumma
     <AdminPanel>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Provider finance summary</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Primary salon (finance)</h2>
           {summary.provider_name ? (
-            <p className="mt-0.5 text-sm text-gray-500">{summary.provider_name} — all-time</p>
+            <p className="mt-0.5 text-sm text-gray-500">{summary.provider_name} — all-time ledger</p>
           ) : null}
         </div>
         <Link
@@ -823,21 +829,78 @@ export function UserDetailPage() {
         </AdminPanel>
 
         <AdminPanel>
-          <h2 className="text-lg font-semibold text-gray-900">Activity</h2>
-          <dl className="mt-4 grid gap-3 text-sm">
-            {Object.keys(stats).length === 0 ? (
-              <p className="text-gray-500">No stats for this role.</p>
-            ) : (
-              Object.entries(stats)
+          <h2 className="text-lg font-semibold text-gray-900">Booking activity</h2>
+          {role === "customer" && Object.keys(stats).length > 0 ? (
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">All bookings</dt>
+                <dd className="mt-1 font-semibold tabular-nums">{String(stats.total_bookings ?? "—")}</dd>
+                <p className="mt-1 text-xs text-gray-500">Every status in this tenant</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Completed visits</dt>
+                <dd className="mt-1 font-semibold tabular-nums">
+                  {String(stats.completed_visits_lifetime ?? "—")}
+                  <span className="text-sm font-normal text-gray-500">
+                    {" "}
+                    · {String(stats.completed_visits_30d ?? 0)} last 30d
+                  </span>
+                </dd>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Customer spend</dt>
+                <dd className="mt-1 font-semibold tabular-nums">{fmt(Number(stats.total_spent ?? 0))}</dd>
+                <p className="mt-1 text-xs text-gray-500">Confirmed and completed booking totals</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Last scheduled visit</dt>
+                <dd className="mt-1 font-semibold">
+                  {stats.last_booking_date
+                    ? new Date(String(stats.last_booking_date)).toLocaleDateString()
+                    : "—"}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Days since last completed</dt>
+                <dd className="mt-1 font-semibold tabular-nums">
+                  {stats.days_since_last_completed != null ? String(stats.days_since_last_completed) : "—"}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Repeat customer</dt>
+                <dd className="mt-1 font-semibold">{stats.is_repeat_customer ? "Yes" : "No"}</dd>
+                {stats.median_days_between_completed_visits != null ? (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Median {String(stats.median_days_between_completed_visits)} days between completed visits
+                  </p>
+                ) : null}
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 sm:col-span-2">
+                <dt className="text-xs font-medium uppercase text-gray-500">Contribution to date</dt>
+                <dd className="mt-1 font-semibold tabular-nums">{fmt(Number(stats.contribution_to_date ?? 0))}</dd>
+                <p className="mt-1 text-xs text-gray-500">Platform take on their bookings, not salon spend</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <dt className="text-xs font-medium uppercase text-gray-500">Product orders</dt>
+                <dd className="mt-1 font-semibold tabular-nums">
+                  {String(stats.product_orders_count ?? 0)} · {fmt(Number(stats.product_orders_paid_total ?? 0))} paid
+                </dd>
+              </div>
+            </dl>
+          ) : Object.keys(stats).length === 0 ? (
+            <p className="mt-4 text-gray-500">No stats for this role.</p>
+          ) : (
+            <dl className="mt-4 grid gap-3 text-sm">
+              {Object.entries(stats)
                 .filter(([k, v]) => k !== "provider_finance_summary" && v !== null && typeof v !== "object")
                 .map(([k, v]) => (
                   <div key={k}>
                     <dt className="text-gray-500">{k.replace(/_/g, " ")}</dt>
                     <dd className="font-medium">{String(v)}</dd>
                   </div>
-                ))
-            )}
-          </dl>
+                ))}
+            </dl>
+          )}
         </AdminPanel>
       </div>
 

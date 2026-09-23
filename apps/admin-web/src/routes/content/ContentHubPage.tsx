@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { BookOpen, Compass, FolderOpen, Globe2, Layers, HelpCircle, Info, FileText, MapPin, Link2 } from "lucide-react";
+import { BookOpen, Compass, FolderOpen, Globe2, GraduationCap, Layers, HelpCircle, Info, FileText, MapPin, Link2 } from "lucide-react";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -13,6 +13,13 @@ const CARDS: {
   icon: typeof BookOpen;
   accent: string;
 }[] = [
+  {
+    to: adminSpaTo("/admin/content/learning/training-paths"),
+    label: "Training paths",
+    description: "Internal staff curricula, checkpoint quizzes, and step order.",
+    icon: GraduationCap,
+    accent: "from-purple-600 to-indigo-800",
+  },
   {
     to: adminSpaTo("/admin/content/learning"),
     label: "Learning articles",

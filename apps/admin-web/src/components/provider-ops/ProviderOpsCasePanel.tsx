@@ -15,6 +15,11 @@ type CaseRow = {
   won_at: string | null;
   activated_at: string | null;
   first_booking_at: string | null;
+  last_qualifying_booking_at?: string | null;
+  qualifying_booking_count?: number | null;
+  churn_reason?: string | null;
+  returned_at?: string | null;
+  next_follow_up_at?: string | null;
 };
 
 type HandoffRow = {
@@ -68,6 +73,16 @@ export function ProviderOpsCasePanel(props: {
     onError: (e: Error) => adminToast.error(e.message || "Could not accept handoff"),
   });
 
+  const caseId = q.data?.case?.id;
+  const touchesQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.caseLookup(props.providerId ?? props.leadId ?? "none"), "touches", caseId ?? ""],
+    queryFn: () =>
+      adminApi.getJson<{ touches: Array<{ channel: string; note: string | null; created_at: string }> }>(
+        `/api/admin/provider-ops/cases/${caseId}/touches`,
+      ),
+    enabled: Boolean(caseId),
+  });
+
   if (q.isLoading || !q.data?.case) return null;
   const c = q.data.case;
   const owners = q.data.owners ?? {};
@@ -95,7 +110,29 @@ export function ProviderOpsCasePanel(props: {
           <dt className="text-gray-500">Retention owner</dt>
           <dd>{ownerLabel(owners, c.retention_owner_id)}</dd>
         </div>
+        {c.churn_reason ? (
+          <div>
+            <dt className="text-gray-500">Churn reason</dt>
+            <dd className="font-medium text-gray-900">{c.churn_reason.replace(/_/g, " ")}</dd>
+          </div>
+        ) : null}
+        {c.next_follow_up_at ? (
+          <div>
+            <dt className="text-gray-500">Next follow-up</dt>
+            <dd>{new Date(c.next_follow_up_at).toLocaleString()}</dd>
+          </div>
+        ) : null}
       </dl>
+      {(touchesQ.data?.touches?.length ?? 0) > 0 ? (
+        <ul className="mt-4 max-h-40 space-y-1 overflow-y-auto border-t border-gray-100 pt-3 text-xs text-gray-600">
+          {(touchesQ.data?.touches ?? []).map((t) => (
+            <li key={t.created_at + t.channel}>
+              {new Date(t.created_at).toLocaleString()} · {t.channel}
+              {t.note ? ` — ${t.note}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {(q.data.pending_handoffs ?? []).length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-gray-100 pt-4">
           {(q.data.pending_handoffs ?? []).map((h) => (

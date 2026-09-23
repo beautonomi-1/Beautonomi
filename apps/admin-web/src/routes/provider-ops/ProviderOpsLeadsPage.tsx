@@ -59,6 +59,11 @@ import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { deskForAdminRole } from "@/lib/providerOpsDeskNav";
+import {
+  PROVIDER_OPS_BULK_LEAD_MAX,
+  PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX,
+  providerOpsBulkStageOptions,
+} from "@/lib/providerOpsBulkLimits";
 
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
@@ -448,6 +453,9 @@ export function ProviderOpsLeadsPage() {
   const [searchInput, setSearchInput] = useState(search);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [matchingSelectionTotal, setMatchingSelectionTotal] = useState<number | null>(null);
+  const [loadingMatchingIds, setLoadingMatchingIds] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [density, setDensity] = useState<"comfortable" | "compact">(() => {
     if (typeof window === "undefined") return "comfortable";
@@ -550,6 +558,7 @@ export function ProviderOpsLeadsPage() {
   const categoryOptions = filterOptions?.categories ?? [];
   const assigneeFilterOptions = filterOptions?.assignees ?? [];
   const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
+  const bulkStageOptions = useMemo(() => providerOpsBulkStageOptions(STAGES), []);
 
   const selectedLead = rows.find((r) => r.id === selectedLeadId) ?? null;
 
@@ -619,31 +628,153 @@ export function ProviderOpsLeadsPage() {
     },
   });
 
-  const runBulkAssign = useCallback(
-    async (u: AssignableUser) => {
-      const ids = [...selectedIds];
-      setBulkAssignOpen(false);
-      for (const id of ids) {
-        const row = rows.find((r) => r.id === id);
-        try {
-          await adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/assign`, {
-            assigned_to: u.id,
-            assigned_to_name: labelOf(u),
-            ...(row?.updated_at ? { expected_updated_at: row.updated_at } : {}),
-          });
-        } catch (e) {
-          adminToast.error(e instanceof Error ? e.message : "Assignment failed");
-          void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-          return;
+  const buildLeadFilterSearchParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (stage !== "all") p.set("stage", stage);
+    if (search) p.set("search", search);
+    if (country) p.set("country", country);
+    if (province) p.set("province", province);
+    categoryIds.forEach((id) => p.append("category_ids", id));
+    if (assignedToFilter) p.set("assigned_to", assignedToFilter);
+    if (contactFilter) p.set("contact", contactFilter);
+    if (slaBreached) p.set("sla_breached", "1");
+    if (deletedView) p.set("deleted", "only");
+    return p;
+  }, [
+    stage,
+    search,
+    country,
+    province,
+    categoryIds,
+    assignedToFilter,
+    contactFilter,
+    slaBreached,
+    deletedView,
+  ]);
+
+  const bulkItemsForSelection = useCallback(() => {
+    const ids = [...selectedIds];
+    return ids.map((id) => {
+      const row = rows.find((r) => r.id === id);
+      return {
+        id,
+        ...(row?.updated_at && !selectAllMatching ? { expected_updated_at: row.updated_at } : {}),
+      };
+    });
+  }, [selectedIds, rows, selectAllMatching]);
+
+  const toastBulkLeadMutationResult = useCallback(
+    (verb: string, data: {
+      updated: string[];
+      conflicts: string[];
+      skipped: { id: string; reason: string }[];
+      not_found: string[];
+    }) => {
+      if (data.updated.length > 0) {
+        adminToast.success(`${verb} ${data.updated.length} lead${data.updated.length === 1 ? "" : "s"}`);
+      }
+      if (data.conflicts.length > 0) {
+        adminToast.warning(
+          `${data.conflicts.length} lead${data.conflicts.length === 1 ? "" : "s"} skipped — updated by someone else. Refresh and retry.`,
+        );
+      }
+      if (data.skipped.length > 0) {
+        const matchedSkips = data.skipped.filter((s) =>
+          s.reason.toLowerCase().includes("matched_provider_id"),
+        ).length;
+        if (matchedSkips > 0) {
+          adminToast.warning(
+            `${matchedSkips} lead${matchedSkips === 1 ? "" : "s"} skipped — Matched requires a provider link (use single-lead update).`,
+          );
+        }
+        const otherSkips = data.skipped.length - matchedSkips;
+        if (otherSkips > 0) {
+          adminToast.warning(`${otherSkips} lead${otherSkips === 1 ? "" : "s"} skipped`);
         }
       }
-      adminToast.success(`Assigned ${ids.length} lead(s)`);
+      if (data.not_found.length > 0) {
+        adminToast.info(`${data.not_found.length} id${data.not_found.length === 1 ? "" : "s"} not found`);
+      }
+      if (data.updated.length === 0 && data.conflicts.length === 0 && data.skipped.length === 0) {
+        adminToast.info(`No leads ${verb.toLowerCase()}`);
+      }
+    },
+    [],
+  );
+
+  const bulkStageMut = useMutation({
+    mutationFn: (newStage: string) =>
+      adminApi.postJson<{
+        updated: string[];
+        conflicts: string[];
+        skipped: { id: string; reason: string }[];
+        not_found: string[];
+      }>("/api/admin/provider-ops/leads/bulk-stage", {
+        stage: newStage,
+        items: bulkItemsForSelection(),
+      }),
+    onSuccess: (data) => {
+      toastBulkLeadMutationResult("Updated stage for", data);
       setSelectedIds(new Set());
+      setSelectAllMatching(false);
+      setMatchingSelectionTotal(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       invalidateAdminShellCounts(qc);
     },
-    [selectedIds, rows, qc],
+    onError: (e: Error) => adminToast.error(`Bulk stage failed: ${e.message}`),
+  });
+
+  const bulkAssignMut = useMutation({
+    mutationFn: (u: AssignableUser) =>
+      adminApi.postJson<{
+        updated: string[];
+        conflicts: string[];
+        skipped: { id: string; reason: string }[];
+        not_found: string[];
+      }>("/api/admin/provider-ops/leads/bulk-assign", {
+        assigned_to: u.id,
+        assigned_to_name: labelOf(u),
+        items: bulkItemsForSelection(),
+      }),
+    onSuccess: (data) => {
+      toastBulkLeadMutationResult("Assigned", data);
+      setSelectedIds(new Set());
+      setSelectAllMatching(false);
+      setMatchingSelectionTotal(null);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
+    },
+    onError: (e: Error) => adminToast.error(`Bulk assign failed: ${e.message}`),
+  });
+
+  const runBulkAssign = useCallback(
+    async (u: AssignableUser) => {
+      setBulkAssignOpen(false);
+      bulkAssignMut.mutate(u);
+    },
+    [bulkAssignMut],
   );
+
+  const selectAllMatchingFilters = useCallback(async () => {
+    try {
+      setLoadingMatchingIds(true);
+      const p = buildLeadFilterSearchParams();
+      const data = await adminApi.getJson<{ ids: string[]; total: number; capped: boolean }>(
+        `/api/admin/provider-ops/leads/ids?${p}`,
+        { timeoutMs: 60_000 },
+      );
+      setSelectedIds(new Set(data.ids));
+      setSelectAllMatching(true);
+      setMatchingSelectionTotal(data.total);
+      if (data.capped) {
+        adminToast.info(`Selected ${data.ids.length} leads (bulk limit). ${data.total.toLocaleString()} match filters.`);
+      }
+    } catch (e) {
+      adminToast.error(e instanceof Error ? e.message : "Failed to select matching leads");
+    } finally {
+      setLoadingMatchingIds(false);
+    }
+  }, [buildLeadFilterSearchParams]);
 
   const assignLeadMut = useMutation({
     mutationFn: (args: {
@@ -873,17 +1004,31 @@ export function ProviderOpsLeadsPage() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === rows.length) {
+    if (selectedIds.size === rows.length && rows.length > 0) {
       setSelectedIds(new Set());
+      setSelectAllMatching(false);
+      setMatchingSelectionTotal(null);
     } else {
+      setSelectAllMatching(false);
+      setMatchingSelectionTotal(null);
       setSelectedIds(new Set(rows.map((r) => r.id)));
     }
   }
 
   function toggleSelect(id: string) {
+    setSelectAllMatching(false);
+    setMatchingSelectionTotal(null);
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      if (next.size >= PROVIDER_OPS_BULK_LEAD_MAX) {
+        adminToast.warning(`Bulk actions are limited to ${PROVIDER_OPS_BULK_LEAD_MAX} leads at a time`);
+        return prev;
+      }
+      next.add(id);
       return next;
     });
   }
@@ -891,6 +1036,10 @@ export function ProviderOpsLeadsPage() {
   function confirmBulkDelete() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
+    if (ids.length > PROVIDER_OPS_BULK_LEAD_MAX) {
+      adminToast.error(`Delete supports at most ${PROVIDER_OPS_BULK_LEAD_MAX} leads per request`);
+      return;
+    }
     const n = ids.length;
     const consequence =
       n === 1
@@ -1025,7 +1174,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter, contactFilter, deletedView]);
+  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter, contactFilter, slaBreached, deletedView]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -1322,16 +1471,16 @@ export function ProviderOpsLeadsPage() {
                   onChange={(e) => {
                     if (!e.target.value) return;
                     const nextStage = e.target.value;
-                    selectedIds.forEach((id) => {
-                      const row = rows.find((r) => r.id === id);
-                      stageChangeMut.mutate({ id, newStage: nextStage, expected_updated_at: row?.updated_at });
-                    });
-                    setSelectedIds(new Set());
+                    bulkStageMut.mutate(nextStage);
                     e.target.value = "";
                   }}
                 >
                   <option value="">Bulk stage…</option>
-                  {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+                  {bulkStageOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {STAGE_LABELS[s]}
+                    </option>
+                  ))}
                 </select>
                 <button
                   type="button"
@@ -1607,7 +1756,36 @@ export function ProviderOpsLeadsPage() {
             <div className="flex flex-1 items-center justify-center p-8">
               <EmptyState title="No leads found" description="Try adjusting your filters or create a new lead." />
             </div>
-          ) : viewMode === "table" ? (
+          ) : (
+            <>
+              {rows.length > 0 &&
+                total > rows.length &&
+                (selectAllMatching || selectedIds.size === rows.length) && (
+                  <div className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-2 text-sm text-blue-900">
+                    <span>
+                      {selectAllMatching && matchingSelectionTotal != null
+                        ? `All ${Math.min(matchingSelectionTotal, PROVIDER_OPS_BULK_LEAD_MAX).toLocaleString()} matching leads selected (bulk cap ${PROVIDER_OPS_BULK_LEAD_MAX})`
+                        : `All ${rows.length} on this page selected.`}
+                    </span>
+                    {!selectAllMatching ? (
+                      <button
+                        type="button"
+                        disabled={loadingMatchingIds}
+                        className="font-medium text-blue-700 underline hover:text-blue-900 disabled:opacity-50"
+                        onClick={() => void selectAllMatchingFilters()}
+                      >
+                        {loadingMatchingIds
+                          ? "Loading…"
+                          : `Select all ${total.toLocaleString()} matching filters`}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-blue-800/90">
+                        Off-page selections skip version checks (may overwrite concurrent edits).
+                      </span>
+                    )}
+                  </div>
+                )}
+          {viewMode === "table" ? (
             <LeadTable
               rows={rows}
               selectedLeadId={selectedLeadId}
@@ -1628,12 +1806,16 @@ export function ProviderOpsLeadsPage() {
             <LeadCardGrid
               rows={rows}
               selectedLeadId={selectedLeadId}
+              selectedIds={selectedIds}
               onSelectLead={setSelectedLeadId}
+              onToggleSelect={toggleSelect}
               onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
               onCallClick={handleLeadCallClick}
               assignLeadMut={assignLeadMut}
               density={density}
             />
+          )}
+            </>
           )}
 
           {/* Pagination */}
@@ -1766,7 +1948,27 @@ export function ProviderOpsLeadsPage() {
 
       {selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-white shadow-2xl transition-all sm:gap-4 sm:px-6">
-          <span className="text-sm font-medium">{selectedIds.size} leads selected</span>
+          <span className="text-sm font-medium">
+            {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} selected
+            {selectedIds.size >= PROVIDER_OPS_BULK_LEAD_MAX ? ` (max ${PROVIDER_OPS_BULK_LEAD_MAX})` : ""}
+          </span>
+          <select
+            className="max-w-[10rem] rounded-xl border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white"
+            defaultValue=""
+            disabled={bulkStageMut.isPending}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              bulkStageMut.mutate(e.target.value);
+              e.target.value = "";
+            }}
+          >
+            <option value="">Move to stage…</option>
+            {bulkStageOptions.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_LABELS[s]}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
@@ -1775,7 +1977,13 @@ export function ProviderOpsLeadsPage() {
             <UserPlus className="h-4 w-4" /> Assign to…
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            disabled={selectedIds.size > PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX}
+            title={
+              selectedIds.size > PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX
+                ? `WhatsApp batches are limited to ${PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX} leads`
+                : undefined
+            }
             onClick={() => setShowBulkWhatsApp(true)}
           >
             <MessageCircle className="h-4 w-4" /> Send WhatsApp
@@ -1811,7 +2019,10 @@ export function ProviderOpsLeadsPage() {
       <BulkWhatsAppModal
         open={showBulkWhatsApp}
         onClose={() => setShowBulkWhatsApp(false)}
-        leads={rows.filter((r) => selectedIds.has(r.id))}
+        leads={[...selectedIds].map((id) => {
+          const row = rows.find((r) => r.id === id);
+          return row ?? { id };
+        })}
       />
 
       <ConfirmDialog />
@@ -2055,10 +2266,12 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
 
 // ─── Card grid view ───────────────────────────────────────────────────────────
 
-function LeadCardGrid({ rows, selectedLeadId, onSelectLead, onWhatsAppClick, onCallClick, assignLeadMut, density }: {
+function LeadCardGrid({ rows, selectedLeadId, selectedIds, onSelectLead, onToggleSelect, onWhatsAppClick, onCallClick, assignLeadMut, density }: {
   rows: Lead[];
   selectedLeadId: string | null;
+  selectedIds: Set<string>;
   onSelectLead: (id: string) => void;
+  onToggleSelect: (id: string) => void;
   onWhatsAppClick?: (lead: Lead) => void;
   onCallClick: (lead: Lead) => void;
   assignLeadMut: {
@@ -2080,6 +2293,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, onWhatsAppClick, onC
           const tagCount = asLeadTagList(lead.tags).length;
           const isSelected = lead.id === selectedLeadId;
 
+          const isChecked = selectedIds.has(lead.id);
           return (
             <div
               key={lead.id}
@@ -2089,6 +2303,16 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, onWhatsAppClick, onC
                 isSelected ? "border-blue-300 ring-2 ring-blue-100 shadow-md" : "border-gray-200",
               )}
             >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggleSelect(lead.id)}
+                  className="text-gray-400 hover:text-gray-700"
+                  aria-label={isChecked ? "Deselect lead" : "Select lead"}
+                >
+                  {isChecked ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4" />}
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => onSelectLead(lead.id)}

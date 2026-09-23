@@ -11,9 +11,6 @@ import {
   isOpsDeskManager,
   type OpsDesk,
 } from "@/lib/provider-ops/ops-desk-roles";
-import {
-  stampFirstBookingAtIfNeeded,
-} from "@/lib/provider-ops/ops-case";
 import { countOpsQuotaActual } from "@/lib/provider-ops/ops-quota-metrics";
 
 function ownerColumn(desk: OpsDesk): string {
@@ -60,13 +57,6 @@ export async function GET(request: NextRequest) {
       .limit(50);
     if (casesErr) throw casesErr;
 
-    for (const row of cases ?? []) {
-      const providerId = (row as { provider_id?: string | null }).provider_id;
-      if (providerId && !(row as { first_booking_at?: string | null }).first_booking_at) {
-        await stampFirstBookingAtIfNeeded(supabase, (row as { id: string }).id, providerId);
-      }
-    }
-
     let handoffsQuery = supabase
       .from("provider_ops_handoffs")
       .select("*")
@@ -92,18 +82,16 @@ export async function GET(request: NextRequest) {
 
     const { data: tasks, error: taskErr } = await supabase
       .from("provider_lead_tasks")
-      .select("*, provider_leads:lead_id ( business_name, tenant_id )")
+      .select("*, provider_leads:lead_id ( business_name, tenant_id ), providers:provider_id ( business_name )")
       .eq("assigned_to", user.id)
+      .eq("tenant_id", tenantId)
       .is("completed_at", null)
       .lt("due_at", new Date().toISOString())
       .order("due_at", { ascending: true })
       .limit(30);
     if (taskErr) throw taskErr;
 
-    const overdueTasks = (tasks ?? []).filter((t) => {
-      const lead = (t as { provider_leads?: { tenant_id?: string } | null }).provider_leads;
-      return lead?.tenant_id === tenantId;
-    });
+    const overdueTasks = tasks ?? [];
 
     const periodStart = new Date();
     periodStart.setUTCDate(1);

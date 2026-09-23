@@ -145,16 +145,30 @@ function placeholderHtml(id: string, caption: string): string {
 
 // ─── Training paths ───────────────────────────────────────────────────────────
 
+export type KbArticleStepStatus = "published" | "draft" | "scheduled" | "archived" | "missing";
+
 export type KbTrainingPathStep = {
   step: number;
-  id: string;
   slug: string;
-  title: string;
-  summary: string | null;
-  audience: KbAudience;
-  is_internal: boolean;
-  status: string;
-  content_type: string | null;
+  status: KbArticleStepStatus;
+  id?: string;
+  title?: string;
+  summary?: string | null;
+  audience?: KbAudience;
+  is_internal?: boolean;
+  content_type?: string | null;
+};
+
+export type KbCheckpointQuestion = {
+  id: string;
+  prompt: string;
+  choices: string[];
+};
+
+export type KbTrainingPathProgress = {
+  signed_off_slugs: string[];
+  quiz_passed: boolean;
+  completed_at: string | null;
 };
 
 export type KbTrainingPath = {
@@ -165,6 +179,8 @@ export type KbTrainingPath = {
   description: string | null;
   sort_order: number;
   steps: KbTrainingPathStep[];
+  checkpoint_quiz: KbCheckpointQuestion[];
+  progress: KbTrainingPathProgress;
   created_at: string;
   updated_at: string;
 };

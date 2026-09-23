@@ -167,7 +167,12 @@ export function ProviderOverviewTab({
             { label: "Status", value: str(row.status) || "—" },
             { label: "Created", value: row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : "—" },
             { label: "Last updated", value: row.updated_at ? new Date(String(row.updated_at)).toLocaleDateString() : "—" },
-            { label: "Bookings", value: String(stats?.booking_count ?? "—") },
+            { label: "All bookings", value: String(stats?.booking_count ?? "—") },
+            { label: "Open >7 days", value: String(stats?.open_over_7_days ?? "—") },
+            { label: "Completed (30d)", value: String(stats?.completed_bookings_30d ?? "—") },
+            { label: "Bookings / week", value: String(stats?.bookings_per_week ?? "—") },
+            { label: "Days since completed", value: stats?.days_since_last_completed != null ? String(stats.days_since_last_completed) : "—" },
+            { label: "Days to first completed", value: stats?.days_to_first_completed != null ? String(stats.days_to_first_completed) : "—" },
             { label: "Reviews", value: String(stats?.review_count ?? "—") },
             { label: "Avg rating", value: stats?.average_rating != null ? Number(stats.average_rating).toFixed(2) : "—" },
             { label: "Catalog", value: `${locations.length} loc · ${staffCount} staff · ${offeringsCount} svc` },
@@ -178,6 +183,12 @@ export function ProviderOverviewTab({
             </div>
           ))}
         </dl>
+        <p className="mt-3 text-sm text-gray-600">
+          <Link to="#finance" className="font-medium text-primary hover:underline">
+            Plan and catalog MRR
+          </Link>{" "}
+          on the Finance tab.
+        </p>
       </AdminPanel>
 
       {/* Business details + owner */}

@@ -7,6 +7,7 @@ export const OPS_QUOTA_METRICS = [
   "providers_activated",
   "first_bookings",
   "at_risk_saves",
+  "providers_returned",
 ] as const;
 
 export type OpsQuotaMetric = (typeof OPS_QUOTA_METRICS)[number];
@@ -23,6 +24,7 @@ function timestampColumnForMetric(metric: OpsQuotaMetric): string | null {
   if (metric === "providers_activated") return "activated_at";
   if (metric === "first_bookings") return "first_booking_at";
   if (metric === "at_risk_saves") return "at_risk_saved_at";
+  if (metric === "providers_returned") return "returned_at";
   return null;
 }
 

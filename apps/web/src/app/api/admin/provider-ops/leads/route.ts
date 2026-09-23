@@ -11,29 +11,16 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyLeadCreated } from "@/lib/integrations/slack/lead-triggers";
 import { ensureProviderOpsCase, syncLeadOwnerFromSalesCase } from "@/lib/provider-ops/ops-case";
-import { fetchSlaBreachedLeadIds, emitHighValueLeadSlackIfNeeded } from "@/lib/provider-ops/lead-sla";
+import { emitHighValueLeadSlackIfNeeded } from "@/lib/provider-ops/lead-sla";
+import { LEADS_ASSIGNED_USER_EMBED } from "@/lib/provider-ops/lead-query-filters";
 import {
-  applyAssignedToFilter,
-  applyActiveLeadFilter,
-  applyContactFilter,
-  escapeLike,
-  LEADS_ASSIGNED_USER_EMBED,
-  parseCategoryIds,
-  parseContactFilter,
-  parseDeletedFilter,
-} from "@/lib/provider-ops/lead-query-filters";
+  applyProviderLeadListFilters,
+  parseLeadListFilters,
+  resolveLeadListFilterContext,
+} from "@/lib/provider-ops/lead-list-filters";
+import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
 
-const VALID_STAGES = [
-  "new",
-  "contacted",
-  "qualified",
-  "proposal_sent",
-  "negotiating",
-  "won",
-  "lost",
-  "nurture",
-  "matched",
-] as const;
+const VALID_STAGES = PROVIDER_LEAD_PIPELINE_STAGES;
 
 const VALID_SOURCES = [
   "manual",
@@ -94,77 +81,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const { page, limit, offset } = getPaginationParams(request);
 
-    const stage = searchParams.get("stage");
-    const source = searchParams.get("source");
-    const search = searchParams.get("search")?.trim();
-    const assignedTo = searchParams.get("assigned_to");
-    const country = searchParams.get("country");
-    const categoryIds = parseCategoryIds(searchParams);
-    const province = searchParams.get("province")?.trim();
-    const deletedMode = parseDeletedFilter(searchParams);
-    const contactFilter = parseContactFilter(searchParams);
-    const slaBreached = searchParams.get("sla_breached") === "1";
-
-    let slaBreachedLeadIds: string[] | null = null;
-    if (slaBreached) {
-      slaBreachedLeadIds = await fetchSlaBreachedLeadIds(supabase, tenantId);
-      if (slaBreachedLeadIds.length === 0) {
-        slaBreachedLeadIds = ["00000000-0000-0000-0000-000000000000"];
-      }
-    }
-
-    // Pre-resolve lead IDs for category filter
-    // Multiple selected categories use OR semantics: a lead matching any selected
-    // global category is included.
-    let categoryLeadIds: string[] | null = null;
-    if (categoryIds.length > 0) {
-      const { data: catRows } = await supabase
-        .from("provider_lead_categories")
-        .select("lead_id")
-        .in("global_category_id", categoryIds);
-      categoryLeadIds = [...new Set((catRows ?? []).map((r: { lead_id: string }) => r.lead_id))];
-      if (categoryLeadIds.length === 0) {
-        categoryLeadIds = ["00000000-0000-0000-0000-000000000000"];
-      }
-    }
-
+    const listFilters = parseLeadListFilters(searchParams);
+    const { categoryLeadIds, slaBreachedLeadIds } = await resolveLeadListFilterContext(
+      supabase,
+      tenantId,
+      listFilters,
+    );
     // Typed as any after the base builder to avoid TS2589 on deep PostgREST generics.
     let query: any = supabase
       .from("provider_leads")
       .select(LEADS_LIST_SELECT, { count: "exact" })
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
-    query = applyActiveLeadFilter(query, deletedMode);
-
-    if (stage && stage !== "all") {
-      query = query.eq("commercial_stage", stage);
-    }
-    if (source && source !== "all") {
-      query = query.eq("source", source);
-    }
-    query = applyAssignedToFilter(query, assignedTo);
-    if (country) {
-      query = query.eq("country", country);
-    }
-    if (categoryIds.length > 0 && categoryLeadIds) {
-      query = query.in("id", categoryLeadIds);
-    }
-    if (province) {
-      const safeProvince = escapeLike(province);
-      query = query.or(
-        `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
-      );
-    }
-    if (search) {
-      const safe = escapeLike(search);
-      query = query.or(
-        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
-      );
-    }
-    query = applyContactFilter(query, contactFilter);
-    if (slaBreachedLeadIds) {
-      query = query.in("id", slaBreachedLeadIds);
-    }
+    query = applyProviderLeadListFilters(
+      query,
+      listFilters,
+      categoryLeadIds,
+      slaBreachedLeadIds,
+    );
 
     const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
@@ -177,27 +111,13 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId);
-      q = applyActiveLeadFilter(q, deletedMode);
-      if (source && source !== "all") q = q.eq("source", source);
-      q = applyAssignedToFilter(q, assignedTo);
-      if (country) q = q.eq("country", country);
-      if (province) {
-        const safeProvince = escapeLike(province);
-        q = q.or(
-          `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
-        );
-      }
-      if (categoryIds.length > 0) {
-        q = q.in("id", categoryLeadIds!);
-      }
-      if (search) {
-        const safe = escapeLike(search);
-        q = q.or(
-          `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
-        );
-      }
-      q = applyContactFilter(q, contactFilter);
-      return q;
+      return applyProviderLeadListFilters(
+        q,
+        listFilters,
+        categoryLeadIds,
+        slaBreachedLeadIds,
+        { omitStage: true },
+      );
     };
 
     const countResults = await Promise.all(
@@ -214,22 +134,17 @@ export async function GET(request: NextRequest) {
     }
     stageCounts.all = allCount;
 
-    // Dynamic filters for UI faceting based on current search/source/stage scope.
-    // Country/province are intentionally not applied here, so operators can pivot quickly.
+    // Facet counts use the same filters as the list (incl. SLA, country, province, categories, contact).
     let optionsQuery = supabase
       .from("provider_leads")
-      .select("id,country,suggested_location_text,resolved_location")
+      .select("id,country,suggested_location_text,resolved_location,assigned_to")
       .eq("tenant_id", tenantId);
-    optionsQuery = applyActiveLeadFilter(optionsQuery, deletedMode);
-    if (stage && stage !== "all") optionsQuery = optionsQuery.eq("commercial_stage", stage);
-    if (source && source !== "all") optionsQuery = optionsQuery.eq("source", source);
-    if (assignedTo) optionsQuery = optionsQuery.eq("assigned_to", assignedTo);
-    if (search) {
-      const safe = escapeLike(search);
-      optionsQuery = optionsQuery.or(
-        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
-      );
-    }
+    optionsQuery = applyProviderLeadListFilters(
+      optionsQuery,
+      listFilters,
+      categoryLeadIds,
+      slaBreachedLeadIds,
+    );
     optionsQuery = optionsQuery.limit(5000);
     const { data: optionLeadRows } = await optionsQuery;
     const optionRows = (optionLeadRows ?? []) as Array<{

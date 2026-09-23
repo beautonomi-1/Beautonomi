@@ -6,16 +6,13 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { arrayToCSV, csvWithBom, generateCSVFilename } from "@/lib/utils/csv";
 import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import { LEADS_EXPORT_SELECT } from "@/lib/provider-ops/lead-query-filters";
 import {
-  applyAssignedToFilter,
-  applyActiveLeadFilter,
-  applyContactFilter,
-  escapeLike,
-  LEADS_EXPORT_SELECT,
-  parseCategoryIds,
-  parseContactFilter,
-  parseDeletedFilter,
-} from "@/lib/provider-ops/lead-query-filters";
+  applyProviderLeadListFilters,
+  EMPTY_LEAD_FILTER_SENTINEL,
+  parseLeadListFilters,
+  resolveLeadListFilterContext,
+} from "@/lib/provider-ops/lead-list-filters";
 import { formatReferrerDisplayName } from "@/lib/provider-ops/resolve-referrer";
 import { chunkIds, fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
@@ -43,58 +40,34 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
-    const stage = searchParams.get("stage");
-    const source = searchParams.get("source");
-    const search = searchParams.get("search")?.trim();
-    const assignedTo = searchParams.get("assigned_to");
-    const country = searchParams.get("country");
-    const province = searchParams.get("province")?.trim();
-    const categoryIds = parseCategoryIds(searchParams);
-    const deletedMode = parseDeletedFilter(searchParams);
-    const contactFilter = parseContactFilter(searchParams);
+    const listFilters = parseLeadListFilters(searchParams);
+    const { categoryLeadIds, slaBreachedLeadIds } = await resolveLeadListFilterContext(
+      supabase,
+      tenantId,
+      listFilters,
+    );
 
-    let categoryLeadIds: string[] | null = null;
-    if (categoryIds.length > 0) {
-      const catRows = await fetchAllPaged(async (from, to) => {
-        return supabase
-          .from("provider_lead_categories")
-          .select("lead_id")
-          .in("global_category_id", categoryIds)
-          .range(from, to);
-      }, CATEGORY_PREFILTER_PAGE_SIZE * 50);
-
-      categoryLeadIds = [...new Set(catRows.map((r: { lead_id: string }) => r.lead_id))];
-      if (categoryLeadIds.length === 0) {
-        const filename = generateCSVFilename("provider-leads-export");
-        return new NextResponse(csvWithBom(""), {
-          headers: {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${filename}"`,
-          },
-        });
-      }
+    if (
+      listFilters.categoryIds.length > 0 &&
+      categoryLeadIds?.length === 1 &&
+      categoryLeadIds[0] === EMPTY_LEAD_FILTER_SENTINEL
+    ) {
+      const filename = generateCSVFilename("provider-leads-export");
+      return new NextResponse(csvWithBom(""), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
     }
 
-    const applyFilters = (query: any): any => {
-      let q = applyActiveLeadFilter(query, deletedMode);
-      if (stage && stage !== "all") q = q.eq("commercial_stage", stage);
-      if (source && source !== "all") q = q.eq("source", source);
-      q = applyAssignedToFilter(q, assignedTo);
-      if (country) q = q.eq("country", country);
-      if (province) {
-        const safeProvince = escapeLike(province);
-        q = q.or(
-          `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`,
-        );
-      }
-      if (search) {
-        const safe = escapeLike(search);
-        q = q.or(
-          `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`,
-        );
-      }
-      return applyContactFilter(q, contactFilter);
-    };
+    const applyFilters = (query: unknown) =>
+      applyProviderLeadListFilters(
+        query,
+        listFilters,
+        categoryLeadIds,
+        slaBreachedLeadIds,
+      );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let leads: any[] = [];

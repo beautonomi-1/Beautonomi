@@ -9,6 +9,13 @@ import {
 } from "@/lib/admin/finance-ledger-tenant";
 import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import {
+  computeProviderBookingsPerWeek,
+  computeSupplyLiquidity,
+  countTransactingProviders,
+  daysSince,
+  type CompletedBookingLite,
+} from "@/lib/admin/marketplace-health";
 
 export async function GET(request: NextRequest) {
   try {
@@ -138,14 +145,65 @@ export async function GET(request: NextRequest) {
     }
     );
 
-    const sorted = providersWithMetrics.sort((a, b) => b.revenue - a.revenue);
+    const w30Start = new Date(endDate);
+    w30Start.setUTCDate(w30Start.getUTCDate() - 30);
+    const completedRows = providerIds.length
+      ? await fetchAllLedgerPages<{ provider_id: string; scheduled_at: string; customer_id: string }>(
+          supabase
+            .from("bookings")
+            .select("provider_id, scheduled_at, customer_id")
+            .eq("tenant_id", tenantId)
+            .in("provider_id", providerIds)
+            .eq("status", "completed")
+            .gte("scheduled_at", w30Start.toISOString())
+            .lte("scheduled_at", endISO),
+          MAX_BOOKINGS_FOR_REPORT,
+        )
+      : [];
+    const completedLite = completedRows.map((r) => ({
+      provider_id: r.provider_id,
+      scheduled_at: r.scheduled_at,
+      customer_id: r.customer_id ?? "",
+    })) as CompletedBookingLite[];
+
+    const lastCompletedByProvider: Record<string, string> = {};
+    for (const r of completedRows) {
+      const prev = lastCompletedByProvider[r.provider_id];
+      if (!prev || new Date(r.scheduled_at) > new Date(prev)) {
+        lastCompletedByProvider[r.provider_id] = r.scheduled_at;
+      }
+    }
+
+    const completedCount30: Record<string, number> = {};
+    for (const r of completedRows) {
+      completedCount30[r.provider_id] = (completedCount30[r.provider_id] ?? 0) + 1;
+    }
+
+    const enriched = providersWithMetrics.map((p) => {
+      const completed30 = completedCount30[p.provider_id] ?? 0;
+      return {
+        ...p,
+        transacting_30d: completed30 > 0,
+        completed_bookings_30d: completed30,
+        bookings_per_week: Number(
+          (completed30 > 0 ? completed30 / (30 / 7) : 0).toFixed(2),
+        ),
+        days_since_last_completed: daysSince(lastCompletedByProvider[p.provider_id] ?? null),
+      };
+    });
+
+    const sorted = enriched.sort((a, b) => b.revenue - a.revenue);
     const totalProviders = sorted.length;
     const activeCount = sorted.filter((p) => p.status === 'active').length;
+    const transacting30 = countTransactingProviders(completedLite, w30Start, endDate);
 
     return successResponse({
       period,
       totalProviders,
       activeProviders: activeCount,
+      transactingProviders30d: transacting30,
+      supplyLiquidity: computeSupplyLiquidity(transacting30, activeCount),
+      providerBookingsPerWeek: computeProviderBookingsPerWeek(completedLite, w30Start, endDate),
       providers: sorted,
     });
   } catch (error) {

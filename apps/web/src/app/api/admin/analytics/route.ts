@@ -12,6 +12,7 @@ import {
 import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 import { eachUtcDay } from "@/lib/reports/constants";
+import { fetchMarketplaceHealthSeries } from "@/lib/admin/marketplace-health-api";
 
 export async function GET(request: NextRequest) {
   try {
@@ -295,6 +296,12 @@ export async function GET(request: NextRequest) {
           gateway_fees_total: gatewayFeesTotalFromAggregate(agg),
           terminal_revenue: agg.terminal_revenue_gross,
           terminal_gateway_fees: agg.terminal_gateway_fees,
+          revenue_streams: {
+            booking_commission: agg.platform_take_net,
+            subscriptions: agg.subscription_net,
+            ads: agg.ads_net,
+            service_fees: agg.service_fee_revenue,
+          },
         };
       } catch (e) {
         console.error("Error fetching ledger totals for analytics:", e);
@@ -302,6 +309,12 @@ export async function GET(request: NextRequest) {
           gateway_fees_total: 0,
           terminal_revenue: 0,
           terminal_gateway_fees: 0,
+          revenue_streams: {
+            booking_commission: 0,
+            subscriptions: 0,
+            ads: 0,
+            service_fees: 0,
+          },
         };
       }
     };
@@ -317,6 +330,7 @@ export async function GET(request: NextRequest) {
       topProviders,
       bookingsByChannel,
       ledgerTotals,
+      healthSeries,
     ] = await Promise.all([
       getDailyTimeSeries("users", "created_at"),
       getDailyTimeSeries("providers", "created_at"),
@@ -327,6 +341,7 @@ export async function GET(request: NextRequest) {
       getTopProviders(),
       getBookingsByChannel(),
       getLedgerTotals(),
+      fetchMarketplaceHealthSeries(supabase, tenantId, startDate.toISOString(), now.toISOString()),
     ]);
 
     return successResponse({
@@ -351,6 +366,8 @@ export async function GET(request: NextRequest) {
         "Gateway and terminal totals use the same ledger aggregate as Finance overview. Fee reconciliations auto-generate daily.",
       channelBasisNote:
         "Bookings use scheduled_at in the selected period (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not revenue.",
+      revenue_streams: ledgerTotals.revenue_streams,
+      marketplace_health_series: healthSeries,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load analytics');

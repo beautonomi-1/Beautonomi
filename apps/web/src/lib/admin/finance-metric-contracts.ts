@@ -70,6 +70,46 @@ const CONTRACTS: Record<string, MetricContract> = {
     timezone: "tenant",
     cadence: "near_realtime",
   },
+  bookingFrequency30d: {
+    key: "bookingFrequency30d",
+    label: "Booking frequency (30d)",
+    formula: "completed bookings in 30d / customers with ≥1 completed in 30d",
+    source: ["bookings"],
+    timezone: "tenant",
+    cadence: "daily",
+  },
+  repeatRate90d: {
+    key: "repeatRate90d",
+    label: "Repeat rate (90d)",
+    formula: "customers with 2+ completed in 90d / customers with 1+ completed in 90d",
+    source: ["bookings"],
+    timezone: "tenant",
+    cadence: "daily",
+  },
+  takeRate: {
+    key: "takeRate",
+    label: "Take rate",
+    formula: "(platform_take_net + service_fee_revenue) / service_collected_gross",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "daily",
+  },
+  supplyLiquidity: {
+    key: "supplyLiquidity",
+    label: "Supply liquidity",
+    formula: "transacting providers (30d) / status-active providers",
+    source: ["bookings", "providers"],
+    timezone: "tenant",
+    cadence: "daily",
+  },
+  contributionMargin: {
+    key: "contributionMargin",
+    label: "Contribution margin",
+    formula: "platform net − gateway fees − platform refund impact",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "daily",
+  },
 };
 
 export function getFinanceMetricContracts(keys: string[]) {

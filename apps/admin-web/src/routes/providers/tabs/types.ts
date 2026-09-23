@@ -27,7 +27,16 @@ export type ProviderDetail = Record<string, unknown> & {
   staff?: unknown[] | null;
   offerings?: unknown[] | null;
   owner?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
-  stats?: { booking_count?: number; review_count?: number; average_rating?: number };
+  stats?: {
+    booking_count?: number;
+    review_count?: number;
+    average_rating?: number;
+    open_over_7_days?: number;
+    completed_bookings_30d?: number;
+    bookings_per_week?: number;
+    days_since_last_completed?: number | null;
+    days_to_first_completed?: number | null;
+  };
   locations?: Record<string, unknown>[];
   terminal_profile?: TerminalProfileSummary | null;
   yoco_summary?: {

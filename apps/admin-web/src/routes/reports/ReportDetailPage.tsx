@@ -22,6 +22,8 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
+import { AdminTrendChart } from "@/components/admin/charts/AdminTrendChart";
+import { AdminHorizontalBars } from "@/components/admin/charts/AdminHorizontalBars";
 
 const API_PATHS: Record<string, string> = {
   revenue: "/api/admin/reports/revenue",
@@ -197,7 +199,16 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
 
       {byDay.length > 0 && (
         <AdminPanel>
-          <SectionHeading>Revenue by day (last {byDay.length} entries)</SectionHeading>
+          <SectionHeading>Revenue by day</SectionHeading>
+          <div className="mt-3">
+            <AdminTrendChart
+              series={byDay.map((r) => ({
+                date: String(r.date ?? ""),
+                value: typeof r.revenue === "number" ? r.revenue : Number(r.revenue ?? 0),
+              }))}
+              valueFormat="currency"
+            />
+          </div>
           <AdminDataTable className="mt-3">
             <AdminTableHead>
               <tr>
@@ -274,17 +285,16 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
 function ProvidersReport({ data }: { data: Record<string, unknown> }) {
   const providers = Array.isArray(data.providers) ? (data.providers as Record<string, unknown>[]) : [];
   const kpis = [
-    { label: "Total providers", value: fmt(data.totalProviders) },
-    { label: "Active providers", value: fmt(data.activeProviders) },
+    { label: "Transacting salons (30d)", value: fmt(data.transactingProviders30d) },
     {
-      label: "Activation rate",
+      label: "Supply liquidity",
       value:
-        typeof data.totalProviders === "number" &&
-        typeof data.activeProviders === "number" &&
-        data.totalProviders > 0
-          ? `${((data.activeProviders / data.totalProviders) * 100).toFixed(1)}%`
+        typeof data.supplyLiquidity === "number"
+          ? `${(Number(data.supplyLiquidity) * 100).toFixed(1)}%`
           : "—",
     },
+    { label: "Active providers", value: fmt(data.activeProviders) },
+    { label: "Bookings / week / salon", value: fmt(data.providerBookingsPerWeek) },
   ];
   return (
     <div className="space-y-6">
@@ -299,13 +309,22 @@ function ProvidersReport({ data }: { data: Record<string, unknown> }) {
                 <AdminTh>Status</AdminTh>
                 <AdminTh>Rating</AdminTh>
                 <AdminTh>Bookings</AdminTh>
+                <AdminTh>Bk/wk (30d)</AdminTh>
+                <AdminTh>Days since completed</AdminTh>
                 <AdminTh>Revenue</AdminTh>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
               {providers.slice(0, 100).map((r, i) => (
                 <tr key={i}>
-                  <AdminTd className="text-xs">{String(r.provider_name ?? r.provider_id ?? "")}</AdminTd>
+                  <AdminTd className="text-xs">
+                    <Link
+                      to={adminSpaTo(`/admin/providers/${encodeURIComponent(String(r.provider_id ?? ""))}`)}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {String(r.provider_name ?? r.provider_id ?? "")}
+                    </Link>
+                  </AdminTd>
                   <AdminTd>
                     <span className="rounded px-1.5 py-0.5 text-xs font-medium capitalize">
                       {String(r.status ?? "—").replace(/_/g, " ")}
@@ -315,6 +334,8 @@ function ProvidersReport({ data }: { data: Record<string, unknown> }) {
                     {typeof r.rating_average === "number" ? r.rating_average.toFixed(1) : "—"}
                   </AdminTd>
                   <AdminTd className="tabular-nums text-xs">{fmt(r.bookings_count)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.bookings_per_week)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.days_since_last_completed)}</AdminTd>
                   <AdminTd className="tabular-nums text-xs">{fmtMoney(r.revenue)}</AdminTd>
                 </tr>
               ))}
@@ -342,11 +363,20 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
   const hiddenInactive = customersAll.length - customers.length;
 
   const kpis = [
-    { label: "Total customers", value: fmt(data.totalCustomers ?? data.total) },
+    { label: "Booking frequency", value: fmt(data.bookingFrequency), sub: "Completed / active customer (period)" },
+    { label: "Repeat rate", value: typeof data.repeatRate === "number" ? `${(Number(data.repeatRate) * 100).toFixed(1)}%` : "—" },
+    { label: "Median days between visits", value: fmt(data.medianDaysBetweenVisits) },
     { label: "Active customers", value: fmt(data.activeCustomers ?? data.active) },
-    { label: "New this period", value: fmt(data.newCustomers ?? data.new) },
-    { label: "Avg. bookings/customer", value: fmt(data.avgBookingsPerCustomer) },
   ].filter((k) => k.value !== "—");
+
+  const buckets = data.visitBuckets as { one?: number; twoThree?: number; fourPlus?: number } | undefined;
+  const bucketRows = buckets
+    ? [
+        { label: "1 visit", value: buckets.one ?? 0 },
+        { label: "2–3 visits", value: buckets.twoThree ?? 0 },
+        { label: "4+ visits", value: buckets.fourPlus ?? 0 },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -358,6 +388,14 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
         </p>
       </AdminPanel>
       {kpis.length > 0 && <KpiGrid items={kpis} />}
+      {bucketRows.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Visits in period</SectionHeading>
+          <div className="mt-3">
+            <AdminHorizontalBars rows={bucketRows} />
+          </div>
+        </AdminPanel>
+      )}
       {customersAll.length > 0 && (
         <AdminPanel>
           <div className="flex items-center justify-between gap-3">
@@ -383,24 +421,33 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
                 <tr>
                   <AdminTh>Customer</AdminTh>
                   <AdminTh>Bookings</AdminTh>
-                  <AdminTh>Total spent</AdminTh>
-                  <AdminTh>Last booking</AdminTh>
+                  <AdminTh>Customer spend</AdminTh>
+                  <AdminTh>Contribution</AdminTh>
+                  <AdminTh>Days since completed</AdminTh>
                 </tr>
               </AdminTableHead>
               <AdminTableBody>
                 {customers.slice(0, 100).map((r, i) => (
                   <tr key={i}>
                     <AdminTd className="text-xs">
-                      {String(r.customer_name ?? r.full_name ?? r.email ?? r.customer_id ?? "")}
+                      <Link
+                        to={adminSpaTo(`/admin/users/${encodeURIComponent(String(r.customer_id ?? ""))}`)}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {String(r.customer_name ?? r.full_name ?? r.email ?? r.customer_id ?? "")}
+                      </Link>
                     </AdminTd>
                     <AdminTd className="tabular-nums text-xs">
                       {fmt(r.bookings_count ?? r.bookings)}
                     </AdminTd>
                     <AdminTd className="tabular-nums text-xs">
-                      {fmtMoney(r.total_spent ?? r.revenue)}
+                      {fmtMoney(r.customer_spend ?? r.total_spent ?? r.revenue)}
                     </AdminTd>
-                    <AdminTd className="text-xs text-gray-500">
-                      {String(r.last_booking_at ?? r.last_booking ?? "—").slice(0, 10)}
+                    <AdminTd className="tabular-nums text-xs">
+                      {fmtMoney(r.contribution)}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {r.days_since_last_completed != null ? fmt(r.days_since_last_completed) : "—"}
                     </AdminTd>
                   </tr>
                 ))}
@@ -509,6 +556,15 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
             </label>
           </div>
           {byDay.length > 0 ? (
+            <>
+              <div className="mt-3">
+                <AdminTrendChart
+                  series={byDay.map((r) => ({
+                    date: String(r.date ?? ""),
+                    value: Number(r.bookings ?? r.count ?? 0),
+                  }))}
+                />
+              </div>
             <AdminDataTable className="mt-3">
               <AdminTableHead>
                 <tr>
@@ -527,6 +583,7 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
                 ))}
               </AdminTableBody>
             </AdminDataTable>
+            </>
           ) : (
             <p className="mt-3 text-sm text-gray-500">No bookings in this period.</p>
           )}

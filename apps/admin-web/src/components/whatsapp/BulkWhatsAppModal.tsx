@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX } from "@/lib/providerOpsBulkLimits";
 import { adminApi } from "@/lib/adminClient";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
@@ -56,6 +57,17 @@ interface BulkWhatsAppModalProps {
 
 type Step = "review" | "compose" | "confirm" | "done";
 
+function leadNeedsContactHydration(l: BulkWhatsAppLeadRow): boolean {
+  return (
+    l.phone_e164 === undefined &&
+    l.whatsapp_status === undefined &&
+    l.do_not_contact === undefined &&
+    !l.business_name &&
+    !l.contact_person_name &&
+    !l.lead_name
+  );
+}
+
 export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalProps) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -64,6 +76,29 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
   const [templateId, setTemplateId] = useState("");
   const [consent, setConsent] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
+
+  const leadIds = useMemo(() => leads.map((l) => l.id), [leads]);
+  const shouldHydrate = open && leads.some(leadNeedsContactHydration);
+
+  const contactPreviewQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.all(), "lead-contact-preview", leadIds.join(",")],
+    enabled: shouldHydrate && leadIds.length > 0,
+    queryFn: () =>
+      adminApi.postJson<{ leads: BulkWhatsAppLeadRow[] }>(
+        "/api/admin/provider-ops/leads/contact-preview",
+        { ids: leadIds },
+      ),
+  });
+
+  const resolvedLeads = useMemo(() => {
+    if (!contactPreviewQ.data?.leads?.length) return leads;
+    const byId = new Map(contactPreviewQ.data.leads.map((l) => [l.id, l]));
+    return leads.map((l) => {
+      const fromApi = byId.get(l.id);
+      if (!fromApi) return l;
+      return { ...fromApi, ...l };
+    });
+  }, [leads, contactPreviewQ.data?.leads]);
 
   const sessionsQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.sessions(),
@@ -80,7 +115,7 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
   const bulkMutation = useMutation({
     mutationFn: () =>
       adminApi.postJson<BulkResult>("/api/admin/whatsapp/bulk", {
-        lead_ids: leads.map((l) => l.id),
+        lead_ids: resolvedLeads.map((l) => l.id),
         session_id: sessionId,
         template_id: templateId,
       }),
@@ -103,14 +138,14 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
     }
   }, [open]);
 
-  const withPhone = leads.filter((l) => l.phone_e164);
-  const noPhone = leads.filter((l) => !l.phone_e164);
-  const doNotContact = leads.filter((l) => l.do_not_contact);
-  const notOnWhatsApp = leads.filter((l) => l.whatsapp_status === "not_found");
+  const withPhone = resolvedLeads.filter((l) => l.phone_e164);
+  const noPhone = resolvedLeads.filter((l) => !l.phone_e164);
+  const doNotContact = resolvedLeads.filter((l) => l.do_not_contact);
+  const notOnWhatsApp = resolvedLeads.filter((l) => l.whatsapp_status === "not_found");
   const ready = withPhone.filter(
     (l) => l.whatsapp_status !== "not_found" && !l.do_not_contact,
   );
-  const overLimit = leads.length > 50;
+  const overLimit = resolvedLeads.length > PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX;
 
   const selectedSession = (sessionsQuery.data || []).find((s) => s.id === sessionId);
   const selectedTemplate = (templatesQuery.data || []).find((t) => t.id === templateId);
@@ -131,7 +166,11 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
             <button className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm" onClick={onClose}>Cancel</button>
             <button
               className="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-              disabled={ready.length === 0 || overLimit}
+              disabled={
+                ready.length === 0 ||
+                overLimit ||
+                (shouldHydrate && (contactPreviewQ.isLoading || contactPreviewQ.isFetching))
+              }
               onClick={() => setStep("compose")}
             >
               Continue ({ready.length} eligible)
@@ -190,8 +229,27 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
       {/* Step 1: Review */}
       {step === "review" && (
         <div className="space-y-4">
+          {contactPreviewQ.isLoading && shouldHydrate ? (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading contact details for selected leads…
+            </div>
+          ) : null}
+          {contactPreviewQ.isError && shouldHydrate ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              Could not load contact details. You can still queue by id, but eligibility counts may be wrong until you
+              retry.
+              <button
+                type="button"
+                className="ml-2 font-medium underline"
+                onClick={() => void contactPreviewQ.refetch()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <AdminMetricCard label="Selected" value={leads.length} variant="slate" />
+            <AdminMetricCard label="Selected" value={resolvedLeads.length} variant="slate" />
             <AdminMetricCard label="Ready" value={ready.length} variant="emerald" />
             <AdminMetricCard label="No Phone" value={noPhone.length} variant="rose" />
             <AdminMetricCard label="Not on WhatsApp" value={notOnWhatsApp.length} variant="amber" />
@@ -200,7 +258,8 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
 
           {overLimit && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <strong>Too many leads.</strong> Maximum 50 per batch. Please reduce your selection to continue.
+              <strong>Too many leads.</strong> Maximum {PROVIDER_OPS_BULK_WHATSAPP_BATCH_MAX} per batch. Please reduce
+              your selection to continue.
             </div>
           )}
 

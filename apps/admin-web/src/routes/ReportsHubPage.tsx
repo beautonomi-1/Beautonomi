@@ -37,7 +37,7 @@ const REPORTS: { title: string; description: string; spaTo: string; icon: Lucide
   },
   {
     title: "Customer report",
-    description: "Customer behavior and LTV",
+    description: "Repeat visits and platform contribution",
     spaTo: "/reports/customers",
     icon: Users,
   },

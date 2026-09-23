@@ -10,6 +10,8 @@ export interface AdminBulkActionBarProps {
   children: ReactNode;
   /** Extra Tailwind classes — e.g. "mb-4" for spacing in a list layout. */
   className?: string;
+  /** Optional helper text (limits, policy notes). */
+  hint?: string;
 }
 
 /**
@@ -23,6 +25,7 @@ export function AdminBulkActionBar({
   onClear,
   children,
   className = "",
+  hint,
 }: AdminBulkActionBarProps) {
   if (selectedCount === 0) return null;
 
@@ -34,6 +37,7 @@ export function AdminBulkActionBar({
     >
       <span className="font-medium text-primary">
         {selectedCount} selected
+        {hint ? <span className="ml-2 font-normal text-gray-600">· {hint}</span> : null}
       </span>
       <button
         type="button"

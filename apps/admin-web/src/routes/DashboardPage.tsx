@@ -16,6 +16,11 @@ import { AdminQueryBlock } from "@/components/admin/AdminQueryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { AdminCompositionBar } from "@/components/admin/charts/AdminCompositionBar";
+import {
+  AdminMetricContractsGlossary,
+  type MetricContractRow,
+} from "@/components/admin/AdminMetricContractsGlossary";
 
 interface DashboardStats {
   total_users: number;
@@ -57,6 +62,42 @@ interface DashboardStats {
   customer_count_uses_fallback?: boolean;
   customer_signups_this_month?: number;
   customer_signups_last_month?: number;
+  marketplace_health?: {
+    as_of?: string | null;
+    refreshed_at?: string;
+    repeat_rate_90d?: number | null;
+    booking_frequency_30d?: number | null;
+    transacting_providers_30d?: number | null;
+    active_providers?: number;
+    provider_bookings_per_week?: number | null;
+    take_rate?: number | null;
+    contribution_margin?: number | null;
+    deltas?: Record<string, number | null> | null;
+    metrics_note?: string;
+  };
+  revenue_streams?: {
+    booking_commission?: number;
+    subscriptions?: number;
+    ads?: number;
+    service_fees?: number;
+  };
+  metrics_meta?: {
+    contract_version?: string;
+    generated_at?: string;
+    contracts?: MetricContractRow[];
+  };
+}
+
+function healthDeltaHint(deltas: Record<string, number | null> | null | undefined, key: string): string {
+  const d = deltas?.[key];
+  if (d == null) return "vs prior 30 days";
+  const sign = d >= 0 ? "+" : "";
+  return `${sign}${d}% vs prior 30 days`;
+}
+
+function fmtPctRate(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${(v * 100).toFixed(1)}%`;
 }
 
 function metricFooterLink(to: string, label: string) {
@@ -139,6 +180,16 @@ export function DashboardPage() {
       adminApi.getJson<MarketingInsightsPayload>("/api/admin/dashboard/marketing-insights", {
         timeoutMs: 45_000,
       }),
+    enabled: allowed && isSuperadmin,
+  });
+
+  const subMetricsQ = useQuery({
+    queryKey: adminQueryKeys.subscriptionMetrics("dashboard"),
+    queryFn: () =>
+      adminApi.getJson<{ mrr?: number; mrr_bridge?: { nrr?: number } }>(
+        "/api/admin/subscription-metrics",
+        { timeoutMs: 90_000 },
+      ),
     enabled: allowed && isSuperadmin,
   });
 
@@ -522,6 +573,106 @@ export function DashboardPage() {
                 </details>
               </AdminPanel>
 
+              {(() => {
+                const mh = s.marketplace_health;
+                const subMrr = subMetricsQ.data?.mrr;
+                const nrr = subMetricsQ.data?.mrr_bridge?.nrr;
+                const d = mh?.deltas ?? null;
+                return (
+                  <section>
+                    <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                      Marketplace health
+                    </h2>
+                    <p className="mb-4 text-xs text-gray-500">
+                      Trailing windows from nightly snapshot
+                      {mh?.as_of ? ` · as of ${mh.as_of}` : mh?.metrics_note ? ` · ${mh.metrics_note}` : ""}
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <AdminMetricCard
+                        variant="violet"
+                        label="Repeat visits (90 days)"
+                        value={fmtPctRate(mh?.repeat_rate_90d ?? null)}
+                        hint={"Customers with 2+ completed visits · " + healthDeltaHint(d, "repeat_rate_90d")}
+                        footer={metricFooterLink("/reports/customers", "Customer report")}
+                      />
+                      <AdminMetricCard
+                        variant="emerald"
+                        label="Booking frequency (30 days)"
+                        value={
+                          mh?.booking_frequency_30d != null
+                            ? mh.booking_frequency_30d.toFixed(2)
+                            : "—"
+                        }
+                        hint={"Completed bookings per active customer · " + healthDeltaHint(d, "booking_frequency_30d")}
+                        footer={
+                          isSuperadmin
+                            ? metricFooterLink("/admin/analytics", "Analytics")
+                            : metricFooterLink("/admin/reports", "Reports")
+                        }
+                      />
+                      <AdminMetricCard
+                        variant="slate"
+                        label="Transacting salons (30 days)"
+                        value={formatAdminNumber(mh?.transacting_providers_30d ?? 0)}
+                        hint={`${formatAdminNumber(mh?.active_providers ?? s.total_providers)} approved supply · ${healthDeltaHint(d, "transacting_providers_30d")}`}
+                        footer={metricFooterLink("/reports/providers", "Provider report")}
+                      />
+                      <AdminMetricCard
+                        variant="amber"
+                        label="Salon bookings per week"
+                        value={
+                          mh?.provider_bookings_per_week != null
+                            ? mh.provider_bookings_per_week.toFixed(1)
+                            : "—"
+                        }
+                        hint={"Per transacting salon · " + healthDeltaHint(d, "provider_bookings_per_week")}
+                        footer={metricFooterLink("/admin/provider-ops/retention", "Retention queue")}
+                      />
+                      <AdminMetricCard
+                        variant="emerald"
+                        label="Take rate"
+                        value={fmtPctRate(mh?.take_rate ?? null)}
+                        hint={"Platform take + service fees / GMV · " + healthDeltaHint(d, "take_rate")}
+                        footer={metricFooterLink("/admin/finance", "Finance")}
+                      />
+                      <AdminMetricCard
+                        variant="violet"
+                        label="Contribution margin"
+                        value={formatAdminCurrency(mh?.contribution_margin ?? 0)}
+                        hint={"Platform net − gateway − refund impact · " + healthDeltaHint(d, "contribution_margin")}
+                        footer={metricFooterLink("/admin/finance", "Finance")}
+                      />
+                      {isSuperadmin ? (
+                        <>
+                          <AdminMetricCard
+                            variant="slate"
+                            label="MRR (catalog)"
+                            value={subMrr != null ? formatAdminCurrency(subMrr) : "—"}
+                            hint="Plan price, not collected cash"
+                            footer={metricFooterLink("/admin/subscription-revenue", "Subscription revenue")}
+                          />
+                          <AdminMetricCard
+                            variant="rose"
+                            label="Net revenue retention (NRR)"
+                            value={nrr != null ? `${nrr}%` : "—"}
+                            hint="Existing base growth including expansion"
+                            footer={metricFooterLink("/admin/subscription-revenue", "Subscription revenue")}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  </section>
+                );
+              })()}
+
+              {s.metrics_meta?.contracts?.length ? (
+                <AdminMetricContractsGlossary
+                  contractVersion={s.metrics_meta.contract_version}
+                  generatedAt={s.metrics_meta.generated_at}
+                  contracts={s.metrics_meta.contracts}
+                />
+              ) : null}
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <AdminMetricCard
                   variant="slate"
@@ -614,6 +765,38 @@ export function DashboardPage() {
                       />
                     ) : null}
                   </div>
+                  {s.revenue_streams ? (
+                    <AdminPanel className="mt-4">
+                      <h3 className="text-sm font-semibold text-gray-900">Revenue mix (ledger window)</h3>
+                      <p className="mt-1 text-xs text-gray-500">Share of platform net components in the rolling window.</p>
+                      <div className="mt-4">
+                        <AdminCompositionBar
+                          segments={[
+                            {
+                              label: "Booking take",
+                              value: s.revenue_streams.booking_commission ?? 0,
+                              colorClass: "bg-emerald-600",
+                            },
+                            {
+                              label: "Subscriptions",
+                              value: s.revenue_streams.subscriptions ?? 0,
+                              colorClass: "bg-violet-600",
+                            },
+                            {
+                              label: "Ads",
+                              value: s.revenue_streams.ads ?? 0,
+                              colorClass: "bg-amber-500",
+                            },
+                            {
+                              label: "Platform fees",
+                              value: s.revenue_streams.service_fees ?? 0,
+                              colorClass: "bg-slate-600",
+                            },
+                          ]}
+                        />
+                      </div>
+                    </AdminPanel>
+                  ) : null}
                 </div>
               ) : null}
             </div>

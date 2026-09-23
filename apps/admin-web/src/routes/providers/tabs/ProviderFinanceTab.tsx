@@ -56,7 +56,13 @@ type SubscriptionRow = {
   current_period_end?: string | null;
   billing_period?: string | null;
   auto_renew?: boolean | null;
-  subscription_plans?: { id?: string; name?: string | null; price_monthly?: number | null; is_free?: boolean | null } | null;
+  subscription_plans?: {
+    id?: string;
+    name?: string | null;
+    price_monthly?: number | null;
+    price_yearly?: number | null;
+    is_free?: boolean | null;
+  } | null;
   providers?: { id?: string; business_name?: string | null } | null;
 };
 
@@ -149,7 +155,7 @@ export function ProviderFinanceTab({
     <div className="space-y-6">
       {/* ── Subscription / billing ───────────────────────────────── */}
       {hasFinanceAccess && (
-        <AdminPanel>
+        <AdminPanel id="finance">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Subscription &amp; billing</h2>
@@ -166,6 +172,7 @@ export function ProviderFinanceTab({
               <AdminTableHead>
                 <tr>
                   <AdminTh>Plan</AdminTh>
+                  <AdminTh>Catalog MRR</AdminTh>
                   <AdminTh>Status</AdminTh>
                   <AdminTh>Billing</AdminTh>
                   <AdminTh>Auto-renew</AdminTh>
@@ -180,6 +187,24 @@ export function ProviderFinanceTab({
                       {sub.subscription_plans?.is_free ? (
                         <span className="ml-2 text-xs text-gray-400">free</span>
                       ) : null}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-sm">
+                      {(() => {
+                        const plan = sub.subscription_plans;
+                        if (!plan || plan.is_free) return "—";
+                        const monthly = plan.price_monthly;
+                        const yearly = plan.price_yearly;
+                        const isMonthly = sub.billing_period === "monthly";
+                        const mrr =
+                          isMonthly && monthly
+                            ? Number(monthly)
+                            : yearly
+                              ? Number(yearly) / 12
+                              : monthly
+                                ? Number(monthly)
+                                : 0;
+                        return mrr > 0 ? mrr.toLocaleString("en-ZA", { style: "currency", currency: "ZAR" }) : "—";
+                      })()}
                     </AdminTd>
                     <AdminTd>
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",

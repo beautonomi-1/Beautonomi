@@ -158,6 +158,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   // Content
   content: { label: "Content Hub", parentHref: null },
   "content/learning": { label: "Learning Center", parentHref: "/admin/content" },
+  "content/learning/training-paths": { label: "Training paths", parentHref: "/admin/content/learning" },
   "content/resources": { label: "CMS Resources", parentHref: "/admin/content" },
   "content/faqs": { label: "FAQs", parentHref: "/admin/content" },
   "content/about-us": { label: "About Us", parentHref: "/admin/content" },
