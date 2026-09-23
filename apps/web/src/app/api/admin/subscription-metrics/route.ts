@@ -3,6 +3,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { computeMrrBridge, subscriptionMrrForPlan } from "@/lib/admin/marketplace-health";
 
 /**
  * GET /api/admin/subscription-metrics
@@ -64,7 +65,18 @@ export async function GET(request: NextRequest) {
     let monthlyCount = 0;
     let yearlyCount = 0;
     const revenueByPlan: Record<string, { count: number; revenue: number; name: string }> = {};
-    type SubWithPlan = { subscription_plans?: { id: string; name?: string; price_monthly?: number; price_yearly?: number } | null; billing_period?: string; provider_id?: string; providers?: { business_name?: string } };
+    type SubWithPlan = {
+      subscription_plans?:
+        | { id: string; name?: string; price_monthly?: number; price_yearly?: number }
+        | { id: string; name?: string; price_monthly?: number; price_yearly?: number }[]
+        | null;
+      billing_period?: string;
+      provider_id?: string;
+      providers?: { business_name?: string };
+      status?: string;
+      started_at?: string;
+      expires_at?: string | null;
+    };
     type SubRow = { status?: string; started_at?: string; expires_at?: string };
 
     if (activeSubscriptions) {
@@ -349,6 +361,68 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const mrrForSubRow = (sub: SubWithPlan): number => {
+      const plan = Array.isArray(sub.subscription_plans)
+        ? sub.subscription_plans[0]
+        : sub.subscription_plans;
+      if (!plan) return 0;
+      return subscriptionMrrForPlan(plan.price_monthly, plan.price_yearly, sub.billing_period);
+    };
+
+    let startingMrr = 0;
+    let newMrr = 0;
+    let churnedMrr = 0;
+    if (allSubscriptions) {
+      for (const sub of allSubscriptions as unknown as (SubWithPlan & SubRow)[]) {
+        const started = sub.started_at ? new Date(sub.started_at) : null;
+        const expired = sub.expires_at ? new Date(sub.expires_at) : null;
+        const rowMrr = mrrForSubRow(sub);
+        const wasActiveAtStart =
+          started &&
+          started <= currentMonth &&
+          (sub.status === "active" || sub.status === "trialing") &&
+          (!expired || expired >= currentMonth);
+        if (wasActiveAtStart) startingMrr += rowMrr;
+
+        if (started && started >= currentMonth && rowMrr > 0) {
+          newMrr += rowMrr;
+        }
+        if (sub.status === "cancelled" && expired && expired >= currentMonth && expired < new Date()) {
+          churnedMrr += rowMrr;
+        }
+      }
+    }
+    const expansionMrr = 0;
+    const contractionMrr = Math.max(
+      0,
+      startingMrr + newMrr - churnedMrr - mrr,
+    );
+    const mrrBridge = computeMrrBridge({
+      startingMrr,
+      newMrr,
+      expansionMrr,
+      contractionMrr,
+      churnedMrr,
+    });
+
+    const paidOnlyArpu = mrrEligibleCount > 0 ? mrr / mrrEligibleCount : 0;
+    let trialStartedThisMonth = 0;
+    let trialConvertedThisMonth = 0;
+    if (allSubscriptions) {
+      for (const sub of allSubscriptions as SubRow[]) {
+        const started = sub.started_at ? new Date(sub.started_at) : null;
+        if (!started || started < currentMonth) continue;
+        if (sub.status === "trialing") trialStartedThisMonth++;
+        if (sub.status === "active") trialConvertedThisMonth++;
+      }
+    }
+    const trial_to_paid_rate =
+      trialStartedThisMonth + trialConvertedThisMonth > 0
+        ? Math.round(
+            (trialConvertedThisMonth / (trialStartedThisMonth + trialConvertedThisMonth)) * 10000,
+          ) / 100
+        : 0;
+
     return successResponse({
       mrr: Math.round(mrr * 100) / 100,
       catalog_mrr: Math.round(mrr * 100) / 100,
@@ -373,6 +447,9 @@ export async function GET(request: NextRequest) {
       realized_subscription_transaction_count: realizedSubscriptionTransactionCount,
       mrr_eligible_count: mrrEligibleCount,
       free_active_count: freeActiveCount,
+      paid_only_arpu: Math.round(paidOnlyArpu * 100) / 100,
+      trial_to_paid_rate,
+      mrr_bridge: mrrBridge,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch subscription metrics");

@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, CalendarDays, TrendingUp, Users } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
@@ -12,6 +11,14 @@ import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { AdminQueryBlock } from "@/components/admin/AdminQueryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
+import { AdminTrendChart } from "@/components/admin/charts/AdminTrendChart";
+import { AdminHorizontalBars } from "@/components/admin/charts/AdminHorizontalBars";
+import { AdminCohortTable } from "@/components/admin/charts/AdminCohortTable";
+import { AdminCompositionBar } from "@/components/admin/charts/AdminCompositionBar";
+import {
+  AdminMetricContractsGlossary,
+  type MetricContractRow,
+} from "@/components/admin/AdminMetricContractsGlossary";
 
 type Point = { date: string; count?: number; revenue?: number };
 
@@ -26,7 +33,6 @@ interface AnalyticsPayload {
   breakdowns?: {
     providerStatus?: Record<string, number>;
     bookingStatus?: Record<string, number>;
-    bookingsByChannel?: Array<{ channel: string; count: number; percentage?: number }>;
   };
   bookingsByChannel?: Array<{ channel: string; count: number; percentage?: number }>;
   topProviders?: Array<{ provider_id: string; business_name: string; revenue: number }>;
@@ -34,47 +40,28 @@ interface AnalyticsPayload {
   terminal_revenue?: number;
   terminal_gateway_fees?: number;
   financeNote?: string;
+  channelBasisNote?: string;
+  revenue_streams?: {
+    booking_commission?: number;
+    subscriptions?: number;
+    ads?: number;
+    service_fees?: number;
+  };
+  marketplace_health_series?: Array<{
+    as_of: string;
+    booking_frequency_30d?: number | null;
+    repeat_rate_90d?: number | null;
+    transacting_providers_30d?: number | null;
+    active_providers?: number | null;
+    take_rate?: number | null;
+  }>;
 }
 
-function Sparkline({ series, valueKey }: { series: Point[]; valueKey: "count" | "revenue" }) {
-  const pts = useMemo(() => {
-    const tail = series.slice(-42);
-    const vals = tail.map((p) => Number(p[valueKey] ?? 0));
-    if (vals.length === 0) return { d: "", min: 0, max: 0, last: 0 };
-    const min = Math.min(0, ...vals);
-    const max = Math.max(1e-6, ...vals);
-    const w = 240;
-    const h = 56;
-    const pad = 4;
-    const innerW = w - pad * 2;
-    const innerH = h - pad * 2;
-    const d = vals
-      .map((v, i) => {
-        const x = pad + (innerW * i) / Math.max(1, vals.length - 1);
-        const t = max === min ? 0.5 : (v - min) / (max - min);
-        const y = pad + innerH * (1 - t);
-        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-    return { d, last: vals[vals.length - 1] ?? 0 };
-  }, [series, valueKey]);
-
-  if (!series.length) {
-    return <p className="text-xs text-gray-500">No series data</p>;
-  }
-
+function sectionLink(to: string, label: string) {
   return (
-    <div className="flex items-end gap-4">
-      <svg viewBox="0 0 240 56" className="h-14 w-full max-w-[240px] text-gray-900" aria-hidden>
-        <path d={pts.d} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <div className="pb-1 text-right text-xs text-gray-500">
-        Latest
-        <p className="text-sm font-semibold tabular-nums text-gray-900">
-          {valueKey === "revenue" ? formatAdminCurrency(pts.last) : formatAdminNumber(pts.last)}
-        </p>
-      </div>
-    </div>
+    <Link to={adminSpaTo(to)} className="text-sm font-medium text-primary underline">
+      {label} →
+    </Link>
   );
 }
 
@@ -90,13 +77,23 @@ export function AnalyticsPage() {
     enabled: allowed,
   });
 
+  const healthQ = useQuery({
+    queryKey: adminQueryKeys.marketplaceHealth(`${period}-cohort`),
+    queryFn: () =>
+      adminApi.getJson<{
+        cohort?: Array<{ cohortMonth: string; cohortSize: number; m1: number | null; m3: number | null; m6: number | null }>;
+        contracts?: MetricContractRow[];
+      }>(`/api/admin/marketplace-health?period=${encodeURIComponent(period)}&cohort=1`),
+    enabled: allowed,
+  });
+
   if (denied) return denied;
 
   return (
     <div className="space-y-8">
       <AdminPageHeader
         title="Analytics"
-        description="Tenant-scoped time series (customers tied to this market, providers & bookings by tenant_id). Net revenue matches Gods Eye: payments + charges − refunds on ledger net."
+        description="Demand, supply, money, and quality for the scoped tenant. Completed bookings drive frequency and repeat metrics."
         actions={
           <select
             className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-gray-950/[0.04]"
@@ -117,192 +114,214 @@ export function AnalyticsPage() {
           const prov = data?.breakdowns?.providerStatus ?? {};
           const book = data?.breakdowns?.bookingStatus ?? {};
           const top = data?.topProviders ?? [];
-          const byChannel = data?.bookingsByChannel ?? data?.breakdowns?.bookingsByChannel ?? [];
+          const byChannel = data?.bookingsByChannel ?? [];
+          const healthSeries = data?.marketplace_health_series ?? [];
 
-          const totalNewCustomers = (ts.users ?? []).reduce((s, p) => s + (p.count ?? 0), 0);
-          const totalNewBookings = (ts.bookings ?? []).reduce((s, p) => s + (p.count ?? 0), 0);
-          const periodRevenue = (ts.revenue ?? []).reduce((s, p) => s + (p.revenue ?? 0), 0);
+          const bookingTrend = (ts.bookings ?? []).map((p) => ({ date: p.date, value: p.count ?? 0 }));
+          const revenueTrend = (ts.revenue ?? []).map((p) => ({ date: p.date, value: p.revenue ?? 0 }));
+          const providerTrend = (ts.providers ?? []).map((p) => ({ date: p.date, value: p.count ?? 0 }));
+          const frequencyTrend = healthSeries
+            .filter((r) => r.booking_frequency_30d != null)
+            .map((r) => ({
+              date: r.as_of,
+              value: r.booking_frequency_30d ?? 0,
+            }));
+          const repeatTrend = healthSeries
+            .filter((r) => r.repeat_rate_90d != null)
+            .map((r) => ({
+              date: r.as_of,
+              value: r.repeat_rate_90d ?? 0,
+            }));
+          const transactingTrend = healthSeries.map((r) => ({
+            date: r.as_of,
+            value: r.transacting_providers_30d ?? 0,
+          }));
+          const takeRateTrend = healthSeries
+            .filter((r) => r.take_rate != null)
+            .map((r) => ({
+              date: r.as_of,
+              value: r.take_rate ?? 0,
+            }));
+
+          const totalBookings = (book.completed ?? 0) + (book.cancelled ?? 0) + (book.no_show ?? 0) + (book.confirmed ?? 0);
+          const qualityNote =
+            totalBookings > 0
+              ? `Cancelled ${(((book.cancelled ?? 0) / totalBookings) * 100).toFixed(1)}% · No-show ${(((book.no_show ?? 0) / totalBookings) * 100).toFixed(1)}% of scheduled in period`
+              : "Not enough bookings in period for quality share.";
 
           return (
             <>
               <section>
-                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Period totals</h2>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <AdminMetricCard
-                    variant="slate"
-                    label="New customers"
-                    value={formatAdminNumber(totalNewCustomers)}
-                    hint="Customer sign-ups in range"
-                  />
-                  <AdminMetricCard
-                    variant="violet"
-                    label="New bookings"
-                    value={formatAdminNumber(totalNewBookings)}
-                    hint="Created in range"
-                  />
-                  <AdminMetricCard
-                    variant="emerald"
-                    label="Net revenue"
-                    value={formatAdminCurrency(periodRevenue)}
-                    hint="Daily net on ledger (|net| for pay, −|net| for refund)"
-                  />
+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Are customers coming back?
+                </h2>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Daily bookings created</h3>
+                    <p className="mt-1 text-xs text-gray-500">scheduled_at in period</p>
+                    <div className="mt-4">
+                      <AdminTrendChart series={bookingTrend} emptyMessage="No bookings in this range." />
+                    </div>
+                  </AdminPanel>
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Booking frequency (30d rolling)</h3>
+                    <p className="mt-1 text-xs text-gray-500">From nightly marketplace health snapshot</p>
+                    <div className="mt-4">
+                      <AdminTrendChart
+                        series={frequencyTrend}
+                        emptyMessage="Not enough completed bookings in this range."
+                      />
+                    </div>
+                  </AdminPanel>
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Repeat rate (90d rolling)</h3>
+                    <p className="mt-1 text-xs text-gray-500">Share with 2+ completed visits in trailing 90 days</p>
+                    <div className="mt-4">
+                      <AdminTrendChart
+                        series={repeatTrend}
+                        valueFormat="percent"
+                        emptyMessage="Not enough completed bookings in this range."
+                      />
+                    </div>
+                  </AdminPanel>
                 </div>
+                <AdminPanel className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Cohort retention</h3>
+                  <p className="mt-1 text-xs text-gray-500">First completed visit month → return in M+1, M+3, M+6</p>
+                  <div className="mt-4">
+                    <AdminCohortTable rows={healthQ.data?.cohort ?? []} />
+                  </div>
+                  <p className="mt-4">{sectionLink("/reports/customers", "Customer report")}</p>
+                </AdminPanel>
+                <AdminPanel className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Bookings by channel</h3>
+                  <p className="mt-1 text-xs text-gray-500">{data?.channelBasisNote ?? "Counts only — not revenue."}</p>
+                  <div className="mt-4">
+                    <AdminHorizontalBars
+                      rows={byChannel.map((row) => ({
+                        label: row.channel,
+                        value: row.count,
+                        hint:
+                          typeof row.percentage === "number" ? `(${row.percentage.toFixed(0)}%)` : undefined,
+                      }))}
+                      emptyMessage="No channel data for this period."
+                    />
+                  </div>
+                </AdminPanel>
               </section>
 
               <section>
                 <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Gateway &amp; terminal commerce
+                  Are salons getting work?
                 </h2>
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">New providers</h3>
+                    <div className="mt-4">
+                      <AdminTrendChart series={providerTrend} />
+                    </div>
+                  </AdminPanel>
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Transacting salons (30d)</h3>
+                    <p className="mt-1 text-xs text-gray-500">≥1 completed booking in trailing 30 days</p>
+                    <div className="mt-4">
+                      <AdminTrendChart series={transactingTrend} />
+                    </div>
+                  </AdminPanel>
+                </div>
+                <AdminPanel className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Provider status (current)</h3>
+                  <div className="mt-4">
+                    <AdminHorizontalBars
+                      rows={Object.entries(prov).map(([label, value]) => ({ label, value: value as number }))}
+                    />
+                  </div>
+                  <p className="mt-4">{sectionLink("/reports/providers", "Provider report")}</p>
+                </AdminPanel>
+              </section>
+
+              <section>
+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Where does the money come from?
+                </h2>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Daily platform net</h3>
+                    <p className="mt-1 text-xs text-gray-500">Ledger platform recognized revenue per day</p>
+                    <div className="mt-4">
+                      <AdminTrendChart series={revenueTrend} valueFormat="currency" />
+                    </div>
+                  </AdminPanel>
+                  <AdminPanel>
+                    <h3 className="text-lg font-semibold text-gray-900">Take rate (daily snapshot)</h3>
+                    <p className="mt-1 text-xs text-gray-500">Platform take + service fees / service GMV</p>
+                    <div className="mt-4">
+                      <AdminTrendChart
+                        series={takeRateTrend}
+                        valueFormat="percent"
+                        emptyMessage="Take rate series starts after the first marketplace health snapshot."
+                      />
+                    </div>
+                  </AdminPanel>
+                </div>
+                {data?.revenue_streams ? (
+                  <AdminPanel className="mt-6">
+                    <h3 className="text-lg font-semibold text-gray-900">Revenue mix (selected period)</h3>
+                    <div className="mt-4">
+                      <AdminCompositionBar
+                        segments={[
+                          {
+                            label: "Booking take",
+                            value: data.revenue_streams.booking_commission ?? 0,
+                            colorClass: "bg-emerald-600",
+                          },
+                          {
+                            label: "Subscriptions",
+                            value: data.revenue_streams.subscriptions ?? 0,
+                            colorClass: "bg-violet-600",
+                          },
+                          { label: "Ads", value: data.revenue_streams.ads ?? 0, colorClass: "bg-amber-500" },
+                          {
+                            label: "Platform fees",
+                            value: data.revenue_streams.service_fees ?? 0,
+                            colorClass: "bg-slate-600",
+                          },
+                        ]}
+                      />
+                    </div>
+                  </AdminPanel>
+                ) : null}
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
                   <AdminMetricCard
                     variant="slate"
                     label="Gateway fees (total)"
                     value={formatAdminCurrency(data?.gateway_fees_total ?? 0)}
-                    hint="Same total as Finance overview gateway fees breakdown"
                   />
                   <AdminMetricCard
                     variant="emerald"
                     label="Terminal sales (gross)"
                     value={formatAdminCurrency(data?.terminal_revenue ?? 0)}
-                    hint="Ledger terminal_* revenue — see Finance overview and Terminal orders"
                   />
                   <AdminMetricCard
                     variant="violet"
                     label="Terminal gateway fees"
                     value={formatAdminCurrency(data?.terminal_gateway_fees ?? 0)}
-                    hint="Paystack fees on terminal commerce ledger rows"
                   />
                 </div>
-                {data?.financeNote ? (
-                  <p className="mt-3 text-xs text-gray-500">
-                    {data.financeNote}{" "}
-                    <Link to={adminSpaTo("/admin/finance")} className="font-medium underline">
-                      Finance
-                    </Link>
-                    {" · "}
-                    <Link to={adminSpaTo("/admin/fees?tab=reconciliations")} className="font-medium underline">
-                      Fee reconciliations
-                    </Link>
-                  </p>
-                ) : null}
-              </section>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <AdminPanel>
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <Users className="h-5 w-5 text-violet-600" aria-hidden />
-                    <h3 className="text-lg font-semibold">Customer acquisition</h3>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Daily new customers</p>
-                  <div className="mt-4">
-                    <Sparkline series={ts.users ?? []} valueKey="count" />
-                  </div>
-                </AdminPanel>
-                <AdminPanel>
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <Building2 className="h-5 w-5 text-teal-600" aria-hidden />
-                    <h3 className="text-lg font-semibold">New providers</h3>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Daily provider registrations</p>
-                  <div className="mt-4">
-                    <Sparkline series={ts.providers ?? []} valueKey="count" />
-                  </div>
-                </AdminPanel>
-                <AdminPanel>
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <CalendarDays className="h-5 w-5 text-amber-600" aria-hidden />
-                    <h3 className="text-lg font-semibold">Booking volume</h3>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Daily bookings created</p>
-                  <div className="mt-4">
-                    <Sparkline series={ts.bookings ?? []} valueKey="count" />
-                  </div>
-                </AdminPanel>
-                <AdminPanel>
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <TrendingUp className="h-5 w-5 text-emerald-600" aria-hidden />
-                    <h3 className="text-lg font-semibold">Revenue curve</h3>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Daily net from ledger</p>
-                  <div className="mt-4">
-                    <Sparkline series={ts.revenue ?? []} valueKey="revenue" />
-                  </div>
-                </AdminPanel>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <AdminPanel>
-                  <h3 className="text-lg font-semibold text-gray-900">Provider status (current)</h3>
-                  <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {Object.entries(prov).map(([k, v]) => (
-                      <li
-                        key={k}
-                        className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
-                      >
-                        <span className="capitalize text-gray-600">{k.replace(/_/g, " ")}</span>
-                        <span className="font-semibold tabular-nums">{formatAdminNumber(v)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </AdminPanel>
-                <AdminPanel>
-                  <h3 className="text-lg font-semibold text-gray-900">Bookings by channel (created in period)</h3>
-                  {byChannel.length === 0 ? (
-                    <p className="mt-3 text-sm text-gray-500">No channel data for this period.</p>
-                  ) : (
-                    <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-                      {byChannel.map((row) => (
-                        <li
-                          key={row.channel}
-                          className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
-                        >
-                          <span className="capitalize text-gray-600">{row.channel.replace(/_/g, " ")}</span>
-                          <span className="font-semibold tabular-nums">
-                            {formatAdminNumber(row.count)}
-                            {typeof row.percentage === "number" ? ` (${row.percentage.toFixed(0)}%)` : ""}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </AdminPanel>
-                <AdminPanel>
-                  <h3 className="text-lg font-semibold text-gray-900">Booking outcomes (in period)</h3>
-                  <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {Object.entries(book).map(([k, v]) => (
-                      <li
-                        key={k}
-                        className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
-                      >
-                        <span className="capitalize text-gray-600">{k.replace(/_/g, " ")}</span>
-                        <span className="font-semibold tabular-nums">{formatAdminNumber(v)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </AdminPanel>
-              </div>
-
-              <AdminPanel>
-                <h3 className="text-lg font-semibold text-gray-900">Top providers by revenue (period)</h3>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-xs text-gray-500">
-                        <th className="pb-2 pr-2 font-medium">Provider</th>
-                        <th className="pb-2 font-medium">Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {top.length === 0 ? (
-                        <tr>
-                          <td colSpan={2} className="py-8 text-center text-gray-500">
-                            No ledger revenue in this window
-                          </td>
+                <AdminPanel className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Top providers by revenue</h3>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-xs text-gray-500">
+                          <th className="pb-2 pr-2 font-medium">Provider</th>
+                          <th className="pb-2 font-medium">Revenue</th>
                         </tr>
-                      ) : (
-                        top.map((p) => (
-                          <tr key={p.provider_id} className="border-b border-gray-50 last:border-0">
-                            <td className="py-2 pr-2">
+                      </thead>
+                      <tbody>
+                        {top.map((p) => (
+                          <tr key={p.provider_id} className="border-b border-gray-50">
+                            <td className="py-2">
                               <Link
                                 to={adminSpaTo(`/admin/providers/${p.provider_id}`)}
                                 className="font-medium text-primary hover:underline"
@@ -310,14 +329,34 @@ export function AnalyticsPage() {
                                 {p.business_name}
                               </Link>
                             </td>
-                            <td className="py-2 tabular-nums font-medium">{formatAdminCurrency(p.revenue)}</td>
+                            <td className="py-2 tabular-nums">{formatAdminCurrency(p.revenue)}</td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </AdminPanel>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </AdminPanel>
+              </section>
+
+              <section>
+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Is quality holding?
+                </h2>
+                <AdminPanel>
+                  <h3 className="text-lg font-semibold text-gray-900">Booking outcomes</h3>
+                  <p className="mt-1 text-xs text-gray-500">scheduled_at in period</p>
+                  <div className="mt-4">
+                    <AdminHorizontalBars
+                      rows={Object.entries(book).map(([label, value]) => ({ label, value: value as number }))}
+                    />
+                  </div>
+                  <p className="mt-3 text-sm text-gray-600">{qualityNote}</p>
+                </AdminPanel>
+              </section>
+
+              {healthQ.data?.contracts?.length ? (
+                <AdminMetricContractsGlossary contracts={healthQ.data.contracts} />
+              ) : null}
             </>
           );
         }}

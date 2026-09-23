@@ -10,6 +10,11 @@ import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
 } from "@/lib/admin/finance-metric-contracts";
+import {
+  deltaPct,
+  fetchLatestMarketplaceHealth,
+} from "@/lib/admin/marketplace-health-api";
+import { computeTakeRate, computeContributionMargin } from "@/lib/admin/marketplace-health";
 
 /** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
 const LEDGER_TOTAL_MONTHS = 24;
@@ -324,6 +329,25 @@ export async function GET(request: NextRequest) {
 
     const generatedAt = new Date().toISOString();
 
+    const healthLatest = await fetchLatestMarketplaceHealth(supabase, tenantId);
+    let healthPrior = null as typeof healthLatest;
+    if (healthLatest?.as_of) {
+      const priorDate = new Date(healthLatest.as_of);
+      priorDate.setUTCDate(priorDate.getUTCDate() - 30);
+      const { data: priorRow } = await supabase
+        .from("marketplace_health_daily")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .lte("as_of", priorDate.toISOString().slice(0, 10))
+        .order("as_of", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      healthPrior = (priorRow as typeof healthLatest) ?? null;
+    }
+
+    const takeRateLive = computeTakeRate(total);
+    const contributionMarginLive = computeContributionMargin(total);
+
     // `total_users` is historical JSON key = distinct market customers (not all user roles). See metrics_notes + SPA label.
     return successResponse({
       dashboard_timezone: tz,
@@ -415,8 +439,57 @@ export async function GET(request: NextRequest) {
           "platformRecognizedRevenue",
           "liabilityWalletTopups",
           "taxesCollected",
+          "bookingFrequency30d",
+          "repeatRate90d",
+          "takeRate",
+          "contributionMargin",
         ]),
       },
+
+      marketplace_health: healthLatest
+        ? {
+            as_of: healthLatest.as_of,
+            refreshed_at: healthLatest.refreshed_at,
+            repeat_rate_90d: healthLatest.repeat_rate_90d,
+            booking_frequency_30d: healthLatest.booking_frequency_30d,
+            transacting_providers_30d: healthLatest.transacting_providers_30d,
+            active_providers: healthLatest.active_providers,
+            provider_bookings_per_week: healthLatest.provider_bookings_per_week,
+            take_rate: healthLatest.take_rate ?? takeRateLive,
+            contribution_margin: healthLatest.contribution_margin ?? contributionMarginLive,
+            deltas: {
+              repeat_rate_90d: deltaPct(healthLatest.repeat_rate_90d, healthPrior?.repeat_rate_90d),
+              booking_frequency_30d: deltaPct(
+                healthLatest.booking_frequency_30d,
+                healthPrior?.booking_frequency_30d,
+              ),
+              transacting_providers_30d: deltaPct(
+                healthLatest.transacting_providers_30d,
+                healthPrior?.transacting_providers_30d,
+              ),
+              provider_bookings_per_week: deltaPct(
+                healthLatest.provider_bookings_per_week,
+                healthPrior?.provider_bookings_per_week,
+              ),
+              take_rate: deltaPct(healthLatest.take_rate, healthPrior?.take_rate),
+              contribution_margin: deltaPct(
+                healthLatest.contribution_margin,
+                healthPrior?.contribution_margin,
+              ),
+            },
+          }
+        : {
+            as_of: null,
+            take_rate: takeRateLive,
+            contribution_margin: contributionMarginLive,
+            repeat_rate_90d: null,
+            booking_frequency_30d: null,
+            transacting_providers_30d: null,
+            active_providers: totalProviders || 0,
+            provider_bookings_per_week: null,
+            deltas: null,
+            metrics_note: "Run marketplace health cron or wait for nightly snapshot.",
+          },
     });
   } catch (error) {
     return handleApiError(error, "Failed to load dashboard data");

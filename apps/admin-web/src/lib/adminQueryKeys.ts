@@ -25,6 +25,7 @@ export const adminQueryKeys = {
   dashboardMarketingInsights: () => [...adminQueryKeys.root, "dashboard", "marketing-insights"] as const,
 
   analytics: (period: string) => [...adminQueryKeys.root, "analytics", period] as const,
+  marketplaceHealth: (period: string) => [...adminQueryKeys.root, "marketplace-health", period] as const,
 
   godsEye: () => [...adminQueryKeys.root, "gods-eye"] as const,
 
@@ -163,6 +164,7 @@ export const adminQueryKeys = {
   learningArticles: (q: string) => [...adminQueryKeys.root, "learning", "articles", q] as const,
   /** Prefix-match invalidates all learning article list queries (any status filter). */
   learningArticlesAll: () => [...adminQueryKeys.root, "learning", "articles"] as const,
+  contentTrainingPaths: () => [...adminQueryKeys.root, "content", "training-paths"] as const,
 
   /** Internal Knowledge Base reader + support article search. */
   knowledgeBase: {

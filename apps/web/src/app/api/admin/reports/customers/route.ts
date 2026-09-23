@@ -5,6 +5,12 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import {
+  buildCustomerReportMetrics,
+  countVisitBuckets,
+  daysSince,
+} from "@/lib/admin/customer-report-metrics";
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
@@ -60,7 +66,6 @@ export async function GET(request: NextRequest) {
     const customerIds = (customers || []).map((c: { id: string }) => c.id);
 
     type BookingRow = { customer_id: string; total_amount?: number; status: string; scheduled_at?: string };
-    // Paginate across PostgREST 1000-row cap so high-volume periods are not silently undercounted.
     const bookings = customerIds.length > 0
       ? await fetchAllLedgerPages<BookingRow>(
           supabase
@@ -89,20 +94,35 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    const reportMetrics = await buildCustomerReportMetrics(
+      supabase,
+      tenantId,
+      startISO,
+      endISO,
+      customerIds,
+    );
+    const visitBuckets = countVisitBuckets(reportMetrics.completedByCustomer);
+
     type CustomerRow = { id: string; full_name?: string | null; email?: string | null; created_at?: string };
     const customersWithMetrics = (customers || []).map((c: CustomerRow) => {
       const data = bookingsByCustomer[c.id] || { count: 0, total_amount: 0, last_booking_at: null };
+      const completed = reportMetrics.completedByCustomer[c.id];
       return {
         customer_id: c.id,
         customer_name: c.full_name ?? c.email ?? "Unknown",
         bookings_count: data.count,
         total_spent: data.total_amount,
+        customer_spend: data.total_amount,
+        contribution: reportMetrics.contributionByCustomer.get(c.id) ?? 0,
+        completed_visits: completed?.count ?? 0,
+        days_since_last_completed: daysSince(completed?.last_completed_at ?? null),
         last_booking_at: data.last_booking_at ?? null,
+        last_completed_at: completed?.last_completed_at ?? null,
         created_at: c.created_at ?? null,
       };
     });
 
-    const sorted = customersWithMetrics.sort((a, b) => b.total_spent - a.total_spent);
+    const sorted = customersWithMetrics.sort((a, b) => b.contribution - a.contribution);
     const totalCustomers = sorted.length;
     const activeCustomers = sorted.filter((c) => c.bookings_count > 0).length;
     const totalBookings = sorted.reduce((sum, c) => sum + c.bookings_count, 0);
@@ -119,6 +139,10 @@ export async function GET(request: NextRequest) {
       activeCustomers,
       newCustomers,
       avgBookingsPerCustomer: Number(avgBookingsPerCustomer.toFixed(2)),
+      bookingFrequency: Number(reportMetrics.frequency.toFixed(3)),
+      repeatRate: Number(reportMetrics.repeatRate.toFixed(4)),
+      medianDaysBetweenVisits: reportMetrics.medianDaysBetweenVisits,
+      visitBuckets,
       customers: sorted,
     });
   } catch (error) {

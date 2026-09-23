@@ -239,6 +239,7 @@ export function ProviderOpsSettingsPage() {
                   <option value="providers_activated">Providers activated</option>
                   <option value="first_bookings">First bookings</option>
                   <option value="at_risk_saves">At-risk saves</option>
+                  <option value="providers_returned">Providers returned</option>
                 </select>
                 <input
                   type="number"

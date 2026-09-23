@@ -11,6 +11,8 @@ import { isOpsDeskManager } from "@/lib/providerOpsDeskNav";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { AdminFunnelBars } from "@/components/admin/charts/AdminFunnelBars";
+import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 const LEAD_STAGES = [
@@ -19,6 +21,10 @@ const LEAD_STAGES = [
 
 interface FunnelData {
   onboarding_funnel: { total_signups: number; started_wizard: number; submitted: number; active: number; signup_to_wizard_rate: number; wizard_to_submit_rate: number; submit_to_active_rate: number; overall_conversion_rate: number };
+  activation_after_active?: {
+    median_days_to_first_completed_booking: number | null;
+    idle_approved_no_completed_14d: number;
+  };
   lead_funnel: { total_leads: number; by_stage: Record<string, number>; by_source: Record<string, number>; matched: number; conversion_rate: number };
   admin_productivity: { admin_assisted_onboardings: number; self_serve_rate: number };
 }
@@ -118,19 +124,54 @@ export function ProviderOpsReportsPage() {
 
       {funnel && (
         <AdminPanel>
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Onboarding Funnel</h2>
-          <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <FunnelStep label="Signups" value={funnel.onboarding_funnel.total_signups} rate={null} />
-            <FunnelStep label="Started Wizard" value={funnel.onboarding_funnel.started_wizard} rate={funnel.onboarding_funnel.signup_to_wizard_rate} />
-            <FunnelStep label="Submitted" value={funnel.onboarding_funnel.submitted} rate={funnel.onboarding_funnel.wizard_to_submit_rate} />
-            <FunnelStep label="Active" value={funnel.onboarding_funnel.active} rate={funnel.onboarding_funnel.submit_to_active_rate} />
-          </div>
-          <div className="flex items-center gap-2 border-t pt-4">
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Onboarding funnel</h2>
+          <AdminFunnelBars
+            steps={[
+              { label: "Signups", value: funnel.onboarding_funnel.total_signups, rate: null },
+              {
+                label: "Started wizard",
+                value: funnel.onboarding_funnel.started_wizard,
+                rate: funnel.onboarding_funnel.signup_to_wizard_rate,
+              },
+              {
+                label: "Submitted",
+                value: funnel.onboarding_funnel.submitted,
+                rate: funnel.onboarding_funnel.wizard_to_submit_rate,
+              },
+              {
+                label: "Active",
+                value: funnel.onboarding_funnel.active,
+                rate: funnel.onboarding_funnel.submit_to_active_rate,
+              },
+            ]}
+          />
+          <div className="mt-4 flex items-center gap-2 border-t pt-4">
             <span className="text-sm text-gray-500">Overall conversion rate:</span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${funnel.onboarding_funnel.overall_conversion_rate > 50 ? "bg-green-100 text-green-700" : funnel.onboarding_funnel.overall_conversion_rate > 20 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{funnel.onboarding_funnel.overall_conversion_rate}%</span>
           </div>
         </AdminPanel>
       )}
+
+      {funnel?.activation_after_active ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <AdminMetricCard
+            variant="violet"
+            label="Median days to first completed booking"
+            value={
+              funnel.activation_after_active.median_days_to_first_completed_booking != null
+                ? String(funnel.activation_after_active.median_days_to_first_completed_booking)
+                : "—"
+            }
+            hint="Active salons with at least one completed booking (sample)"
+          />
+          <AdminMetricCard
+            variant="rose"
+            label="Approved, no completed booking (14d)"
+            value={String(funnel.activation_after_active.idle_approved_no_completed_14d)}
+            hint="Status active but no completed visit in 14 days"
+          />
+        </div>
+      ) : null}
 
       {dropoff && (
         <AdminPanel>

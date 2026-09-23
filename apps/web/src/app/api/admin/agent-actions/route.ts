@@ -19,7 +19,12 @@ export async function GET(request: NextRequest) {
     const agentId = searchParams.get("agent_id");
     const targetType = searchParams.get("target_type");
     const targetId = searchParams.get("target_id");
-    const actionType = searchParams.get("action_type");
+    const requestedActionTypes = [
+      ...new Set([
+        ...searchParams.getAll("action_type"),
+        ...(searchParams.get("action_types")?.split(",").map((s) => s.trim()).filter(Boolean) ?? []),
+      ]),
+    ];
     const includeDecided = searchParams.get("include_decided") === "true";
     const decidedHours = Math.min(168, Math.max(1, Number(searchParams.get("decided_hours") ?? 24) || 24));
     const supabase = getSupabaseAdmin();
@@ -32,10 +37,12 @@ export async function GET(request: NextRequest) {
       .limit(100);
 
     const role = user.role as UserRole;
+    let scopedActionTypes: string[] | null = null;
     if (role !== "superadmin") {
       const effectiveRoles = await getEffectiveAdminSectionRoles(request);
       const allowedTypes = allowedActionTypesForRole(role, effectiveRoles);
       if (allowedTypes.length === 0) return successResponse([]);
+      scopedActionTypes = allowedTypes;
       q = q.in("action_type", allowedTypes);
     }
 
@@ -50,7 +57,15 @@ export async function GET(request: NextRequest) {
     if (agentId) q = q.eq("agent_id", agentId);
     if (targetType) q = q.eq("target_type", targetType);
     if (targetId) q = q.eq("target_id", targetId);
-    if (actionType) q = q.eq("action_type", actionType);
+    if (requestedActionTypes.length > 0) {
+      let types = requestedActionTypes;
+      if (scopedActionTypes) {
+        const allowedSet = new Set(scopedActionTypes);
+        types = types.filter((t) => allowedSet.has(t));
+        if (types.length === 0) return successResponse([]);
+      }
+      q = q.in("action_type", types);
+    }
 
     const { data, error } = await q;
     if (error) throw error;

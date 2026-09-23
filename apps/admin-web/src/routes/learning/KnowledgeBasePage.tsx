@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { useMemo, useState, useCallback } from "react";
+import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { BookOpen, GraduationCap, Lock, Search } from "lucide-react";
@@ -23,6 +23,7 @@ import {
   type KbTrainingPath,
   type KbAudience,
 } from "@/lib/learning";
+import { parseKnowledgeBaseTab } from "@/lib/knowledgeBaseTraining";
 
 type Tab = "paths" | "browse";
 
@@ -35,7 +36,22 @@ const DEFAULT_FILTERS: KbFilterState = {
 
 export function KnowledgeBasePage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Admin access is required.");
-  const [tab, setTab] = useState<Tab>("paths");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = parseKnowledgeBaseTab(searchParams.get("tab"));
+  const setTab = useCallback(
+    (next: Tab) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (next === "paths") n.delete("tab");
+          else n.set("tab", next);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [filters, setFilters] = useState<KbFilterState>(DEFAULT_FILTERS);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
 

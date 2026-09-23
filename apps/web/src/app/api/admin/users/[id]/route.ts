@@ -12,6 +12,13 @@ import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tena
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { resolveAgeBand, readSafetySettingsStored, effectiveSafetySettings } from "@/lib/age-assurance";
 import { resolveUsersByWhatsAppPhone } from "@/lib/whatsapp/resolve-users-by-phone";
+import {
+  medianDaysBetweenVisits,
+  daysSince,
+  type CompletedBookingLite,
+} from "@/lib/admin/marketplace-health";
+import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { sumPlatformContributionForBookings } from "@/lib/admin/marketplace-health-contribution";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -117,6 +124,44 @@ export async function GET(
 
       stats.product_orders_count = productOrderCount ?? 0;
       stats.product_orders_paid_total = product_orders_paid_total;
+
+      const { data: completedRows } = await supabase
+        .from("bookings")
+        .select("id, scheduled_at, customer_id, provider_id")
+        .eq("tenant_id", tenantId)
+        .eq("customer_id", id)
+        .eq("status", "completed");
+      const completedLite = (completedRows ?? []).map((b) => ({
+        id: String(b.id),
+        scheduled_at: String(b.scheduled_at),
+        customer_id: id,
+        provider_id: String(b.provider_id),
+      }));
+      stats.completed_visits_lifetime = completedLite.length;
+      const w30 = new Date();
+      w30.setUTCDate(w30.getUTCDate() - 30);
+      stats.completed_visits_30d = completedLite.filter(
+        (b) => new Date(b.scheduled_at) >= w30,
+      ).length;
+      const lastCompleted = completedLite.reduce<string | null>((best, b) => {
+        if (!best || new Date(b.scheduled_at) > new Date(best)) return b.scheduled_at;
+        return best;
+      }, null);
+      stats.last_completed_at = lastCompleted;
+      stats.days_since_last_completed = daysSince(lastCompleted);
+      stats.is_repeat_customer = completedLite.length >= 2;
+      stats.median_days_between_completed_visits = medianDaysBetweenVisits(
+        completedLite as CompletedBookingLite[],
+      );
+
+      const bookingIds = new Set(completedLite.map((b) => b.id));
+      const ledger = await fetchFinanceLedgerExportRowsForTenant(
+        admin,
+        tenantId,
+        { start: "1970-01-01T00:00:00.000Z", end: new Date().toISOString() },
+        {},
+      );
+      stats.contribution_to_date = sumPlatformContributionForBookings(ledger, bookingIds);
 
       const { data: recentPo } = await admin
         .from("product_orders")

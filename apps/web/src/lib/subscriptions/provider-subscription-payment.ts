@@ -541,6 +541,36 @@ export async function recordProviderSubscriptionPayment(params: {
     }
   }
 
+  if (financeTransactionId && amountMajor > 0 && planId) {
+    const { data: planRow } = await supabase
+      .from("subscription_plans")
+      .select("is_free")
+      .eq("id", planId)
+      .maybeSingle();
+    if (planRow && (planRow as { is_free?: boolean }).is_free !== true) {
+      let reactTenantId = financeTenantId ?? tenantIdHint ?? null;
+      if (!reactTenantId) {
+        const { data: provRow } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        reactTenantId = (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+      }
+      if (reactTenantId) {
+        void import("@/lib/provider-ops/ops-case")
+          .then(({ reactivateChurnedCase }) =>
+            reactivateChurnedCase(supabase, {
+              tenantId: reactTenantId as string,
+              providerId,
+              source: "payment",
+            }),
+          )
+          .catch(() => undefined);
+      }
+    }
+  }
+
   return { recorded: true, alreadyRecorded: false, netAmount, reference, financeTransactionId };
 }
 
@@ -789,7 +819,7 @@ export async function reverseProviderSubscriptionPayment(params: {
       .catch(() => undefined);
     void import("@/lib/provider-ops/ops-case")
       .then(({ markCaseChurned }) =>
-        markCaseChurned(supabase, subscription.tenant_id, resolvedProviderId),
+        markCaseChurned(supabase, subscription.tenant_id, resolvedProviderId, "chargeback"),
       )
       .catch(() => undefined);
   }

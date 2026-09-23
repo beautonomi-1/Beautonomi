@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Link, useSearchParams } from "react-router";
-import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { cn } from "@/lib/cn";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -12,14 +11,20 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { LEAD_STAGE_OPTIONS as PIPELINE_STAGES } from "@/lib/providerOpsLeadStages";
-import { GripVertical, Mail, Phone, MapPin, Tag, Calendar } from "lucide-react";
-import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
+import { Trash2, UserPlus } from "lucide-react";
+import { PipelineStageColumn } from "@/components/provider-ops/PipelineStageColumn";
+import {
+  AssigneeSearchPanel,
+  labelOf,
+  type AssignableUser,
+} from "@/components/provider-ops/LeadAssigneeInline";
+import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import { PROVIDER_OPS_BULK_LEAD_MAX, PROVIDER_OPS_BULK_STAGE_EXCLUDE } from "@/lib/providerOpsBulkLimits";
 
-const PIPELINE_PAGE_SIZE = 120;
 const OPS_PIPELINE_REFETCH_MS = 45_000;
 
 interface LeadCategory {
@@ -70,42 +75,20 @@ function parseCategoryIdsParam(sp: URLSearchParams): string[] {
   return [...seen];
 }
 
-function WhatsAppStatusChip({ status }: { status?: Lead["whatsapp_status"] }) {
-  const s = status || "unknown";
-  const config: Record<string, { label: string; className: string }> = {
-    verified: { label: "WA verified", className: "bg-emerald-50 text-emerald-700" },
-    not_found: { label: "No WhatsApp", className: "bg-amber-50 text-amber-700" },
-    check_failed: { label: "WA check failed", className: "bg-rose-50 text-rose-700" },
-    unknown: { label: "WA not checked", className: "bg-zinc-100 text-zinc-600" },
-  };
-  const item = config[s] || config.unknown;
-  return <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium", item.className)}>{item.label}</span>;
-}
-
-function assigneeDisplayName(lead: Lead): string {
-  if (!lead.assigned_to) return "—";
-  const u = lead.assigned_user;
-  if (u && typeof u === "object") {
-    const n = u.full_name?.trim() || "";
-    const e = u.email?.trim() || "";
-    if (n || e) return n || e;
-  }
-  return `${lead.assigned_to.slice(0, 8)}…`;
-}
-
-function applyLeadStageInCache(
-  old: InfiniteData<LeadsPayload> | undefined,
-  id: string,
-  stage: string,
-): InfiniteData<LeadsPayload> | undefined {
-  if (!old?.pages?.length) return old;
-  return {
-    ...old,
-    pages: old.pages.map((page) => ({
-      ...page,
-      data: page.data.map((lead) => (lead.id === id ? { ...lead, commercial_stage: stage } : lead)),
-    })),
-  };
+function buildPipelineFilterQuery(
+  country: string,
+  province: string,
+  assignedToFilter: string,
+  categoryIds: string[],
+): string {
+  let q = "";
+  if (country) q += `&country=${encodeURIComponent(country)}`;
+  if (province) q += `&province=${encodeURIComponent(province)}`;
+  if (assignedToFilter) q += `&assigned_to=${encodeURIComponent(assignedToFilter)}`;
+  categoryIds.forEach((id) => {
+    q += `&category_ids=${encodeURIComponent(id)}`;
+  });
+  return q;
 }
 
 export function ProviderOpsPipelinePage() {
@@ -117,34 +100,33 @@ export function ProviderOpsPipelinePage() {
   const [landedLeadId, setLandedLeadId] = useState<string | null>(null);
   const dragPreviewNodeRef = useRef<HTMLElement | null>(null);
   const suppressCardClickRef = useRef(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
 
   const country = sp.get("country") || "";
   const province = sp.get("province") || "";
   const assignedToFilter = sp.get("assigned_to") || "";
   const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
   const categoryKey = categoryIds.join(",");
-  const qk = adminQueryKeys.providerOps.leads(
-    `pipeline-board|country=${country}|province=${province}|category=${categoryKey}|assigned=${assignedToFilter}`,
-  );
+  const filterQuery = buildPipelineFilterQuery(country, province, assignedToFilter, categoryIds);
+  const countsQk = adminQueryKeys.providerOps.pipelineStats();
 
-  const q = useInfiniteQuery({
-    queryKey: qk,
-    initialPageParam: 1,
-    queryFn: ({ pageParam }) =>
+  const countsQ = useQuery({
+    queryKey: [...countsQk, filterQuery],
+    enabled: allowed,
+    queryFn: () =>
       adminApi.getJson<LeadsPayload>(
-        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${assignedToFilter ? `&assigned_to=${encodeURIComponent(assignedToFilter)}` : ""}${categoryIds.map((id) => `&category_ids=${encodeURIComponent(id)}`).join("")}`,
+        `/api/admin/provider-ops/leads?page=1&limit=1${filterQuery}`,
         { timeoutMs: 60_000 },
       ),
-    getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
-    enabled: allowed,
     refetchInterval: OPS_PIPELINE_REFETCH_MS,
     refetchOnWindowFocus: true,
   });
 
-  const leads = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
-  const totalLeads = q.data?.pages[0]?.meta.total ?? leads.length;
-  const loadedCount = leads.length;
-  const filterOptions = q.data?.pages[0]?.filter_options;
+  const stageCounts = countsQ.data?.stage_counts ?? {};
+  const totalLeads = stageCounts.all ?? countsQ.data?.meta?.total ?? 0;
+  const filterOptions = countsQ.data?.filter_options;
   const countryOptions = filterOptions?.countries ?? [];
   const provinceOptions = (filterOptions?.provinces ?? []).filter(
     (opt) => !country || !opt.country || opt.country === country,
@@ -170,11 +152,82 @@ export function ProviderOpsPipelinePage() {
     },
     onError: (e: Error) => {
       if (handleLeadConcurrent409(e)) {
-        void qc.invalidateQueries({ queryKey: qk });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
         return;
       }
       adminToast.error(`Assign failed: ${e.message}`);
     },
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) =>
+      adminApi.postJson<{ deleted: number; skipped_matched: string[]; not_found: string[] }>(
+        "/api/admin/provider-ops/leads/bulk-delete",
+        { ids },
+      ),
+    onSuccess: (data) => {
+      setSelectedIds(new Set());
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
+      if (data.deleted > 0) adminToast.success(`Deleted ${data.deleted} lead(s)`);
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const bulkStageMut = useMutation({
+    mutationFn: (newStage: string) =>
+      adminApi.postJson<{
+        updated: string[];
+        conflicts: string[];
+        skipped: { id: string; reason: string }[];
+        not_found: string[];
+      }>("/api/admin/provider-ops/leads/bulk-stage", {
+        stage: newStage,
+        items: [...selectedIds].map((id) => ({ id })),
+      }),
+    onSuccess: (data) => {
+      setSelectedIds(new Set());
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
+      if (data.updated.length) adminToast.success(`Updated ${data.updated.length} lead(s)`);
+      if (data.skipped.length) {
+        const matchedSkips = data.skipped.filter((s) =>
+          s.reason.toLowerCase().includes("matched_provider_id"),
+        ).length;
+        if (matchedSkips > 0) {
+          adminToast.warning(
+            `${matchedSkips} skipped — Matched requires a provider link (use single-lead update).`,
+          );
+        }
+        const other = data.skipped.length - matchedSkips;
+        if (other > 0) adminToast.warning(`${other} lead${other === 1 ? "" : "s"} skipped`);
+      }
+      if (data.conflicts.length) adminToast.warning(`${data.conflicts.length} conflict(s) — refresh and retry`);
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const bulkAssignMut = useMutation({
+    mutationFn: (u: AssignableUser) =>
+      adminApi.postJson<{
+        updated: string[];
+        conflicts: string[];
+        skipped: { id: string; reason: string }[];
+        not_found: string[];
+      }>("/api/admin/provider-ops/leads/bulk-assign", {
+        assigned_to: u.id,
+        assigned_to_name: labelOf(u),
+        items: [...selectedIds].map((id) => ({ id })),
+      }),
+    onSuccess: (data) => {
+      setSelectedIds(new Set());
+      setBulkAssignOpen(false);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      invalidateAdminShellCounts(qc);
+      if (data.updated.length) adminToast.success(`Assigned ${data.updated.length} lead(s)`);
+      if (data.conflicts.length) adminToast.warning(`${data.conflicts.length} conflict(s) — refresh and retry`);
+    },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const stageMut = useMutation({
@@ -191,34 +244,19 @@ export function ProviderOpsPipelinePage() {
         stage,
         ...(expected_updated_at ? { expected_updated_at } : {}),
       }),
-    onMutate: async ({ id, stage }) => {
-      await qc.cancelQueries({ queryKey: qk });
-      const previousStage = qc
-        .getQueryData<InfiniteData<LeadsPayload>>(qk)
-        ?.pages.flatMap((p) => p.data)
-        .find((l) => l.id === id)?.commercial_stage;
-      qc.setQueryData<InfiniteData<LeadsPayload>>(qk, (old) => applyLeadStageInCache(old, id, stage));
-      queueMicrotask(() => {
-        setLandedLeadId(id);
-        window.setTimeout(() => setLandedLeadId((cur) => (cur === id ? null : cur)), 480);
-      });
-      return { previousStage, id };
+    onSuccess: (_data, { id }) => {
+      setLandedLeadId(id);
+      window.setTimeout(() => setLandedLeadId((cur) => (cur === id ? null : cur)), 480);
+      adminToast.success("Stage updated");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.dashboard() });
     },
-    onError: (err: Error, { id }, context) => {
-      setLandedLeadId((cur) => (cur === id ? null : cur));
-      if (context?.previousStage !== undefined) {
-        qc.setQueryData<InfiniteData<LeadsPayload>>(qk, (old) => applyLeadStageInCache(old, id, context.previousStage!));
-      }
+    onError: (err: Error) => {
       if (handleLeadConcurrent409(err)) {
-        void qc.invalidateQueries({ queryKey: qk });
-        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.dashboard() });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
         return;
       }
       adminToast.error(`Stage update failed: ${err.message}`);
-    },
-    onSuccess: () => {
-      adminToast.success("Stage updated");
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.dashboard() });
     },
   });
 
@@ -235,10 +273,10 @@ export function ProviderOpsPipelinePage() {
   }, []);
 
   const handleDragStart = useCallback(
-    (e: React.DragEvent, leadId: string, cardEl: HTMLElement) => {
+    (e: React.DragEvent, leadId: string, cardEl: HTMLElement, updatedAt?: string, fromStage?: string) => {
       suppressCardClickRef.current = true;
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", leadId);
+      e.dataTransfer.setData("text/plain", `${leadId}|${updatedAt ?? ""}|${fromStage ?? ""}`);
       setDraggedLeadId(leadId);
 
       const clone = cardEl.cloneNode(true) as HTMLElement;
@@ -273,26 +311,29 @@ export function ProviderOpsPipelinePage() {
   function handleDrop(targetStage: string, e: React.DragEvent) {
     e.preventDefault();
     setDragOverStage(null);
-    const id = e.dataTransfer.getData("text/plain") || draggedLeadId || "";
+    const raw = e.dataTransfer.getData("text/plain") || draggedLeadId || "";
+    const parts = raw.split("|");
+    const id = parts[0] ?? "";
+    const updatedAt = parts[1] ?? "";
+    const fromStage = parts[2] ?? "";
     if (!id) return;
-    const lead = leads.find((l) => l.id === id);
-    if (!lead || lead.commercial_stage === targetStage) {
+    if (fromStage && fromStage === targetStage) {
       setDraggedLeadId(null);
       return;
     }
     setDraggedLeadId(null);
     stageMut.mutate({
-      id: lead.id,
+      id,
       stage: targetStage,
-      expected_updated_at: lead.updated_at,
+      ...(updatedAt ? { expected_updated_at: updatedAt } : {}),
     });
   }
 
   if (denied) return denied;
-  if (q.isPending) return <div className="space-y-6"><AdminPageHeader title="Pipeline Board" /><AdminPanel><AdminPageSkeleton rows={6} /></AdminPanel></div>;
-  if (q.error) {
-    if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+  if (countsQ.isPending) return <div className="space-y-6"><AdminPageHeader title="Pipeline Board" /><AdminPanel><AdminPageSkeleton rows={6} /></AdminPanel></div>;
+  if (countsQ.error) {
+    if (isAdminApiAuthFailure(countsQ.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={countsQ.error.message} onRetry={() => void countsQ.refetch()} />;
   }
 
   return (
@@ -309,7 +350,7 @@ export function ProviderOpsPipelinePage() {
       <div className="flex-shrink-0 px-2 pt-1 sm:px-1">
         <AdminPageHeader
           title="Pipeline Board"
-          description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
+          description={`${totalLeads} leads total · ${PIPELINE_STAGES.length} stages · Drag to update status · Load more per column`}
         />
         {(country || province || categoryIds.length > 0 || assignedToFilter) ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
@@ -468,211 +509,112 @@ export function ProviderOpsPipelinePage() {
             </button>
           ) : null}
         </div>
-        {q.hasNextPage && (
-          <div className="mt-2 flex items-center gap-3 px-1 pb-1">
-            <button
-              type="button"
-              disabled={q.isFetchingNextPage}
-              onClick={() => void q.fetchNextPage()}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-            >
-              {q.isFetchingNextPage ? "Loading…" : `Load more (${loadedCount} of ${totalLeads})`}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 pb-4 [-webkit-overflow-scrolling:touch] touch-pan-x sm:px-1">
-        {PIPELINE_STAGES.map((stage) => {
-          const stageLeads = leads.filter((l) => l.commercial_stage === stage.key);
-          const isOver = dragOverStage === stage.key;
-          return (
-            <div
-              key={stage.key}
-              className={cn(
-                "flex w-[min(85vw,18rem)] max-w-sm flex-shrink-0 flex-col rounded-xl border-2 transition-all duration-150 sm:w-72",
-                isOver
-                  ? "border-[3px] border-blue-500 bg-blue-100/70 shadow-xl ring-4 ring-blue-300/40 scale-[1.02]"
-                  : stage.color,
-              )}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverStage(stage.key); }}
-              onDragLeave={(e) => {
-                const next = e.relatedTarget as Node | null;
-                if (next && e.currentTarget.contains(next)) return;
-                setDragOverStage(null);
-              }}
-              onDrop={(ev) => handleDrop(stage.key, ev)}
-            >
-              {/* Column header */}
-              <div className="flex-shrink-0 rounded-t-[10px] border-b bg-white/70 px-3 py-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={cn("h-2.5 w-2.5 rounded-full", stage.dot)} />
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-800">{stage.label}</h3>
-                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-gray-500">{stage.description}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "rounded-full px-2 py-0.5 text-xs font-bold",
-                    stageLeads.length > 0 ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500",
-                  )}>
-                    {stageLeads.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Cards */}
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain p-2 [-webkit-overflow-scrolling:touch]">
-                {stageLeads.map((lead) => {
-                  const name = lead.business_name || lead.contact_person_name || "Unnamed";
-                  const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories?.name).filter(Boolean);
-                  const isDragging = draggedLeadId === lead.id;
-                  return (
-                    <div key={lead.id} className="relative">
-                      {isDragging && (
-                        <div
-                          className="absolute inset-0 z-0 flex min-h-[7.5rem] flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-100/90 text-[10px] font-medium text-gray-400"
-                          aria-hidden
-                        >
-                          Drop elsewhere
-                        </div>
-                      )}
-                      <div
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, lead.id, e.currentTarget)}
-                        onDragEnd={handleDragEnd}
-                        className={cn("relative z-10", isDragging && "opacity-0")}
-                      >
-                        <Link
-                          to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)}
-                          onClick={(e: MouseEvent<HTMLAnchorElement>) => {
-                            if (suppressCardClickRef.current) {
-                              e.preventDefault();
-                            }
-                          }}
-                          className="block"
-                        >
-                          <div
-                            className={cn(
-                              "group cursor-grab rounded-lg border bg-white transition-all duration-200 active:cursor-grabbing hover:shadow-md hover:-translate-y-0.5",
-                              landedLeadId === lead.id && "pipeline-card-land",
-                            )}
-                          >
-                            {/* Drag handle hint */}
-                            <div className="flex items-center gap-1 border-b border-gray-50 px-3 py-2">
-                              <GripVertical className="h-3.5 w-3.5 flex-shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100" />
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600">
-                                  {name.charAt(0).toUpperCase()}
-                                </div>
-                                <p className="truncate text-sm font-medium text-gray-900">{name}</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1.5 px-3 pb-2.5 pt-1.5">
-                              {lead.email && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate">
-                                  <Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.email}
-                                </div>
-                              )}
-                              {lead.phone_e164 && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                  <Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.phone_e164}
-                                  <WhatsAppStatusChip status={lead.whatsapp_status} />
-                                </div>
-                              )}
-                              {lead.suggested_location_text && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate">
-                                  <MapPin className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.suggested_location_text}
-                                </div>
-                              )}
-
-                              {/* Categories */}
-                              {cats.length > 0 && (
-                                <div className="flex flex-wrap gap-1 pt-0.5">
-                                  {cats.slice(0, 2).map((c) => (
-                                    <span key={c} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium text-indigo-600">{c}</span>
-                                  ))}
-                                  {cats.length > 2 && <span className="text-[9px] text-gray-400">+{cats.length - 2}</span>}
-                                </div>
-                              )}
-
-                              {/* Tags */}
-                              {lead.tags && lead.tags.length > 0 && (
-                                <div className="flex items-center gap-1 pt-0.5">
-                                  <Tag className="h-2.5 w-2.5 text-gray-400" />
-                                  <span className="text-[9px] text-gray-400">{lead.tags.slice(0, 3).join(", ")}{lead.tags.length > 3 ? ` +${lead.tags.length - 3}` : ""}</span>
-                                </div>
-                              )}
-
-                              {/* Footer */}
-                              <div className="flex items-center justify-between border-t border-gray-50 pt-1.5">
-                                <span className="rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-medium text-gray-500">{lead.source}</span>
-                                <span className="flex items-center gap-1 text-[9px] text-gray-400">
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  {new Date(lead.created_at).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </Link>
-                        <div
-                          className="relative z-10 mt-1 px-2 pb-2"
-                          onClick={(e) => e.stopPropagation()}
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          <label className="mb-0.5 block text-[10px] font-medium text-gray-500 md:hidden">Move (no drag)</label>
-                          <select
-                            aria-label={`Change stage for ${name}`}
-                            value={lead.commercial_stage}
-                            onChange={(e) => {
-                              const next = e.target.value;
-                              if (next === lead.commercial_stage) return;
-                              stageMut.mutate({
-                                id: lead.id,
-                                stage: next,
-                                expected_updated_at: lead.updated_at,
-                              });
-                            }}
-                            className="w-full min-h-10 touch-manipulation rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-800 md:min-h-9 md:bg-white"
-                          >
-                            {PIPELINE_STAGES.map((s) => (
-                              <option key={s.key} value={s.key}>
-                                {s.label}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="mt-2 flex justify-end">
-                            <LeadAssigneeInline
-                              leadId={lead.id}
-                              assignedToId={lead.assigned_to ?? null}
-                              displayName={assigneeDisplayName(lead)}
-                              updatedAt={lead.updated_at}
-                              onAssign={(args) => assignLeadMut.mutate(args)}
-                              disabled={assignLeadMut.isPending && assignLeadMut.variables?.leadId === lead.id}
-                              compact
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {stageLeads.length === 0 && (
-                  <div className={cn(
-                    "flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors",
-                    isOver ? "border-blue-400 bg-blue-100/60" : "border-gray-200",
-                  )}>
-                    <p className="text-xs text-gray-400">No leads</p>
-                    <p className="mt-1 text-[10px] text-gray-300">Drop a lead here</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {PIPELINE_STAGES.map((stage) => (
+          <PipelineStageColumn
+            key={stage.key}
+            stage={stage}
+            filterQuery={filterQuery}
+            stageCount={stageCounts[stage.key] ?? 0}
+            enabled={allowed}
+            selectedIds={selectedIds}
+            onToggleSelect={(id) => {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) {
+                  next.delete(id);
+                  return next;
+                }
+                if (next.size >= PROVIDER_OPS_BULK_LEAD_MAX) {
+                  adminToast.warning(`Bulk actions are limited to ${PROVIDER_OPS_BULK_LEAD_MAX} leads at a time`);
+                  return prev;
+                }
+                next.add(id);
+                return next;
+              });
+            }}
+            dragOverStage={dragOverStage}
+            draggedLeadId={draggedLeadId}
+            landedLeadId={landedLeadId}
+            onDragOverStage={setDragOverStage}
+            onDrop={handleDrop}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            suppressCardClickRef={suppressCardClickRef}
+            stageMut={stageMut}
+            assignLeadMut={assignLeadMut}
+          />
+        ))}
       </div>
+
+      {bulkAssignOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bulk assign leads"
+          onClick={() => setBulkAssignOpen(false)}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+            <AssigneeSearchPanel
+              title={`Assign ${selectedIds.size} lead(s) to…`}
+              onClose={() => setBulkAssignOpen(false)}
+              onPick={(user) => bulkAssignMut.mutate(user)}
+            />
+          </div>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-white shadow-2xl sm:gap-4 sm:px-6">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <select
+            className="rounded-xl border border-gray-600 bg-gray-800 px-3 py-2 text-sm"
+            defaultValue=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              bulkStageMut.mutate(e.target.value);
+              e.target.value = "";
+            }}
+          >
+            <option value="">Move to stage…</option>
+            {PIPELINE_STAGES.filter((s) => !PROVIDER_OPS_BULK_STAGE_EXCLUDE.has(s.key)).map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium"
+            onClick={() => setBulkAssignOpen(true)}
+          >
+            <UserPlus className="h-4 w-4" /> Assign
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium"
+            onClick={() => {
+              const ids = [...selectedIds];
+              requestConfirm({
+                title: "Delete leads",
+                consequence: `Delete ${ids.length} leads? Matched leads will be skipped.`,
+                variant: "danger",
+                confirmLabel: "Delete",
+                onConfirm: async () => bulkDeleteMut.mutate(ids),
+              });
+            }}
+          >
+            <Trash2 className="h-4 w-4" /> Delete
+          </button>
+          <button type="button" className="text-sm text-gray-400 hover:text-white" onClick={() => setSelectedIds(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
+      <ConfirmDialog />
     </div>
   );
 }

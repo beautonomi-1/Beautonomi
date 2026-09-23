@@ -144,49 +144,52 @@ Training paths are ordered curricula stored in the `learning_training_paths` tab
 | `description` | text | Short description shown in the KB Training paths tab |
 | `sort_order` | integer | Display order (ascending) |
 | `article_slugs` | text[] | **Ordered** list of `learning_articles.slug` values |
+| `checkpoint_quiz` | jsonb | Checkpoint questions `{ id, prompt, choices, answer_index }[]` (answers hidden in reader API) |
 
-### Seeded paths (migration 720)
+Progress is stored in `learning_training_progress` (per-user step sign-off) and `learning_training_completions` (quiz pass + path complete). Added in migration 928.
 
-| Path slug | Role | Steps (key articles) |
+### Seeded paths (migrations 720 + 928)
+
+| Path slug | Role | Notes |
 |---|---|---|
-| `new-support-agent` | support | Master overview → Support desk → Disputes/refunds → Providers/bookings |
-| `provider-ops-specialist` | provider_ops | Master overview → Provider Ops Hub → Verification → Expansion playbook |
-| `finance-payouts-operator` | finance | Master overview → Finance runbook → Billing ops → Disputes/refunds |
-| `trust-safety-reviewer` | trust | Master overview → Users/trust → Verification → Moderation → Incident response |
-| `content-marketing-manager` | content_marketing | Master overview → Authoring guide → Content/catalog → Marketing/comms |
-| `superadmin-full-platform` | superadmin | All section runbooks in nav order (19 articles) |
+| `new-support-agent` | support | Support desk + disputes + providers |
+| `provider-ops-specialist` | provider_ops | Provider Ops Hub pipeline |
+| `finance-payouts-operator` | finance | Includes commercial terminal runbook (928) |
+| `trust-safety-reviewer` | trust | Trust, verification, moderation |
+| `content-marketing-manager` | content_marketing | Authoring + marketing ops |
+| `superadmin-full-platform` | superadmin | Full platform runbooks |
+| `commercial-ops-operator` | commercial | Terminal commerce (928) |
 
-### Adding or reordering a path
+### Editing paths (Content catalog)
 
-1. Write a SQL migration or run directly on the DB:
+Use **Content → Training paths** (`/admin/content/learning/training-paths`) in the admin SPA:
+
+- Create / edit title, display role, description, sort order
+- Reorder steps (`article_slugs`), add slugs via search (internal articles included)
+- Edit checkpoint quiz JSON (validated server-side: 2–6 choices, `answer_index` in range)
+- Unpublished, scheduled, archived, or missing slugs show warnings; they block staff completion until published
+
+API: `GET/POST /api/admin/content/learning/training-paths`, `PATCH/DELETE .../[id]` (`ADMIN_SECTION_CONTENT_CATALOG`). Changes are audit-logged.
+
+### Staff completion flow (Knowledge Base)
+
+- **Training paths tab** (`/admin/knowledge-base?tab=paths`) — progress `signed off / published steps`, Continue vs Start
+- **Article page** with `?path=<slug>` — **Mark this step done** (published steps only), prev/next, checkpoint quiz on the last step after all sign-offs
+- APIs: `GET /api/admin/learning/training-paths` (steps include status; quiz without answers), `POST /api/admin/learning/training-progress`, `POST /api/admin/learning/training-progress/quiz`
+
+Emergency SQL-only edits remain possible:
 
 ```sql
--- Add a new article to an existing path at position 3
 UPDATE public.learning_training_paths
 SET article_slugs = article_slugs[1:2] || ARRAY['new-article-slug'] || article_slugs[3:],
     updated_at = NOW()
 WHERE slug = 'new-support-agent';
 ```
 
-2. Or create a new path:
-
-```sql
-INSERT INTO public.learning_training_paths (slug, title, role, description, sort_order, article_slugs)
-VALUES (
-  'my-new-path',
-  'My New Path',
-  'my_role',
-  'Short description.',
-  7,
-  ARRAY['superadmin-operate-platform-overview', 'my-runbook-slug', 'another-slug']
-);
-```
-
 ### KB reader rendering
 
-- **Training paths tab** (`/admin/knowledge-base`) — cards per path with role badge, description, step count, and a "Start" button linking to the first article with `?path=<slug>`.
-- **Article page** — when `?path=<slug>` is in the URL, a purple banner shows the path name + step number + prev/next navigation. A bottom strip also shows prev/next.
-- The sticky table of contents (right sidebar on xl screens) is built from `h2`/`h3` headings by `buildToc()` in `apps/admin-web/src/lib/learning.ts`.
+- **Training paths tab** — cards per path with role badge, description, step warnings, and Start / Continue
+- **Article page** — purple path banner, sign-off, checkpoint quiz, prev/next; table of contents from `buildToc()` in `apps/admin-web/src/lib/learning.ts`
 
 ## Internal training & intelligent support
 

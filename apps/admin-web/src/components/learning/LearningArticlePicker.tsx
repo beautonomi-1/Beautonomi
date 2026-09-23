@@ -13,6 +13,9 @@ type Props = {
   includeInternal?: boolean;
   /** When provided, an "Insert link" action appears on each result. */
   onInsert?: (article: KbArticleResult) => void;
+  /** Generic pick action (e.g. add training path step). Works for internal articles. */
+  onSelect?: (article: KbArticleResult) => void;
+  selectLabel?: string;
   /** Show the "Open" link to the in-admin reader. Default true. */
   showOpen?: boolean;
   placeholder?: string;
@@ -27,6 +30,8 @@ export function LearningArticlePicker({
   audience = null,
   includeInternal = false,
   onInsert,
+  onSelect,
+  selectLabel = "Select",
   showOpen = true,
   placeholder = "Search the knowledge base…",
   initialQuery = "",
@@ -109,6 +114,16 @@ export function LearningArticlePicker({
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                {onSelect ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md bg-purple-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-800"
+                    onClick={() => onSelect(a)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    {selectLabel}
+                  </button>
+                ) : null}
                 {onInsert ? (
                   <button
                     type="button"

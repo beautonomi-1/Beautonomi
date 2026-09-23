@@ -444,6 +444,9 @@ export const ServiceZoneDetailPage = lazy(() =>
 export const ContentHubPage = lazy(() =>
   import("@/routes/content/ContentHubPage").then((m) => ({ default: m.ContentHubPage }))
 );
+export const TrainingPathsEditorPage = lazy(() =>
+  import("@/routes/content/TrainingPathsEditorPage").then((m) => ({ default: m.TrainingPathsEditorPage }))
+);
 export const LearningArticlesPage = lazy(() =>
   import("@/routes/content/LearningArticlesPage").then((m) => ({ default: m.LearningArticlesPage }))
 );

@@ -45,9 +45,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
+    const { refreshMarketplaceHealthDailyAllTenants } = await import(
+      "@/lib/admin/refresh-marketplace-health-daily"
+    );
+    let marketplaceHealth: { tenants: number; rows: number } | null = null;
+    try {
+      marketplaceHealth = await refreshMarketplaceHealthDailyAllTenants(admin, since, until);
+    } catch (e) {
+      console.error("[refresh-provider-analytics] marketplace health", e);
+    }
+
     return NextResponse.json({
       ok: true,
       rows: data ?? 0,
+      marketplace_health: marketplaceHealth,
       since: toIsoDate(since),
       until: toIsoDate(until),
     });

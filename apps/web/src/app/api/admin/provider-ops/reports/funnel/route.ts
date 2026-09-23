@@ -102,7 +102,57 @@ export async function GET(request: NextRequest) {
     const activeCount = active || 0;
     const leadsTotal = totalLeads || 0;
 
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: activeProviderRows } = await supabase
+      .from("providers")
+      .select("id, created_at")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(5000);
+    const { data: recentCompleted } = await supabase
+      .from("bookings")
+      .select("provider_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "completed")
+      .gte("scheduled_at", fourteenDaysAgo);
+    const transactingSet = new Set(
+      (recentCompleted ?? []).map((r: { provider_id: string }) => r.provider_id),
+    );
+    const idleApprovedNoBooking14d = (activeProviderRows ?? []).filter(
+      (p: { id: string }) => !transactingSet.has(p.id),
+    ).length;
+
+    const daysToFirst: number[] = [];
+    for (const p of (activeProviderRows ?? []).slice(0, 200) as { id: string; created_at?: string }[]) {
+      const { data: first } = await supabase
+        .from("bookings")
+        .select("scheduled_at")
+        .eq("provider_id", p.id)
+        .eq("status", "completed")
+        .order("scheduled_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (first?.scheduled_at && p.created_at) {
+        daysToFirst.push(
+          Math.floor(
+            (new Date(first.scheduled_at).getTime() - new Date(p.created_at).getTime()) / 86400000,
+          ),
+        );
+      }
+    }
+    daysToFirst.sort((a, b) => a - b);
+    const medianDaysToFirstCompleted =
+      daysToFirst.length === 0
+        ? null
+        : daysToFirst.length % 2 === 0
+          ? (daysToFirst[daysToFirst.length / 2 - 1]! + daysToFirst[daysToFirst.length / 2]!) / 2
+          : daysToFirst[Math.floor(daysToFirst.length / 2)]!;
+
     return successResponse({
+      activation_after_active: {
+        median_days_to_first_completed_booking: medianDaysToFirstCompleted,
+        idle_approved_no_completed_14d: idleApprovedNoBooking14d,
+      },
       onboarding_funnel: {
         total_signups: signupCount,
         started_wizard: wizardCount,

@@ -25,7 +25,14 @@ interface MyDayPayload {
     providers?: { business_name: string | null; status: string | null } | null;
   }>;
   pending_handoffs: Array<{ id: string; from_desk: string; to_desk: string; note: string | null }>;
-  overdue_tasks: Array<{ id: string; title: string; due_at: string; lead_id: string | null }>;
+  overdue_tasks: Array<{
+    id: string;
+    title: string;
+    due_at: string;
+    lead_id: string | null;
+    provider_id: string | null;
+    providers?: { business_name: string | null } | null;
+  }>;
   quota_attainment: Record<string, { target: number; actual: number }>;
   period_start: string;
 }
@@ -134,6 +141,13 @@ export function ProviderOpsMyDayPage() {
                     className="font-medium text-gray-900 hover:underline"
                   >
                     {t.title}
+                  </Link>
+                ) : t.provider_id ? (
+                  <Link
+                    to={adminSpaTo(`/admin/provider-ops/providers/${t.provider_id}`)}
+                    className="font-medium text-gray-900 hover:underline"
+                  >
+                    {t.providers?.business_name || t.title}
                   </Link>
                 ) : (
                   <span className="font-medium text-gray-900">{t.title}</span>

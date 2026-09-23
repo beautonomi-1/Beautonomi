@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
-import { ExternalLink, Lock, ChevronLeft, ChevronRight, GraduationCap, Clock } from "lucide-react";
+import { ExternalLink, Lock, ChevronLeft, ChevronRight, GraduationCap, Clock, CheckCircle2 } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminSpaTo } from "@/lib/adminSpaPath";
@@ -13,6 +13,13 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { TrainingPathCheckpointQuiz } from "@/components/learning/TrainingPathCheckpointQuiz";
+import {
+  countPublishedSteps,
+  countSignedPublished,
+  stepIsCompletable,
+} from "@/lib/knowledgeBaseTraining";
+import { adminToast } from "@/lib/adminToast";
 import {
   audienceLabel,
   LEARNING_ARTICLE_PROSE_CLASS,
@@ -29,6 +36,7 @@ export function KnowledgeBaseArticlePage() {
   const { slug = "" } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
   const pathSlug = searchParams.get("path");
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Admin access is required.");
 
   // ── Main article ────────────────────────────────────────────────────────
@@ -68,6 +76,38 @@ export function KnowledgeBaseArticlePage() {
     currentPath && currentStepIndex >= 0 && currentStepIndex < currentPath.steps.length - 1
       ? currentPath.steps[currentStepIndex + 1]
       : null;
+
+  const pathProgress = currentPath?.progress;
+  const signedSlugs = pathProgress?.signed_off_slugs ?? [];
+  const isSignedOff = signedSlugs.includes(slug);
+  const pathComplete = Boolean(pathProgress?.completed_at);
+  const currentPathStep = currentPath?.steps.find((s) => s.slug === slug);
+  const canSignOff =
+    currentPath &&
+    currentPathStep &&
+    stepIsCompletable(currentPathStep.status) &&
+    !isSignedOff;
+
+  const allStepsSigned =
+    currentPath &&
+    countSignedPublished(currentPath.steps, signedSlugs) === countPublishedSteps(currentPath.steps) &&
+    !currentPath.steps.some((s) => !stepIsCompletable(s.status));
+
+  const isLastStep =
+    currentPath && currentStepIndex >= 0 && currentStepIndex === currentPath.steps.length - 1;
+
+  const signOff = useMutation({
+    mutationFn: () =>
+      adminApi.postJson<{ signed_off_at: string }>("/api/admin/learning/training-progress", {
+        path_slug: pathSlug,
+        article_slug: slug,
+      }),
+    onSuccess: () => {
+      adminToast.success("Step signed off.");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.knowledgeBase.trainingPaths() });
+    },
+    onError: (err: Error) => adminToast.error(err.message),
+  });
 
   // ── Rendered content ────────────────────────────────────────────────────
 
@@ -133,7 +173,7 @@ export function KnowledgeBaseArticlePage() {
                 className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50"
               >
                 <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-                {prevStep.title}
+                {prevStep.title ?? prevStep.slug}
               </Link>
             ) : null}
             {nextStep ? (
@@ -141,16 +181,17 @@ export function KnowledgeBaseArticlePage() {
                 to={adminSpaTo(`/admin/knowledge-base/${nextStep.slug}?path=${pathSlug}`)}
                 className="inline-flex items-center gap-1 rounded-lg bg-purple-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-800"
               >
-                {nextStep.title}
+                {(nextStep.title ?? nextStep.slug).slice(0, 40)}
                 <ChevronRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
-            ) : (
-              currentStepIndex >= 0 && currentStepIndex === (currentPath?.steps.length ?? 0) - 1 ? (
-                <span className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-medium text-green-800">
-                  Path complete
-                </span>
-              ) : null
-            )}
+            ) : pathComplete ? (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-medium text-green-800">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                Path complete
+              </span>
+            ) : isLastStep && allStepsSigned ? (
+              <span className="text-xs text-purple-700">Finish the checkpoint quiz below</span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -234,6 +275,27 @@ export function KnowledgeBaseArticlePage() {
             </div>
 
             <article className={LEARNING_ARTICLE_PROSE_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
+
+            {currentPath && pathSlug ? (
+              <div className="mt-8 border-t border-gray-100 pt-6">
+                {canSignOff ? (
+                  <button
+                    type="button"
+                    disabled={signOff.isPending}
+                    onClick={() => signOff.mutate()}
+                    className="inline-flex min-h-11 items-center rounded-xl bg-gray-900 px-4 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {signOff.isPending ? "Saving…" : "Mark this step done"}
+                  </button>
+                ) : isSignedOff ? (
+                  <p className="text-sm text-green-700">You signed off this step.</p>
+                ) : currentPathStep && !stepIsCompletable(currentPathStep.status) ? (
+                  <p className="text-sm text-amber-800">
+                    This step is not published yet — sign-off is unavailable.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </AdminPanel>
 
           {/* Table of contents — sticky sidebar */}
@@ -259,6 +321,13 @@ export function KnowledgeBaseArticlePage() {
           ) : null}
         </div>
       )}
+
+      {currentPath && pathSlug && isLastStep && allStepsSigned && !pathComplete ? (
+        <TrainingPathCheckpointQuiz
+          pathSlug={pathSlug}
+          questions={currentPath.checkpoint_quiz}
+        />
+      ) : null}
 
       {/* Bottom prev/next strip */}
       {currentPath && (prevStep || nextStep) ? (

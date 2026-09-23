@@ -41,4 +41,16 @@ test.describe("admin SPA static shell", () => {
       { timeout: 20_000 }
     );
   });
+
+  test("provider ops retention queue route loads without 404", async ({ page }) => {
+    const response = await page.goto("/admin/provider-ops/retention", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.locator("body")).not.toContainText(/404|page not found/i);
+    await expect(page.locator("body")).toContainText(
+      /Verifying session|could not verify your admin session|Admin sign in|Retention queue/i,
+      { timeout: 20_000 },
+    );
+  });
 });

@@ -266,7 +266,12 @@ async function runJob(request: NextRequest) {
         if (prov?.tenantId && sub.provider_id) {
           void import("@/lib/provider-ops/ops-case")
             .then(({ markCaseChurned }) =>
-              markCaseChurned(supabase, prov.tenantId as string, sub.provider_id as string),
+              markCaseChurned(
+                supabase,
+                prov.tenantId as string,
+                sub.provider_id as string,
+                sub.reason === "payment_failed" ? "dunning_exhausted" : "cancelled_expired",
+              ),
             )
             .catch(() => undefined);
         }
@@ -317,6 +322,15 @@ async function runJob(request: NextRequest) {
       } catch (repairErr) {
         console.error(`Subscription plan repair failed for tenant ${tenantId}:`, repairErr);
       }
+    }
+
+    try {
+      const { reconcileRetentionForAllTenants } = await import(
+        "@/lib/provider-ops/reconcile-retention-at-risk"
+      );
+      await reconcileRetentionForAllTenants(supabase);
+    } catch (reconcileErr) {
+      console.error("[expire-cancelled-subscriptions] retention reconcile failed:", reconcileErr);
     }
 
     return successResponse({

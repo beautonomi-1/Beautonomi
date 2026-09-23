@@ -87,6 +87,42 @@ export async function GET(
       .in("status", ["confirmed", "checked_in", "waiting", "in_progress"])
       .lt("scheduled_at", sevenDaysAgoIso);
 
+    const w30 = new Date();
+    w30.setUTCDate(w30.getUTCDate() - 30);
+    const { count: completed30Count } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .gte("scheduled_at", w30.toISOString());
+
+    const { data: lastCompleted } = await supabase
+      .from("bookings")
+      .select("scheduled_at")
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .order("scheduled_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: firstCompleted } = await supabase
+      .from("bookings")
+      .select("scheduled_at")
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .order("scheduled_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const providerRow = provider as { created_at?: string; updated_at?: string };
+    let daysToFirstCompleted: number | null = null;
+    if (firstCompleted?.scheduled_at && providerRow.created_at) {
+      daysToFirstCompleted = Math.floor(
+        (new Date(firstCompleted.scheduled_at).getTime() - new Date(providerRow.created_at).getTime()) /
+          (86400000),
+      );
+    }
+
     // Load terminal profile (provider_payment_terminal_profile 1:1 with provider)
     const { data: terminalProfileRow } = await supabase
       .from("provider_payment_terminal_profile")
@@ -218,6 +254,17 @@ export async function GET(
         review_count: reviewCount || 0,
         average_rating: avgRating,
         open_over_7_days: openOver7DaysCount || 0,
+        completed_bookings_30d: completed30Count || 0,
+        bookings_per_week:
+          completed30Count && completed30Count > 0
+            ? Math.round(((completed30Count || 0) / (30 / 7)) * 100) / 100
+            : 0,
+        days_since_last_completed: lastCompleted?.scheduled_at
+          ? Math.floor(
+              (Date.now() - new Date(lastCompleted.scheduled_at).getTime()) / 86400000,
+            )
+          : null,
+        days_to_first_completed: daysToFirstCompleted,
       },
     });
   } catch (error) {

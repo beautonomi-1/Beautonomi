@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -435,7 +436,14 @@ export function LearningArticlesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Learning articles"
-        description="Help center and guides for customers and providers. Matches the legacy Next.js content hub: categories come from Learning categories; featured IDs power the learning homepage section."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/content/learning/training-paths")}
+            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50"
+          >
+            Training paths
+          </Link>
+        }
       />
 
       <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
