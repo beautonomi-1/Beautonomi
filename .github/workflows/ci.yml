@@ -18,6 +18,28 @@ env:
   CI: "true"
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            mobile:
+              - 'apps/customer/**'
+              - 'apps/provider/**'
+              - 'tooling/expo/**'
+              - 'eas.json'
+              - 'apps/customer/eas.json'
+              - 'apps/provider/eas.json'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+
   install:
     name: Install Dependencies
     runs-on: ubuntu-latest
@@ -47,7 +69,7 @@ jobs:
 
   typecheck:
     name: TypeScript Check
-    needs: install
+    needs: [install, changes]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -72,8 +94,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (turbo)
+      - name: Typecheck (turbo, all apps)
+        if: needs.changes.outputs.mobile == 'true'
         run: pnpm turbo run typecheck --filter="./packages/*" --filter=web --filter=admin-web --filter=customer --filter=provider
+
+      - name: Typecheck (turbo, web + packages)
+        if: needs.changes.outputs.mobile != 'true'
+        run: pnpm turbo run typecheck --filter="./packages/*" --filter=web --filter=admin-web
 
       - name: i18n locale parity
         run: pnpm i18n:check
@@ -97,7 +124,7 @@ jobs:
 
   lint:
     name: Lint
-    needs: install
+    needs: [install, changes]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -122,8 +149,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (turbo)
+      - name: Lint (turbo, all apps)
+        if: needs.changes.outputs.mobile == 'true'
         run: pnpm turbo run lint --filter=web --filter=admin-web --filter=customer --filter=provider
+
+      - name: Lint (turbo, web + admin)
+        if: needs.changes.outputs.mobile != 'true'
+        run: pnpm turbo run lint --filter=web --filter=admin-web
 
   build-web:
     name: Build Web App
@@ -229,7 +261,8 @@ jobs:
 
   build-mobile:
     name: Build Mobile Apps (Typecheck)
-    needs: [typecheck, lint]
+    needs: [typecheck, lint, changes]
+    if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
