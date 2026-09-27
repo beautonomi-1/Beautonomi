@@ -7,6 +7,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Idempotent: if a refund marker already exists for this booking on the ledger,
  * no-op (safe under webhook retries).
  *
+ * Requires an existing `redeemed` ledger row for the booking (does not trust
+ * booking column alone).
+ *
  * Caller MUST pass an admin-scoped Supabase client (RLS bypass).
  */
 export async function refundRedeemedLoyaltyPoints(
@@ -14,17 +17,14 @@ export async function refundRedeemedLoyaltyPoints(
   args: {
     bookingId: string;
     customerId: string;
-    pointsRedeemed: number;
     reason: string;
+    /** @deprecated Ignored; refund amount comes from the redeemed ledger row. */
+    pointsRedeemed?: number;
   },
 ): Promise<{ refunded: boolean; points: number; reason?: string }> {
-  const { bookingId, customerId, pointsRedeemed, reason } = args;
+  const { bookingId, customerId, reason } = args;
 
-  if (!pointsRedeemed || pointsRedeemed <= 0) {
-    return { refunded: false, points: 0, reason: "no_points" };
-  }
-
-  const { data: existing } = await adminClient
+  const { data: existingRefund } = await adminClient
     .from("loyalty_points_ledger")
     .select("id")
     .eq("booking_id", bookingId)
@@ -34,14 +34,32 @@ export async function refundRedeemedLoyaltyPoints(
     .limit(1)
     .maybeSingle();
 
-  if (existing) {
+  if (existingRefund) {
     return { refunded: false, points: 0, reason: "already_refunded" };
+  }
+
+  const { data: redeemedRow } = await adminClient
+    .from("loyalty_points_ledger")
+    .select("id, points_amount")
+    .eq("booking_id", bookingId)
+    .eq("customer_id", customerId)
+    .eq("transaction_type", "redeemed")
+    .limit(1)
+    .maybeSingle();
+
+  if (!redeemedRow) {
+    return { refunded: false, points: 0, reason: "no_redeem_row" };
+  }
+
+  const pointsToRefund = Math.abs(Number((redeemedRow as { points_amount?: number }).points_amount ?? 0));
+  if (pointsToRefund <= 0) {
+    return { refunded: false, points: 0, reason: "no_points" };
   }
 
   const { error: rpcError } = await (adminClient.rpc as any)("append_loyalty_ledger_entry", {
     p_customer_id: customerId,
     p_transaction_type: "adjusted",
-    p_points_amount: pointsRedeemed,
+    p_points_amount: pointsToRefund,
     p_booking_id: bookingId,
     p_description: `Refund of redeemed points (${reason})`,
     p_metadata: { reason, source: "booking_refund" },
@@ -53,5 +71,5 @@ export async function refundRedeemedLoyaltyPoints(
     return { refunded: false, points: 0, reason: "rpc_error" };
   }
 
-  return { refunded: true, points: pointsRedeemed };
+  return { refunded: true, points: pointsToRefund };
 }

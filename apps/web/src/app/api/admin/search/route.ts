@@ -63,12 +63,27 @@ type OnboardingDraftResult = {
   current_step: number | null;
 };
 
+type BrandCampaignResult = {
+  id: string;
+  name: string;
+  tracking_code: string;
+  stage: string | null;
+};
+
+type BrandBriefResult = {
+  id: string;
+  name: string;
+  status: string | null;
+};
+
 type SearchResults = {
   users: UserResult[];
   bookings: BookingResult[];
   providers: ProviderResult[];
   leads: LeadResult[];
   onboarding_drafts: OnboardingDraftResult[];
+  brand_campaigns: BrandCampaignResult[];
+  brand_briefs: BrandBriefResult[];
 };
 
 const EMPTY_RESULTS: SearchResults = {
@@ -77,6 +92,8 @@ const EMPTY_RESULTS: SearchResults = {
   providers: [],
   leads: [],
   onboarding_drafts: [],
+  brand_campaigns: [],
+  brand_briefs: [],
 };
 
 export async function GET(request: NextRequest) {
@@ -102,11 +119,14 @@ export async function GET(request: NextRequest) {
     const rpcResults = await runFuzzySearchRpc(admin, tenantId, searchTerm);
     const base = rpcResults ?? (await runLegacySearch(supabase, admin, tenantId, searchTerm));
     const ops = await searchProviderOpsRecords(admin, tenantId, searchTerm);
+    const brand = await searchBrandDeskRecords(admin, tenantId, searchTerm);
     return NextResponse.json({
       data: {
         ...base,
         leads: ops.leads,
         onboarding_drafts: ops.onboarding_drafts,
+        brand_campaigns: brand.campaigns,
+        brand_briefs: brand.briefs,
       },
       error: null,
     });
@@ -176,7 +196,15 @@ async function runFuzzySearchRpc(
     };
   });
 
-  return { users, providers, bookings, leads: [], onboarding_drafts: [] };
+  return {
+    users,
+    providers,
+    bookings,
+    leads: [],
+    onboarding_drafts: [],
+    brand_campaigns: [],
+    brand_briefs: [],
+  };
 }
 
 /** Legacy substring fallback (no fuzzy) — used only when the RPC is unavailable. */
@@ -330,7 +358,15 @@ async function runLegacySearch(
     };
   });
 
-  return { users, bookings, providers, leads: [], onboarding_drafts: [] };
+  return {
+    users,
+    bookings,
+    providers,
+    leads: [],
+    onboarding_drafts: [],
+    brand_campaigns: [],
+    brand_briefs: [],
+  };
 }
 
 /** Provider Ops leads and in-progress onboarding drafts (substring match). */
@@ -403,4 +439,35 @@ async function searchProviderOpsRecords(
   }
 
   return { leads, onboarding_drafts };
+}
+
+async function searchBrandDeskRecords(
+  admin: SupabaseClient,
+  tenantId: string,
+  searchTerm: string,
+): Promise<{ campaigns: BrandCampaignResult[]; briefs: BrandBriefResult[] }> {
+  const term = searchTerm.toLowerCase();
+  const { data: campaignRows } = await admin
+    .from("brand_campaigns")
+    .select("id, name, tracking_code, stage")
+    .eq("tenant_id", tenantId)
+    .limit(50);
+  const campaigns = (campaignRows ?? [])
+    .filter(
+      (c) =>
+        String(c.name ?? "").toLowerCase().includes(term) ||
+        String(c.tracking_code ?? "").toLowerCase().includes(term),
+    )
+    .slice(0, 5) as BrandCampaignResult[];
+
+  const { data: briefRows } = await admin
+    .from("brand_briefs")
+    .select("id, name, status")
+    .eq("tenant_id", tenantId)
+    .limit(50);
+  const briefs = (briefRows ?? [])
+    .filter((b) => String(b.name ?? "").toLowerCase().includes(term))
+    .slice(0, 5) as BrandBriefResult[];
+
+  return { campaigns, briefs };
 }

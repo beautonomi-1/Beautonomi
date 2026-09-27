@@ -223,6 +223,20 @@ export async function syncProviderVerificationState(
     }
   }
 
+  if (isApproved) {
+    try {
+      const { activateProviderAfterVerification } = await import(
+        "@/lib/provider-ops/activate-provider-after-verification"
+      );
+      await activateProviderAfterVerification(admin, {
+        providerId: input.providerId,
+        userId: input.userId ?? null,
+      });
+    } catch (activateErr) {
+      console.error("[syncProviderVerificationState] activate after verification:", activateErr);
+    }
+  }
+
   return result;
 }
 

@@ -24,6 +24,7 @@ import {
   listOpenTicketsForProvider,
   readProviderRiskSummary,
   readUserRiskSummary,
+  searchKnowledgeForCopilot,
 } from "./copilot-reads";
 
 function tool(name: string): AgentToolDefinition<any, any> {
@@ -84,6 +85,14 @@ const boundAdminSearchEntities = {
   ...tool("admin.searchEntities"),
   execute: (principal: Parameters<typeof searchEntitiesForCopilot>[0], input: Parameters<typeof searchEntitiesForCopilot>[1]) =>
     searchEntitiesForCopilot(principal, input),
+};
+
+const boundAdminSearchKnowledge = {
+  ...tool("admin.searchKnowledge"),
+  execute: (
+    principal: Parameters<typeof searchKnowledgeForCopilot>[0],
+    input: Parameters<typeof searchKnowledgeForCopilot>[1],
+  ) => searchKnowledgeForCopilot(principal, input),
 };
 
 const boundBookingReadSummary = {
@@ -152,6 +161,7 @@ export const BOUND_TOOL_REGISTRY: ReadonlyArray<AgentToolDefinition<any, any>> =
   boundTrustReadFraudCase,
   boundSafetyReadContentReport,
   boundAdminSearchEntities,
+  boundAdminSearchKnowledge,
   boundBookingReadSummary,
   boundUserReadProfileSummary,
   boundUserReadRecentBookings,

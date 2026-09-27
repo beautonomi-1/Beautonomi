@@ -79,7 +79,9 @@ flowchart TB
 2. **Setup checklist** — `identity-verification`, payout, services, hours, etc.
 3. **Identity verification** — when `provider_verification` flag is on
 
-Auto-approve is downgraded to `pending_approval` when verification is required but not yet approved (`apps/web/src/app/api/provider/onboarding/route.ts`).
+Auto-approve is downgraded to `pending_approval` when verification is required but not yet approved (`apps/web/src/app/api/provider/onboarding/route.ts`). Once verification is approved, `activateProviderAfterVerification` promotes held providers (`ready_for_activation` + tenant auto-approve) to `active`.
+
+Admin invite links use `/provider/onboarding?invite=`; the provider app maps that URL to the native wizard via `apps/provider/app/+native-intent.tsx`, redeems the token after auth, and sends `invite_token` on submit.
 
 ### Key files
 

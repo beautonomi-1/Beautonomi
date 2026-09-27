@@ -94,6 +94,8 @@ const EVENT_LABELS: Record<string, string> = {
   "finance.fx.stale": "Finance: FX reference rates stale or incomplete",
   "subscription.churned": "Subscriptions: churned",
   "subscription.apple_refund_failed": "Subscriptions: Apple refund failed",
+  "brand.brief.accepted": "Brand: brief accepted → campaign created",
+  "brand.campaign.live": "Brand: campaign went live",
 };
 
 /** Mirrors apps/web default-routing.ts defaultDedupeWindowSeconds for consistent DB/API/UI saves. */

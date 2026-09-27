@@ -1625,7 +1625,7 @@ export async function POST(request: NextRequest) {
           { onConflict: "user_id" }
         );
 
-      if (autoApprove) {
+      if (providerWentLive) {
         await markProviderOnboardingLifecycleComplete(supabaseAdmin, {
           providerId,
           userId: user.id,
@@ -1666,9 +1666,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Build success message with details
-    let message = autoApprove 
+    let message = providerWentLive
       ? "Onboarding completed successfully! Your provider account is now active."
-      : "Onboarding completed successfully. Your application is pending review.";
+      : autoApprove
+        ? "Onboarding completed successfully. Verify your identity to go live."
+        : "Onboarding completed successfully. Your application is pending review.";
     const autoConfigDetails: string[] = [];
     
     if (selected_zone_ids && selected_zone_ids.length > 0) {
@@ -1691,13 +1693,19 @@ export async function POST(request: NextRequest) {
       message += ` We've automatically configured: ${autoConfigDetails.join(', ')}.`;
     }
 
+    const { data: providerForResponse } = await supabaseAdmin
+      .from("providers")
+      .select("*")
+      .eq("id", providerId)
+      .maybeSingle();
+
     const completion = await buildOnboardingCompletionResponse({
       supabaseAdmin,
       tenantId,
-      provider: provider as Record<string, unknown>,
+      provider: (providerForResponse ?? provider) as Record<string, unknown>,
       selectedPlanId: selected_plan_id,
       message,
-      autoApprove,
+      autoApprove: providerWentLive,
       autoConfigured: {
         zones: selected_zone_ids?.length || 0,
         services: servicesToCreate.length > 0 && services.length === 0 ? servicesToCreate.length : 0,

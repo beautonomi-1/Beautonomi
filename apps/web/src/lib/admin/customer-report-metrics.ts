@@ -4,9 +4,11 @@ import {
   computeRepeatRate,
   medianDaysBetweenVisits,
   daysSince,
-  type CompletedBookingLite,
 } from "@/lib/admin/marketplace-health";
-import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  financeExportRowsAsLedgerRows,
+} from "@/lib/admin/finance-ledger-tenant";
 import { sumPlatformContributionByCustomer } from "@/lib/admin/marketplace-health-contribution";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
@@ -14,6 +16,7 @@ import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 type BookingRow = {
   id: string;
   customer_id: string;
+  provider_id: string;
   scheduled_at: string;
   total_amount?: number;
   status: string;
@@ -30,7 +33,7 @@ export async function buildCustomerReportMetrics(
     ? await fetchAllLedgerPages<BookingRow>(
         supabase
           .from("bookings")
-          .select("id, customer_id, scheduled_at, total_amount, status")
+          .select("id, customer_id, provider_id, scheduled_at, total_amount, status")
           .eq("tenant_id", tenantId)
           .in("customer_id", customerIds)
           .eq("status", "completed")
@@ -42,9 +45,9 @@ export async function buildCustomerReportMetrics(
 
   const start = new Date(startISO);
   const end = new Date(endISO);
-  const frequency = computeBookingFrequency(completed as CompletedBookingLite[], start, end);
-  const repeatRate = computeRepeatRate(completed as CompletedBookingLite[], start, end);
-  const medianDays = medianDaysBetweenVisits(completed as CompletedBookingLite[]);
+  const frequency = computeBookingFrequency(completed, start, end);
+  const repeatRate = computeRepeatRate(completed, start, end);
+  const medianDays = medianDaysBetweenVisits(completed);
 
   const bookingIdToCustomer = new Map<string, string>();
   for (const b of completed) {
@@ -56,7 +59,7 @@ export async function buildCustomerReportMetrics(
     { start: startISO, end: endISO },
     {},
   );
-  const contributionByCustomer = sumPlatformContributionByCustomer(ledger, bookingIdToCustomer);
+  const contributionByCustomer = sumPlatformContributionByCustomer(financeExportRowsAsLedgerRows(ledger), bookingIdToCustomer);
 
   const completedByCustomer: Record<
     string,

@@ -176,6 +176,7 @@ export async function POST(request: NextRequest) {
       channel: "sms",
       message,
       status,
+      metadata: { tenant_id: tenantId },
       created_at: new Date().toISOString(),
     });
     if (logError) {

@@ -158,6 +158,8 @@ export const bookingDraftSchema = z.object({
       },
       { message: "Invalid paystack_callback_url" },
     ),
+  embed: z.boolean().optional(),
+  embed_return_url: z.string().trim().optional(),
 });
 
 export type PublicBookingValidatedBody = z.infer<typeof bookingDraftSchema>;

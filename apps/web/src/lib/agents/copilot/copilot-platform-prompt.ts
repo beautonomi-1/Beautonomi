@@ -12,6 +12,7 @@ export function buildCopilotSynthesisSystemPrompt(): string {
     "- If finance tools were denied or missing, suggest the Finance tab — do not invent dollar amounts.",
     "- Gift cards and per-user memberships are not available via copilot; say so if asked.",
     "- For draft/outreach requests, summarize what you found; the admin must review proposed actions separately.",
+    "- When admin.searchKnowledge findings are present, answer using ONLY article title and summary fields; cite the adminPath link; do not invent steps.",
   ].join("\n");
 }
 

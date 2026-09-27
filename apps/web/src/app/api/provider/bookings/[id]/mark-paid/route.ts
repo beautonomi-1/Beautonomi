@@ -437,130 +437,42 @@ export async function POST(
         }
       }
 
-      if (!payment && !stableReference) {
-        try {
-          const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
-            "create_booking_payment",
-            {
-              p_booking_id: bookingId,
-              p_amount: paymentAmount,
-              p_payment_method: effectivePaymentMethod,
-              p_payment_provider: paymentProvider,
-              p_status: "completed",
-              p_notes: notes || `Payment received via ${payment_method}`,
-              p_created_by: user.id,
-              p_reference: stableReference || null,
-            },
-          );
-
-          if (!rpcError && rpcPayment) {
-            payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
-          } else if (
-            rpcError &&
-            !rpcError.message?.includes("function") &&
-            !rpcError.message?.includes("does not exist")
-          ) {
-            paymentError = rpcError;
-          }
-        } catch {
-          console.log("RPC function not available, using direct insert");
-        }
-      }
-
       if (!payment && !paymentError) {
         const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
-        const paymentData: any = {
-          booking_id: bookingId,
-          amount: paymentAmount,
-          payment_method: effectivePaymentMethod,
-          payment_provider: paymentProvider,
-          status: "completed",
-          notes: notes || `Payment received via ${payment_method}`,
-          created_by: user.id,
-          ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-        };
-
-        if (stableReference) {
-          paymentData.payment_provider_id = stableReference;
-          paymentData.payment_provider_data = {
-            source:
-              paymentProvider === "yoco"
-                ? "provider_mark_paid_yoco_terminal"
-                : "provider_mark_paid",
-            reference: stableReference,
-            idempotency_key:
-              typeof idempotency_key === "string" && idempotency_key.trim()
-                ? idempotency_key.trim()
-                : request.headers.get("Idempotency-Key")?.trim() || null,
-          };
-        }
-
-        const { data: paymentInserted, error: insertError } = await supabaseAdmin
-          .from("booking_payments")
-          .insert(paymentData)
-          .select()
-          .single();
-
-        if (insertError) {
-          if (insertError.message?.includes("status") || insertError.message?.includes("enum")) {
-            delete paymentData.status;
-            const { data: paymentWithoutStatus, error: insertError2 } = await supabaseAdmin
-              .from("booking_payments")
-              .insert(paymentData)
-              .select()
-              .single();
-
-            if (insertError2) {
-              paymentError = insertError2;
-            } else {
-              payment = paymentWithoutStatus;
-              const { error: updateError } = await supabaseAdmin
-                .from("booking_payments")
-                .update({ status: "completed" })
-                .eq("id", payment.id);
-
-              if (!updateError) {
-                const { data: updated } = await supabaseAdmin
-                  .from("booking_payments")
-                  .select()
-                  .eq("id", payment.id)
-                  .single();
-                if (updated) payment = updated;
-              }
+        const paymentProviderData = stableReference
+          ? {
+              source:
+                paymentProvider === "yoco"
+                  ? "provider_mark_paid_yoco_terminal"
+                  : "provider_mark_paid",
+              reference: stableReference,
+              idempotency_key:
+                typeof idempotency_key === "string" && idempotency_key.trim()
+                  ? idempotency_key.trim()
+                  : request.headers.get("Idempotency-Key")?.trim() || null,
             }
-          } else if (insertError.code === "23505" && stableReference) {
-            const { data: existingPayment } = await supabaseAdmin
-              .from("booking_payments")
-              .select()
-              .eq("payment_provider", paymentProvider)
-              .eq("payment_provider_id", stableReference)
-              .maybeSingle();
-            if (existingPayment) {
-              payment = existingPayment;
-              paymentAlreadyRecorded = true;
-            } else {
-              paymentError = insertError;
-            }
-          } else {
-            paymentError = insertError;
-          }
+          : null;
+
+        const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
+          "create_booking_payment",
+          {
+            p_booking_id: bookingId,
+            p_amount: paymentAmount,
+            p_payment_method: effectivePaymentMethod,
+            p_payment_provider: paymentProvider,
+            p_status: "completed",
+            p_notes: notes || `Payment received via ${payment_method}`,
+            p_created_by: user.id,
+            p_reference: stableReference,
+            p_payment_provider_data: paymentProviderData,
+            p_tenant_id: bookingTenantId ?? null,
+          },
+        );
+
+        if (!rpcError && rpcPayment) {
+          payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
         } else {
-          payment = paymentInserted;
-          if (payment && payment.status !== "completed") {
-            const { error: updateError } = await supabaseAdmin
-              .from("booking_payments")
-              .update({ status: "completed" })
-              .eq("id", payment.id);
-
-            if (!updateError) {
-              const { data: updated } = await supabaseAdmin
-                .from("booking_payments")
-                .select()
-                .eq("id", payment.id)
-                .single();
-              if (updated) payment = updated;
-            }
-          }
+          paymentError = rpcError;
         }
       }
 

@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, successResponse } from "@/lib/supabase/api-helpers";
+import { resolveLoyaltyConfig } from "@/lib/loyalty/resolve-loyalty-config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/loyalty/balance
@@ -19,15 +22,10 @@ export async function GET(request: NextRequest) {
     return errorResponse("Authentication required", "UNAUTHORIZED", 401);
   }
 
-  const [ledgerResult, configResult] = await Promise.all([
+  const admin = getSupabaseAdmin();
+  const [ledgerResult, cfg] = await Promise.all([
     supabase.rpc("get_customer_available_points", { customer_uuid: user.id }),
-    supabase
-      .from("loyalty_point_config")
-      .select("redemption_rate, min_redemption_points, max_redemption_percentage")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    resolveLoyaltyConfig(admin, LAST_RESORT_CURRENCY),
   ]);
 
   const toFiniteNumber = (val: unknown): number => {
@@ -37,15 +35,10 @@ export async function GET(request: NextRequest) {
 
   const balance = !ledgerResult.error ? toFiniteNumber(ledgerResult.data) : 0;
 
-  const cfg = configResult.data;
-  const redemptionRate = Number(cfg?.redemption_rate) || 10;
-  const minRedemptionPoints = Number(cfg?.min_redemption_points) || 0;
-  const maxRedemptionPercentage = Number(cfg?.max_redemption_percentage) ?? 100;
-
   return successResponse({
     balance,
-    redemption_rate: redemptionRate,
-    min_redemption_points: minRedemptionPoints,
-    max_redemption_percentage: maxRedemptionPercentage,
+    redemption_rate: cfg.redemptionRate,
+    min_redemption_points: cfg.minRedemptionPoints,
+    max_redemption_percentage: cfg.maxRedemptionPercentage,
   });
 }

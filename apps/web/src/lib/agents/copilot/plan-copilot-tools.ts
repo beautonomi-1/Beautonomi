@@ -6,6 +6,13 @@ export type PlannedToolCall = { name: string; input: Record<string, unknown> };
 
 const MAX_PROVIDER_CHAIN = 3;
 
+function buildKnowledgeSearchQuery(question: string, desk?: string | null): string {
+  const q = question.trim();
+  const d = desk?.trim();
+  if (d) return `${d} ${q}`.trim();
+  return q;
+}
+
 export async function planToolsForIntent(params: {
   intent: CopilotIntent;
   question: string;
@@ -13,8 +20,9 @@ export async function planToolsForIntent(params: {
   allowedSections: string[];
   tenantId: string;
   resolvedEntities: CopilotResolvedEntities;
+  desk?: string | null;
 }): Promise<PlannedToolCall[]> {
-  const { intent, environment, allowedSections, tenantId, resolvedEntities } = params;
+  const { intent, environment, allowedSections, tenantId, resolvedEntities, desk } = params;
   const calls: PlannedToolCall[] = [];
   const has = (s: string) => allowedSections.includes(s);
 
@@ -29,6 +37,12 @@ export async function planToolsForIntent(params: {
   };
 
   switch (intent) {
+    case "howto.knowledge":
+      if (has("overview")) {
+        push("admin.searchKnowledge", { query: buildKnowledgeSearchQuery(params.question, desk) });
+      }
+      break;
+
     case "ops.health":
       if (has("operations")) push("ops.readSystemHealth", { environment });
       break;

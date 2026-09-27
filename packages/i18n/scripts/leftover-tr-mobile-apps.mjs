@@ -96,6 +96,12 @@ function loadCuratedPhraseMaps() {
   }
   const frPath = path.join(root, "_maps/t-mobile-fr-ar.json");
   if (fs.existsSync(frPath)) Object.assign(frar, JSON.parse(fs.readFileSync(frPath, "utf8")));
+  const shopGatePath = path.join(root, "_maps/t-sa-mobile-product-shop-gate.json");
+  if (fs.existsSync(shopGatePath)) {
+    const shop = JSON.parse(fs.readFileSync(shopGatePath, "utf8"));
+    Object.assign(sa, shop);
+    Object.assign(frar, shop);
+  }
   return { sa, frar };
 }
 
@@ -213,7 +219,10 @@ for (const locale of localesToRun) {
     }
     if (!apply) continue;
 
-    const out = translateFor(enVal, locale);
+    let out = curatedTranslation(enVal, locale);
+    if (!out || out === enVal || !varsOk(enVal, out)) {
+      out = translateFor(enVal, locale);
+    }
     if (!out || out === enVal || !varsOk(enVal, out)) {
       skipped += 1;
       continue;

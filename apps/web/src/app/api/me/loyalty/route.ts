@@ -4,6 +4,8 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveLoyaltyConfig } from "@/lib/loyalty/resolve-loyalty-config";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/me/loyalty
@@ -56,21 +58,13 @@ export async function GET(request: NextRequest) {
     let pointsPerCurrency = 1;
 
     try {
-      const { data: activeRule, error: ruleError } = await supabase
-        .from("loyalty_rules")
-        .select("points_per_currency_unit, currency, redemption_rate")
-        .eq("is_active", true)
-        .order("effective_from", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!ruleError && activeRule) {
-        redemptionRate = Number(activeRule.redemption_rate) || 100;
-        currency = activeRule.currency || lastResortCurrency;
-        pointsPerCurrency = Number(activeRule.points_per_currency_unit) || 1;
-      }
+      const admin = getSupabaseAdmin();
+      const cfg = await resolveLoyaltyConfig(admin, lastResortCurrency);
+      redemptionRate = cfg.redemptionRate;
+      currency = cfg.currency;
+      pointsPerCurrency = cfg.pointsPerCurrencyUnit;
     } catch {
-      console.warn("loyalty_rules table not found, using defaults");
+      console.warn("loyalty config resolve failed, using defaults");
     }
 
     let milestones: any[] = [];

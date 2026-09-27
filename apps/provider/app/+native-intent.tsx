@@ -75,6 +75,12 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
       const search = isAbsoluteUrl ? parseSafe(path).search : (path.includes("?") ? path.slice(path.indexOf("?")) : "");
       return withQuery("/join", search);
     }
+
+    // Provider onboarding invite (admin-sent link opens provider app)
+    if (pathname === "/provider/onboarding" || pathname.startsWith("/provider/onboarding/")) {
+      const inviteSearch = isAbsoluteUrl ? parseSafe(path).search : (path.includes("?") ? path.slice(path.indexOf("?")) : "");
+      return withQuery("/(app)/onboarding/wizard", inviteSearch);
+    }
     // HTTPS: /provider/settings/ads/payment-return
     // Deep:  provider://settings/ads-payment-return  (host=settings, pathname=/ads-payment-return)
     if (

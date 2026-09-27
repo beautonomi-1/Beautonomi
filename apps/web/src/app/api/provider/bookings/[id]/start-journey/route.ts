@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -134,11 +135,13 @@ export async function POST(
         ? { provider_eta_minutes: providerEtaMinutes, eta_source: "manual" }
         : {};
 
+    const bookingsAdmin = getBookingsAdminClient();
     const applyUpdate = (payload: Record<string, unknown>) =>
-      supabase
+      bookingsAdmin
         .from("bookings")
         .update(payload)
         .eq("id", id)
+        .eq("provider_id", providerId)
         .eq("version", currentVersion)
         .select("*");
 

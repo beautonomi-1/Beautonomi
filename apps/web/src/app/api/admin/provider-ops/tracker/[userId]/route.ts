@@ -21,11 +21,12 @@ const STEP_NAMES: Record<number, string> = {
   7: "Location",
   8: "Photos",
   9: "Service Zones",
-  10: "Categories",
-  11: "Services",
-  12: "Operating Hours",
-  13: "Review",
-  14: "Plan Selection",
+  10: "Travel Fees",
+  11: "Categories",
+  12: "Services",
+  13: "Operating Hours",
+  14: "Review",
+  15: "Plan Selection",
 };
 
 export async function GET(
@@ -88,7 +89,7 @@ export async function GET(
       number,
       { completed: boolean; name: string; data_present: string[] }
     > = {};
-    for (let s = 1; s <= 14; s++) {
+    for (let s = 1; s <= 15; s++) {
       stepCompletion[s] = {
         completed: s < currentStep,
         name: STEP_NAMES[s],
@@ -113,20 +114,21 @@ export async function GET(
     if (draftHasAddressLine(addr)) stepCompletion[7].data_present.push("address");
     if (draftData.thumbnail_url)
       stepCompletion[8].data_present.push("thumbnail");
+    if (draftData.travel_fees) stepCompletion[10].data_present.push("travel_fees");
     if (
       Array.isArray(draftData.global_category_ids) &&
       draftData.global_category_ids.length > 0
     )
-      stepCompletion[10].data_present.push("categories");
+      stepCompletion[11].data_present.push("categories");
     if (
       Array.isArray(draftData.services) &&
       draftData.services.length > 0
     )
-      stepCompletion[11].data_present.push("services");
+      stepCompletion[12].data_present.push("services");
     if (draftData.operating_hours)
-      stepCompletion[12].data_present.push("operating_hours");
+      stepCompletion[13].data_present.push("operating_hours");
     if (draftData.selected_plan_id)
-      stepCompletion[14].data_present.push("plan");
+      stepCompletion[15].data_present.push("plan");
 
     // Check for linked lead
     let linkedLead = null;

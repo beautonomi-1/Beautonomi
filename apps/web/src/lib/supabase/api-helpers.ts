@@ -24,6 +24,7 @@ import {
 } from '@/lib/admin-sections';
 import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
 import { fetchScopedSingle } from '@/lib/tenant/scoped-overrides';
+import { GrcHttpError } from '@/lib/grc/errors';
 
 export interface ApiError {
   message: string;
@@ -692,12 +693,16 @@ async function requireRoleInApiImpl(
         if (userRole === "customer" && roles.includes("provider_staff")) {
           const { data: staffRow } = await supabase
             .from("provider_staff")
-            .select("id")
+            .select("id, invite_accepted_at, role")
             .eq("user_id", resolvedUserData!.id)
             .eq("is_active", true)
             .limit(1)
             .maybeSingle();
-          if (staffRow) userRole = "provider_staff";
+          const accepted =
+            staffRow &&
+            ((staffRow as { invite_accepted_at?: string | null }).invite_accepted_at != null ||
+              (staffRow as { role?: string | null }).role === "owner");
+          if (staffRow && accepted) userRole = "provider_staff";
         }
 
         // DB may store provider_onboarding (legacy / explicit). Allow only when the route is not
@@ -1202,3 +1207,56 @@ export function formatDateForDb(date: Date): string {
 
 /** E.164 normalization for API routes (shared with web client via @beautonomi/phone). */
 export { normalizePhoneToE164 } from "@beautonomi/phone";
+
+const GRC_FORCED_MFA = { enabled: true, required_for_admins: true, required_roles: [] as string[] };
+
+/**
+ * Platform-wide GRC API guard: admin shell role, forced MFA (AAL2), feature flag, permission RPC.
+ * Does not require tenant membership (unlike requireAdminSection).
+ */
+export async function requireGrcPermission(
+  permissionKey: string,
+  request: NextRequest | Request,
+): Promise<{
+  user: { id: string; role: UsersRoleFromDb; email?: string; full_name?: string | null };
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>;
+  grcRoles: string[];
+}> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new GrcHttpError("Authentication required", 401, "UNAUTHORIZED");
+
+  await requireAdminMfaIfRequired(request, user.role, GRC_FORCED_MFA);
+
+  const admin = getSupabaseAdmin();
+  const { data: flagRow } = await admin
+    .from("feature_flags")
+    .select("enabled")
+    .eq("feature_key", "grc_hub_enabled")
+    .is("tenant_id", null)
+    .maybeSingle();
+  if (!(flagRow as { enabled?: boolean } | null)?.enabled) {
+    throw new GrcHttpError("Security & Compliance hub is not enabled", 403, "GRC_DISABLED");
+  }
+
+  const supabase = await getSupabaseServer(request);
+  const { data: allowed, error: permErr } = await supabase.rpc("grc_has_permission", {
+    p_uid: user.id,
+    p_key: permissionKey,
+  });
+  if (permErr) throw new Error(permErr.message);
+  if (!allowed) {
+    throw new GrcHttpError(`You do not have the GRC permission "${permissionKey}"`, 403, "GRC_FORBIDDEN");
+  }
+
+  const { data: assignments } = await admin
+    .from("grc_role_assignments")
+    .select("grc_role, expires_at")
+    .eq("user_id", user.id)
+    .eq("is_active", true);
+  const now = Date.now();
+  const grcRoles = ((assignments ?? []) as Array<{ grc_role: string; expires_at: string | null }>)
+    .filter((a) => !a.expires_at || new Date(a.expires_at).getTime() > now)
+    .map((a) => a.grc_role);
+
+  return { user, supabase, grcRoles };
+}

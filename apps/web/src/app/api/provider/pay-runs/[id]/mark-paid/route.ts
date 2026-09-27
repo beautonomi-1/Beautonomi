@@ -10,6 +10,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { notifyPayRunStaff } from "@/lib/notifications/notify-staff-event";
 import { z } from "zod";
+import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 
 const bodySchema = z.object({
   /** Bank / EFT / cash reference recorded on the pay run (payroll stays out of the GL). */
@@ -44,6 +45,10 @@ export async function POST(
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlocked) {
+      return handleApiError(new Error(payrollBlocked), "PAYROLL_UNAVAILABLE", 403);
+    }
 
     const { data: payRun, error: fetchError } = await supabaseAdmin
       .from("provider_pay_runs")

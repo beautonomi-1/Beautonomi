@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { fetchBookingCommissionContext } from "./fetch-booking-commission-context";
 import {
@@ -221,7 +221,8 @@ export async function recordBookingOnlineChargeLedger(
   const commissionRate =
     commissionMode === "provider_collected"
       ? 0
-      : await resolveCommissionPercentageForProvider(supabase, {
+      : await resolveCommissionPercentageForBooking(supabase, {
+          bookingId: input.bookingId,
           tenantId: financeTenantId,
           providerId: bookingData.provider_id ?? null,
         });

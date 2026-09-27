@@ -694,6 +694,8 @@ export interface ExpressBookingLink {
   name: string;
   short_code: string;
   full_url: string;
+  embed_url?: string;
+  iframe_snippet?: string;
   service_id?: string; // First pre-selected service (backward compat)
   service_ids?: string[]; // Pre-selected services
   team_member_id?: string; // Pre-selected team member

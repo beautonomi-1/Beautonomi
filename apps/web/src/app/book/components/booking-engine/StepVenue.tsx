@@ -159,6 +159,7 @@ export function StepVenue({
             distanceKm?: number;
             travelTimeMinutes?: number;
             reason?: string;
+            errorCode?: string;
           };
         }>("/api/location/validate", {
           address,
@@ -173,6 +174,7 @@ export function StepVenue({
           distanceKm?: number;
           travelTimeMinutes?: number;
           reason?: string;
+          errorCode?: string;
         };
         if (d?.valid === true && typeof d.travelFee === "number") {
           setTravelPreview({
@@ -184,7 +186,14 @@ export function StepVenue({
         } else {
           setTravelPreview({
             status: "error",
-            reason: d?.reason ?? t("web.book.engine.couldNotConfirmTravel"),
+            reason:
+              d?.errorCode === "OUTSIDE_SERVICE_AREA" || d?.errorCode === "DISTANCE_LIMIT"
+                ? t(
+                    locations.length > 0
+                      ? "booking.travelFeePreview.outsideServiceArea"
+                      : "booking.travelFeePreview.outsideServiceAreaNoSalon",
+                  )
+                : d?.reason ?? t("web.book.engine.couldNotConfirmTravel"),
             distanceKm: d?.distanceKm,
           });
         }
@@ -198,7 +207,7 @@ export function StepVenue({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [venueType, providerId, atHomeAddressKey, data.atHomeAddress.line1, data.atHomeAddress.city, data.atHomeAddress.country]);
+  }, [venueType, providerId, atHomeAddressKey, data.atHomeAddress.line1, data.atHomeAddress.city, data.atHomeAddress.country, locations.length]);
 
   const atSalonOk = venueType === "at_salon" && (locations.length === 0 || data.selectedLocation != null);
   const atHomeOk =
@@ -448,6 +457,12 @@ export function StepVenue({
           </div>
         </div>
       )}
+
+      {venueType === "at_home" && providerId ? (
+        <p className="text-sm leading-snug px-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+          {t("booking.houseCallPricing.atHomeVenueCombined")}
+        </p>
+      ) : null}
 
       {venueType === "at_home" && providerId && travelPreview.status !== "idle" && (
         <div

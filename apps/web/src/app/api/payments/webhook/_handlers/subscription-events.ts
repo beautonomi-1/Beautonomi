@@ -364,8 +364,9 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     return;
   }
 
-  const amountInCurrency = convertFromSmallestUnit(Number(amount || 0));
-  const feesInCurrency = convertFromSmallestUnit(Number(fees || 0));
+  const payloadCurrency = String(payload.currency || "ZAR");
+  const amountInCurrency = convertFromSmallestUnit(Number(amount || 0), payloadCurrency);
+  const feesInCurrency = convertFromSmallestUnit(Number(fees || 0), payloadCurrency);
   const netAmount = amountInCurrency - feesInCurrency;
 
   const { data: subscriptionDetails } = await supabase
@@ -675,9 +676,9 @@ async function handleSubscriptionInvoice(
     await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference: failedReference,
-      amount: convertFromSmallestUnit(amount),
-      fees: convertFromSmallestUnit(fees),
-      net_amount: convertFromSmallestUnit(amount - fees),
+      amount: convertFromSmallestUnit(amount, payload.currency || "ZAR"),
+      fees: convertFromSmallestUnit(fees, payload.currency || "ZAR"),
+      net_amount: convertFromSmallestUnit(amount - fees, payload.currency || "ZAR"),
       status: "failed",
       provider: "paystack",
       transaction_type: "provider_subscription_payment",
@@ -711,7 +712,7 @@ async function handleSubscriptionInvoice(
             {
               business_name: (provider as { business_name?: string }).business_name || "Provider",
               plan_name: subData.subscription_plans?.name || "subscription",
-              amount: `${convertFromSmallestUnit(amount)}`,
+              amount: `${convertFromSmallestUnit(amount, payload.currency || "ZAR")}`,
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
             },
             ["push"],

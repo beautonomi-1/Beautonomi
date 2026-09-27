@@ -219,6 +219,7 @@ export async function POST(request: NextRequest) {
       subject,
       message: text,
       status,
+      metadata: { tenant_id: tenantId },
       created_at: new Date().toISOString(),
     });
     if (logError) {

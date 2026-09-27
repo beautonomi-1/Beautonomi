@@ -75,6 +75,15 @@ interface PaymentSummaryData {
   /** Walk-in / cash `booking_payments` in range with no matching `finance_transactions` payment row. */
   cashStylePaymentsWithoutLedgerCount?: number;
   cashStylePaymentsWithoutLedgerAmount?: number;
+  membershipProviderEarnings?: number;
+  providerCollectedByMethod?: Array<{
+    method: string;
+    count: number;
+    amount: number;
+    percentage: number;
+  }>;
+  ledger_truncated?: boolean;
+  max_finance_transactions?: number;
 }
 
 export default function PaymentSummaryReport() {
@@ -239,6 +248,22 @@ export default function PaymentSummaryReport() {
           </Alert>
         )}
 
+        {data.ledger_truncated ? (
+          <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+            <Info className="h-4 w-4 text-amber-800" />
+            <div>
+              <AlertTitle className="text-amber-950">
+                {t("web.provider.reports.pages.payments/summary.ledgerTruncatedTitle")}
+              </AlertTitle>
+              <AlertDescription className="text-amber-950/90">
+                {t("web.provider.reports.pages.payments/summary.ledgerTruncated", {
+                  max: data.max_finance_transactions ?? 50000,
+                })}
+              </AlertDescription>
+            </div>
+          </Alert>
+        ) : null}
+
         {(data.cashStylePaymentsWithoutLedgerCount ?? 0) > 0 && (
           <Alert className="border-amber-200 bg-amber-50 text-amber-950">
             <Info className="h-4 w-4 text-amber-800" />
@@ -386,6 +411,24 @@ export default function PaymentSummaryReport() {
             </CardContent>
           </Card>
 
+          {(data.membershipProviderEarnings ?? 0) > 0 ? (
+            <Card className="border-gray-200 border-s-4 border-s-indigo-500">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  {t("web.provider.reports.pages.payments/summary.membershipEarnings")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {fmt(data.membershipProviderEarnings ?? 0)}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {t("web.provider.reports.pages.payments/summary.membershipEarningsHint")}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
@@ -468,6 +511,46 @@ export default function PaymentSummaryReport() {
                 {data.basis.providerNetActivity ? (
                   <p><strong>{t("web.provider.reports.pages.payments/summary.providerNetLabel")}</strong> {data.basis.providerNetActivity}</p>
                 ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {data.providerCollectedByMethod && data.providerCollectedByMethod.length > 0 ? (
+          <Card className="border-gray-200">
+            <CardHeader>
+              <CardTitle>{t("web.provider.reports.pages.payments/summary.providerCollectedByMethod")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {data.providerCollectedByMethod.map((method, index) => (
+                  <div
+                    key={`collected-${method.method}`}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white font-semibold text-sm">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 capitalize">
+                          {method.method === "eft"
+                            ? t("web.provider.reports.pages.payments/summary.methodEft")
+                            : method.method.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {t("web.provider.reports.pages.payments/summary.transactionsCount", {
+                            count: method.count,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-end">
+                      <p className="text-sm font-semibold text-gray-900">{fmt(method.amount)}</p>
+                      <p className="text-xs text-gray-500">{method.percentage.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

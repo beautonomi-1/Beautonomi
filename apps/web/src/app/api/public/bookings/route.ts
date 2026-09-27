@@ -569,6 +569,8 @@ export async function POST(request: NextRequest) {
               tax_rate: v.taxRate,
               tax_inclusive: v.taxIncluded,
             },
+            loyalty_points_earned: 0,
+            loyalty_points_projected: v.loyaltyPointsProjected,
           };
 
           if (idempotencyKey) {

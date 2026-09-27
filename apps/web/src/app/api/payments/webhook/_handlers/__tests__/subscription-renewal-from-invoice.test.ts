@@ -70,18 +70,18 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
         };
       }
       if (table === "subscription_plans") {
+        const planData = {
+          name: "Test Plan",
+          currency: "ZAR",
+          price_monthly: 50,
+          price_yearly: 500,
+          is_free: false,
+        };
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              single: vi.fn(async () => ({
-                data: {
-                  name: "Test Plan",
-                  currency: "ZAR",
-                  price_monthly: 50,
-                  price_yearly: 500,
-                },
-                error: null,
-              })),
+              single: vi.fn(async () => ({ data: planData, error: null })),
+              maybeSingle: vi.fn(async () => ({ data: planData, error: null })),
             })),
           })),
         };
@@ -91,6 +91,10 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               single: vi.fn(async () => ({
+                data: { user_id: null, business_name: "Test Co", tenant_id: "tenant-za" },
+                error: null,
+              })),
+              maybeSingle: vi.fn(async () => ({
                 data: { user_id: null, business_name: "Test Co", tenant_id: "tenant-za" },
                 error: null,
               })),

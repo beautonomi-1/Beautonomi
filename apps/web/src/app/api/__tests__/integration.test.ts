@@ -49,6 +49,34 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   sendToUser: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/bookings/verify-paystack-booking-charge", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/bookings/verify-paystack-booking-charge")>();
+  return {
+    ...actual,
+    verifyPaystackBookingCharge: vi.fn(async () => ({
+      ok: true as const,
+      amountMajor: 100,
+      currency: "ZAR",
+      pendingPayment: {
+        amount: 100,
+        currency: "ZAR",
+        metadata: {},
+        payment_provider_transaction_id: "ref-booking",
+      },
+    })),
+  };
+});
+
+vi.mock("@/lib/finance/record-reconciliation-exception", () => ({
+  recordReconciliationException: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/lib/integrations/slack/ops-triggers", () => ({
+  slackNotifyUnrecognizedPayments: vi.fn(),
+  slackNotifyPaymentFailed: vi.fn(),
+}));
+
 vi.mock("../payments/webhook/_handlers/shared", () => ({
   generateGiftCardCode: vi.fn(() => "GIFT-CODE-1"),
   savePaystackAuthorization: vi.fn(async () => undefined),

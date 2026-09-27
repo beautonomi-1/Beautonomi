@@ -487,6 +487,7 @@ export async function runAdminCopilotOrchestrator(raw: unknown) {
       allowedSections: input.allowedSections,
       tenantId: input.tenantId,
       resolvedEntities,
+      desk: input.desk,
     });
   }
 

@@ -1,0 +1,10 @@
+# Admin platform governance — see docs/grc/branch-protection.md
+/apps/admin-web/ @beautonomi/admin-frontend
+/packages/admin-access/ @beautonomi/admin-frontend @beautonomi/security
+/packages/admin-api-client/ @beautonomi/admin-frontend
+/packages/grc-catalog/ @beautonomi/security @beautonomi/admin-frontend
+/apps/web/src/app/api/admin/ @beautonomi/backend @beautonomi/admin-frontend
+/apps/web/src/app/api/admin/grc/ @beautonomi/security @beautonomi/backend
+/apps/web/src/lib/grc/ @beautonomi/security @beautonomi/backend
+/apps/web/src/proxy.ts @beautonomi/platform @beautonomi/admin-frontend
+/supabase/migrations/ @beautonomi/backend @beautonomi/security

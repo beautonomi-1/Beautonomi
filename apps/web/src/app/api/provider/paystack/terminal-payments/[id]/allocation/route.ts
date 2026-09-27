@@ -252,8 +252,8 @@ export async function POST(
       try {
         await settleAdditionalChargePlatformHeld(admin, {
           reference: payment.paystack_reference,
-          amountSmallestUnit: convertToSmallestUnit(requestedAmount),
-          feesSmallestUnit: convertToSmallestUnit(Number(payment.gateway_fee_amount ?? 0)),
+          amountSmallestUnit: convertToSmallestUnit(requestedAmount, payment.currency ?? "ZAR"),
+          feesSmallestUnit: convertToSmallestUnit(Number(payment.gateway_fee_amount ?? 0), payment.currency ?? "ZAR"),
           bookingId: acBookingId,
           chargeId: body.entity_id,
           paystackTransactionId: payment.paystack_transaction_id ?? null,

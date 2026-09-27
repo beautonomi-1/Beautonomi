@@ -15,6 +15,7 @@ import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provid
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-triggers";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
+import { getActiveProviderPayoutHold } from "@/lib/fraud/provider-payout-hold";
 
 export const maxDuration = 60;
 
@@ -159,6 +160,15 @@ export async function POST(request: NextRequest) {
 
     if (!amount || amount <= 0) {
       return errorResponse("Amount must be greater than 0", "VALIDATION_ERROR", 400);
+    }
+
+    const activeHold = await getActiveProviderPayoutHold(getSupabaseAdmin(), providerId);
+    if (activeHold) {
+      return errorResponse(
+        "Payouts are temporarily on hold while we review your account. Contact support if you need help.",
+        "PAYOUT_HELD",
+        409,
+      );
     }
 
     const numAmount = roundMoney2(Number(amount));
@@ -319,6 +329,13 @@ export async function POST(request: NextRequest) {
           `Insufficient balance. Available: ${availableRounded}, Requested: ${requestRounded}`,
           "INSUFFICIENT_BALANCE",
           400,
+        );
+      }
+      if (msg.includes("PAYOUT_HELD")) {
+        return errorResponse(
+          "Payouts are temporarily on hold while we review your account. Contact support if you need help.",
+          "PAYOUT_HELD",
+          409,
         );
       }
       throw payoutError;

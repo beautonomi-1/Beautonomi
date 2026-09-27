@@ -583,6 +583,51 @@ describe("getAvailablePayoutBalance — payout exclusion matrix", () => {
     expect(result.hasNegativeBalance).toBe(false);
   });
 
+  it("holds prepaid booking earnings until status is completed", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [earnings("b-prepaid", 100, T)],
+        bookings: [{ id: "b-prepaid", status: "confirmed", completed_at: null }],
+        booking_payments: [{ booking_id: "b-prepaid", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+      { holdDays: 0 },
+    );
+
+    expect(result.availableBalance).toBe(0);
+    expect(result.breakdown.onHold).toBe(100);
+  });
+
+  it("releases completed booking earnings after holdDays from completed_at", async () => {
+    const recentCompleted = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const held = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [earnings("b-done", 80, T)],
+        bookings: [{ id: "b-done", status: "completed", completed_at: recentCompleted }],
+        booking_payments: [{ booking_id: "b-done", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+      { holdDays: 7 },
+    );
+    expect(held.availableBalance).toBe(0);
+    expect(held.breakdown.onHold).toBe(80);
+
+    const oldCompleted = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    const released = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [earnings("b-old", 80, T)],
+        bookings: [{ id: "b-old", status: "completed", completed_at: oldCompleted }],
+        booking_payments: [{ booking_id: "b-old", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+      { holdDays: 7 },
+    );
+    expect(released.availableBalance).toBe(80);
+  });
+
   it("only treats negatives below the 1c tolerance as negative balances (drift gate)", async () => {
     const result = await getAvailablePayoutBalance(
       mockSupabase({

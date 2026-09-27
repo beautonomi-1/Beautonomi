@@ -15,10 +15,11 @@ export type FinanceLedgerRow = {
   currency?: string | null;
   created_at?: string | null;
   refund_component?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 const LEDGER_SELECT =
-  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, currency, created_at, refund_component";
+  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, currency, created_at, refund_component, metadata";
 
 export type FetchFinanceLedgerRange = {
   start?: string | null;
@@ -155,17 +156,28 @@ const EXPORT_SELECT_BOOKING =
   "*, bookings!inner(id, booking_number, customer_id, provider_id, tenant_id)";
 const LEDGER_PAGE_SIZE = 1000;
 
-async function fetchAllPages<T>(query: any): Promise<T[]> {
+export type PageableQuery<T> = {
+  range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>;
+};
+
+/** Paginate a PostgREST query builder; caller should `.order("id")` (or another stable key) first. */
+export async function fetchAllPages<T>(
+  query: PageableQuery<T>,
+  options?: { maxRows?: number },
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const maxRows = options?.maxRows ?? Number.MAX_SAFE_INTEGER;
   const rows: T[] = [];
-  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
-    const to = from + LEDGER_PAGE_SIZE - 1;
+  for (let from = 0; from < maxRows; from += LEDGER_PAGE_SIZE) {
+    const to = Math.min(from + LEDGER_PAGE_SIZE - 1, maxRows - 1);
     const { data, error } = await query.range(from, to);
     if (error) throw error;
     const page = (data || []) as T[];
     rows.push(...page);
-    if (page.length < LEDGER_PAGE_SIZE) break;
+    if (page.length < LEDGER_PAGE_SIZE || rows.length >= maxRows) {
+      return { rows: rows.slice(0, maxRows), truncated: rows.length >= maxRows };
+    }
   }
-  return rows;
+  return { rows, truncated: false };
 }
 
 export type FinanceExportRow = Record<string, unknown> & {
@@ -189,6 +201,11 @@ function normalizeFinanceExportRow(row: Record<string, unknown>): FinanceExportR
       ? (bookingEmbed as FinanceExportRow["booking"])
       : null) ?? fromJoin;
   return { ...rest, id: String(rest.id), booking: b } as FinanceExportRow;
+}
+
+/** Export rows select `*` from finance_transactions, so every {@link LEDGER_SELECT} column is present. */
+export function financeExportRowsAsLedgerRows(rows: FinanceExportRow[]): FinanceLedgerRow[] {
+  return rows as unknown as FinanceLedgerRow[];
 }
 
 /** Provider attribution for merged export rows (direct column or via booking join). */
@@ -276,13 +293,16 @@ export async function fetchFinanceLedgerExportRowsForTenant(
     q2 = q2.lte("created_at", normalizedRange.end);
   }
 
-  const [providerRows, bookingRows] = await Promise.all([
+  q1 = q1.order("id", { ascending: true });
+  q2 = q2.order("id", { ascending: true });
+
+  const [providerPage, bookingPage] = await Promise.all([
     fetchAllPages<Record<string, unknown>>(q1),
     fetchAllPages<Record<string, unknown>>(q2),
   ]);
 
-  const a = providerRows.map((row) => normalizeFinanceExportRow(row));
-  const b = bookingRows.map((row) => normalizeFinanceExportRow(row));
+  const a = providerPage.rows.map((row) => normalizeFinanceExportRow(row));
+  const b = bookingPage.rows.map((row) => normalizeFinanceExportRow(row));
   const merged = mergeLedgerRowsByIdPreferProvider(a, b);
   merged.sort((x, y) => {
     const ax = x.created_at ? String(x.created_at) : "";
@@ -402,10 +422,15 @@ export async function fetchFinanceLedgerRowsForTenant(
     q2 = q2.lte("created_at", normalizedRange.end);
   }
 
-  const [providerRows, bookingRows] = await Promise.all([
+  q1 = q1.order("id", { ascending: true });
+  q2 = q2.order("id", { ascending: true });
+
+  const [providerPage, bookingPage] = await Promise.all([
     fetchAllPages<FinanceLedgerRow & { providers?: unknown; bookings?: unknown }>(q1),
     fetchAllPages<FinanceLedgerRow & { providers?: unknown; bookings?: unknown }>(q2),
   ]);
+  const providerRows = providerPage.rows;
+  const bookingRows = bookingPage.rows;
 
   const rows1 = providerRows.map((row) =>
     stripLedgerEmbeds(row as FinanceLedgerRow & { providers?: unknown; bookings?: unknown })

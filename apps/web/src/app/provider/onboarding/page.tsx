@@ -5,12 +5,15 @@ import { useTranslation } from "@beautonomi/i18n";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { countryFilterIso2FromStorage, getDefaultMoneyLocale, isMailableEmail } from "@beautonomi/utils";
 import {
+  ONBOARDING_STEP_MAP_VERSION,
+  remapLegacyWebDraftNumericStep,
   effectiveZoneSuggestStatus,
   hasValidAddressCoords,
   ensureHttpsUrl,
   wizardStepIdForKey,
   wizardStepKeyForId,
   zoneSuggestInvalidationPatch,
+  travelFeesStepVisible,
   type WizardStepKey,
 } from "./onboarding-helpers";
 import { suggestZonesForOnboardingAddress } from "./suggest-zones-client";
@@ -128,6 +131,7 @@ interface OnboardingData {
   owner_phone: string;
   phone_verified: boolean;
   phone_verification_code?: string;
+  date_of_birth?: string;
 
   // Step 3: Business Details
   business_name: string;
@@ -201,9 +205,16 @@ interface OnboardingData {
   selected_zone_ids?: string[];
   zone_suggest_status?: "matched" | "none" | "error" | "no_coords";
   current_step_key?: WizardStepKey;
+  step_map_version?: number;
 
-  // Step 10: Service Categories
+  travel_fees?: {
+    enabled: boolean;
+    use_platform_default: boolean;
+  };
+
+  // Step 11: Service Categories
   global_category_ids: string[];
+  provider_categories?: { name: string; global_category_id?: string }[];
 
   // Step 11: Service Catalog
   services: Service[];
@@ -490,11 +501,18 @@ const STEPS = [
       (data.business_type === "mobile" || data.business_type === "both") &&
       effectiveZoneSuggestStatus(data) !== "matched",
   },
-  { id: 10, titleKey: "web.provider.onboarding.steps.categories.title", descriptionKey: "web.provider.onboarding.steps.categories.description" },
-  { id: 11, titleKey: "web.provider.onboarding.steps.catalog.title", descriptionKey: "web.provider.onboarding.steps.catalog.description", canSkip: true },
-  { id: 12, titleKey: "web.provider.onboarding.steps.hours.title", descriptionKey: "web.provider.onboarding.steps.hours.description" },
-  { id: 13, titleKey: "web.provider.onboarding.steps.review.title", descriptionKey: "web.provider.onboarding.steps.review.description" },
-  { id: 14, titleKey: "web.provider.onboarding.steps.plan.title", descriptionKey: "web.provider.onboarding.steps.plan.description" },
+  {
+    id: 10,
+    titleKey: "web.provider.onboarding.steps.travelFees.title",
+    descriptionKey: "web.provider.onboarding.steps.travelFees.description",
+    conditional: (data: Partial<OnboardingData>) => travelFeesStepVisible(data),
+    canSkip: true,
+  },
+  { id: 11, titleKey: "web.provider.onboarding.steps.categories.title", descriptionKey: "web.provider.onboarding.steps.categories.description" },
+  { id: 12, titleKey: "web.provider.onboarding.steps.catalog.title", descriptionKey: "web.provider.onboarding.steps.catalog.description", canSkip: true },
+  { id: 13, titleKey: "web.provider.onboarding.steps.hours.title", descriptionKey: "web.provider.onboarding.steps.hours.description" },
+  { id: 14, titleKey: "web.provider.onboarding.steps.review.title", descriptionKey: "web.provider.onboarding.steps.review.description" },
+  { id: 15, titleKey: "web.provider.onboarding.steps.plan.title", descriptionKey: "web.provider.onboarding.steps.plan.description" },
 ];
 
 export default function ProviderOnboarding() {
@@ -651,6 +669,8 @@ export default function ProviderOnboarding() {
 
     if (merged.current_step_key) {
       step = wizardStepIdForKey(merged.current_step_key, "web");
+    } else if (merged.step_map_version !== ONBOARDING_STEP_MAP_VERSION) {
+      step = remapLegacyWebDraftNumericStep(step);
     }
     while (step <= STEPS.length) {
       const stepMeta = STEPS[step - 1];
@@ -685,6 +705,7 @@ export default function ProviderOnboarding() {
     sanitized.gallery = stripDataUrlsFromArray(formData.gallery);
     const stepKey = wizardStepKeyForId(currentStep, "web");
     if (stepKey) sanitized.current_step_key = stepKey;
+    sanitized.step_map_version = ONBOARDING_STEP_MAP_VERSION;
     return sanitized;
   };
 
@@ -740,6 +761,9 @@ export default function ProviderOnboarding() {
         if (!formData.email_verified) errors.push(t("web.provider.onboarding.validation.verifyEmail"));
         if (!isValidOwnerPhoneE164(formData.owner_phone)) errors.push(t("web.provider.onboarding.validation.phoneRequired"));
         if (!formData.phone_verified) errors.push(t("web.provider.onboarding.validation.verifyPhone"));
+        if (!formData.date_of_birth?.trim()) {
+          errors.push(t("web.provider.onboarding.validation.dobRequired"));
+        }
         break;
       case 3: // Business Details
         if (!formData.business_name?.trim()) errors.push(t("web.provider.onboarding.validation.businessName"));
@@ -795,15 +819,17 @@ export default function ProviderOnboarding() {
           }
         }
         break;
-      case 10: // Service Categories
+      case 10:
+        break;
+      case 11: // Service Categories
         if (!formData.global_category_ids || formData.global_category_ids.length === 0) {
           errors.push(t("web.provider.onboarding.validation.selectCategory"));
         }
         break;
-      case 11: // Service Catalog
+      case 12: // Service Catalog
         // Optional - no validation
         break;
-      case 12: {
+      case 13: {
         // Hours
         const hours = formData.operating_hours;
         if (!hours || Object.keys(hours).length === 0) {
@@ -816,10 +842,10 @@ export default function ProviderOnboarding() {
         }
         break;
       }
-      case 13: // Review
+      case 14: // Review
         // Optional - no validation
         break;
-      case 14: // Plan Selection
+      case 15: // Plan Selection
         if (!formData.selected_plan_id?.trim()) {
           errors.push(t("web.provider.onboarding.validation.selectPlan"));
         }
@@ -997,6 +1023,13 @@ export default function ProviderOnboarding() {
           longitude: formData.address?.longitude || null,
         },
         global_category_ids: formData.global_category_ids || [],
+        provider_categories: (formData.provider_categories || []).filter((c) => c.name?.trim()),
+        travel_fees:
+          formData.travel_fees ??
+          (formData.business_type === "mobile" || formData.business_type === "both"
+            ? { enabled: true, use_platform_default: true }
+            : undefined),
+        date_of_birth: formData.date_of_birth || null,
         selected_zone_ids: formData.selected_zone_ids || [],
         operating_hours: formData.operating_hours || {},
         services: formData.services || [],
@@ -1276,14 +1309,17 @@ export default function ProviderOnboarding() {
             {currentStep === 8 && <Step8Photos data={formData} updateData={updateFormData} />}
             {currentStep === 9 && <Step9ServiceZones data={formData} updateData={updateFormData} />}
             {currentStep === 10 && (
-              <Step10GlobalCategories data={formData} updateData={updateFormData} />
+              <Step10TravelFees data={formData} updateData={updateFormData} />
             )}
             {currentStep === 11 && (
+              <Step10GlobalCategories data={formData} updateData={updateFormData} />
+            )}
+            {currentStep === 12 && (
               <Step11ServiceCatalog data={formData} updateData={updateFormData} />
             )}
-            {currentStep === 12 && <Step12Hours data={formData} updateData={updateFormData} />}
-            {currentStep === 13 && <Step13Review data={formData} />}
-            {currentStep === 14 && (
+            {currentStep === 13 && <Step12Hours data={formData} updateData={updateFormData} />}
+            {currentStep === 14 && <Step13Review data={formData} />}
+            {currentStep === 15 && (
               <Step14PlanSelection data={formData} updateData={updateFormData} />
             )}
 
@@ -1729,6 +1765,21 @@ function Step2Identity({
             value={data.owner_name || ""}
             onChange={(e) => updateData({ owner_name: e.target.value })}
             placeholder={t("web.provider.onboarding.identity.fullNamePlaceholder")}
+            className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
+            required
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="date_of_birth" className="mb-2 block text-sm font-semibold text-slate-900">
+            {t("web.provider.onboarding.identity.dateOfBirth")}{" "}
+            <span className="text-slate-400">*</span>
+          </Label>
+          <Input
+            id="date_of_birth"
+            type="date"
+            value={data.date_of_birth?.slice(0, 10) || ""}
+            onChange={(e) => updateData({ date_of_birth: e.target.value || undefined })}
             className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
             required
           />
@@ -4048,6 +4099,36 @@ function Step9ServiceZones({
   );
 }
 
+function Step10TravelFees({
+  data,
+  updateData,
+}: {
+  data: Partial<OnboardingData>;
+  updateData: (updates: Partial<OnboardingData>) => void;
+}) {
+  const { t } = useTranslation();
+  const tf = data.travel_fees ?? { enabled: true, use_platform_default: true };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        {t("web.provider.onboarding.steps.travelFees.description")}
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={tf.use_platform_default !== false}
+          onChange={(e) =>
+            updateData({
+              travel_fees: { ...tf, enabled: true, use_platform_default: e.target.checked },
+            })
+          }
+        />
+        {t("web.provider.onboarding.travelFees.usePlatformDefault")}
+      </label>
+    </div>
+  );
+}
+
 function Step10GlobalCategories({
   data,
   updateData,
@@ -4129,6 +4210,28 @@ function Step10GlobalCategories({
     }
   };
 
+  useEffect(() => {
+    const selectedIds = data.global_category_ids || [];
+    if (selectedIds.length === 0 || globalCategories.length === 0) return;
+    const existing = data.provider_categories || [];
+    const mappedGlobalIds = new Set(
+      existing.map((c) => c.global_category_id).filter(Boolean) as string[],
+    );
+    const additions = selectedIds
+      .filter((gid) => !mappedGlobalIds.has(gid))
+      .map((gid) => {
+        const g = globalCategories.find((c) => c.id === gid);
+        return g ? { name: g.name, global_category_id: gid } : null;
+      })
+      .filter((x): x is { name: string; global_category_id: string } => Boolean(x));
+    if (additions.length > 0) {
+      updateData({ provider_categories: [...existing, ...additions] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.global_category_ids, globalCategories]);
+
+  const providerCategories = data.provider_categories || [];
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-14">
@@ -4169,6 +4272,27 @@ function Step10GlobalCategories({
           )}
         </AlertDescription>
       </Alert>
+      {providerCategories.length > 0 ? (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 sm:rounded-3xl sm:p-5">
+          <p className="text-sm font-semibold text-slate-900">
+            {t("web.provider.onboarding.categories.menuCategoryNames")}
+          </p>
+          {providerCategories.map((cat, index) => (
+            <Input
+              key={`${cat.global_category_id ?? "custom"}-${index}`}
+              value={cat.name}
+              onChange={(e) => {
+                const next = providerCategories.map((c, i) =>
+                  i === index ? { ...c, name: e.target.value } : c,
+                );
+                updateData({ provider_categories: next });
+              }}
+              placeholder={t("web.provider.onboarding.categories.categoryNamePlaceholder")}
+              className="h-12 rounded-xl"
+            />
+          ))}
+        </div>
+      ) : null}
       {globalCategories.length === 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
           <p className="text-sm font-medium text-amber-950">

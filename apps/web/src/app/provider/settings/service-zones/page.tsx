@@ -15,10 +15,10 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
-import { Plus, Edit, Trash2, Loader2, TrendingUp, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { Plus, Edit, Trash2, Loader2, TrendingUp, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import ZoneMapViewer from "@/components/mapbox/ZoneMapViewer";
-import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
+import Link from "next/link";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -80,38 +80,6 @@ export default function ServiceZonesPage() {
   const [suggestedZones, setSuggestedZones] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(true);
   
-  // Onboarding tour steps
-  const tourSteps = [
-    {
-      id: "intro",
-      title: t("web.provider.settings.pages.service-zones.tourIntroTitle"),
-      description: t("web.provider.settings.pages.service-zones.tourIntroBody"),
-      targetSelector: "[data-tour='page-header']",
-      position: "bottom" as const,
-    },
-    {
-      id: "suggested-zones",
-      title: t("web.provider.settings.pages.service-zones.tourSuggestedTitle"),
-      description: t("web.provider.settings.pages.service-zones.tourSuggestedBody"),
-      targetSelector: "[data-tour='suggested-zones']",
-      position: "bottom" as const,
-    },
-    {
-      id: "selected-zones",
-      title: t("web.provider.settings.pages.service-zones.tourSelectedTitle"),
-      description: t("web.provider.settings.pages.service-zones.tourSelectedBody"),
-      targetSelector: "[data-tour='selected-zones']",
-      position: "bottom" as const,
-    },
-    {
-      id: "available-zones",
-      title: t("web.provider.settings.pages.service-zones.tourAvailableTitle"),
-      description: t("web.provider.settings.pages.service-zones.tourAvailableBody"),
-      targetSelector: "[data-tour='available-zones']",
-      position: "top" as const,
-    },
-  ];
-
   useEffect(() => {
     loadZones();
     loadProviderLocation();
@@ -279,33 +247,24 @@ export default function ServiceZonesPage() {
 
   return (
     <SettingsDetailLayout breadcrumbs={breadcrumbs}>
-      <OnboardingTour
-        steps={tourSteps}
-        storageKey="service-zones-tour-completed"
-        onComplete={() => {
-          toast.success(t("web.provider.settings.pages.service-zones.tourCompletedYouCanRestartIt"));
-        }}
-      />
-      
       <PageHeader
         title={t("web.provider.settings.categories.appointmentActivity.items.serviceZones.title")}
         subtitle={t("web.provider.settings.categories.appointmentActivity.items.serviceZones.description")}
         data-tour="page-header"
       />
 
+      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <p>{t("web.provider.settings.serviceZones.introHint")}</p>
+        <Link
+          href="/provider/settings/sales/travel-fees"
+          className="mt-2 inline-block font-medium text-emerald-800 underline"
+        >
+          {t("web.provider.settings.serviceZones.actionTravelFees")}
+        </Link>
+      </div>
+
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <Button
-            variant="outline"
-            onClick={() => {
-              localStorage.removeItem("service-zones-tour-completed");
-              window.location.reload();
-            }}
-            className="text-sm"
-          >
-            <Sparkles className="w-4 h-4 me-2" />
-            {t("web.provider.settings.pages.service-zones.restartTour")}
-          </Button>
+        <div className="flex justify-end items-center">
           <Button
             variant="outline"
             onClick={() => window.location.href = "/provider/settings/service-zones/analytics"}

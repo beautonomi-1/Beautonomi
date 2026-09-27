@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { calendarDayInTimezone } from "./period-bounds";
 
 export type StaffEarningsSummary = {
   commission: number;
@@ -89,9 +90,12 @@ export type LineSettlementState = "pending" | "approved" | "paid";
 export function classifyLineSettlement(
   line: Pick<StaffEarningsLineLite, "created_at">,
   payRuns: PayRunPeriod[],
+  timezone?: string | null,
 ): LineSettlementState {
   if (!line.created_at) return "pending";
-  const day = line.created_at.slice(0, 10);
+  const day = timezone
+    ? calendarDayInTimezone(line.created_at, timezone)
+    : line.created_at.slice(0, 10);
   let state: LineSettlementState = "pending";
   for (const pr of payRuns) {
     if (day >= pr.pay_period_start && day <= pr.pay_period_end) {
@@ -105,10 +109,11 @@ export function classifyLineSettlement(
 export function splitStaffEarningsLinesBySettlement(
   lines: StaffEarningsLineLite[],
   payRuns: PayRunPeriod[],
+  timezone?: string | null,
 ): Record<LineSettlementState, StaffEarningsSummary> {
   const buckets: Record<LineSettlementState, StaffEarningsLineLite[]> = { pending: [], approved: [], paid: [] };
   for (const line of lines) {
-    buckets[classifyLineSettlement(line, payRuns)].push(line);
+    buckets[classifyLineSettlement(line, payRuns, timezone)].push(line);
   }
   return {
     pending: summarizeStaffEarningsLines(buckets.pending),

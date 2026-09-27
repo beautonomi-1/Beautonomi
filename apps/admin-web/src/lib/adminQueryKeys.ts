@@ -312,6 +312,9 @@ export const adminQueryKeys = {
 
   ledgerHealth: (days: string) => [...adminQueryKeys.root, "ledger-health", days] as const,
 
+  payrollRuleSets: () => [...adminQueryKeys.root, "payroll", "rule-sets"] as const,
+  payrollHealth: () => [...adminQueryKeys.root, "payroll", "health"] as const,
+
   fxRatesDesk: () => [...adminQueryKeys.root, "fx-rates", "desk"] as const,
   fxRatesHistory: (base: string, quote: string) =>
     [...adminQueryKeys.root, "fx-rates", "history", base, quote] as const,
@@ -419,4 +422,14 @@ export const adminQueryKeys = {
   commercialTerminalReporting: ["admin", "commercial", "terminal-reporting"] as const,
   commercialTerminalVendors: ["admin", "commercial", "terminal-vendors"] as const,
   commercialTerminalCollectionLocations: ["admin", "commercial", "terminal-collection-locations"] as const,
+
+  brandMyWork: () => [...adminQueryKeys.root, "brand", "my-work"] as const,
+  brandBriefs: () => [...adminQueryKeys.root, "brand", "briefs"] as const,
+  brandBrief: (id: string) => [...adminQueryKeys.root, "brand", "briefs", id] as const,
+  brandCampaigns: () => [...adminQueryKeys.root, "brand", "campaigns"] as const,
+  brandCampaign: (id: string, period = "this_month") =>
+    [...adminQueryKeys.root, "brand", "campaigns", id, period] as const,
+  brandWeeklyUpdate: () => [...adminQueryKeys.root, "brand", "weekly-update"] as const,
+  brandPack: (period: string) => [...adminQueryKeys.root, "brand", "pack", period] as const,
+  brandPackAll: (period: string) => [...adminQueryKeys.root, "brand", "pack-all", period] as const,
 } as const;

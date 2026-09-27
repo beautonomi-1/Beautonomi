@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
       adminUserId: user.id,
       allowedSections,
       pageContext: body.pageContext,
+      desk: typeof body.desk === "string" ? body.desk : undefined,
       selectedEntity: body.selectedEntity,
       conversationId: body.conversationId,
       messages: body.messages,

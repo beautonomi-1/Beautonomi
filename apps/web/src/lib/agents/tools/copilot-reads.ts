@@ -554,3 +554,35 @@ export async function readUserRiskSummary(principal: AgentPrincipal, userId: str
     content_report_count: reportCount ?? 0,
   };
 }
+
+export async function searchKnowledgeForCopilot(
+  _principal: AgentPrincipal,
+  input: { query: string; limit?: number },
+) {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc("search_learning_articles_admin", {
+    p_query: input.query,
+    p_limit: input.limit ?? 5,
+    p_offset: 0,
+    p_audience: null,
+    p_include_internal: true,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<{
+    title: string;
+    slug: string;
+    summary: string | null;
+    is_internal: boolean;
+  }>;
+
+  return {
+    results: rows.map((r) => ({
+      title: r.title,
+      slug: r.slug,
+      summary: r.summary ?? "",
+      adminPath: `/admin/knowledge-base/${r.slug}`,
+      is_internal: Boolean(r.is_internal),
+    })),
+  };
+}

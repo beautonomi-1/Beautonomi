@@ -47,6 +47,17 @@ export async function releaseBookingSlotAfterPaymentFailure(
     console.warn("[releaseBookingSlotAfterPaymentFailure] void_gift_card_redemption", bookingId, e);
   }
 
+  try {
+    const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+    await refundRedeemedLoyaltyPoints(adminSupabase, {
+      bookingId,
+      customerId,
+      reason: "payment_abandoned",
+    });
+  } catch (e) {
+    console.warn("[releaseBookingSlotAfterPaymentFailure] loyalty restore", bookingId, e);
+  }
+
   const wa = Number((row as { wallet_amount?: unknown }).wallet_amount ?? 0);
   if (wa > 0) {
     try {

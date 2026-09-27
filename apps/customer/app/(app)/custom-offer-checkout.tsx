@@ -38,6 +38,8 @@ import {
   type PaymentSuccessSummaryRow,
 } from "@/components/payment/PaymentSuccessOverlay";
 import { useTranslation } from "@beautonomi/i18n";
+import { ContextualHint } from "@/components/hints/ContextualHint";
+import { getTenantLocaleTag } from "@/lib/locale";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
@@ -753,6 +755,17 @@ export default function CustomOfferCheckoutScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: contentPadding, paddingBottom: 120 }}
         >
+          <ContextualHint
+            id="customer.customOffer.checkout"
+            mode="persistent"
+            message={
+              offer?.expiration_at
+                ? `${t("checkout.contextualHints.customOfferConfirm")} ${t("checkout.contextualHints.customOfferExpires", {
+                    date: new Date(offer.expiration_at).toLocaleString(getTenantLocaleTag()),
+                  })}`
+                : t("checkout.contextualHints.customOfferConfirm")
+            }
+          />
           <View
             style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
           >

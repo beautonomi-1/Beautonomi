@@ -18,13 +18,17 @@ function isOwnerRole(role: string | null, teamAccess?: TeamAccessPayload | null)
 export default function TeamPayHubScreen() {
   const { t } = useTranslation();
   const tp = (key: string) => t(`provider.mobile.screens.teamPay.${key}`) as string;
-  const { role } = useProvider();
+  const { role, provider } = useProvider();
+  const isFreelancer = provider?.business_type === "freelancer";
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access", {
     staleTimeMs: 60_000,
   });
   const isOwner = isOwnerRole(role, teamAccess);
 
   const tabs = useMemo(() => {
+    if (isFreelancer) {
+      return [];
+    }
     if (isOwner) {
       return [
         { id: "payroll", label: tp("payroll"), render: () => <PayrollContent embedded /> },
@@ -32,7 +36,18 @@ export default function TeamPayHubScreen() {
       ];
     }
     return [{ id: "my-earnings", label: tp("myEarnings"), render: () => <MyEarningsContent embedded /> }];
-  }, [isOwner, t]);
+  }, [isOwner, isFreelancer, t]);
+
+  if (isFreelancer) {
+    return (
+      <FinanceHubShell
+        title={tp("title")}
+        subtitle={tp("freelancerUnavailable")}
+        tabs={[{ id: "info", label: tp("title"), render: () => null }]}
+        defaultTab="info"
+      />
+    );
+  }
 
   return (
     <FinanceHubShell

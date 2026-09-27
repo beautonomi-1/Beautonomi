@@ -445,6 +445,7 @@ export default function CancellationPoliciesScreen() {
             )}
           </View>
           {formErrors.fee_amount && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.fee_amount}</Text>}
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>{cp("feeAmountHint")}</Text>
         </View>
 
         <View style={twStyle("mb-4")}>
@@ -464,6 +465,7 @@ export default function CancellationPoliciesScreen() {
             <Text style={twStyle("ms-2 text-sm text-gray-400")}>{cp("hoursSuffix")}</Text>
           </View>
           {formErrors.hours_before && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.hours_before}</Text>}
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>{cp("hoursBeforeHint")}</Text>
         </View>
 
         <View style={twStyle("mb-4")}>
@@ -485,6 +487,7 @@ export default function CancellationPoliciesScreen() {
             </Text>
           </View>
           {formErrors.refund_percentage && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.refund_percentage}</Text>}
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>{cp("refundPercentageHint")}</Text>
         </View>
 
         <View style={twStyle("mb-4")}>

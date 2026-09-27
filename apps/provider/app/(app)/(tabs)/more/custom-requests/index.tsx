@@ -7,6 +7,7 @@ import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
@@ -96,6 +97,7 @@ export default function CustomRequestsListScreen() {
         subtitle={cr("subtitle")}
         onBack={() => router.back()}
       />
+      <ContextualHint id="provider.customRequests.intro" mode="once" message={cr("introHint")} />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}

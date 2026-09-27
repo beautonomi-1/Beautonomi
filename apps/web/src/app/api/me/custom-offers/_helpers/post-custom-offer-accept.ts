@@ -28,6 +28,7 @@ import {
 } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
+import { creditWalletForCustomOfferAbandon } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
 
 interface OfferRow {
   id: string;
@@ -450,7 +451,7 @@ export async function postCustomOfferAccept(
     // Wallet debit runs under the customer's auth context (`wallet_debit_self`
     // uses auth.uid() to lock the user_wallets row), so we use `supabase`,
     // not the admin client. If Paystack init / saved-card charge later fails,
-    // we credit it back via `wallet_credit_self`.
+    // we credit it back via `creditWalletForCustomOfferAbandon` (wallet_credit_admin).
     //
     // Gift card reservation is deferred to the finalize step. The current
     // `reserve_gift_card_redemption` RPC requires a booking_id (custom offers
@@ -477,13 +478,13 @@ export async function postCustomOfferAccept(
         }
         reservedRollbacks.push(async () => {
           try {
-            await (supabase.rpc as any)("wallet_credit_self", {
-              p_amount: walletAmount,
-              p_description: `Refund wallet (custom offer ${id} aborted)`,
-              p_reference_id: id,
-              p_reference_type: "custom_offer_refund",
-              p_tenant_id: walletLedgerTenantId,
-            });
+            await creditWalletForCustomOfferAbandon(
+              getSupabaseAdmin(),
+              id,
+              user.id,
+              req?.provider_id ?? offer.provider_id ?? null,
+              { reason: "failed" },
+            );
           } catch {
             /* best-effort refund */
           }
@@ -664,7 +665,8 @@ export async function postCustomOfferAccept(
       // if the charge.success webhook fires later it will be a no-op.
       const chargeReference = chargeResult.data?.reference ?? reference;
       const chargeFeesMajor = convertFromSmallestUnit(
-        typeof chargeResult.data?.fees === "number" ? chargeResult.data.fees : 0
+        typeof chargeResult.data?.fees === "number" ? chargeResult.data.fees : 0,
+        offer.currency || lastResortCurrency,
       );
       const finalize = await finalizeCustomOfferPayment(adminSupabase, {
         offerId: id,

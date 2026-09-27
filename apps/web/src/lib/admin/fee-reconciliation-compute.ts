@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 
 export type FeeAutoComputeResult = {
   recorded_fees: number;
@@ -256,18 +257,19 @@ async function computeFromFinanceLedger(
   tenantId: string,
   asOfDate?: string | null,
 ): Promise<FeeAutoComputeResult> {
-  const { data: ledgerRows, error: ledgerErr } = await supabase
+  let ledgerQuery = supabase
     .from("finance_transactions")
     .select(
-      "source_payment_id, booking_id, provider_id, amount, fees, transaction_type, metadata",
+      "id, source_payment_id, booking_id, provider_id, amount, fees, transaction_type, metadata",
     )
     .eq("tenant_id", tenantId)
     .gte("created_at", startIso)
-    .lte("created_at", endIso);
+    .lte("created_at", endIso)
+    .order("id", { ascending: true });
 
-  if (ledgerErr) throw ledgerErr;
+  const { rows: ledgerRows } = await fetchAllPages<LedgerFeeRow & { id: string }>(ledgerQuery);
 
-  const rows = (ledgerRows ?? []) as LedgerFeeRow[];
+  const rows = ledgerRows as LedgerFeeRow[];
   const gatewayMaps = await loadGatewayMapsForTenant(supabase, tenantId, rows);
 
   let recordedFees = 0;

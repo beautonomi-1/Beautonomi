@@ -6,7 +6,9 @@ import {
   unauthorizedResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
+import { grcEffectivePermissions } from "@beautonomi/admin-access";
 import type { UserRole } from "@/types/beautonomi";
 
 /**
@@ -34,6 +36,33 @@ export async function GET(request: NextRequest) {
     }
 
     const role = user.role as UserRole;
+    // UI hints only; every GRC API call and RLS policy re-checks permissions (and MFA) server-side,
+    // so a failed lookup must not block the whole admin shell.
+    let grc_roles: string[] = [];
+    let grcHubEnabled = false;
+    try {
+      const admin = getSupabaseAdmin();
+      const { data: assignments } = await admin
+        .from("grc_role_assignments")
+        .select("grc_role, expires_at")
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+      const now = Date.now();
+      grc_roles = ((assignments ?? []) as Array<{ grc_role: string; expires_at: string | null }>)
+        .filter((a) => !a.expires_at || new Date(a.expires_at).getTime() > now)
+        .map((a) => a.grc_role);
+      const { data: hubFlag } = await admin
+        .from("feature_flags")
+        .select("enabled")
+        .eq("feature_key", "grc_hub_enabled")
+        .is("tenant_id", null)
+        .maybeSingle();
+      grcHubEnabled = (hubFlag as { enabled?: boolean } | null)?.enabled ?? false;
+    } catch (grcError) {
+      console.warn("[admin/bootstrap] GRC hints unavailable:", grcError);
+    }
+    const grc_permissions = grcEffectivePermissions(grc_roles, role === "superadmin");
+
     return successResponse({
       user: {
         id: user.id,
@@ -42,6 +71,12 @@ export async function GET(request: NextRequest) {
       },
       role,
       is_superadmin: role === "superadmin",
+      grc_roles,
+      grc_permissions,
+      feature_flags: {
+        grc_hub_enabled: grcHubEnabled,
+      },
+      can_access_security_compliance: grc_permissions.includes("grc.overview.view"),
     });
   } catch (error) {
     // Align with ADMIN_SPA_AUTH_DECISION: unauthenticated → 401 (handleApiError maps

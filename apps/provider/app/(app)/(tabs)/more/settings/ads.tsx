@@ -35,6 +35,7 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -1363,6 +1364,7 @@ export default function AdsSettingsScreen() {
         subtitle={ads("subtitle")}
         onBack={() => router.back()}
       />
+      <ContextualHint id="provider.ads.intro" mode="once" message={ads("introHint")} />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}

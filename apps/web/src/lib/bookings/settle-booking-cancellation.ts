@@ -254,19 +254,15 @@ async function restoreRedeemedLoyalty(
   reason: string,
 ): Promise<boolean> {
   const customerId = booking.customer_id;
-  const pointsToRefund = Number(
-    booking.loyalty_points_used ?? booking.loyalty_points_redeemed ?? 0,
-  );
-  if (pointsToRefund <= 0 || !customerId) return false;
+  if (!customerId) return false;
   try {
     const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
-    await refundRedeemedLoyaltyPoints(admin, {
+    const result = await refundRedeemedLoyaltyPoints(admin, {
       bookingId: booking.id,
       customerId,
-      pointsRedeemed: pointsToRefund,
       reason,
     });
-    return true;
+    return result.refunded;
   } catch (err) {
     console.error("[settleBookingCancellation] loyalty redeem restore failed:", err);
     return false;
@@ -278,8 +274,7 @@ async function clawBackEarnedLoyalty(
   booking: BookingFinancialSnapshot,
 ): Promise<boolean> {
   const customerId = booking.customer_id;
-  const loyaltyPointsEarned = Number(booking.loyalty_points_earned ?? 0);
-  if (loyaltyPointsEarned <= 0 || !customerId) return false;
+  if (!customerId) return false;
 
   try {
     const { data: existingClaw } = await admin
@@ -291,6 +286,20 @@ async function clawBackEarnedLoyalty(
       .maybeSingle();
 
     if (existingClaw) return false;
+
+    const { data: earnedRow } = await admin
+      .from("loyalty_points_ledger")
+      .select("id, points_amount")
+      .eq("booking_id", booking.id)
+      .eq("customer_id", customerId)
+      .eq("transaction_type", "earned")
+      .limit(1)
+      .maybeSingle();
+
+    if (!earnedRow) return false;
+
+    const loyaltyPointsEarned = Number((earnedRow as { points_amount?: number }).points_amount ?? 0);
+    if (loyaltyPointsEarned <= 0) return false;
 
     const { error: clawErr } = await (admin.rpc as any)("append_loyalty_ledger_entry", {
       p_customer_id: customerId,

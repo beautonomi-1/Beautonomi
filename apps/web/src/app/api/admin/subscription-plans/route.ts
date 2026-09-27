@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
           const monthlyPlan = await createPlan({
             name: `${data.name} (Monthly)`,
             interval: 'monthly',
-            amount: convertToSmallestUnit(data.price_monthly),
+            amount: convertToSmallestUnit(data.price_monthly, planCurrency),
             currency: planCurrency,
           }, { tenantId: scopeTenantId });
           paystackPlanCodeMonthly = monthlyPlan.data?.plan_code || null;
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
           const yearlyPlan = await createPlan({
             name: `${data.name} (Yearly)`,
             interval: 'annually',
-            amount: convertToSmallestUnit(data.price_yearly),
+            amount: convertToSmallestUnit(data.price_yearly, planCurrency),
             currency: planCurrency,
           }, { tenantId: scopeTenantId });
           paystackPlanCodeYearly = yearlyPlan.data?.plan_code || null;
@@ -245,7 +245,7 @@ export async function PUT(request: NextRequest) {
             existingPlan.paystack_plan_code_monthly,
             {
               name: `${data.name || existingPlan.name} (Monthly)`,
-              amount: data.price_monthly ? convertToSmallestUnit(data.price_monthly) : undefined,
+              amount: data.price_monthly ? convertToSmallestUnit(data.price_monthly, existingPlan.currency || 'ZAR') : undefined,
               ...commonOpts,
             },
             { tenantId: scopeTenantId }
@@ -261,7 +261,7 @@ export async function PUT(request: NextRequest) {
             existingPlan.paystack_plan_code_yearly,
             {
               name: `${data.name || existingPlan.name} (Yearly)`,
-              amount: data.price_yearly ? convertToSmallestUnit(data.price_yearly) : undefined,
+              amount: data.price_yearly ? convertToSmallestUnit(data.price_yearly, existingPlan.currency || 'ZAR') : undefined,
               ...commonOpts,
             },
             { tenantId: scopeTenantId }

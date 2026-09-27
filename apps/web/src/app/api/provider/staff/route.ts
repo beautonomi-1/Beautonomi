@@ -574,6 +574,10 @@ export async function POST(request: Request) {
         is_active: true,
         mobile_ready: mobileReady || false,
         commission_rate: commission_rate != null ? Number(commission_rate) : null,
+        service_commission_rate:
+          commission_rate != null ? Number(commission_rate) : null,
+        product_commission_rate:
+          commission_rate != null ? Number(commission_rate) : null,
         commission_enabled: commission_rate != null && Number(commission_rate) >= 0,
       })
       .select(

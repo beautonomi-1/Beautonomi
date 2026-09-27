@@ -204,6 +204,9 @@ export const LedgerRepairPage = lazy(() =>
 export const LedgerHealthPage = lazy(() =>
   import("@/routes/finance/LedgerHealthPage").then((m) => ({ default: m.LedgerHealthPage }))
 );
+export const PayrollRulesPage = lazy(() =>
+  import("@/routes/finance/PayrollRulesPage").then((m) => ({ default: m.PayrollRulesPage }))
+);
 export const FxRatesPage = lazy(() =>
   import("@/routes/finance/FxRatesPage").then((m) => ({ default: m.FxRatesPage }))
 );
@@ -390,6 +393,30 @@ export const WhatsAppContentTemplatesPage = lazy(() =>
   import("@/routes/marketing/WhatsAppContentTemplatesPage").then((m) => ({
     default: m.WhatsAppContentTemplatesPage,
   }))
+);
+export const BrandMyWorkPage = lazy(() =>
+  import("@/routes/brand/BrandMyWorkPage").then((m) => ({ default: m.BrandMyWorkPage }))
+);
+export const BrandBriefsPage = lazy(() =>
+  import("@/routes/brand/BrandBriefsPage").then((m) => ({ default: m.BrandBriefsPage }))
+);
+export const BrandBriefDetailPage = lazy(() =>
+  import("@/routes/brand/BrandBriefDetailPage").then((m) => ({ default: m.BrandBriefDetailPage }))
+);
+export const BrandBoardPage = lazy(() =>
+  import("@/routes/brand/BrandBoardPage").then((m) => ({ default: m.BrandBoardPage }))
+);
+export const BrandCampaignDetailPage = lazy(() =>
+  import("@/routes/brand/BrandCampaignDetailPage").then((m) => ({ default: m.BrandCampaignDetailPage }))
+);
+export const BrandWeeklyUpdatePage = lazy(() =>
+  import("@/routes/brand/BrandWeeklyUpdatePage").then((m) => ({ default: m.BrandWeeklyUpdatePage }))
+);
+export const BrandPackPage = lazy(() =>
+  import("@/routes/brand/BrandPackPage").then((m) => ({ default: m.BrandPackPage }))
+);
+export const BrandSettingsPage = lazy(() =>
+  import("@/routes/brand/BrandSettingsPage").then((m) => ({ default: m.BrandSettingsPage }))
 );
 export const MarketingPricebookPage = lazy(() =>
   import("@/routes/marketing/MarketingPricebookPage").then((m) => ({
@@ -591,4 +618,55 @@ export const TerminalCollectionLocationsPage = lazy(() =>
   import("@/routes/commercial/TerminalCollectionLocationsPage").then((m) => ({
     default: m.TerminalCollectionLocationsPage,
   }))
+);
+export const GrcOverviewPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcOverviewPage }))
+);
+export const GrcMyWorkPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcMyWorkPage }))
+);
+export const GrcControlsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcControlsPage }))
+);
+export const GrcDocumentsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcDocumentsPage }))
+);
+export const GrcRisksPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcRisksPage }))
+);
+export const GrcVendorsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcVendorsPage }))
+);
+export const GrcEvidencePage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcEvidencePage }))
+);
+export const GrcFindingsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcFindingsPage }))
+);
+export const GrcAuditPacksPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcAuditPacksPage }))
+);
+export const GrcSettingsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcSettingsPage }))
+);
+export const GrcSetupPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcSetupPage }))
+);
+export const GrcSoaPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcSoaPage }))
+);
+export const GrcPrivacyPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcPrivacyPage }))
+);
+export const GrcAccessReviewsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcAccessReviewsPage }))
+);
+export const GrcIncidentsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcIncidentsPage }))
+);
+export const GrcPeoplePage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcPeoplePage }))
+);
+export const GrcAuditsPage = lazy(() =>
+  import("@/routes/grc/GrcPages").then((m) => ({ default: m.GrcAuditsPage }))
 );

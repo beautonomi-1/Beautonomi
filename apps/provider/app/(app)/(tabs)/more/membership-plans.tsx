@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
@@ -238,6 +239,8 @@ export default function MembershipPlansScreen() {
           </TouchableOpacity>
         }
       />
+
+      <ContextualHint id="provider.membershipPlans.intro" mode="once" message={mp("introHint")} />
 
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>

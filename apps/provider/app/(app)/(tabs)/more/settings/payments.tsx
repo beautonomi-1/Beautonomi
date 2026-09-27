@@ -529,6 +529,7 @@ export default function PaymentSettingsScreen() {
               placeholderTextColor="#9ca3af"
               accessibilityLabel={ps("noShowFeeAmountA11y")}
             />
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>{ps("noShowFeeAmountHint")}</Text>
           </View>
         )}
         <TouchableOpacity

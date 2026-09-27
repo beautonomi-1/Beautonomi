@@ -26,6 +26,7 @@ type BillingItem = {
   reference: string | null;
   receipt_url: string | null;
   failure_reason?: string | null;
+  currency?: string;
 };
 
 function formatDateSafe(value: string | null | undefined): string {
@@ -153,7 +154,9 @@ export default function MembershipBillingHistoryScreen() {
                     ) : null}
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontWeight: "700", color: Colors.gray[900], fontSize: 15 }}>{formatMoney(item.amount)}</Text>
+                    <Text style={{ fontWeight: "700", color: Colors.gray[900], fontSize: 15 }}>
+                      {formatMoney(item.amount, item.currency)}
+                    </Text>
                     <View style={{ backgroundColor: badge.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 }}>
                       <Text style={{ fontSize: 12, color: badge.text, fontWeight: "600" }}>{badge.label}</Text>
                     </View>

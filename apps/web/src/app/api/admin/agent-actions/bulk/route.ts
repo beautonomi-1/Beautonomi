@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         if (parsed.data.decision === "approve" && parsed.data.execute && status === "approved") {
           const exec = await runAgentActionExecuteForUser(id, user);
           executed = exec.executed;
-          if (!exec.executed) {
+          if (exec.executed === false) {
             results.push({ id, status, executed: false, error: exec.reason });
             continue;
           }

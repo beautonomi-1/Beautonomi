@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { handleApiError, successResponse, badRequestResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { percentOf } from "@beautonomi/utils";
+import { resolveLoyaltyConfig } from "@/lib/loyalty/resolve-loyalty-config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * POST /api/me/loyalty-points/calculate-redemption
@@ -19,44 +22,19 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("points_to_redeem and booking_subtotal are required");
     }
 
-    // Get loyalty config
-    let { data: config } = await supabase
-      .from("loyalty_point_config")
-      .select("*")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    // Fallback to legacy loyalty_rules if no ledger config
-    if (!config) {
-      const { data: legacyRule } = await supabase
-        .from("loyalty_rules")
-        .select("*")
-        .eq("is_active", true)
-        .order("effective_from", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (legacyRule) {
-        config = {
-          redemption_rate: legacyRule.redemption_rate,
-          min_redemption_points: legacyRule.min_redemption_points ?? 50,
-          max_redemption_percentage: legacyRule.max_redemption_percentage ?? 100,
-        };
-      }
-    }
-
-    if (!config) {
-      return badRequestResponse("Loyalty points system not configured");
-    }
+    const admin = getSupabaseAdmin();
+    const cfg = await resolveLoyaltyConfig(admin, LAST_RESORT_CURRENCY);
+    const config = {
+      redemption_rate: cfg.redemptionRate,
+      min_redemption_points: cfg.minRedemptionPoints,
+      max_redemption_percentage: cfg.maxRedemptionPercentage,
+    };
 
     const { data: ledgerBal } = await supabase.rpc("get_customer_available_points", {
       customer_uuid: user.id,
     });
     const available_balance = Number(ledgerBal) || 0;
 
-    // Validation
     const errors = [];
     let is_valid = true;
 
@@ -70,10 +48,8 @@ export async function POST(request: NextRequest) {
       is_valid = false;
     }
 
-    // Calculate discount amount
     const discount_amount = points_to_redeem / config.redemption_rate;
 
-    // Check max redemption percentage
     const max_discount_allowed = percentOf(booking_subtotal, config.max_redemption_percentage);
     let actual_discount = discount_amount;
     let actual_points = points_to_redeem;

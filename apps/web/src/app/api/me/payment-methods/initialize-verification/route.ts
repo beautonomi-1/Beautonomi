@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     const currency = lastResortCurrency;
     const amountInCurrency = 1; // R1 (or minimum) for verification
-    const amountInSmallestUnit = convertToSmallestUnit(amountInCurrency);
+    const amountInSmallestUnit = convertToSmallestUnit(amountInCurrency, currency);
     const reference = generateTransactionReference("card_verify", user.id);
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";

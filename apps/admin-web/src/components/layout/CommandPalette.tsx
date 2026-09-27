@@ -29,7 +29,11 @@ type SearchPayload = {
   providers: Array<{ id: string; business_name: string; owner_name?: string | null; owner_email?: string | null }>;
   leads?: Array<{ id: string; business_name: string | null; lead_name: string | null; email: string | null }>;
   onboarding_drafts?: Array<{ user_id: string; business_name: string | null; owner_email: string | null; owner_name: string | null }>;
+  brand_campaigns?: Array<{ id: string; name: string; tracking_code: string; stage: string | null }>;
+  brand_briefs?: Array<{ id: string; name: string; status: string | null }>;
 };
+
+type LearningSearchHit = { slug: string; title: string; summary?: string | null };
 
 function loadRecentSearches(): RecentSearch[] {
   if (typeof window === "undefined") return [];
@@ -67,6 +71,7 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchPayload | null>(null);
+  const [learningHits, setLearningHits] = useState<LearningSearchHit[]>([]);
   const [recent, setRecent] = useState<RecentSearch[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -74,6 +79,7 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
     if (!open) return;
     setQuery("");
     setSearchResults(null);
+    setLearningHits([]);
     setActiveIndex(0);
     setRecent(loadRecentSearches());
   }, [open]);
@@ -90,16 +96,24 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
   useEffect(() => {
     if (!open || query.trim().length < 2) {
       setSearchResults(null);
+      setLearningHits([]);
       return;
     }
     const t = setTimeout(async () => {
       setSearching(true);
       try {
         const q = encodeURIComponent(query.trim());
-        const data = await adminApi.getJson<SearchPayload>(`/api/admin/search?q=${q}`);
+        const [data, training] = await Promise.all([
+          adminApi.getJson<SearchPayload>(`/api/admin/search?q=${q}`),
+          adminApi
+            .getJson<LearningSearchHit[]>(`/api/admin/learning/search?q=${q}&limit=5`)
+            .catch(() => [] as LearningSearchHit[]),
+        ]);
         setSearchResults(data);
+        setLearningHits(Array.isArray(training) ? training : []);
       } catch {
         setSearchResults(null);
+        setLearningHits([]);
       } finally {
         setSearching(false);
       }
@@ -161,9 +175,33 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
         group: "Onboarding drafts",
       });
     }
+    for (const c of (searchResults?.brand_campaigns ?? []).slice(0, 5)) {
+      items.push({
+        key: `brand-campaign:${c.id}`,
+        to: adminSearchResultSpaPath("brand_campaign", c.id),
+        label: `${c.name} (${c.tracking_code})`,
+        group: "Brand campaigns",
+      });
+    }
+    for (const b of (searchResults?.brand_briefs ?? []).slice(0, 5)) {
+      items.push({
+        key: `brand-brief:${b.id}`,
+        to: adminSearchResultSpaPath("brand_brief", b.id),
+        label: b.name,
+        group: "Brand briefs",
+      });
+    }
+    for (const a of learningHits.slice(0, 5)) {
+      items.push({
+        key: `training:${a.slug}`,
+        to: adminSpaTo(`/admin/knowledge-base/${a.slug}`),
+        label: a.title,
+        group: "Training",
+      });
+    }
 
     return items;
-  }, [query, recent, navMatches, searchResults]);
+  }, [query, recent, navMatches, searchResults, learningHits]);
 
   useEffect(() => {
     setActiveIndex((i) => (flatTargets.length === 0 ? 0 : Math.min(i, flatTargets.length - 1)));

@@ -17,7 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 
 interface SettleAdditionalChargePlatformHeldInput {
   /** Paystack reference or stable idempotency reference for the charge. */
@@ -57,9 +57,6 @@ export async function settleAdditionalChargePlatformHeld(
     paystackTransactionId = null,
     customerId,
   } = input;
-
-  const amountInCurrency = convertFromSmallestUnit(amountSmallestUnit);
-  const feesInCurrency = convertFromSmallestUnit(feesSmallestUnit);
 
   // Fetch booking
   const { data: booking } = await admin
@@ -106,6 +103,10 @@ export async function settleAdditionalChargePlatformHeld(
     currency?: string | null;
   };
 
+  const settleCurrency = chargeData.currency ?? bookingData.currency ?? "ZAR";
+  const amountInCurrency = convertFromSmallestUnit(amountSmallestUnit, settleCurrency);
+  const feesInCurrency = convertFromSmallestUnit(feesSmallestUnit, settleCurrency);
+
   if (chargeData.status === "paid") {
     return { ok: true, alreadySettled: true };
   }
@@ -119,7 +120,8 @@ export async function settleAdditionalChargePlatformHeld(
     tenant_id: bookingData.tenant_id as string | null | undefined,
     provider_id: bookingData.provider_id as string | null | undefined,
   });
-  const commissionRate = await resolveCommissionPercentageForProvider(admin as any, {
+  const commissionRate = await resolveCommissionPercentageForBooking(admin as any, {
+    bookingId: bookingData.id as string,
     tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
     providerId: bookingData.provider_id ?? null,
   });

@@ -9,6 +9,7 @@ import {
   persistJoinedProviderRole,
   resolveEffectiveProviderRole,
 } from "@/lib/auth/effective-provider-role";
+import { resolveTenantAppBaseUrl } from "@/lib/tenant/resolve-tenant-app-base-url";
 
 // Re-export for callers that imported from this module.
 export { persistJoinedProviderRole, persistProviderStaffRole, resolveEffectiveProviderRole } from "@/lib/auth/effective-provider-role";
@@ -35,10 +36,19 @@ function appBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 }
 
-export function buildStaffJoinUrl(token: string): string {
-  const base = appBaseUrl();
+export function buildStaffJoinUrl(token: string, baseUrl?: string | null): string {
+  const base = (baseUrl ?? appBaseUrl()).replace(/\/$/, "");
   if (!base) return `/provider/join?token=${encodeURIComponent(token)}`;
   return `${base}/provider/join?token=${encodeURIComponent(token)}`;
+}
+
+export async function buildStaffJoinUrlForTenant(
+  supabase: SupabaseClient,
+  token: string,
+  tenantId: string | null | undefined,
+): Promise<string> {
+  const base = await resolveTenantAppBaseUrl(supabase, tenantId);
+  return buildStaffJoinUrl(token, base || null);
 }
 
 export function substituteTemplateVars(
@@ -292,13 +302,12 @@ export async function sendStaffInvite(params: {
     null;
 
   const token = await rotateStaffInviteToken(admin, params.staffId);
-  const joinUrl = buildStaffJoinUrl(token);
+  const joinUrl = await buildStaffJoinUrlForTenant(admin, token, tenantId);
   const inviteEmail = (params.recipientEmail || staff.email || "").trim().toLowerCase();
 
-  let setPasswordUrl: string | null = null;
-  if (inviteEmail) {
-    setPasswordUrl = await generateStaffSetPasswordUrl(admin, inviteEmail, joinUrl);
-  }
+  // Password is set on /provider/join via POST /api/provider/staff/join/set-password
+  // (recovery links expire before the 14-day invite token).
+  const setPasswordUrl: string | null = joinUrl;
 
   const appLinks = await resolveProviderAppLinks(admin, tenantId);
   const businessName = (provider as { business_name?: string | null } | null)?.business_name || "the team";

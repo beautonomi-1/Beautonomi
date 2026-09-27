@@ -56,6 +56,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { Skeleton } from "@/components/Skeleton";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import type {
   PublicProviderDetail,
   ProviderServicesResponse,
@@ -968,6 +969,13 @@ export default function BookScreen() {
       return changed ? next : prev;
     });
   }, [locationType, servicesData?.categories]);
+
+  const outsideServiceAreaMessage = useCallback(() => {
+    const hasSalon = (provider?.locations ?? []).some((loc) => loc.location_type === "salon");
+    return hasSalon
+      ? t("booking.travelFeePreview.outsideServiceArea")
+      : t("booking.travelFeePreview.outsideServiceAreaNoSalon");
+  }, [provider?.locations, t]);
 
   const salonLocations = useMemo(
     () => (provider?.locations ?? []).filter((loc) => loc.location_type === "salon"),
@@ -1911,13 +1919,16 @@ export default function BookScreen() {
         distanceKm?: number;
         travelTimeMinutes?: number;
         reason?: string;
+        errorCode?: string;
       }>("/api/location/validate", {
         address,
         provider_id: provider.id,
         latitude: atHomeCoords?.latitude,
         longitude: atHomeCoords?.longitude,
       });
-      const data = res.data as { valid?: boolean; travelFee?: number; distanceKm?: number; travelTimeMinutes?: number; reason?: string } | undefined;
+      const data = res.data as
+        | { valid?: boolean; travelFee?: number; distanceKm?: number; travelTimeMinutes?: number; reason?: string; errorCode?: string }
+        | undefined;
       if (res.error || !data) {
         setTravelFeePreview({
           status: "error",
@@ -1936,13 +1947,17 @@ export default function BookScreen() {
       } else {
         setTravelFeePreview({
           status: "error",
-          reason: data.reason ?? t("booking.travelFeePreview.outsideServiceArea"),
+          reason:
+            data.errorCode === "OUTSIDE_SERVICE_AREA" || data.errorCode === "DISTANCE_LIMIT" || !data.reason
+              ? outsideServiceAreaMessage()
+              : data.reason,
           distanceKm: data.distanceKm,
         });
       }
     }, 500);
     return () => clearTimeout(timeoutId);
   }, [
+    outsideServiceAreaMessage,
     locationType,
     provider,
     atHomeAddressString,
@@ -3215,6 +3230,13 @@ export default function BookScreen() {
                         placeholderTextColor="#9CA3AF"
                       />
                     </View>
+                    {locationType === "at_home" ? (
+                      <ContextualHint
+                        id="customer.book.atHomeVenue"
+                        mode="persistent"
+                        message={t("booking.houseCallPricing.atHomeVenueCombined")}
+                      />
+                    ) : null}
                     {/* Travel fee preview — shown when address is entered */}
                     {travelFeePreview.status !== "idle" && (
                       <View
@@ -3620,6 +3642,15 @@ export default function BookScreen() {
                         </Text>
                       </TouchableOpacity>
                     )}
+                    {provider?.id ? (
+                      <View style={{ width: "100%", paddingHorizontal: 8, marginTop: 12 }}>
+                        <ContextualHint
+                          id="customer.book.waitlistJoin"
+                          mode="persistent"
+                          message={t("booking.contextualHints.waitlistJoin")}
+                        />
+                      </View>
+                    ) : null}
                   </View>
                 ) : selectableSlots.length === 0 ? (
                   <View style={{ alignItems: "center", paddingVertical: 24 }}>

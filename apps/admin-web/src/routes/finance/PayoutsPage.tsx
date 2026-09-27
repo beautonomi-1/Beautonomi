@@ -72,6 +72,7 @@ type PayoutsEnvelope = {
     has_more: boolean;
     summary?: Record<string, { count: number; amount: number }>;
     negative_balance_providers?: NegativeBalanceProvidersMeta;
+    payout_status_summary_truncated?: boolean;
   };
 };
 
@@ -676,6 +677,15 @@ export function PayoutsPage() {
                 Showing 25 of {negativeBalances.providers.length} providers (most negative first).
               </p>
             ) : null}
+          </div>
+        </AdminPanel>
+      ) : null}
+
+      {meta?.payout_status_summary_truncated ? (
+        <AdminPanel>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Status summary totals (counts/amounts by status) were computed on a paginated slice — narrow date or
+            provider filters for exact queue totals.
           </div>
         </AdminPanel>
       ) : null}

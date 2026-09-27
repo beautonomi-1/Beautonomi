@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -133,14 +134,16 @@ export async function POST(
     }
 
     // Update booking to mark QR code as verified
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         qr_code_verified: true,
         arrival_otp_verified: true, // Also mark OTP as verified if QR code is verified
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
     if (updateError) {
       throw updateError;

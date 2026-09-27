@@ -266,7 +266,7 @@ describe("POST /api/payments/webhook — signature & idempotency (money path)", 
     const { POST } = await import("../route");
     const body = chargeSuccessBody("ref-inflight");
     const res = await POST(makeRequest(body, sign(body)));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const json = await res.json();
     expect(json).toMatchObject({ processing: true });
     expect(mockHandleChargeSuccess).not.toHaveBeenCalled();

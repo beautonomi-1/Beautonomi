@@ -119,7 +119,10 @@ export async function POST(
 
     const paystackData = await initializePaystackTransaction({
       email,
-      amountInSmallestUnit: convertToSmallestUnit(Number((charge as any).amount || 0)),
+      amountInSmallestUnit: convertToSmallestUnit(
+        Number((charge as any).amount || 0),
+        (charge as any).currency || bookingData.currency || lastResortCurrency,
+      ),
       currency: (charge as any).currency || bookingData.currency || lastResortCurrency,
       reference,
       callback_url: callbackUrl,

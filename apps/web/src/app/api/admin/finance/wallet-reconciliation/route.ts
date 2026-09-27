@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 
 interface WalletReconciliationRow {
   user_id: string;
@@ -157,17 +158,21 @@ export async function GET(request: NextRequest) {
     let walletsQuery = supabase
       .from("user_wallets")
       .select("id, user_id, balance, currency")
-      .order("updated_at", { ascending: false })
-      .limit(1000);
+      .order("id", { ascending: true });
 
     if (tenantId) {
-      const { data: tenantWalletRows, error: tenantWalletsError } = await supabase
+      const tenantWalletQuery = supabase
         .from("wallet_transactions")
         .select("wallet_id")
         .eq("tenant_id", tenantId)
-        .limit(5000);
-
-      if (tenantWalletsError) {
+        .order("wallet_id", { ascending: true });
+      let tenantWalletRows: { wallet_id?: string }[] = [];
+      let tenantWalletScopeApplied = false;
+      try {
+        const page = await fetchAllPages<{ wallet_id?: string }>(tenantWalletQuery);
+        tenantWalletRows = page.rows;
+        tenantWalletScopeApplied = true;
+      } catch (tenantWalletsError) {
         if (isMissingColumnError(tenantWalletsError, "tenant_id")) {
           console.warn(
             "[wallet-reconciliation] wallet_transactions.tenant_id missing, continuing without tenant scoping"
@@ -175,9 +180,10 @@ export async function GET(request: NextRequest) {
         } else {
           throw tenantWalletsError;
         }
-      } else {
+      }
+      if (tenantWalletScopeApplied) {
         const scopedWalletIds = Array.from(
-          new Set((tenantWalletRows ?? []).map((row: { wallet_id?: string }) => row.wallet_id).filter(Boolean))
+          new Set(tenantWalletRows.map((row) => row.wallet_id).filter(Boolean))
         );
         if (scopedWalletIds.length === 0) {
           return successResponse({
@@ -191,8 +197,12 @@ export async function GET(request: NextRequest) {
         walletsQuery = walletsQuery.in("id", scopedWalletIds);
       }
     }
-    const { data: wallets, error: walletsError } = await walletsQuery;
-    if (walletsError) throw walletsError;
+    const { rows: wallets, truncated: walletsTruncated } = await fetchAllPages<{
+      id: string;
+      user_id: string;
+      balance?: number;
+      currency?: string;
+    }>(walletsQuery);
 
     if (!wallets?.length) {
       return successResponse({
@@ -259,6 +269,7 @@ export async function GET(request: NextRequest) {
       total_mismatches: mismatches.length,
       checked: walletRows.length,
       healthy,
+      wallets_truncated: walletsTruncated,
     });
   } catch (error) {
     return handleApiError(error, "Failed to run wallet reconciliation");

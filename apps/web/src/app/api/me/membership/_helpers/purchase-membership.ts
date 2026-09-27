@@ -256,7 +256,7 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
   try {
     paystackData = await initializePaystackTransaction({
       email: email!,
-      amountInSmallestUnit: convertToSmallestUnit(amount),
+      amountInSmallestUnit: convertToSmallestUnit(amount, currency),
       currency,
       reference,
       callback_url: callbackUrl,

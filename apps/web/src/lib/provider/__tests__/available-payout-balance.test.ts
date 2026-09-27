@@ -453,6 +453,34 @@ describe("getAvailablePayoutBalance", () => {
     expect(result.availableBalance).toBe(150);
   });
 
+  it("subtracts open payment dispute reserves from available balance", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          {
+            provider_id: providerId,
+            transaction_type: "provider_earnings",
+            amount: 500,
+            net: 500,
+            booking_id: "b1",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+        payment_disputes: [
+          { provider_id: providerId, status: "open", amount: 120 },
+          { provider_id: providerId, status: "merchant_won", amount: 50 },
+        ],
+      }),
+      providerId,
+    );
+
+    expect(result.availableBalance).toBe(380);
+    expect(result.rawBalance).toBe(380);
+  });
+
   it("keeps withdrawable balance when the next ledger page is PostgREST PGRST103", async () => {
     const page = Array.from({ length: 1000 }, (_, i) => ({
       id: `e-${i}`,
@@ -504,6 +532,24 @@ describe("getAvailablePayoutBalance", () => {
           chain.select = self;
           chain.eq = self;
           chain.in = () => Promise.resolve({ data: [], error: null });
+          return chain;
+        }
+        if (table === "payment_disputes") {
+          const chain: Record<string, unknown> = {};
+          const self = () => chain;
+          chain.select = self;
+          chain.eq = self;
+          chain.in = () => Promise.resolve({ data: [], error: null });
+          return chain;
+        }
+        if (table === "bookings") {
+          const chain: Record<string, unknown> = {};
+          chain.select = () => chain;
+          chain.in = () =>
+            Promise.resolve({
+              data: [{ id: "b1", status: "completed", completed_at: "2026-01-01T00:00:00.000Z" }],
+              error: null,
+            });
           return chain;
         }
         throw new Error(`Unexpected table ${table}`);

@@ -121,8 +121,8 @@ function buildAdminMock({
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn().mockResolvedValue("tenant-1"),
 }));
-vi.mock("@/lib/finance/resolve-commission-percentage", () => ({
-  resolveCommissionPercentageForProvider: vi.fn().mockResolvedValue(15),
+vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
+  resolveCommissionPercentageForBooking: vi.fn().mockResolvedValue(15),
 }));
 vi.mock("@/lib/notifications/insert-notification", () => ({
   insertNotification: vi.fn().mockResolvedValue(undefined),

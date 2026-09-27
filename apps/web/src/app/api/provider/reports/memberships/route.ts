@@ -11,7 +11,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
-import { isMembershipProviderEarnings } from "@/lib/reports/provider-revenue-semantics";
+import {
+  isMembershipProviderEarnings,
+  type DashboardEarningsMixRow,
+} from "@/lib/reports/provider-revenue-semantics";
 
 /**
  * GET /api/provider/reports/memberships
@@ -52,7 +55,7 @@ export async function GET(request: NextRequest) {
       .lte("created_at", toDate.toISOString())
       .order("created_at", { ascending: true });
 
-    const ledgerRows = await fetchAllLedgerPages(
+    const ledgerRows = await fetchAllLedgerPages<DashboardEarningsMixRow & { created_at: string }>(
       ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
       MAX_FINANCE_TRANSACTIONS,
     );

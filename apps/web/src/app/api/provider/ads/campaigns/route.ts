@@ -508,7 +508,7 @@ export async function POST(request: NextRequest) {
 
     const paystackData = await initializePaystackTransaction({
       email,
-      amountInSmallestUnit: Math.max(100, convertToSmallestUnit(budget)),
+      amountInSmallestUnit: Math.max(100, convertToSmallestUnit(budget, currency)),
       currency,
       reference,
       callback_url: callbackUrl,

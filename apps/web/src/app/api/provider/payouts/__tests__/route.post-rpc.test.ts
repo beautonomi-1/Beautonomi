@@ -41,6 +41,10 @@ vi.mock("@/lib/provider/available-payout-balance", () => ({
   roundMoney2: (n: number) => Math.round((n + Number.EPSILON) * 100) / 100,
 }));
 
+vi.mock("@/lib/fraud/provider-payout-hold", () => ({
+  getActiveProviderPayoutHold: vi.fn(async () => null),
+}));
+
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: vi.fn(),
 }));

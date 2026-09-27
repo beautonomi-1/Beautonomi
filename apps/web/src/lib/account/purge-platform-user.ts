@@ -67,6 +67,12 @@ export async function complianceClearUserReferences(
   admin: SupabaseClient,
   userId: string,
 ): Promise<PurgeUserResult> {
+  try {
+    await admin.rpc("brand_clear_user_references", { p_user_id: userId });
+  } catch {
+    /* migration 962 optional until applied */
+  }
+
   const { error } = await admin.rpc("compliance_clear_user_references", {
     p_user_id: userId,
   });

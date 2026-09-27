@@ -17,6 +17,7 @@ import { identifyUser } from "@/lib/analytics/amplitude/identify";
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import type { UserRole } from "@/types/beautonomi";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /** Any role that may use the web app with Amplitude enabled (admin portal + marketplace). */
 const ANALYTICS_IDENTIFY_ROLES: UserRole[] = [
@@ -82,6 +83,20 @@ export async function POST(request: NextRequest) {
     if (first_touch_gclid != null) properties.first_touch_gclid = String(first_touch_gclid);
     if (first_touch_fbclid != null) properties.first_touch_fbclid = String(first_touch_fbclid);
     if (first_touch_msclkid != null) properties.first_touch_msclkid = String(first_touch_msclkid);
+
+    if (first_touch_utm_campaign != null && String(first_touch_utm_campaign).trim()) {
+      const admin = getSupabaseAdmin();
+      await admin
+        .from("users")
+        .update({
+          first_touch_utm_source: first_touch_utm_source != null ? String(first_touch_utm_source) : null,
+          first_touch_utm_medium: first_touch_utm_medium != null ? String(first_touch_utm_medium) : null,
+          first_touch_utm_campaign: String(first_touch_utm_campaign).slice(0, 500),
+          first_touch_captured_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
+        .is("first_touch_utm_campaign", null);
+    }
 
     return successResponse(properties);
   } catch (error) {

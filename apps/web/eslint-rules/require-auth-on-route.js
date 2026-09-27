@@ -47,7 +47,8 @@
  *   requireOpsDesk, requireOpsManagers, requireProviderOpsSection,
  *   requireProviderOpsSales, requireProviderOpsOnboarding, requireProviderOpsRetention,
  *   requireProviderOpsAnyDesk, requireProviderOpsManagersOnly,
- *   requireProviderOpsSalesOrOnboarding.
+ *   requireProviderOpsSalesOrOnboarding,
+ *   requireGrcPermission, requireBrandDeskAccess, grcGetHandler.
  *
  * Additional inline patterns (text match): `auth.getUser`, `auth.getSession`,
  * `Bearer ${cronSecret}`, and explicit HMAC signature verification via the
@@ -91,6 +92,9 @@ const GUARD_IDENTIFIERS = new Set([
   "requireProviderOpsAnyDesk",
   "requireProviderOpsManagersOnly",
   "requireProviderOpsSalesOrOnboarding",
+  "requireGrcPermission",
+  "requireBrandDeskAccess",
+  "grcGetHandler",
 ]);
 
 /**

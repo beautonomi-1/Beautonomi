@@ -1940,6 +1940,18 @@ export default function BookingDetailScreen() {
   const isInService = isAtHome && (isStarted || b.current_stage === "service_started");
   const isJourneyComplete =
     isAtHome && (currentDbStatus === "completed" || b.current_stage === "service_completed");
+  const showJourneySticky =
+    isAtHome &&
+    (canStartJourney || isEnRoute || isArrived || isInService || isJourneyComplete);
+  const journeyProgressStage = isJourneyComplete
+    ? ("service_completed" as const)
+    : isInService
+      ? ("service_started" as const)
+      : isArrived
+        ? ("provider_arrived" as const)
+        : isEnRoute
+          ? ("provider_on_way" as const)
+          : ("confirmed" as const);
   const serviceStartedAtMs = (b as { started_at?: string | null }).started_at
     ? new Date((b as { started_at?: string }).started_at as string).getTime()
     : NaN;
@@ -3338,6 +3350,14 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-sm font-medium text-indigo-800")}>{bk("returnToGroupSession")}</Text>
         </TouchableOpacity>
       ) : null}
+      {showJourneySticky ? (
+        <JourneyProgress
+          variant="compact"
+          sticky
+          stage={journeyProgressStage}
+          accessibilitySectionLabel={bk("journeySteps")}
+        />
+      ) : null}
       <ScrollView
         ref={mainScrollRef}
         style={twStyle("flex-1")}
@@ -3673,22 +3693,8 @@ export default function BookingDetailScreen() {
             </View>
           </View>
 
-        {isAtHome && (canStartJourney || isEnRoute || isArrived || isInService || isJourneyComplete) && (
+        {showJourneySticky && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>{bk("journeySteps")}</Text>
-            <JourneyProgress
-              stage={
-                isJourneyComplete
-                  ? "service_completed"
-                  : isInService
-                    ? "service_started"
-                    : isArrived
-                      ? "provider_arrived"
-                      : isEnRoute
-                        ? "provider_on_way"
-                        : "confirmed"
-              }
-            />
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("atHomeVisit")}</Text>
               {addressLine ? (

@@ -81,7 +81,8 @@ export async function GET(request: NextRequest) {
 
     if (activeSubscriptions) {
       (activeSubscriptions as unknown as SubWithPlan[]).forEach((sub) => {
-        const plan = sub.subscription_plans;
+        const planRaw = sub.subscription_plans;
+        const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
         if (!plan) return;
 
         const isMonthly = sub.billing_period === "monthly";
@@ -235,7 +236,9 @@ export async function GET(request: NextRequest) {
       let monthRevenue = 0;
       if (monthSubs) {
         (monthSubs as unknown as SubWithPlan[]).forEach((sub) => {
-          const plan = sub.subscription_plans;
+          const plan = Array.isArray(sub.subscription_plans)
+            ? sub.subscription_plans[0]
+            : sub.subscription_plans;
           if (!plan) return;
           
           const isMonthly = sub.billing_period === "monthly";
@@ -260,7 +263,9 @@ export async function GET(request: NextRequest) {
 
     if (activeSubscriptions) {
       (activeSubscriptions as unknown as SubWithPlan[]).forEach((sub) => {
-        const plan = sub.subscription_plans;
+        const plan = Array.isArray(sub.subscription_plans)
+          ? sub.subscription_plans[0]
+          : sub.subscription_plans;
         const provider = sub.providers;
         if (!plan || !provider) return;
 

@@ -1076,3 +1076,5 @@ export function SnapLineIndicator({
     </div>
   );
 }
+
+export { CalendarIconLegend } from "@/components/provider-portal/CalendarIconLegend";

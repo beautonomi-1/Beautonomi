@@ -294,6 +294,7 @@ export async function POST(request: NextRequest) {
       notification_id: result.notification_id,
       created_at: new Date().toISOString(),
       metadata: {
+        tenant_id: tenantId,
         announcement_type: announcementType,
         ...(mediaUrlTrim ? { media_url: mediaUrlTrim } : {}),
         ...(b.media_type ? { media_type: b.media_type } : {}),

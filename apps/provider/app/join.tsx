@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Linking,
   ScrollView,
+  TextInput,
 } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -51,6 +52,11 @@ export default function StaffJoinScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordDone, setPasswordDone] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -161,6 +167,78 @@ export default function StaffJoinScreen() {
               <ActivityIndicator color={Colors.primary} />
             ) : !user ? (
               <>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>
+                  {sj("setPasswordTitle")}
+                </Text>
+                <TextInput
+                  secureTextEntry
+                  placeholder={sj("passwordLabel")}
+                  value={password}
+                  onChangeText={setPassword}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#e5e7eb",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                />
+                <TextInput
+                  secureTextEntry
+                  placeholder={sj("passwordConfirmLabel")}
+                  value={passwordConfirm}
+                  onChangeText={setPasswordConfirm}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#e5e7eb",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                />
+                {passwordError ? (
+                  <Text style={{ color: "#dc2626", marginBottom: 8, fontSize: 13 }}>{passwordError}</Text>
+                ) : null}
+                {passwordDone ? (
+                  <Text style={{ color: "#15803d", marginBottom: 12, fontSize: 13 }}>
+                    {sj("setPasswordSuccess")}
+                  </Text>
+                ) : null}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: Colors.primary,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    marginBottom: 16,
+                    opacity: settingPassword || !preview?.valid ? 0.6 : 1,
+                  }}
+                  disabled={settingPassword || !preview?.valid}
+                  onPress={async () => {
+                    setPasswordError(null);
+                    if (password.length < 8) {
+                      setPasswordError(sj("passwordTooShort"));
+                      return;
+                    }
+                    if (password !== passwordConfirm) {
+                      setPasswordError(sj("passwordMismatch"));
+                      return;
+                    }
+                    setSettingPassword(true);
+                    const res = await api.post("/api/provider/staff/join/set-password", {
+                      token,
+                      password,
+                    });
+                    setSettingPassword(false);
+                    if (res.error) {
+                      setPasswordError(res.error.message ?? sj("setPasswordFailed"));
+                      return;
+                    }
+                    setPasswordDone(true);
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>{sj("setPasswordSubmit")}</Text>
+                </TouchableOpacity>
                 <Text style={{ fontSize: 14, color: "#4b5563", marginBottom: 16 }}>
                   {preview?.email_hint
                     ? sj("signInHintWithEmail", { email: preview.email_hint })

@@ -122,6 +122,7 @@ export function shouldInvokePlanner(params: {
   resolverStatus: string;
 }): boolean {
   if (params.resolverStatus === "help" || params.resolverStatus === "disambiguation") return false;
+  if (params.intent === "howto.knowledge") return false;
   if (params.intent === "unknown") return true;
   if (!params.hasPrimary) return true;
   return false;

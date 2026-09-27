@@ -21,7 +21,8 @@ export type UserRole =
   | "admin_platform_config"
   | "admin_sales"
   | "admin_onboarding"
-  | "admin_retention";
+  | "admin_retention"
+  | "admin_grc";
 
 export interface PaginatedResponse<T> {
   items: T[];

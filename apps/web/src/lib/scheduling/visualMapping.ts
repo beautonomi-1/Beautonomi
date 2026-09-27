@@ -308,8 +308,8 @@ export function getKindIndicator(kind: AppointmentKind): KindIndicatorConfig {
 export interface IconConfig {
   /** Lucide icon name */
   icon: string;
-  /** Tooltip text */
-  tooltip: string;
+  /** i18n key suffix under `web.provider.scheduling.calendarIcons` */
+  flagKey: keyof AppointmentIconFlags;
   /** Color class */
   colorClass: string;
   /** Priority (lower = show first) */
@@ -322,49 +322,49 @@ export interface IconConfig {
 export const ICON_FLAG_MAPPING: Record<keyof AppointmentIconFlags, IconConfig | null> = {
   isNewClient: {
     icon: "Sparkles",
-    tooltip: "New Client",
+    flagKey: "isNewClient",
     colorClass: "text-amber-500",
     priority: 1,
   },
   hasNotes: {
     icon: "StickyNote",
-    tooltip: "Has Notes",
+    flagKey: "hasNotes",
     colorClass: "text-blue-500",
     priority: 5,
   },
   isRepeating: {
     icon: "Repeat",
-    tooltip: "Repeating Appointment",
+    flagKey: "isRepeating",
     colorClass: "text-purple-500",
     priority: 3,
   },
   hasMembership: {
     icon: "Crown",
-    tooltip: "Member",
+    flagKey: "hasMembership",
     colorClass: "text-yellow-500",
     priority: 2,
   },
   hasFormsIncomplete: {
     icon: "FileWarning",
-    tooltip: "Forms Incomplete",
+    flagKey: "hasFormsIncomplete",
     colorClass: "text-red-500",
     priority: 0,
   },
   hasPhotos: {
     icon: "Camera",
-    tooltip: "Has Photos",
+    flagKey: "hasPhotos",
     colorClass: "text-green-500",
     priority: 6,
   },
   hasConversation: {
     icon: "MessageCircle",
-    tooltip: "Has Messages",
+    flagKey: "hasConversation",
     colorClass: "text-blue-400",
     priority: 7,
   },
   isGroup: {
     icon: "Users",
-    tooltip: "Group Booking",
+    flagKey: "isGroup",
     colorClass: "text-indigo-500",
     priority: 4,
   },
@@ -372,19 +372,19 @@ export const ICON_FLAG_MAPPING: Record<keyof AppointmentIconFlags, IconConfig | 
   requestedGender: null, // Don't show icon
   hasCustomization: {
     icon: "Wrench",
-    tooltip: "Service Customization",
+    flagKey: "hasCustomization",
     colorClass: "text-gray-500",
     priority: 8,
   },
   isWalkIn: {
     icon: "PersonStanding",
-    tooltip: "Walk-in",
+    flagKey: "isWalkIn",
     colorClass: "text-amber-600",
     priority: 2,
   },
   isAtHome: {
     icon: "Home",
-    tooltip: "At-Home Service",
+    flagKey: "isAtHome",
     colorClass: "text-blue-600",
     priority: 2,
   },

@@ -293,7 +293,17 @@ export async function getAllFeatureFlagsServer(): Promise<FeatureFlag[]> {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || user.user_metadata?.role !== "superadmin") {
+    if (!user) {
+      throw new Error("Unauthorized: Superadmin access required");
+    }
+
+    const admin = getSupabaseAdmin();
+    const { data: profile } = await admin
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if ((profile as { role?: string } | null)?.role !== "superadmin") {
       throw new Error("Unauthorized: Superadmin access required");
     }
 

@@ -29,7 +29,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { recordTerminalOrderPayment } from "@/lib/terminal/record-terminal-order-payment";
@@ -67,7 +67,11 @@ import {
   shouldIgnorePaystackEventForRow,
 } from "@/lib/subscriptions/provider-billing-merchant";
 import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/api/payments/webhook/_handlers/subscription-events";
-import { slackNotifyPaymentFailed } from "@/lib/integrations/slack/ops-triggers";
+import { slackNotifyPaymentFailed, slackNotifyUnrecognizedPayments } from "@/lib/integrations/slack/ops-triggers";
+import {
+  bookingFinancialsFromDb,
+  verifyPaystackBookingCharge,
+} from "@/lib/bookings/verify-paystack-booking-charge";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -93,14 +97,24 @@ async function lastResortCurrencyFromTenantId(
   return LAST_RESORT_CURRENCY;
 }
 
+function paystackChargeCurrency(
+  data: { currency?: string; metadata?: Record<string, unknown> | null },
+  recordCurrency?: string | null,
+): string {
+  return String(
+    data.currency || data.metadata?.currency || recordCurrency || LAST_RESORT_CURRENCY,
+  ).toUpperCase();
+}
+
 async function resolvePaystackChargeFees(
   supabase: SupabaseClient,
   amount: number | undefined,
   fees: number | undefined,
+  currency: string,
 ) {
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
+  const amountInCurrency = convertFromSmallestUnit(amount || 0, currency);
   const resolved = await resolvePaystackFeeMajor(supabase, {
-    feesSmallestOrMajor: convertFromSmallestUnit(fees || 0),
+    feesSmallestOrMajor: convertFromSmallestUnit(fees || 0, currency),
     amountMajor: amountInCurrency,
     alreadyMajor: true,
   });
@@ -118,6 +132,7 @@ type PaystackChargeData = {
   metadata?: Record<string, unknown> & { booking_id?: string; customer_id?: string; [k: string]: unknown };
   amount?: number;
   fees?: number;
+  currency?: string;
   customer?: { email?: string; customer_code?: string };
   authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string };
   message?: string;
@@ -175,7 +190,10 @@ function emitPaystackPaymentFailedSlack(
     orderId:
       extras?.orderId ??
       (typeof data.metadata?.product_order_id === "string" ? data.metadata.product_order_id : null),
-    amountMajor: typeof data.amount === "number" ? convertFromSmallestUnit(data.amount) : null,
+    amountMajor:
+      typeof data.amount === "number"
+        ? convertFromSmallestUnit(data.amount, paystackChargeCurrency(data))
+        : null,
     reason: data.gateway_response || data.message || null,
     customerEmail: data.customer?.email ?? null,
   });
@@ -259,27 +277,25 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     await recordPaystackTerminalCharge(supabase, data as any);
     return;
   }
-  const { metadata, amount, fees, customer, authorization } = data;
+  const { metadata, amount, fees, currency, customer, authorization } = data;
+  const paystackCurrency = paystackChargeCurrency(data);
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id && reference) {
       const productOrderId = String(metadata.product_order_id);
-      const amountMajor = convertFromSmallestUnit(amount || 0);
+      const amountMajor = convertFromSmallestUnit(amount || 0, paystackCurrency);
       const { data: poBeforeRow } = await (supabase.from("product_orders") as any)
-        .select("total_amount, wallet_amount, payment_reference, tenant_id, currency")
+        .select("total_amount, wallet_amount, gift_card_amount, payment_reference, tenant_id, currency")
         .eq("id", productOrderId)
         .maybeSingle();
       if (poBeforeRow) {
         const expectedMajor = Math.max(
           0,
-          Number(poBeforeRow.total_amount ?? 0) - Number(poBeforeRow.wallet_amount ?? 0),
+          Number(poBeforeRow.total_amount ?? 0) -
+            Number(poBeforeRow.wallet_amount ?? 0) -
+            Number(poBeforeRow.gift_card_amount ?? 0),
         );
-        const existingReference = String(poBeforeRow.payment_reference ?? "").trim();
-        if (
-          Math.abs(amountMajor - expectedMajor) > 0.01 &&
-          existingReference &&
-          existingReference !== reference
-        ) {
+        if (Math.abs(amountMajor - expectedMajor) > 0.01) {
           console.error("[charge-success] product order amount mismatch", {
             productOrderId,
             amountMajor,
@@ -304,8 +320,8 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         supabase,
         productOrderId,
         reference: String(reference),
-        amountMajor: convertFromSmallestUnit(amount || 0),
-        feesMajor: convertFromSmallestUnit(fees || 0),
+        amountMajor: convertFromSmallestUnit(amount || 0, paystackCurrency),
+        feesMajor: convertFromSmallestUnit(fees || 0, paystackCurrency),
         source: "paystack_webhook",
         provider: "paystack",
       });
@@ -337,7 +353,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     }
     if (metadata?.terminal_order_id && reference) {
       const terminalOrderId = String(metadata.terminal_order_id);
-      const amountMajor = convertFromSmallestUnit(amount || 0);
+      const amountMajor = convertFromSmallestUnit(amount || 0, paystackCurrency);
       const { validateTerminalOrderPaystackPayment } = await import(
         "@/lib/terminal/validate-terminal-order-paystack-payment"
       );
@@ -370,7 +386,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         terminalOrderId,
         reference: String(reference),
         amountMajor,
-        feesMajor: convertFromSmallestUnit(fees || 0),
+        feesMajor: convertFromSmallestUnit(fees || 0, paystackCurrency),
         commercialModel,
         source: "paystack_webhook",
         provider: "paystack",
@@ -386,7 +402,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     // Non-booking flows (gift cards, subscriptions, etc.)
     if (metadata?.custom_offer_id) {
       await handleCustomOfferSuccess(
-        { reference, metadata, amount, fees, customer, authorization },
+        { reference, metadata, amount, fees, currency, customer, authorization },
         supabase,
       );
       return;
@@ -400,12 +416,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         "@/lib/marketing/apply-marketing-topup-from-paystack"
       );
       const providerId = String(metadata?.provider_id ?? "");
-      const amountZar = Number(metadata?.amount_zar ?? amount / 100);
+      const amountZar = Number(metadata?.amount_zar ?? convertFromSmallestUnit(amount, paystackCurrency));
       await applyMarketingTopupFromPaystackSuccess({
         supabase,
         providerId,
         amountZar,
-        feesZar: convertFromSmallestUnit(fees || 0),
+        feesZar: convertFromSmallestUnit(fees || 0, paystackCurrency),
         currency: typeof metadata?.currency === "string" ? metadata.currency : null,
         paystackReference: reference,
         metadata: metadata as Record<string, unknown>,
@@ -413,33 +429,33 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       return;
     }
     if (metadata?.gift_card_order_id) {
-      await handleGiftCardOrderSuccess({ reference, metadata, amount, fees }, supabase);
+      await handleGiftCardOrderSuccess({ reference, metadata, amount, fees, currency }, supabase);
       return;
     }
     if (metadata?.membership_order_id) {
-      await handleMembershipOrderSuccess({ reference, metadata, amount, fees, authorization, customer }, supabase);
+      await handleMembershipOrderSuccess({ reference, metadata, amount, fees, currency, authorization, customer }, supabase);
       return;
     }
     if (metadata?.provider_subscription_order_id) {
       if (metadata?.kind === "subscription_authorization") {
         await handleSubscriptionAuthorizationSuccess(
-          { reference, metadata, amount, fees, customer, authorization: data.authorization },
+          { reference, metadata, amount, fees, currency, customer, authorization: data.authorization },
           supabase,
         );
       } else {
         await handleProviderSubscriptionOrderSuccess(
-          { reference, metadata, amount, fees, customer },
+          { reference, metadata, amount, fees, currency, customer },
           supabase,
         );
       }
       return;
     }
     if (metadata?.ads_budget_order_id) {
-      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees }, supabase);
+      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees, currency }, supabase);
       return;
     }
     if (metadata?.provider_invoice_id) {
-      await handleProviderInvoicePaymentSuccess({ reference, metadata, amount }, supabase);
+      await handleProviderInvoicePaymentSuccess({ reference, metadata, amount, currency }, supabase);
       return;
     }
     if (metadata?.kind === "card_verification" && reference) {
@@ -449,6 +465,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           metadata,
           amount: amount || 0,
           fees: fees || 0,
+          currency,
           customer,
           authorization,
         },
@@ -488,13 +505,13 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       ...metadata,
       additional_charge_id: metadata.additional_charge_id || metadata.charge_id,
     };
-    await handleAdditionalChargeSuccess({ reference, metadata: merged, amount, fees, customer }, supabase);
+    await handleAdditionalChargeSuccess({ reference, metadata: merged, amount, fees, currency, customer }, supabase);
     return;
   }
 
   // Pay remaining balance (deposit-only bookings)
   if (metadata?.payment_type === "booking_remaining") {
-    await handleBookingRemainingSuccess({ reference, metadata, amount, fees, customer }, supabase);
+    await handleBookingRemainingSuccess({ reference, metadata, amount, fees, currency, customer }, supabase);
     return;
   }
 
@@ -520,6 +537,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   }
 
   const bookingData = booking as ChargeBookingRow;
+  const bookingPaystackCurrency = paystackChargeCurrency(data, bookingData.currency);
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: bookingData.tenant_id as string | null | undefined,
@@ -533,9 +551,44 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .eq("reference", reference)
     .maybeSingle();
 
+  let verifiedPendingPayment: Record<string, unknown> | null = null;
+  if (!alreadySettledPaymentTx) {
+    const verified = await verifyPaystackBookingCharge({
+      supabase,
+      bookingId: metadata.booking_id,
+      reference: String(reference),
+      paystackAmountSmallest: amount || 0,
+      paystackCurrency:
+        typeof (data as { currency?: string }).currency === "string"
+          ? (data as { currency: string }).currency
+          : null,
+      tenantId: financeTenantId,
+      bookingPaymentReference:
+        typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+      bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+    });
+    if (verified.ok === false) {
+      console.error("[charge-success] booking Paystack charge rejected:", {
+        bookingId: metadata.booking_id,
+        reference,
+        reason: verified.reason,
+      });
+      slackNotifyUnrecognizedPayments({
+        tenantId: financeTenantId,
+        count: 1,
+        amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
+        currency:
+          typeof bookingData.currency === "string" ? bookingData.currency : null,
+        source: `paystack_webhook:${verified.reason}`,
+      });
+      return;
+    }
+    verifiedPendingPayment = verified.pendingPayment as Record<string, unknown>;
+  }
+
   if (alreadySettledPaymentTx) {
     console.log(`[charge-success] Paystack ref ${reference} already settled — checking ledger (idempotent retry).`);
-    const amountInCurrency = convertFromSmallestUnit(amount || 0);
+    const amountInCurrency = convertFromSmallestUnit(amount || 0, bookingPaystackCurrency);
     if (amountInCurrency > 0) {
       const recordedPayment = await recordBookingPaystackPayment(supabase, {
         bookingId: metadata.booking_id,
@@ -584,29 +637,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     amountInCurrency,
     feesInCurrency,
     feeSource: paystackFeeSource,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(supabase, amount, fees, bookingPaystackCurrency);
 
-  // Tip/tax/travel and customer-paid platform fees are excluded from commission.
-  // These are the FULL booking-level amounts (used for booking-level ledger entries).
-  const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
-  const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
-  const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
-  // Prefer Paystack metadata (always populated by process-payment.ts). Fall back
-  // to DB columns using || so a legacy 0-default platform_fee_amount never masks a
-  // non-zero service_fee_amount (mirrors the || fix in /api/me/bookings/[id]).
-  const serviceFeeAmount = Number(
-    metadata?.service_fee_amount ??
-      ((bookingData as Record<string, unknown>).platform_fee_amount ||
-        bookingData.service_fee_amount ||
-        bookingData.platform_service_fee ||
-        0),
+  const dbFinancials = bookingFinancialsFromDb(
+    bookingData as Record<string, unknown>,
+    verifiedPendingPayment as Parameters<typeof bookingFinancialsFromDb>[1],
   );
-
-  // Split wallet / gift card + card: commission base must reflect all funds applied
-  // to this booking in this transaction (Paystack amount + wallet + gift card),
-  // not the card portion alone — otherwise provider_earnings is understated.
-  const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
-  const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
+  const tipAmount = dbFinancials.tipAmount;
+  const taxAmount = dbFinancials.taxAmount;
+  const travelFee = dbFinancials.travelFee;
+  const serviceFeeAmount = dbFinancials.serviceFeeAmount;
+  const walletAmountFromMeta = dbFinancials.walletAmountFromMeta;
+  const giftCardAmountFromMeta = dbFinancials.giftCardAmountFromMeta;
   const bookingTotal = Number(bookingData.total_amount || 0);
   // Deposit-only first charges must not recognize full tip / tax / travel /
   // platform fee — that money may never be collected. Post those booking-level
@@ -736,25 +778,11 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           })
           .eq("id", metadata.booking_id);
       } else if (result.reason !== "already_redeemed") {
-        await supabase
-          .from("bookings")
-          .update({
-            loyalty_points_used: 0,
-            loyalty_discount_amount: 0,
-          })
-          .eq("id", metadata.booking_id);
-        console.error("Loyalty points deduction failed:", result.reason || "not_recorded");
+        console.error("Loyalty points deduction failed (post-charge safety net):", result.reason || "not_recorded");
       }
     } catch (loyaltyErr: unknown) {
       const msg = loyaltyErr instanceof Error ? loyaltyErr.message : String(loyaltyErr);
       console.error("Loyalty points deduction failed:", msg);
-      await supabase
-        .from("bookings")
-        .update({
-          loyalty_points_used: 0,
-          loyalty_discount_amount: 0,
-        })
-        .eq("id", metadata.booking_id);
     }
   }
 
@@ -1090,7 +1118,7 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
   const { reference, metadata, amount } = data;
   if (!reference || !metadata?.product_order_id) return;
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
+  const amountInCurrency = convertFromSmallestUnit(amount || 0, paystackChargeCurrency(data));
 
   const productOrderId = String(metadata.product_order_id);
 
@@ -1240,6 +1268,7 @@ async function handleSubscriptionRenewalChargeFailed(
 
   const amountSmallest = amount ?? 0;
   const feesSmallest = fees ?? 0;
+  const paystackCurrency = paystackChargeCurrency(data);
   const failureMeta = {
     source: "paystack_charge_failed",
     subscription_code: subscriptionCode,
@@ -1261,9 +1290,9 @@ async function handleSubscriptionRenewalChargeFailed(
   await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference: paystackRef,
-    amount: convertFromSmallestUnit(amountSmallest),
-    fees: convertFromSmallestUnit(feesSmallest),
-    net_amount: convertFromSmallestUnit(amountSmallest - feesSmallest),
+    amount: convertFromSmallestUnit(amountSmallest, paystackCurrency),
+    fees: convertFromSmallestUnit(feesSmallest, paystackCurrency),
+    net_amount: convertFromSmallestUnit(amountSmallest - feesSmallest, paystackCurrency),
     status: "failed",
     provider: "paystack",
     transaction_type: "provider_subscription_payment",
@@ -1294,7 +1323,7 @@ async function handleSubscriptionRenewalChargeFailed(
           business_name:
             (provider as { business_name?: string }).business_name || "Provider",
           plan_name: subData.subscription_plans?.name || "subscription",
-          amount: `${convertFromSmallestUnit(amountSmallest)}`,
+          amount: `${convertFromSmallestUnit(amountSmallest, paystackCurrency)}`,
           app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
         },
         ["push"],
@@ -1558,6 +1587,19 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     console.error("Error voiding gift card redemption:", gcError);
   }
 
+  if (bookingData.customer_id) {
+    try {
+      const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+      await refundRedeemedLoyaltyPoints(supabase, {
+        bookingId: metadata.booking_id,
+        customerId: bookingData.customer_id as string,
+        reason: "payment_failed",
+      });
+    } catch (loyaltyErr) {
+      console.error("Failed to restore loyalty on charge.failed:", loyaltyErr);
+    }
+  }
+
   try {
     await supabase
       .from("booking_payments")
@@ -1662,6 +1704,7 @@ async function handleCustomOfferSuccess(
     metadata: any;
     amount?: number;
     fees?: number;
+    currency?: string;
     customer?: any;
     authorization?: any;
   },
@@ -1676,6 +1719,7 @@ async function handleCustomOfferSuccess(
     metadata: payload.metadata ?? {},
     amount: payload.amount,
     fees: payload.fees,
+    currency: paystackChargeCurrency(payload),
     customer: payload.customer,
   });
 
@@ -1698,7 +1742,7 @@ async function handleCustomOfferSuccess(
         source: `custom_offer_finalize_${result.reason ?? "failed"}`,
         amountMajor:
           typeof payload.amount === "number"
-            ? convertFromSmallestUnit(payload.amount)
+            ? convertFromSmallestUnit(payload.amount, paystackChargeCurrency(payload))
             : null,
       });
     } catch (alertErr) {
@@ -1883,7 +1927,7 @@ async function handleWalletTopupFailed(
 // ─── Gift Card Order ─────────────────────────────────────────────────────────
 
 async function handleGiftCardOrderSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees?: any },
+  payload: { reference: string; metadata: any; amount: any; fees?: any; currency?: string },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount: _amount, fees: _fees } = payload;
@@ -1940,7 +1984,8 @@ async function handleGiftCardOrderSuccess(
   // §Gift-purchase (audit 2026-06): validate that Paystack actually charged the
   // order total before issuing cards. Issuing full value on an underpayment would
   // hand out more gift-card liability than was collected.
-  const paidAmount = convertFromSmallestUnit(Number(_amount) || 0);
+  const paystackCurrency = paystackChargeCurrency(payload, orderData.currency);
+  const paidAmount = convertFromSmallestUnit(Number(_amount) || 0, paystackCurrency);
   if (paidAmount > 0 && paidAmount + 0.01 < totalAmount) {
     console.error(
       `[gift_card_order] CRITICAL: paid amount ${paidAmount} is less than order total ${totalAmount} for order ${orderId} — not issuing cards.`,
@@ -1966,7 +2011,7 @@ async function handleGiftCardOrderSuccess(
     booking_id: null,
     reference,
     amount: totalAmount,
-    fees: convertFromSmallestUnit(_fees || 0),
+    fees: convertFromSmallestUnit(_fees || 0, paystackCurrency),
     net_amount: totalAmount,
     status: "success",
     provider: "paystack",
@@ -2123,7 +2168,7 @@ async function handleGiftCardOrderSuccess(
     tenant_id: giftOrderFinanceTenantId,
     transaction_type: "gift_card_sale",
     amount: totalAmount,
-    fees: convertFromSmallestUnit(_fees || 0),
+    fees: convertFromSmallestUnit(_fees || 0, paystackCurrency),
     commission: 0,
     net: totalAmount,
     description: `Platform gift card sale (${quantity} card${quantity > 1 ? "s" : ""}) - liability until redemption`,
@@ -2229,12 +2274,14 @@ async function handleMembershipOrderSuccess(
     metadata: any;
     amount?: number;
     fees?: number;
+    currency?: string;
     authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string } | null;
     customer?: { email?: string } | null;
   },
   supabase: SupabaseClient,
 ) {
   const { metadata } = payload;
+  const paystackCurrency = paystackChargeCurrency(payload);
   const orderId = metadata.membership_order_id as string;
 
   const { data: order } = await supabase
@@ -2294,7 +2341,9 @@ async function handleMembershipOrderSuccess(
         reference: payload.reference,
         source: "membership_order_plan_missing",
         amountMajor:
-          typeof payload.amount === "number" ? convertFromSmallestUnit(payload.amount) : null,
+          typeof payload.amount === "number"
+            ? convertFromSmallestUnit(payload.amount, paystackCurrency)
+            : null,
       });
     } catch (alertErr) {
       console.error("[membership] ops alert failed for missing plan:", alertErr);
@@ -2328,11 +2377,11 @@ async function handleMembershipOrderSuccess(
   const providerId = planProviderId;
   const grossAmount =
     typeof payload.amount === "number"
-      ? convertFromSmallestUnit(payload.amount)
+      ? convertFromSmallestUnit(payload.amount, paystackCurrency)
       : Number(orderData.amount || 0);
   const feeAmount =
     typeof payload.fees === "number"
-      ? convertFromSmallestUnit(payload.fees)
+      ? convertFromSmallestUnit(payload.fees, paystackCurrency)
       : 0;
   const membershipFinanceTenantIdHint = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -2545,7 +2594,7 @@ async function handleMembershipOrderFailed(
 // ─── Provider Subscription Order ─────────────────────────────────────────────
 
 async function handleProviderSubscriptionOrderSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; customer: any },
+  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount, fees } = payload;
@@ -2593,7 +2642,7 @@ async function handleProviderSubscriptionOrderSuccess(
   const {
     amountInCurrency,
     feesInCurrency,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(supabase, amount, fees, paystackChargeCurrency(payload));
 
   const { data: claimedPaidOrder } = await supabase
     .from("provider_subscription_orders")
@@ -2744,7 +2793,7 @@ async function handleProviderSubscriptionOrderFailed(
 // ─── Ads budget order (pre-pay for campaign) ──────────────────────────────────
 
 async function handleAdsBudgetOrderSuccess(
-  payload: { reference: string; metadata: any; amount: number; fees: number },
+  payload: { reference: string; metadata: any; amount: number; fees: number; currency?: string },
   supabase: SupabaseClient,
 ) {
   const orderId = String(payload.metadata?.ads_budget_order_id ?? "").trim();
@@ -2752,6 +2801,7 @@ async function handleAdsBudgetOrderSuccess(
     console.error("[ads_budget_order] missing ads_budget_order_id in charge metadata");
     return;
   }
+  const paystackCurrency = paystackChargeCurrency(payload);
 
   // All funding side effects live in the shared idempotent finalize helper so
   // the webhook and the client verify path can never diverge.
@@ -2759,8 +2809,8 @@ async function handleAdsBudgetOrderSuccess(
     supabase,
     orderId,
     reference: payload.reference,
-    amountMajor: convertFromSmallestUnit(Number(payload.amount || 0)),
-    feesMajor: convertFromSmallestUnit(Number(payload.fees || 0)),
+    amountMajor: convertFromSmallestUnit(Number(payload.amount || 0), paystackCurrency),
+    feesMajor: convertFromSmallestUnit(Number(payload.fees || 0), paystackCurrency),
     providerIdHint: payload.metadata?.provider_id ? String(payload.metadata.provider_id) : null,
     campaignIdHint: payload.metadata?.campaign_id ? String(payload.metadata.campaign_id) : null,
   });
@@ -2769,7 +2819,7 @@ async function handleAdsBudgetOrderSuccess(
 // ─── Platform invoice paid online (Beautonomi → provider) ──────────────────
 
 async function handleProviderInvoicePaymentSuccess(
-  payload: { reference: string; metadata: any; amount: number },
+  payload: { reference: string; metadata: any; amount: number; currency?: string },
   supabase: SupabaseClient,
 ) {
   const invoiceId = String(payload.metadata?.provider_invoice_id ?? "").trim();
@@ -2786,7 +2836,7 @@ async function handleProviderInvoicePaymentSuccess(
     await recordProviderInvoicePayment({
       supabase,
       invoiceId,
-      amount: convertFromSmallestUnit(Number(payload.amount || 0)),
+      amount: convertFromSmallestUnit(Number(payload.amount || 0), paystackChargeCurrency(payload)),
       paymentReference: payload.reference,
       metadata: { source: "paystack", provider_id: payload.metadata?.provider_id ?? null },
     });
@@ -2808,6 +2858,7 @@ async function handleCustomerCardVerificationSuccess(
     metadata: Record<string, unknown>;
     amount: number;
     fees: number;
+    currency?: string;
     customer: PaystackChargeData["customer"];
     authorization?: PaystackChargeData["authorization"];
   },
@@ -2843,7 +2894,7 @@ async function handleCustomerCardVerificationSuccess(
     amountInCurrency,
     feesInCurrency,
     netAmount,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(supabase, amount, fees, paystackChargeCurrency(payload));
   const email = customer?.email;
   const authCode = authorization?.authorization_code;
   const reusable = authorization?.reusable === true;
@@ -2905,12 +2956,14 @@ async function handleSubscriptionAuthorizationSuccess(
     metadata: any;
     amount: number;
     fees: number;
+    currency?: string;
     customer: any;
     authorization?: any;
   },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount, fees, authorization } = payload;
+  const paystackCurrency = paystackChargeCurrency(payload);
   const orderId = metadata.provider_subscription_order_id as string;
   const providerId = metadata.provider_id as string;
   const planId = metadata.plan_id as string;
@@ -2974,7 +3027,7 @@ async function handleSubscriptionAuthorizationSuccess(
     const {
       amountInCurrency: amt,
       feesInCurrency: feeAmt,
-    } = await resolvePaystackChargeFees(supabase, amount, fees);
+    } = await resolvePaystackChargeFees(supabase, amount, fees, paystackCurrency);
     const tenantHint = await resolveTenantIdForFinanceLedger(supabase, {
       tenant_id: null,
       provider_id: providerId,
@@ -3001,7 +3054,7 @@ async function handleSubscriptionAuthorizationSuccess(
   const {
     amountInCurrency,
     feesInCurrency,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(supabase, amount, fees, paystackCurrency);
 
   const subscriptionAuthTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -3280,7 +3333,7 @@ async function handleSubscriptionAuthorizationSuccess(
 // ─── Pay remaining balance (deposit-only bookings) ───────────────────────────
 
 async function handleBookingRemainingSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; customer: any },
+  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount, fees, customer } = payload;
@@ -3312,7 +3365,35 @@ async function handleBookingRemainingSuccess(
     amountInCurrency,
     feesInCurrency,
     feeSource: payRemainingFeeSource,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(
+    supabase,
+    amount,
+    fees,
+    paystackChargeCurrency(payload, bookingData.currency),
+  );
+
+  const payRemainVerified = await verifyPaystackBookingCharge({
+    supabase,
+    bookingId,
+    reference: String(reference),
+    paystackAmountSmallest: amount || 0,
+    paystackCurrency: null,
+    tenantId: payRemainingFinanceTenantId,
+    bookingPaymentReference:
+      typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+    bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+  });
+  if (payRemainVerified.ok === false) {
+    console.error("[pay-remaining] charge rejected:", payRemainVerified.reason, reference);
+    slackNotifyUnrecognizedPayments({
+      tenantId: payRemainingFinanceTenantId,
+      count: 1,
+      amountMajor: amountInCurrency,
+      currency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+      source: `paystack_webhook:booking_remaining:${payRemainVerified.reason}`,
+    });
+    return;
+  }
 
   const { data: existingBookingPayment } = await supabase
     .from("booking_payments")
@@ -3366,8 +3447,12 @@ async function handleBookingRemainingSuccess(
     console.log(`Pay-remaining payment ${reference} already recorded — checking ledger (idempotent retry).`);
   }
 
-  const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
-  const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
+  const payRemainFinancials = bookingFinancialsFromDb(
+    bookingData as Record<string, unknown>,
+    payRemainVerified.pendingPayment,
+  );
+  const walletAmountFromMeta = payRemainFinancials.walletAmountFromMeta;
+  const giftCardAmountFromMeta = payRemainFinancials.giftCardAmountFromMeta;
   if (giftCardAmountFromMeta > 0) {
     try {
       await supabase.rpc("capture_gift_card_redemption", { p_booking_id: bookingId });
@@ -3377,16 +3462,10 @@ async function handleBookingRemainingSuccess(
   }
   await completeWalletGiftSyntheticPayments(supabase, bookingId);
 
-  const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
-  const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
-  const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
-  const serviceFeeAmount = Number(
-    metadata?.service_fee_amount ??
-      ((bookingData as Record<string, unknown>).platform_fee_amount ||
-        bookingData.service_fee_amount ||
-        bookingData.platform_service_fee ||
-        0),
-  );
+  const tipAmount = payRemainFinancials.tipAmount;
+  const taxAmount = payRemainFinancials.taxAmount;
+  const travelFee = payRemainFinancials.travelFee;
+  const serviceFeeAmount = payRemainFinancials.serviceFeeAmount;
   const bookingTotal = Number(bookingData.total_amount || 0);
 
   const ledger = await recordBookingOnlineChargeLedger(supabase, {
@@ -3501,7 +3580,7 @@ async function handleBookingRemainingSuccess(
 // ─── Additional Charges ──────────────────────────────────────────────────────
 
 async function handleAdditionalChargeSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; customer: any },
+  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount, fees, customer } = payload;
@@ -3555,6 +3634,27 @@ async function handleAdditionalChargeSuccess(
     return;
   }
 
+  const addChargeVerified = await verifyPaystackBookingCharge({
+    supabase,
+    bookingId,
+    reference: String(reference),
+    paystackAmountSmallest: amount || 0,
+    paystackCurrency: null,
+    tenantId: additionalChargeFinanceTenantId,
+    bookingPaymentReference:
+      typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+    bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+  });
+  if (addChargeVerified.ok === false) {
+    console.error("[additional-charge] charge rejected:", addChargeVerified.reason, reference);
+    slackNotifyUnrecognizedPayments({
+      tenantId: additionalChargeFinanceTenantId,
+      count: 1,
+      source: `paystack_webhook:additional_charge:${addChargeVerified.reason}`,
+    });
+    return;
+  }
+
   const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
   const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
   if (giftCardAmountFromMeta > 0) {
@@ -3570,14 +3670,20 @@ async function handleAdditionalChargeSuccess(
     amountInCurrency,
     feesInCurrency,
     netAmount,
-  } = await resolvePaystackChargeFees(supabase, amount, fees);
+  } = await resolvePaystackChargeFees(
+    supabase,
+    amount,
+    fees,
+    paystackChargeCurrency(payload, bookingData.currency),
+  );
   const chargeAmountMajor = Number((charge as { amount?: number }).amount ?? 0);
   const totalEconomicAmount =
     chargeAmountMajor > 0
       ? chargeAmountMajor
       : amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
 
-  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+  const commissionRate = await resolveCommissionPercentageForBooking(supabase, {
+    bookingId,
     tenantId: bookingData.tenant_id ?? additionalChargeFinanceTenantId ?? null,
     providerId,
   });

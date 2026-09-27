@@ -205,18 +205,14 @@ export default function OnDemandWaitingScreen() {
   };
 
   const uiCopy = (onDemandConfig.ui_copy ?? {}) as Record<string, string>;
-  const title = uiCopy.waiting_title ?? "Request sent";
-  const headline = uiCopy.waiting_headline ?? "Connecting you with beauty.";
-  const providerMessageTemplate =
-    uiCopy.waiting_provider_message ??
-    "We'll confirm your booking as soon as we hear back from {provider_name}.";
-  const providerDisplayName = request?.provider_name?.trim() || "your provider";
-  const providerMessage = providerMessageTemplate.replace(
-    /\{provider_name\}/gi,
-    providerDisplayName
-  );
-  const timerLabel = uiCopy.waiting_timer_label ?? "Time remaining";
-  const cancelCta = uiCopy.waiting_cancel_cta ?? "Cancel request";
+  const title = uiCopy.waiting_title ?? ow("waitingTitle");
+  const headline = uiCopy.waiting_headline ?? ow("waitingHeadline");
+  const providerDisplayName = request?.provider_name?.trim() || ow("providerFallbackName");
+  const providerMessage = uiCopy.waiting_provider_message
+    ? uiCopy.waiting_provider_message.replace(/\{provider_name\}/gi, providerDisplayName)
+    : ow("waitingProviderMessage", { provider: providerDisplayName });
+  const timerLabel = uiCopy.waiting_timer_label ?? ow("waitingTimerLabel");
+  const cancelCta = uiCopy.waiting_cancel_cta ?? ow("waitingCancelCta");
   const helpUrl = uiCopy.waiting_help_url?.trim() || undefined;
 
   const shortRequestId = requestId

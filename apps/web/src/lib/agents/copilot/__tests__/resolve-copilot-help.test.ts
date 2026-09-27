@@ -81,4 +81,44 @@ describe("resolveCopilotQuestion help path", () => {
     }
     expect(runAdminGlobalSearch).not.toHaveBeenCalled();
   });
+
+  it("returns howto.knowledge for procedural questions without entity search", async () => {
+    const result = await resolveCopilotQuestion(
+      baseInput({ question: "How do I review a brand brief?", pageContext: undefined }),
+    );
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.intent).toBe("howto.knowledge");
+    }
+    expect(runAdminGlobalSearch).not.toHaveBeenCalled();
+  });
+
+  it("keeps help for how do I use copilot", async () => {
+    const result = await resolveCopilotQuestion(
+      baseInput({ question: "How do I use copilot?", pageContext: undefined }),
+    );
+    expect(result.status).toBe("help");
+    expect(runAdminGlobalSearch).not.toHaveBeenCalled();
+  });
+
+  it("still searches for BTN booking refs", async () => {
+    vi.mocked(runAdminGlobalSearch).mockResolvedValue({
+      users: [],
+      providers: [],
+      bookings: [
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          booking_number: "BTN-100",
+          status: "confirmed",
+          customer_name: null,
+          provider_name: null,
+        },
+      ],
+    });
+    const result = await resolveCopilotQuestion(
+      baseInput({ question: "Status of BTN-100?", pageContext: undefined }),
+    );
+    expect(runAdminGlobalSearch).toHaveBeenCalled();
+    expect(result.status).toBe("ready");
+  });
 });

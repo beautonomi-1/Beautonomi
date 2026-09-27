@@ -239,6 +239,49 @@ export const safetyReadContentReportTool: AgentToolDefinition<
   },
 };
 
+export const adminSearchKnowledgeTool: AgentToolDefinition<
+  { query: string; limit?: number },
+  {
+    results: Array<{
+      title: string;
+      slug: string;
+      summary: string;
+      adminPath: string;
+      is_internal: boolean;
+    }>;
+  }
+> = {
+  name: "admin.searchKnowledge",
+  version: "1",
+  description: "Search internal Knowledge Base runbooks and training articles by keywords",
+  requiredSection: ADMIN_SECTION_OVERVIEW,
+  mode: "read",
+  baseRiskTier: 0,
+  inputSchema: z.object({
+    query: z.string().min(2).max(200),
+    limit: z.number().int().min(1).max(10).optional(),
+  }),
+  outputSchema: z.object({
+    results: z.array(
+      z.object({
+        title: z.string(),
+        slug: z.string(),
+        summary: z.string(),
+        adminPath: z.string(),
+        is_internal: z.boolean(),
+      }),
+    ),
+  }),
+  maxRows: 10,
+  maxOutputBytes: 32768,
+  timeoutMs: 15_000,
+  rateLimitPerMin: 60,
+  retentionClass: "B",
+  execute: async () => {
+    throw new Error("admin.searchKnowledge wired in apps/web");
+  },
+};
+
 export const adminSearchEntitiesTool: AgentToolDefinition<
   { query: string; kinds?: ("provider" | "booking" | "user")[] },
   { matches: Array<{ kind: string; id: string; label: string; subtitle?: string }> }
@@ -484,6 +527,7 @@ export const TOOL_REGISTRY = [
   providerReadHealthSnapshotTool,
   trustReadFraudCaseTool,
   safetyReadContentReportTool,
+  adminSearchKnowledgeTool,
   adminSearchEntitiesTool,
   bookingReadSummaryTool,
   userReadProfileSummaryTool,

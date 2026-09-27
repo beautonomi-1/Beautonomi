@@ -26,6 +26,7 @@ const ADMIN_ROLES: UserRole[] = [
   "admin_sales",
   "admin_onboarding",
   "admin_retention",
+  "admin_grc",
 ];
 
 const inviteSchema = z.object({
@@ -46,6 +47,7 @@ const inviteSchema = z.object({
     "admin_sales",
     "admin_onboarding",
     "admin_retention",
+    "admin_grc",
   ] as const),
 });
 

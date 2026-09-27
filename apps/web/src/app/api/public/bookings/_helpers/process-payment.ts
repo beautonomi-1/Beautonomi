@@ -5,7 +5,11 @@ import {
   isWalletEnabledForTenant,
   isGiftCardsEnabledForTenant,
 } from "@/lib/subscriptions/entitlements";
-import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
+import {
+  convertFromSmallestUnit,
+  convertToSmallestUnit,
+  generateTransactionReference,
+} from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { getAppointmentSettingsFromDB } from "@/lib/provider-portal/appointment-settings";
@@ -14,7 +18,7 @@ import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
-import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { fetchBookingCommissionContext } from "@/lib/bookings/fetch-booking-commission-context";
 import {
@@ -37,6 +41,11 @@ import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
+import {
+  appendSignedEmbedReturnToSuccessUrl,
+  validateHttpsReturnUrl,
+} from "@/lib/booking/embed-return-url";
+import { resolvePublicBookingOrigin } from "@/lib/booking/resolve-public-booking-origin";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
@@ -132,7 +141,8 @@ export async function processPayment(
         deposit_amount: computedDeposit,
         payment_option: isDepositPayment ? "deposit" : "full",
       })
-      .eq("id", booking.id);
+      .eq("id", booking.id)
+      .eq("customer_id", v.customerId);
   }
 
   // ── Gift card reservation ────────────────────────────────────────────────
@@ -198,10 +208,7 @@ export async function processPayment(
       );
     }
     const giftCardBalance = Math.max(0, Number(giftCardRow.balance || 0));
-    const applyAmount =
-      paymentMethod === "giftcard"
-        ? Math.max(0, amountToCollect)
-        : Math.min(giftCardBalance, Math.max(0, amountToCollect));
+    const applyAmount = Math.min(giftCardBalance, Math.max(0, amountToCollect));
     if (applyAmount > 0) {
       const { data: reserved, error: reserveError } = await (supabase.rpc as any)(
         "reserve_gift_card_redemption",
@@ -226,12 +233,13 @@ export async function processPayment(
       giftCardId = row?.gift_card_id || null;
       giftCardAmountApplied = applyAmount;
 
-      await (supabase.from("bookings") as any)
+      await (supabaseAdmin.from("bookings") as any)
         .update({
           gift_card_id: giftCardId,
           gift_card_amount: giftCardAmountApplied,
         })
-        .eq("id", booking.id);
+        .eq("id", booking.id)
+        .eq("customer_id", v.customerId);
 
       amountToCollect = Math.max(0, amountToCollect - giftCardAmountApplied);
     }
@@ -304,9 +312,10 @@ export async function processPayment(
         // Debit confirmed — record the wallet leg and reduce the collectible.
         walletAmountApplied = intendedWalletAmount;
 
-        await (supabase.from("bookings") as any)
+        await (supabaseAdmin.from("bookings") as any)
           .update({ wallet_amount: walletAmountApplied })
-          .eq("id", booking.id);
+          .eq("id", booking.id)
+          .eq("customer_id", v.customerId);
 
         await ensureWalletGiftBookingPayments(supabaseAdmin, {
           bookingId: booking.id,
@@ -344,33 +353,7 @@ export async function processPayment(
     );
     const shouldAutoConfirmStatus = !appointmentSettings.requireConfirmationForBookings;
 
-    const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
-    if (loyaltyPointsRedeemed > 0) {
-      // Ledger first: do not mark the booking as redeemed unless the points
-      // deduction was recorded (or this is a true idempotent replay).
-      const redemptionResult = await recordLoyaltyRedemption(supabaseAdmin, {
-        customerId: v.customerId,
-        points: loyaltyPointsRedeemed,
-        description: `Redeemed for booking ${booking.booking_number}`,
-        bookingId: booking.id,
-      });
-      if (!redemptionResult.recorded && redemptionResult.reason !== "already_redeemed") {
-        console.error("Loyalty points deduction (no-gateway path):", redemptionResult.reason);
-        return handleApiError(
-          new Error("Loyalty points could not be redeemed"),
-          "We could not redeem your loyalty points. Please try again.",
-          "LOYALTY_REDEMPTION_FAILED",
-          500
-        );
-      }
-      await (supabase.from("bookings") as any)
-        .update({
-          loyalty_points_used: loyaltyPointsRedeemed,
-          loyalty_discount_amount: v.loyaltyDiscountAmount ?? 0,
-        })
-        .eq("id", booking.id);
-    }
-
+    // Loyalty debited at booking create (createBookingRecord).
     const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
 
     await ensureWalletGiftBookingPayments(supabaseAdmin, {
@@ -392,14 +375,15 @@ export async function processPayment(
       isDeposit: isDepositPayment,
     });
 
-    await (supabase.from("bookings") as any)
+    await (supabaseAdmin.from("bookings") as any)
       .update({
         payment_status: effectivePaymentStatus,
         payment_provider: walletAmountApplied > 0 ? "wallet" : "gift_card",
         payment_date: new Date().toISOString(),
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
       })
-      .eq("id", booking.id);
+      .eq("id", booking.id)
+      .eq("customer_id", v.customerId);
 
     await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id);
 
@@ -495,8 +479,20 @@ export async function processPayment(
 
     const reference = generateTransactionReference("booking", booking.id);
     paymentReference = reference;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const webSuccessUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent(booking.booking_number || "")}`;
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      "https://www.beautonomi.com";
+    const embedReturn = validateHttpsReturnUrl(validatedDraft.embed_return_url);
+    const webSuccessPath = appendSignedEmbedReturnToSuccessUrl(
+      `/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent(booking.booking_number || "")}`,
+      {
+        embed: validatedDraft.embed === true,
+        returnUrl: embedReturn,
+        bookingId: booking.id,
+      },
+    );
+    const webSuccessUrl = `${baseUrl}${webSuccessPath}`;
     const clientCb = validatedDraft.paystack_callback_url?.trim();
     const callbackUrl =
       clientCb &&
@@ -563,7 +559,7 @@ export async function processPayment(
         chargeResult = await chargeAuthorization(
           savedCard.provider_payment_method_id,
           email,
-          convertToSmallestUnit(amountToCollect),
+          convertToSmallestUnit(amountToCollect, v.currency),
           {
             booking_id: booking.id,
             customer_id: v.customerId,
@@ -587,7 +583,7 @@ export async function processPayment(
               ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
               : {}),
           },
-          { tenantId: flagTenantId, reference }
+          { tenantId: flagTenantId, reference, currency: v.currency }
         );
       } catch (chargeErr) {
         // §Risk-hardening 2026-04: Paystack saved-card charge threw before we
@@ -629,7 +625,9 @@ export async function processPayment(
           amount?: number;
         };
         const amountMajor =
-          typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
+          typeof chargeData.amount === "number"
+            ? convertFromSmallestUnit(chargeData.amount, v.currency)
+            : amountToCollect;
         paymentReference = chargeData.reference ?? reference;
         const recordedPayment = await recordBookingPaystackPayment(supabaseAdmin, {
           bookingId: booking.id,
@@ -815,7 +813,7 @@ export async function processPayment(
         try {
           stripeInit = await psp.provider.initializePayment({
             email,
-            amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
+            amountInSmallestUnit: convertToSmallestUnit(amountToCollect, v.currency),
             currency: v.currency,
             reference,
             callbackUrl,
@@ -853,14 +851,15 @@ export async function processPayment(
 
         paymentUrl = stripeInit.authorizationUrl ?? null;
 
-        await (supabase.from("bookings") as any)
+        await (supabaseAdmin.from("bookings") as any)
           .update({
             payment_reference: reference,
             payment_provider: "stripe",
             payment_status: "pending",
             status: "pending_payment",
           })
-          .eq("id", booking.id);
+          .eq("id", booking.id)
+          .eq("customer_id", v.customerId);
 
         await (supabase.from("payments") as any).insert({
           booking_id: booking.id,
@@ -886,7 +885,7 @@ export async function processPayment(
       try {
         paystackData = await initializePaystackTransaction({
           email,
-          amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
+          amountInSmallestUnit: convertToSmallestUnit(amountToCollect, v.currency),
           currency: v.currency,
           reference,
           callback_url: callbackUrl,
@@ -936,14 +935,15 @@ export async function processPayment(
 
       paymentUrl = paystackData?.data?.authorization_url || null;
 
-      await (supabase.from("bookings") as any)
+      await (supabaseAdmin.from("bookings") as any)
         .update({
           payment_reference: reference,
           payment_provider: "paystack",
           payment_status: "pending",
           status: "pending_payment",
         })
-        .eq("id", booking.id);
+        .eq("id", booking.id)
+        .eq("customer_id", v.customerId);
 
       await (supabase.from("payments") as any).insert({
         booking_id: booking.id,
@@ -982,14 +982,15 @@ export async function processPayment(
       draft.provider_id
     );
     const cashStatus = appointmentSettings.requireConfirmationForBookings ? "pending" : "confirmed";
-    await (supabase.from("bookings") as any)
+    await (supabaseAdmin.from("bookings") as any)
       .update({
         payment_provider: "cash",
         payment_status: "pending",
         payment_method: "cash",
         status: cashStatus,
       })
-      .eq("id", booking.id);
+      .eq("id", booking.id)
+      .eq("customer_id", v.customerId);
 
     // §Promo-usage (audit 2026-06): count the promotion on cash bookings too, so a
     // limited code cannot be reused indefinitely via the cash path. Recorded at
@@ -1064,7 +1065,8 @@ async function insertNoGatewayLedger(
   });
 
   const resolvedTenantId = booking.tenant_id ?? marketTenantId ?? null;
-  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+  const commissionRate = await resolveCommissionPercentageForBooking(supabase, {
+    bookingId: booking.id as string,
     tenantId: resolvedTenantId,
     providerId: draft.provider_id,
   });

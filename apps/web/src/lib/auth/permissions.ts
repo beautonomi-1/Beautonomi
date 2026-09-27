@@ -47,6 +47,8 @@ export interface StaffPermissions {
   view_client_ratings?: boolean;
   /** Staff self-service earnings (My earnings). */
   view_own_earnings?: boolean;
+  /** Create and manage pay runs, pay plans, statutory settings. */
+  manage_payroll?: boolean;
 }
 
 /**
@@ -219,6 +221,7 @@ export function getAllPermissions(): StaffPermissions {
     rate_clients: true,
     view_client_ratings: true,
     view_own_earnings: true,
+    manage_payroll: true,
   };
 }
 
@@ -253,6 +256,7 @@ const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   rate_clients: [],
   view_client_ratings: [],
   view_own_earnings: [],
+  manage_payroll: ["manage_finance", "manage_team"],
 };
 
 function parseStoredPermissions(permissions: unknown): {

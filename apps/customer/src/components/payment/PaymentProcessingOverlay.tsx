@@ -40,7 +40,9 @@ export function PaymentProcessingOverlay({
     return () => clearTimeout(timer);
   }, [visible, message, step]);
 
-  const stepLabels = STEP_KEYS.map((key, i) => t(key, STEP_DEFAULTS[i]) as string);
+  const stepLabels = STEP_KEYS.map((key, i) =>
+    t(key, { defaultValue: STEP_DEFAULTS[i] }) as string,
+  );
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>

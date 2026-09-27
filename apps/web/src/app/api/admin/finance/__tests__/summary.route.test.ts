@@ -40,10 +40,16 @@ vi.mock("@/lib/admin/finance-ledger-tenant", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/admin/aggregate-finance-ledger-rows", () => ({
-  aggregateFinanceLedgerRows: (...args: unknown[]) => mockAggregateFinanceLedgerRows(...args),
-  gatewayFeesTotalFromAggregate: (...args: unknown[]) => mockGatewayFeesTotalFromAggregate(...args),
-}));
+vi.mock("@/lib/admin/aggregate-finance-ledger-rows", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/admin/aggregate-finance-ledger-rows")>();
+  return {
+    ...actual,
+    aggregateFinanceLedgerRows: (...args: unknown[]) => mockAggregateFinanceLedgerRows(...args),
+    gatewayFeesTotalFromAggregate: (...args: unknown[]) =>
+      mockGatewayFeesTotalFromAggregate(...args),
+  };
+});
 
 vi.mock("@/lib/admin/negative-provider-payout-balances", () => ({
   getNegativeBalanceProvidersForTenant: (...args: unknown[]) =>
@@ -65,6 +71,8 @@ function makeSupabaseAdminChain() {
     gt: () => chain,
     gte: () => chain,
     lte: () => chain,
+    order: () => chain,
+    range: () => Promise.resolve({ data: [], error: null }),
     then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null, count: 0 }),
   };
   return chain;
@@ -192,6 +200,24 @@ describe("GET /api/admin/finance/summary", () => {
 
     expect(mockFetchFinanceLedgerRowsForTenant).toHaveBeenCalledTimes(2);
     expect(body.data.gmv_growth).toBe(25);
+  });
+
+  it("surfaces currency, MIXED flag, and platform cash position", async () => {
+    mockAggregateFinanceLedgerRows.mockImplementation(() => ({
+      ...baseAggregate(),
+      currency: "MIXED",
+    }));
+
+    const { GET } = await import("../summary/route");
+    const res = await GET(new NextRequest("http://localhost/api/admin/finance/summary"));
+    const body = await res.json();
+
+    expect(body.data.currency).toBe("MIXED");
+    expect(body.data.reporting_currency_mixed).toBe(true);
+    expect(body.data.reconciliation.checks.platform_cash_position).toMatchObject({
+      collected: expect.any(Number),
+      net_platform_cash: expect.any(Number),
+    });
   });
 
   it("marks custom period when both start and end dates are set", async () => {

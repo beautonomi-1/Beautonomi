@@ -132,7 +132,7 @@ export async function POST(
 
     const paystackData = await initializePaystackTransaction({
       email,
-      amountInSmallestUnit: convertToSmallestUnit(amount),
+      amountInSmallestUnit: convertToSmallestUnit(amount, o.currency ?? LAST_RESORT_CURRENCY),
       currency: o.currency ?? LAST_RESORT_CURRENCY,
       reference,
       callback_url: callbackUrl,

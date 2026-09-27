@@ -212,7 +212,7 @@ export async function POST(
     try {
       paystackResponse = await initializePaystackTransaction({
         email: customer.email,
-        amountInSmallestUnit: convertToSmallestUnit(paystackAmount),
+        amountInSmallestUnit: convertToSmallestUnit(paystackAmount, currency),
         currency,
         reference,
         metadata: {

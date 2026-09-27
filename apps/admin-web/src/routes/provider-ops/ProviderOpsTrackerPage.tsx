@@ -159,7 +159,7 @@ export function ProviderOpsTrackerPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="hidden gap-0.5 md:flex">
-                      {Array.from({ length: 14 }, (_, i) => i + 1).map((step) => (
+                      {Array.from({ length: 15 }, (_, i) => i + 1).map((step) => (
                         <div key={step} className={`h-3 w-3 rounded-full ${step < row.current_step ? "bg-green-400" : step === row.current_step ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-200"}`} />
                       ))}
                     </div>

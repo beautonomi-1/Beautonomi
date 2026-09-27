@@ -11,7 +11,8 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendFormDataFileNative, CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS } from "@beautonomi/utils";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { resolveDefaultCountryName } from "@/lib/market-country";
@@ -491,6 +492,13 @@ export default function CustomRequestCreateScreen() {
       <Stack.Screen options={{ title: t("customer.mobile.stackTitles.customRequest") }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+        <ContextualHint
+          id="customer.customRequest.create"
+          mode="once"
+          message={t("customer.mobile.screens.customRequestCreate.hintOnce", {
+            days: CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS,
+          })}
+        />
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("describeHint")}</Text>
         <TextInput
           style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 100, fontSize: 16 }}

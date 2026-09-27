@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 import { GLOBAL_COPILOT_STARTERS, useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { copilotStartersForDesk, deskFromAdminPath } from "@/lib/adminCopilotDesk";
 
 function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
   const p = pathname.replace(/^\/admin/, "") || pathname;
@@ -21,6 +22,11 @@ function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
 export function GlobalFloatingCopilot() {
   const location = useLocation();
   const pageContext = useMemo(() => pageContextFromPath(location.pathname), [location.pathname]);
+  const desk = useMemo(() => deskFromAdminPath(location.pathname), [location.pathname]);
+  const starterChips = useMemo(
+    () => copilotStartersForDesk(desk) ?? GLOBAL_COPILOT_STARTERS,
+    [desk],
+  );
   const { masterEnabled } = useAgentShadowMode();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -33,7 +39,7 @@ export function GlobalFloatingCopilot() {
     suggestedPrompts,
     pickDisambiguation,
     resetConversation,
-  } = useAdminCopilot(pageContext);
+  } = useAdminCopilot(pageContext, desk);
 
   if (!masterEnabled) return null;
 
@@ -62,11 +68,11 @@ export function GlobalFloatingCopilot() {
             {messages.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
-                  Ask in plain language — no special format. I look up providers, customers, and bookings from
-                  platform data.
+                  Ask in plain language. I can look up platform records or answer how-to questions from the
+                  Knowledge Base{desk ? ` (${desk})` : ""}.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {GLOBAL_COPILOT_STARTERS.map((s) => (
+                  {starterChips.map((s) => (
                     <button
                       key={s}
                       type="button"

@@ -113,8 +113,9 @@ async function loadReversedPayoutIds(
         }
       }
     }
-  } catch {
-    // Fail open: a missing reversal list must not zero the whole withdrawable balance.
+  } catch (err) {
+    console.error("[available-payout-balance] payout reversal metadata lookup failed:", err);
+    throw err;
   }
   return reversed;
 }
@@ -193,12 +194,35 @@ export async function getAvailablePayoutBalance(
         .map((r: any) => r.id as string),
     ),
   ];
-  const reversedPayoutIds = await loadReversedPayoutIds(supabase, providerId, payoutIds);
+  let reversedPayoutIds: Set<string>;
+  try {
+    reversedPayoutIds = await loadReversedPayoutIds(supabase, providerId, payoutIds);
+  } catch (err) {
+    console.error("[available-payout-balance] cannot verify reversed payouts; blocking withdraw", err);
+    return {
+      ...EMPTY_PAYOUT_BALANCE,
+      hasNegativeBalance: false,
+    };
+  }
 
   const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
-  let bookingMap: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }> = {};
+  type BookingPayoutMeta = {
+    hasPlatformHeldPayment: boolean;
+    hasAnyCompletedPayment: boolean;
+    status?: string;
+    completed_at?: string | null;
+  };
+  let bookingMap: Record<string, BookingPayoutMeta> = {};
 
   if (bookingIds.length > 0) {
+    const bookingStatusRows: Array<{ id?: string; status?: string; completed_at?: string | null }> = [];
+    for (const slice of chunkIds(bookingIds, PAYOUT_IN_CHUNK)) {
+      const { data: bookingRows } = await supabase
+        .from("bookings")
+        .select("id, status, completed_at")
+        .in("id", slice);
+      bookingStatusRows.push(...(bookingRows ?? []));
+    }
     const bookingPayments: Array<{ booking_id?: string; payment_provider?: string | null }> = [];
     const tid = options?.tenantId;
     for (const slice of chunkIds(bookingIds, PAYOUT_IN_CHUNK)) {
@@ -215,17 +239,45 @@ export async function getAvailablePayoutBalance(
       bookingPayments.push(...(data ?? []));
     }
 
-    bookingMap = bookingIds.reduce((acc: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }>, bid: string) => {
+    bookingMap = bookingIds.reduce((acc: Record<string, BookingPayoutMeta>, bid: string) => {
       const payments = bookingPayments.filter((p) => p.booking_id === bid);
+      const statusRow = bookingStatusRows.find((b) => b.id === bid);
       acc[bid] = {
         hasAnyCompletedPayment: payments.length > 0,
         hasPlatformHeldPayment: payments.some((p) =>
           isPlatformHeldPaymentProvider(p.payment_provider),
         ),
+        status: statusRow?.status,
+        completed_at: statusRow?.completed_at ?? null,
       };
       return acc;
     }, {});
   }
+
+  const bookingLinkedEarningsOnHold = (params: {
+    bookingId: string | null | undefined;
+    rowCreatedAt: string | undefined;
+    meta: BookingPayoutMeta | undefined;
+  }): boolean => {
+    const { bookingId, rowCreatedAt, meta } = params;
+    if (!bookingId || !meta) {
+      return holdDays > 0 && !!rowCreatedAt && rowCreatedAt > availableFrom;
+    }
+    const status = String(meta.status ?? "").toLowerCase();
+    if (!status) {
+      return holdDays > 0 && !!rowCreatedAt && rowCreatedAt > availableFrom;
+    }
+    if (status === "cancelled" || status === "no_show") {
+      return holdDays > 0 && !!rowCreatedAt && rowCreatedAt > availableFrom;
+    }
+    if (status !== "completed") {
+      return true;
+    }
+    const anchor = meta.completed_at ?? rowCreatedAt;
+    if (!anchor) return true;
+    if (holdDays === 0) return false;
+    return anchor > availableFrom;
+  };
 
   let onlineEarnings = 0;
   let completedPayouts = 0;
@@ -349,7 +401,13 @@ export async function getAvailablePayoutBalance(
         excludedProviderCollectedAmount += value;
         continue;
       }
-      if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
+      if (
+        bookingLinkedEarningsOnHold({
+          bookingId: row.booking_id,
+          rowCreatedAt: row.created_at,
+          meta: row.booking_id ? bookingMap[row.booking_id as string] : undefined,
+        })
+      ) {
         onHoldAmount += value;
         continue;
       }
@@ -367,7 +425,13 @@ export async function getAvailablePayoutBalance(
       excludedProviderCollectedAmount += earnings;
       continue;
     }
-    if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
+    if (
+      bookingLinkedEarningsOnHold({
+        bookingId: row.booking_id,
+        rowCreatedAt: row.created_at,
+        meta: row.booking_id ? bookingMap[row.booking_id as string] : undefined,
+      })
+    ) {
       onHoldAmount += earnings;
       continue;
     }
@@ -388,7 +452,25 @@ export async function getAvailablePayoutBalance(
     (s, p) => s + Number(p.net_amount ?? p.amount ?? 0),
     0,
   );
-  const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum;
+
+  let openDisputeReserve = 0;
+  try {
+    const { data: disputeRows, error: disputeErr } = await supabase
+      .from("payment_disputes")
+      .select("amount")
+      .eq("provider_id", providerId)
+      .in("status", ["open", "awaiting_bank"]);
+    if (disputeErr) throw disputeErr;
+    openDisputeReserve = (disputeRows ?? []).reduce(
+      (s, row) => s + Number((row as { amount?: number }).amount ?? 0),
+      0,
+    );
+  } catch (err) {
+    console.error("[available-payout-balance] open dispute reserve lookup failed:", err);
+    openDisputeReserve = 0;
+  }
+
+  const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum - openDisputeReserve;
   const rawBalance = roundMoney2(rawAvailable);
   const availableBalance = Math.max(0, rawBalance);
   const hasNegativeBalance = rawBalance < -0.01;

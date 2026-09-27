@@ -338,7 +338,7 @@ export async function POST(
     if (isGroupBooking && groupBookingData) {
       try {
         const { cancelGroupBooking, getGroupBookingParticipantsForCancellation } = await import('@/lib/bookings/group-booking-cancellation');
-        await cancelGroupBooking(supabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
+        await cancelGroupBooking(adminSupabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
           settleFinance: true,
           financeActor: "customer",
           financeContext: {

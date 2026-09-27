@@ -72,7 +72,7 @@ export async function createBookingRecord(
     currency: v.currency,
     payment_status: "pending" as const,
     special_requests: draft.special_requests || null,
-    loyalty_points_earned: v.loyaltyPointsEarned,
+    loyalty_points_earned: 0,
     promotion_id: v.promotionId,
     membership_plan_id: v.membershipPlanId,
   };
@@ -99,6 +99,8 @@ export async function createBookingRecord(
   }
 
   // ── Atomic insert via RPC (+ optional entitlement redeem in same DB transaction) ──
+  // Booking rows are inserted inside `create_booking_with_locking` (SECURITY DEFINER;
+  // migration 136+), not via user-JWT `.from("bookings").insert`.
   const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
   const { data: bookingId, error: bookingError } = await adminSupabase.rpc(
     "create_booking_with_locking",
@@ -214,6 +216,31 @@ export async function createBookingRecord(
   }
 
   if (v.loyaltyPointsRedeemed > 0) {
+    const { recordLoyaltyRedemption } = await import("@/lib/loyalty/record-redemption");
+    const redemptionResult = await recordLoyaltyRedemption(adminSupabase, {
+      customerId: v.customerId,
+      points: v.loyaltyPointsRedeemed,
+      description: `Redeemed for booking ${(booking as { booking_number?: string }).booking_number ?? bookingId}`,
+      bookingId,
+    });
+    if (!redemptionResult.recorded && redemptionResult.reason !== "already_redeemed") {
+      await adminSupabase
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          cancellation_reason: "Loyalty points could not be redeemed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bookingId);
+      return handleApiError(
+        new Error(redemptionResult.reason || "Loyalty redemption failed"),
+        "We could not redeem your loyalty points. Please try again.",
+        redemptionResult.reason === "insufficient_balance"
+          ? "INSUFFICIENT_LOYALTY_BALANCE"
+          : "LOYALTY_REDEMPTION_FAILED",
+        400,
+      );
+    }
     await adminSupabase
       .from("bookings")
       .update({

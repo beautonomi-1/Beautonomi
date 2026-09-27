@@ -92,5 +92,13 @@ export function validateServerEnv(options?: { failFast?: boolean }): ServerEnvVa
     );
   }
 
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (!upstashUrl || !upstashToken) {
+    console.warn(
+      "[STARTUP] UPSTASH_REDIS_REST_URL/TOKEN not set — distributed rate limits fall back to per-instance memory.",
+    );
+  }
+
   return result;
 }

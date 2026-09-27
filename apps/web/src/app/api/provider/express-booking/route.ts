@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { buildExpressBookingEmbedUrl, buildExpressBookingIframeSnippet } from "@beautonomi/utils";
+import { resolvePublicBookingOrigin } from "@/lib/booking/resolve-public-booking-origin";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
@@ -52,7 +54,30 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(links || []);
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const origin = await resolvePublicBookingOrigin(
+      request,
+      supabase,
+      (providerRow as { tenant_id?: string | null } | null)?.tenant_id,
+    );
+
+    const enriched = (links || []).map((link: { slug?: string; short_code?: string }) => {
+      const code = String(link.slug || link.short_code || "");
+      const fullUrl = `${origin}/book/l/${encodeURIComponent(code)}`;
+      const embedUrl = buildExpressBookingEmbedUrl(origin, code);
+      return {
+        ...link,
+        full_url: fullUrl,
+        embed_url: embedUrl,
+        iframe_snippet: buildExpressBookingIframeSnippet({ origin, linkCode: code }),
+      };
+    });
+
+    return successResponse(enriched);
   } catch (error) {
     return handleApiError(error, "Failed to fetch express booking links");
   }

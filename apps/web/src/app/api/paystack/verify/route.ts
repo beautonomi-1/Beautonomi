@@ -380,7 +380,7 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0));
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), paidCurrency);
         const expectedMajor = Number(orderRow.amount ?? 0);
         if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.02) {
           return errorResponse(

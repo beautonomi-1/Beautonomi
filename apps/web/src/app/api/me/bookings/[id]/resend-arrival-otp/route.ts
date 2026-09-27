@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   requireRoleInApi,
   handleApiError,
@@ -144,7 +145,12 @@ export async function POST(
       updatePayload.qr_code_verified = false;
     }
 
-    const { error: updateError } = await supabase.from("bookings").update(updatePayload).eq("id", id);
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
+      .from("bookings")
+      .update(updatePayload)
+      .eq("id", id)
+      .eq("customer_id", user.id);
     if (updateError) {
       throw updateError;
     }

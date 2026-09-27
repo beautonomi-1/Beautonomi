@@ -159,6 +159,7 @@ export default function App() {
           <Route path="reconciliation-exceptions" element={<P.ReconciliationExceptionsPage />} />
           <Route path="ledger-repair" element={<P.LedgerRepairPage />} />
           <Route path="ledger-health" element={<P.LedgerHealthPage />} />
+          <Route path="payroll-rules" element={<P.PayrollRulesPage />} />
           <Route path="fx-rates" element={<P.FxRatesPage />} />
           <Route path="paystack-terminal" element={<P.PaystackTerminalOperationsPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
@@ -223,12 +224,38 @@ export default function App() {
           <Route path="notification-templates" element={<P.NotificationTemplatesListPage />} />
           <Route path="whatsapp-content-templates" element={<P.WhatsAppContentTemplatesPage />} />
           <Route path="marketing-pricebook" element={<P.MarketingPricebookPage />} />
+          <Route path="brand" element={<P.BrandMyWorkPage />} />
+          <Route path="brand/briefs" element={<P.BrandBriefsPage />} />
+          <Route path="brand/briefs/:id" element={<P.BrandBriefDetailPage />} />
+          <Route path="brand/board" element={<P.BrandBoardPage />} />
+          <Route path="brand/campaigns/:id" element={<P.BrandCampaignDetailPage />} />
+          <Route path="brand/weekly-update" element={<P.BrandWeeklyUpdatePage />} />
+          <Route path="brand/pack" element={<P.BrandPackPage />} />
+          <Route path="brand/settings" element={<P.BrandSettingsPage />} />
           <Route path="system-health" element={<P.SystemHealthPage />} />
           <Route path="cron-runs" element={<P.CronRunsPage />} />
           <Route path="workflow-runs" element={<P.WorkflowRunsPage />} />
           <Route path="webhooks/inbound" element={<P.InboundWebhooksPage />} />
           <Route path="monitoring" element={<P.MonitoringHealthPage />} />
           <Route path="security" element={<P.SecurityPolicyPage />} />
+          <Route path="grc" element={<P.GrcOverviewPage />} />
+          <Route path="grc/compliance-modules" element={<Navigate to="/grc/controls" replace />} />
+          <Route path="grc/setup" element={<P.GrcSetupPage />} />
+          <Route path="grc/my-work" element={<P.GrcMyWorkPage />} />
+          <Route path="grc/soa" element={<P.GrcSoaPage />} />
+          <Route path="grc/controls" element={<P.GrcControlsPage />} />
+          <Route path="grc/documents" element={<P.GrcDocumentsPage />} />
+          <Route path="grc/risks" element={<P.GrcRisksPage />} />
+          <Route path="grc/vendors" element={<P.GrcVendorsPage />} />
+          <Route path="grc/privacy" element={<P.GrcPrivacyPage />} />
+          <Route path="grc/evidence" element={<P.GrcEvidencePage />} />
+          <Route path="grc/access-reviews" element={<P.GrcAccessReviewsPage />} />
+          <Route path="grc/findings" element={<P.GrcFindingsPage />} />
+          <Route path="grc/incidents" element={<P.GrcIncidentsPage />} />
+          <Route path="grc/people" element={<P.GrcPeoplePage />} />
+          <Route path="grc/audits" element={<P.GrcAuditsPage />} />
+          <Route path="grc/audit-packs" element={<P.GrcAuditPacksPage />} />
+          <Route path="grc/settings" element={<P.GrcSettingsPage />} />
           <Route path="service-zones/:id" element={<P.ServiceZoneDetailPage />} />
           <Route path="service-zones" element={<P.ServiceZonesListPage />} />
           <Route path="settings" element={<P.GeneralSettingsPage />} />

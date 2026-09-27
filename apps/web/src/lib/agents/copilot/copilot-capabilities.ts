@@ -34,6 +34,14 @@ export function isMetaOrHelpQuestion(question: string): boolean {
   return false;
 }
 
+/** Procedural admin how-to (Knowledge Base), not entity lookup or copilot meta-help. */
+export function isProceduralHowToQuestion(question: string): boolean {
+  const q = question.trim();
+  if (hasHardLookupSignal(q)) return false;
+  if (isMetaOrHelpQuestion(q)) return false;
+  return /\b(how do i|how to|where do i|where can i|what is the process|runbook)\b/i.test(q);
+}
+
 export function hasHardLookupSignal(question: string): boolean {
   return (
     COPILOT_UUID_RE.test(question) ||

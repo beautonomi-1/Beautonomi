@@ -16,6 +16,10 @@ import {
   type PlatformTravelLimits,
 } from "@/features/travel-fees/TravelFeesEditor";
 import type { OnboardingTravelFees } from "@/features/provider-onboarding/types";
+import { ContextualHint } from "@/components/hints/ContextualHint";
+import { useRouter } from "expo-router";
+import { useProvider } from "@/providers/ProviderContext";
+import { providerHasNoActiveServiceZones } from "@/lib/contextual-hints/zone-selection";
 
 interface TravelFeeSettings {
   enabled: boolean;
@@ -49,10 +53,15 @@ function settingsToEditorValue(s: TravelFeeSettings): OnboardingTravelFees {
 }
 
 export default function TravelFeesScreen() {
+  const router = useRouter();
+  const { provider } = useProvider();
   const { t } = useTranslation();
   const tf = (key: string, opts?: Record<string, unknown>) =>
     t(`provider.mobile.screens.travelFees.${key}`, opts) as string;
   const { data: settings, loading, refresh } = useApi<TravelFeeSettings>("/api/provider/travel-fees");
+  const { data: zoneRows } = useApi<{ is_selected?: boolean; selection?: { is_active?: boolean } | null }[]>(
+    "/api/provider/zone-selections",
+  );
   const { data: platformLimits } = useApi<PlatformTravelLimits>(
     "/api/provider/travel-fees/platform-limits",
   );
@@ -163,6 +172,20 @@ export default function TravelFeesScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader title={tf("title")} showBack subtitle={tf("subtitle")} />
+
+      {provider?.offers_mobile_services &&
+      zoneRows &&
+      zoneRows.length > 0 &&
+      providerHasNoActiveServiceZones(zoneRows) ? (
+        <ContextualHint
+          id="provider.travelFees.noZones"
+          mode="persistent"
+          tone="warning"
+          message={tf("noZonesWarning")}
+          actionLabel={tf("actionChooseZones")}
+          onAction={() => router.push("/(app)/(tabs)/more/settings/service-zones" as never)}
+        />
+      ) : null}
 
       {stats && (
         <View style={twStyle("mb-4 flex-row")}>

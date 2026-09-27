@@ -7,6 +7,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { requirePermission } from "@/lib/auth/requirePermission";
 
 const ALLOWED_CHANNELS = new Set(["call", "whatsapp", "sms", "message", "other"]);
@@ -59,7 +60,8 @@ export async function POST(
       by: user.id,
     };
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         contact_attempts: [...existing, attempt],

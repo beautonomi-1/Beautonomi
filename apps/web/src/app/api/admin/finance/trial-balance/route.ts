@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * GET /api/admin/finance/trial-balance
@@ -40,36 +41,44 @@ export async function GET(request: NextRequest) {
     const format = searchParams.get("format") ?? "json";
 
     // ── Opening balances: all journal entries strictly before `start` ────────
-    const { data: openingLines, error: openingErr } = await supabase
-      .from("journal_lines")
-      .select(
-        `
+    const openingLines = await fetchAllPaged(async (from, to) =>
+      supabase
+        .from("journal_lines")
+        .select(
+          `
+        id,
         account_id,
         side,
         reporting_amount,
         journal_entries!inner(tenant_id, posted_at)
         `
-      )
-      .eq("journal_entries.tenant_id", tenantId)
-      .lt("journal_entries.posted_at", startISO);
-    if (openingErr) throw openingErr;
+        )
+        .eq("journal_entries.tenant_id", tenantId)
+        .lt("journal_entries.posted_at", startISO)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
 
     // ── Period lines: journal entries within [start, end] ─────────────────────
-    const { data: periodLines, error: periodErr } = await supabase
-      .from("journal_lines")
-      .select(
-        `
+    const periodLines = await fetchAllPaged(async (from, to) =>
+      supabase
+        .from("journal_lines")
+        .select(
+          `
+        id,
         account_id,
         side,
         reporting_amount,
         journal_entries!inner(tenant_id, posted_at, source, description, external_ref),
         gl_accounts!inner(code, name, type, normal_side)
         `
-      )
-      .eq("journal_entries.tenant_id", tenantId)
-      .gte("journal_entries.posted_at", startISO)
-      .lte("journal_entries.posted_at", endISO);
-    if (periodErr) throw periodErr;
+        )
+        .eq("journal_entries.tenant_id", tenantId)
+        .gte("journal_entries.posted_at", startISO)
+        .lte("journal_entries.posted_at", endISO)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
 
     // ── GL accounts ───────────────────────────────────────────────────────────
     const { data: accounts, error: acctErr } = await supabase

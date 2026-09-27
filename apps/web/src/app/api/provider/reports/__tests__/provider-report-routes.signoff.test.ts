@@ -794,6 +794,17 @@ describe("cross-report reconciliation (seeded dataset)", () => {
     expect(data.reportBasis).toContain("membership_provider_earnings");
   });
 
+  it("payment summary exposes membership earnings, provider-collected breakdown, and ledger cap metadata", async () => {
+    const data = await json(
+      await paymentsSummaryGET(request(`/api/provider/reports/payments/summary?${qs}`)),
+    );
+
+    expect(data.membershipProviderEarnings).toBe(50);
+    expect(Array.isArray(data.providerCollectedByMethod)).toBe(true);
+    expect(data.ledger_truncated).toBe(false);
+    expect(data.max_finance_transactions).toBe(50_000);
+  });
+
   it("revenue total_revenue_inclusive equals total_revenue (no cancellation-fee double-count in reconciliation suite)", async () => {
     const data = await json(
       await revenueGET(request(`/api/provider/reports/revenue?${qs}`)),

@@ -35,6 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_provider_ops_case_touches_provider
 
 ALTER TABLE public.provider_ops_case_touches ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage provider_ops_case_touches" ON public.provider_ops_case_touches;
 CREATE POLICY "Admins can manage provider_ops_case_touches"
   ON public.provider_ops_case_touches FOR ALL
   USING (EXISTS (

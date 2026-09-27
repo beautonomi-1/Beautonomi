@@ -59,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_provider_ops_cases_retention_owner
 
 ALTER TABLE provider_ops_cases ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage provider_ops_cases" ON provider_ops_cases;
 CREATE POLICY "Admins can manage provider_ops_cases"
   ON provider_ops_cases FOR ALL
   USING (EXISTS (
@@ -69,6 +70,7 @@ CREATE POLICY "Admins can manage provider_ops_cases"
     )
   ));
 
+DROP TRIGGER IF EXISTS update_provider_ops_cases_updated_at ON provider_ops_cases;
 CREATE TRIGGER update_provider_ops_cases_updated_at
   BEFORE UPDATE ON provider_ops_cases FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
@@ -99,6 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_provider_ops_handoffs_pending_to
 
 ALTER TABLE provider_ops_handoffs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage provider_ops_handoffs" ON provider_ops_handoffs;
 CREATE POLICY "Admins can manage provider_ops_handoffs"
   ON provider_ops_handoffs FOR ALL
   USING (EXISTS (
@@ -109,6 +112,7 @@ CREATE POLICY "Admins can manage provider_ops_handoffs"
     )
   ));
 
+DROP TRIGGER IF EXISTS update_provider_ops_handoffs_updated_at ON provider_ops_handoffs;
 CREATE TRIGGER update_provider_ops_handoffs_updated_at
   BEFORE UPDATE ON provider_ops_handoffs FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
@@ -131,6 +135,7 @@ CREATE TABLE IF NOT EXISTS provider_ops_quotas (
 
 ALTER TABLE provider_ops_quotas ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage provider_ops_quotas" ON provider_ops_quotas;
 CREATE POLICY "Admins can manage provider_ops_quotas"
   ON provider_ops_quotas FOR ALL
   USING (EXISTS (

@@ -29,6 +29,7 @@ const MUTATION_ALLOWLIST = new Set([
   "product-orders/[id]/receipt/signed-url/route.ts",
   "sales/[id]/receipt/signed-url/route.ts",
   "staff/join/accept/route.ts",
+  "staff/join/set-password/route.ts",
   "subscription/receipts/[financeTxId]/signed-url/route.ts",
   "terminal-orders/[id]/receipt/signed-url/route.ts",
   "upgrade-to-salon/route.ts",

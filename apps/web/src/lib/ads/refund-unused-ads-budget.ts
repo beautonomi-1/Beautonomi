@@ -123,7 +123,7 @@ export async function refundUnusedAdsBudget(params: {
     try {
       await createRefund({
         transaction: order.paystack_reference,
-        amount: convertToSmallestUnit(unspent),
+        amount: convertToSmallestUnit(unspent, order.currency ?? undefined),
         currency: order.currency ?? undefined,
         customer_note: "Unused ad campaign budget",
         merchant_note: `Campaign ${campaignId}: ${reason}`,

@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         { id: user.id, role: user.role },
         request,
       );
-      if (result.ok) {
+      if (result.ok === true) {
         updated.push(item.id);
         continue;
       }

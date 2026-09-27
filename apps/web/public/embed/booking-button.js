@@ -29,6 +29,9 @@
 
   var provider = (script.getAttribute("data-provider") || "").trim();
   var utmSource = script.getAttribute("data-utm-source") || "";
+  var returnUrlRaw = (script.getAttribute("data-return-url") || "").trim();
+  var returnUrl =
+    returnUrlRaw && /^https:\/\//i.test(returnUrlRaw) ? returnUrlRaw : window.location.href;
   var mode = (script.getAttribute("data-mode") || "button").toLowerCase();
   var targetSel = script.getAttribute("data-target");
   var heightRaw = parseInt(script.getAttribute("data-height") || "800", 10);
@@ -44,6 +47,7 @@
   var params = new URLSearchParams();
   if (mode === "iframe") params.set("embed", "1");
   if (utmSource) params.set("utm_source", utmSource);
+  if (returnUrl) params.set("return_url", returnUrl);
   var url = baseUrl + "/book/" + encodeURIComponent(provider);
   if (params.toString()) url += "?" + params.toString();
 

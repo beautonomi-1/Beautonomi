@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   getProviderIdForUser,
   successResponse,
@@ -159,10 +160,12 @@ export async function POST(
       bookingUpdate.provider_location = { latitude, longitude };
     }
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update(bookingUpdate)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
     if (updateError) {
       throw updateError;

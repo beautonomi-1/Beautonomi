@@ -9,6 +9,7 @@ import {
   resolveCustomerProviderConversation,
   updateConversationAfterMessage,
 } from "@/lib/chat/resolve-conversation";
+import { CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS } from "@beautonomi/utils";
 
 const createSchema = z.object({
   provider_id: z.string().uuid(),
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     const preferredIso = body.preferred_start_at ? new Date(body.preferred_start_at).toISOString() : null;
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setDate(expiresAt.getDate() + CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS);
 
     const { data: created, error: createError } = await supabase
       .from("custom_requests")

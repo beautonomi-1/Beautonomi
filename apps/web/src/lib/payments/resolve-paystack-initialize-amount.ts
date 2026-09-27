@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
+import { toMinorUnits } from "@beautonomi/utils";
 
 export type ResolvePaystackAmountResult =
   | { ok: true; amountSmallestUnit: number }
@@ -11,7 +12,9 @@ export async function resolveProductOrderPaystackAmount(
   userId: string,
 ): Promise<ResolvePaystackAmountResult> {
   const { data: po, error } = await (supabase.from("product_orders") as any)
-    .select("id, customer_id, payment_status, payment_method, total_amount, wallet_amount, gift_card_amount")
+    .select(
+      "id, customer_id, payment_status, payment_method, total_amount, wallet_amount, gift_card_amount, currency",
+    )
     .eq("id", productOrderId)
     .maybeSingle();
 
@@ -35,9 +38,10 @@ export async function resolveProductOrderPaystackAmount(
   // Gift card reserved at checkout (879) reduces the card amount like wallet does.
   const giftCard = Number(po.gift_card_amount ?? 0);
   const dueMajor = Math.max(0, total - wallet - giftCard);
-  const amountSmallestUnit = convertToSmallestUnit(dueMajor);
+  const currency = String((po as { currency?: string }).currency || "ZAR").toUpperCase();
+  const amountSmallestUnit = convertToSmallestUnit(dueMajor, currency);
 
-  if (dueMajor > 0 && amountSmallestUnit < 100) {
+  if (dueMajor > 0 && amountSmallestUnit < toMinorUnits(1, currency)) {
     return {
       ok: false,
       status: 400,
@@ -65,7 +69,7 @@ export async function resolveBookingPaystackAmount(
 ): Promise<ResolvePaystackAmountResult> {
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
-    .select("id, customer_id, payment_status")
+    .select("id, customer_id, payment_status, currency")
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -105,8 +109,9 @@ export async function resolveBookingPaystackAmount(
     };
   }
 
-  const amountSmallestUnit = convertToSmallestUnit(dueMajor);
-  if (amountSmallestUnit < 100) {
+  const currency = String((booking as { currency?: string }).currency || "ZAR").toUpperCase();
+  const amountSmallestUnit = convertToSmallestUnit(dueMajor, currency);
+  if (amountSmallestUnit < toMinorUnits(1, currency)) {
     return {
       ok: false,
       status: 400,

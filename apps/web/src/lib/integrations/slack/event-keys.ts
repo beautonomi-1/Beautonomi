@@ -62,6 +62,8 @@ export const SLACK_EVENT_KEYS = {
   OPS_WORKFLOW_FAILED: "ops.workflow.failed",
   OPS_DEPLOY_COMPLETED: "ops.deploy.completed",
   OPS_DEPLOY_FAILED: "ops.deploy.failed",
+  BRAND_BRIEF_ACCEPTED: "brand.brief.accepted",
+  BRAND_CAMPAIGN_LIVE: "brand.campaign.live",
 } as const;
 
 /**

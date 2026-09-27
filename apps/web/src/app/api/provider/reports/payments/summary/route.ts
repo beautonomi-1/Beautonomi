@@ -3,7 +3,7 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
-import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { fetchAllLedgerPagesWithMeta } from "@/lib/reports/fetch-all-ledger-pages";
 import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
@@ -157,8 +157,8 @@ export async function GET(request: NextRequest) {
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString())
       .order("created_at", { ascending: true });
-    const ft = await fetchAllLedgerPages<FinanceRowFull>(
-      financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+    const { rows: ft, truncated: ledgerTruncated } = await fetchAllLedgerPagesWithMeta<FinanceRowFull>(
+      financeQuery as Parameters<typeof fetchAllLedgerPagesWithMeta>[0],
       MAX_FINANCE_TRANSACTIONS,
     );
     const ledgerLocationAttribution = summarizeLedgerLocationAttribution(ft, locationId);
@@ -278,6 +278,10 @@ export async function GET(request: NextRequest) {
       .filter((r) => r.transaction_type === "provider_earnings")
       .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
 
+    const membershipProviderEarnings = financeRows
+      .filter((r) => r.transaction_type === "membership_provider_earnings")
+      .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
+
     // Platform Fee (platform revenue; legacy rows may still be transaction_type=service_fee)
     const serviceFeeCollected = financeRows
       .filter((r) => r.transaction_type === "platform_fee" || r.transaction_type === "service_fee")
@@ -395,6 +399,63 @@ export async function GET(request: NextRequest) {
       }
     }
 
+
+    const providerCollectedByMethodMap: Record<string, { count: number; amount: number }> = {};
+    {
+      type BpCollectedRow = { booking_id: string; amount?: number; payment_method?: string | null };
+      const bpCollectedList = await fetchAllPaged<BpCollectedRow>(async (from, to) => {
+        let bpQuery = supabaseAdmin
+          .from("booking_payments")
+          .select("booking_id, amount, payment_method")
+          .eq("status", "completed")
+          .gte("created_at", fromDate.toISOString())
+          .lte("created_at", toDate.toISOString())
+          .in("payment_method", ["cash", "bank_transfer", "card", "other"]);
+        if (providerTenantId) {
+          bpQuery = bpQuery.eq("tenant_id", providerTenantId);
+        }
+        const { data, error } = await bpQuery.order("created_at", { ascending: true }).range(from, to);
+        return { data, error };
+      }, 20_000);
+      const collectedCandidateIds = [...new Set(bpCollectedList.map((r) => r.booking_id))];
+      if (collectedCandidateIds.length > 0) {
+        const allowedCollected = await fetchInIdChunks<{ id: string }>(collectedCandidateIds, (slice) => {
+          let bq = supabaseAdmin
+            .from("bookings")
+            .select("id")
+            .eq("provider_id", providerId)
+            .in("id", slice);
+          if (locationId) {
+            bq = bq.eq("location_id", locationId);
+          }
+          return bq;
+        });
+        const allowedCollectedSet = new Set(allowedCollected.map((b) => b.id));
+        for (const row of bpCollectedList) {
+          if (!allowedCollectedSet.has(row.booking_id)) continue;
+          const raw = (row.payment_method || "other").toLowerCase();
+          const method = raw === "bank_transfer" ? "eft" : raw;
+          if (!providerCollectedByMethodMap[method]) {
+            providerCollectedByMethodMap[method] = { count: 0, amount: 0 };
+          }
+          providerCollectedByMethodMap[method].count += 1;
+          providerCollectedByMethodMap[method].amount += Number(row.amount ?? 0);
+        }
+      }
+    }
+    const providerCollectedTotal = Object.values(providerCollectedByMethodMap).reduce(
+      (sum, d) => sum + d.amount,
+      0,
+    );
+    const providerCollectedByMethod = Object.entries(providerCollectedByMethodMap)
+      .map(([method, d]) => ({
+        method,
+        count: d.count,
+        amount: d.amount,
+        percentage: providerCollectedTotal > 0 ? (d.amount / providerCollectedTotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
     return successResponse({
       // Core metrics
       gmv,
@@ -405,6 +466,7 @@ export async function GET(request: NextRequest) {
       refundedAmount,
       providerEarningsReversals,
       providerEarnings,
+      membershipProviderEarnings,
       serviceFeeCollected,
       tipsCollected,
       travelFeesCollected,
@@ -449,11 +511,14 @@ export async function GET(request: NextRequest) {
       averageBookedValueNonPending,
       refundRate,
       paymentsByMethod,
+      providerCollectedByMethod,
       paymentsByStatus,
       // Payment-status breakdown
       failedPayments,
       cashStylePaymentsWithoutLedgerCount,
       cashStylePaymentsWithoutLedgerAmount,
+      ledger_truncated: ledgerTruncated,
+      max_finance_transactions: MAX_FINANCE_TRANSACTIONS,
     });
   } catch (error) {
     console.error("Error in payment summary report:", error);

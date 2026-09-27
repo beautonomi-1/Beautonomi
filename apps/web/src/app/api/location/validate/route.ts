@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
           zoneId: null,
           distanceKm: parseFloat(distanceKm.toFixed(2)),
           reason: `This address is ${distanceKm.toFixed(1)}km away and is outside our service coverage area. Would you like to book at the salon instead?`,
+          errorCode: "OUTSIDE_SERVICE_AREA",
         });
       }
 
@@ -272,6 +273,7 @@ export async function POST(request: NextRequest) {
           zoneId: null,
           distanceKm: parseFloat(distanceKm.toFixed(2)),
           reason: `This provider doesn't service ${serviceAddress.city || 'this area'} (${distanceKm.toFixed(1)}km away). Would you like to book at their salon location instead?`,
+          errorCode: "OUTSIDE_SERVICE_AREA",
         });
       }
 
@@ -314,6 +316,7 @@ export async function POST(request: NextRequest) {
             zoneId: null,
             distanceKm: parseFloat(distanceKm.toFixed(2)),
             reason: `This address is ${distanceKm.toFixed(1)}km away and outside the provider's service zones. Would you like to book at their salon instead?`,
+            errorCode: "OUTSIDE_SERVICE_AREA",
           });
         }
       }

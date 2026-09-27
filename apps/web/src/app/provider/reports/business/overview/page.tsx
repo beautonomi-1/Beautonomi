@@ -57,6 +57,8 @@ interface BusinessOverviewData {
   revenueGrowth: number;
   revenueGrowthIsNew?: boolean;
   locationAttribution?: { scopedByLocation?: boolean; excludedUnattributedRows?: number; note?: string };
+  ledger_truncated?: boolean;
+  max_finance_transactions?: number;
 }
 
 const PERIOD_OPTIONS: Array<{ value: string; label: string }> = [
@@ -233,6 +235,24 @@ export default function BusinessOverviewReport() {
             </p>
           ) : null}
         </div>
+
+        {data.ledger_truncated ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 shrink-0 text-amber-800 mt-0.5" />
+              <div>
+                <p className="font-semibold">
+                  {t("web.provider.reports.pages.payments/summary.ledgerTruncatedTitle")}
+                </p>
+                <p className="mt-1">
+                  {t("web.provider.reports.pages.payments/summary.ledgerTruncated", {
+                    max: data.max_finance_transactions ?? 50000,
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {basisText ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/95 px-4 py-3 text-sm text-sky-950">

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 
 export type BookingsGmvReconciliationResult = {
   /** Sum of total_amount for paid/partially_paid confirmed/completed bookings. */
@@ -29,13 +30,19 @@ export async function computeAlignedBookingsGmv(
   if (range.start) bookingsQuery = bookingsQuery.gte("created_at", range.start);
   if (range.end) bookingsQuery = bookingsQuery.lte("created_at", range.end);
 
-  const { data: bookingRows, error: bookingErr } = await bookingsQuery;
-  if (bookingErr) {
-    console.warn("computeAlignedBookingsGmv bookings query failed:", bookingErr.message);
+  bookingsQuery = bookingsQuery.order("id", { ascending: true });
+
+  let bookingRows: { total_amount?: number }[] = [];
+  try {
+    const { rows } = await fetchAllPages<{ total_amount?: number }>(bookingsQuery);
+    bookingRows = rows;
+  } catch (bookingErr) {
+    const message = bookingErr instanceof Error ? bookingErr.message : String(bookingErr);
+    console.warn("computeAlignedBookingsGmv bookings query failed:", message);
     return { grossBookingsGmv: 0, walkInAddOnDeduction: 0, alignedBookingsGmv: 0 };
   }
 
-  const grossBookingsGmv = (bookingRows ?? []).reduce(
+  const grossBookingsGmv = bookingRows.reduce(
     (s, row) => s + Number((row as { total_amount?: number }).total_amount ?? 0),
     0,
   );
@@ -51,8 +58,12 @@ export async function computeAlignedBookingsGmv(
     if (range.start) acQuery = acQuery.gte("created_at", range.start);
     if (range.end) acQuery = acQuery.lte("created_at", range.end);
 
-    const { data: walkInPayments } = await acQuery;
-    walkInAddOnDeduction = (walkInPayments ?? []).reduce((s, row) => {
+    acQuery = acQuery.order("id", { ascending: true });
+    const { rows: walkInPayments } = await fetchAllPages<{
+      amount?: number;
+      payment_provider_data?: Record<string, unknown>;
+    }>(acQuery);
+    walkInAddOnDeduction = walkInPayments.reduce((s, row) => {
       const pd = (row as { payment_provider_data?: Record<string, unknown> }).payment_provider_data;
       const isWalkIn =
         pd &&

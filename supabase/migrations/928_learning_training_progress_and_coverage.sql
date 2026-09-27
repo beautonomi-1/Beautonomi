@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_learning_training_progress_user_path
 
 ALTER TABLE public.learning_training_progress ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Superadmins can manage learning training progress" ON public.learning_training_progress;
 CREATE POLICY "Superadmins can manage learning training progress"
   ON public.learning_training_progress
   FOR ALL
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS public.learning_training_completions (
 
 ALTER TABLE public.learning_training_completions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Superadmins can manage learning training completions" ON public.learning_training_completions;
 CREATE POLICY "Superadmins can manage learning training completions"
   ON public.learning_training_completions
   FOR ALL
@@ -222,7 +224,7 @@ WHERE slug = 'users-trust-runbook' AND tenant_id IS NULL
 
 UPDATE public.learning_articles
 SET summary = 'Internal runbook: webhooks, API keys, Didit, AI Platform, Aura, Amplitude, Slack, Resend, Paystack, Yoco, PayCloud, Mapbox, OneSignal, WhatsApp, and ISO codes.',
-    body = replace(replace(replace(replace(replace(replace(replace(replace(body,
+    body = replace(replace(replace(replace(replace(replace(replace(body,
       'Sumsub, Gemini', 'Didit, AI Platform'),
       '<li><strong>Sumsub</strong> (<code>/admin/control-plane/integrations/sumsub</code>)', '<li><strong>Didit (Identity / KYC)</strong> (<code>/admin/control-plane/integrations/didit</code>)'),
       '<li><strong>Gemini</strong> (<code>/admin/control-plane/integrations/gemini</code>)', '<li><strong>AI Platform</strong> (<code>/admin/control-plane/integrations/ai</code>)'),

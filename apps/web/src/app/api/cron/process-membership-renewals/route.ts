@@ -278,7 +278,7 @@ async function runJob(request: NextRequest) {
         }
 
         const renewalReference = generateRenewalReference(renewalOrder.id);
-        const amountSmallest = convertToSmallestUnit(priceMonthly);
+        const amountSmallest = convertToSmallestUnit(priceMonthly, plan.currency ?? "ZAR");
 
         // Claim the row: advance next_billing_at BEFORE charging to prevent double-charge.
         const nextBillingAt = advanceOneMonth(new Date(row.next_billing_at ?? now));
@@ -324,7 +324,7 @@ async function runJob(request: NextRequest) {
               plan_id: planId,
               kind: "membership_renewal",
             },
-            { tenantId, reference: renewalReference },
+            { tenantId, reference: renewalReference, currency: plan.currency ?? "ZAR" },
           );
         } catch (chargeErr) {
           console.error(`[membership-renewals] chargeAuthorization threw for ${membershipId}:`, chargeErr);
@@ -352,8 +352,14 @@ async function runJob(request: NextRequest) {
 
         if (chargeSucceeded) {
           // ── Synchronous success ──────────────────────────────────────────
-          const grossAmount = convertFromSmallestUnit(chargeResult.data?.amount ?? amountSmallest);
-          const feeAmount = convertFromSmallestUnit(chargeResult.data?.fees ?? 0);
+          const grossAmount = convertFromSmallestUnit(
+            chargeResult.data?.amount ?? amountSmallest,
+            chargeResult.data?.currency || plan.currency || "ZAR",
+          );
+          const feeAmount = convertFromSmallestUnit(
+            chargeResult.data?.fees ?? 0,
+            chargeResult.data?.currency || plan.currency || "ZAR",
+          );
 
           await (supabase.from("membership_orders") as any)
             .update({ status: "paid", paystack_reference: renewalReference, updated_at: nowIso })

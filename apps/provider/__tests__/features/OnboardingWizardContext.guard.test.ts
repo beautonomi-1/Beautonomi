@@ -16,6 +16,7 @@ describe("OnboardingWizardContext mount guard", () => {
     expect(src).toContain("resolveCheckoutFlagsForRecovery");
     expect(src).toContain("timeout: 120_000");
     expect(src).toContain('errCode === "TIMEOUT"');
-    expect(src).toContain('errCode === "ALREADY_EXISTS"');
+    expect(src).toContain("buildSubmitPayloadWithInvite");
+    expect(src).not.toContain('errCode === "ALREADY_EXISTS"');
   });
 });

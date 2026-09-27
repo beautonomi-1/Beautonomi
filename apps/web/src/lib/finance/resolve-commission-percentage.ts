@@ -17,17 +17,17 @@ export async function resolveCommissionPercentageForProvider(
       .maybeSingle();
     resolvedTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
   }
-  let settingsQuery = supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true);
-  if (resolvedTenantId) {
-    settingsQuery = settingsQuery.eq("tenant_id", resolvedTenantId);
+  const loadSettings = async (tenantId: string | null) => {
+    let q = supabase.from("platform_settings").select("settings").eq("is_active", true);
+    q = tenantId ? q.eq("tenant_id", tenantId) : q.is("tenant_id", null);
+    const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
+    return data;
+  };
+  // Must match SQL resolve_provider_commission_percentage (947): tenant row, else global row.
+  let settingsRow = await loadSettings(resolvedTenantId);
+  if (!settingsRow && resolvedTenantId) {
+    settingsRow = await loadSettings(null);
   }
-  const { data: settingsRow } = await settingsQuery
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
 
   const payoutSettings = (settingsRow as { settings?: { payouts?: { commission_enabled?: boolean; platform_commission_percentage?: number } } } | null)?.settings?.payouts ?? {};
   // Default to commission OFF unless explicitly enabled in settings.

@@ -38,10 +38,18 @@ import {
   visibleStepIndex,
   wizardStepIdForKey,
   wizardStepKeyForId,
+  ONBOARDING_STEP_MAP_VERSION,
+  remapLegacyWebDraftNumericStep,
 } from "./state";
 import { suggestZonesForOnboardingAddress } from "./suggest-zones";
-import { buildSubmitPayload, validateStep } from "./validation";
+import { buildSubmitPayloadWithInvite, validateStep } from "./validation";
 import type { OnboardingFormData } from "./types";
+import {
+  clearStoredOnboardingInviteToken,
+  getStoredOnboardingInviteToken,
+  redeemOnboardingInviteToken,
+  storeOnboardingInviteToken,
+} from "./invite-token";
 
 const LOCAL_DRAFT_KEY = "beautonomi_provider_onboarding_draft_local";
 
@@ -278,6 +286,9 @@ export function OnboardingWizardProvider({
             step = wizardStepIdForKey(merged.current_step_key);
           } else if (typeof row.current_step === "number" && row.current_step >= 1) {
             step = row.current_step;
+            if (merged.step_map_version !== ONBOARDING_STEP_MAP_VERSION) {
+              step = remapLegacyWebDraftNumericStep(step);
+            }
           }
           try {
             await AsyncStorage.removeItem(LOCAL_DRAFT_KEY);
@@ -298,6 +309,9 @@ export function OnboardingWizardProvider({
                   step = wizardStepIdForKey(merged.current_step_key);
                 } else if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
                   step = parsed.current_step;
+                  if (merged.step_map_version !== ONBOARDING_STEP_MAP_VERSION) {
+                    step = remapLegacyWebDraftNumericStep(step);
+                  }
                 }
               }
             }
@@ -322,6 +336,14 @@ export function OnboardingWizardProvider({
         if (!cancelled) {
           scrubPlaceholderEmailsFromOnboardingForm(merged);
           await applySignupPhoneHandoffToForm(merged);
+        }
+
+        if (!cancelled && user) {
+          const inviteToken = await getStoredOnboardingInviteToken();
+          if (inviteToken) {
+            const invitePrefill = await redeemOnboardingInviteToken(inviteToken);
+            if (invitePrefill) Object.assign(merged, invitePrefill);
+          }
         }
 
         const providerExists = await probeProviderProfileExists();
@@ -367,7 +389,11 @@ export function OnboardingWizardProvider({
   const persistDraft = useCallback(async (data: Partial<OnboardingFormData>, step: number) => {
     setSavingDraft(true);
     const stepKey = wizardStepKeyForId(step);
-    const draftPayload = stepKey != null ? { ...data, current_step_key: stepKey } : data;
+    const draftPayload = {
+      ...data,
+      step_map_version: ONBOARDING_STEP_MAP_VERSION,
+      ...(stepKey != null ? { current_step_key: stepKey } : {}),
+    };
     try {
       const res = await api.post("/api/provider/onboarding/draft", {
         draft_data: draftPayload,
@@ -514,7 +540,8 @@ export function OnboardingWizardProvider({
       isSubmittingRef.current = true;
       setIsSubmitting(true);
       try {
-        const payload = buildSubmitPayload(formData);
+        const inviteToken = await getStoredOnboardingInviteToken();
+        const payload = buildSubmitPayloadWithInvite(formData, inviteToken);
         const res = await api.post<OnboardingCompletionData>(
           "/api/provider/onboarding",
           payload as Record<string, unknown>,
@@ -572,7 +599,8 @@ export function OnboardingWizardProvider({
       return;
     }
 
-    const payload = buildSubmitPayload(formData);
+    const inviteToken = await getStoredOnboardingInviteToken();
+    const payload = buildSubmitPayloadWithInvite(formData, inviteToken);
     const addr = payload.address as { line1?: string; city?: string; country?: string };
     if (!addr.line1 || !addr.city || !addr.country) {
       Alert.alert("Address", "Please complete address (line 1, city, country).");
@@ -593,30 +621,10 @@ export function OnboardingWizardProvider({
       if (res.error) {
         const errCode = (res.error as { code?: string }).code;
         const isTimeout = errCode === "TIMEOUT";
-        const isAlreadyExists = errCode === "ALREADY_EXISTS";
 
-        if (isTimeout || isAlreadyExists) {
+        if (isTimeout) {
           const profileExists = await probeProviderProfileExists();
           if (profileExists) {
-            if (isAlreadyExists) {
-              const retry = await api.post<OnboardingCompletionData>(
-                "/api/provider/onboarding",
-                payload as Record<string, unknown>,
-                { timeout: 120_000 },
-              );
-              if (!retry.error && retry.data) {
-                setProviderProfileExists(true);
-                await finalizeOnboardingSuccess({
-                  data: retry.data,
-                  formData,
-                  router,
-                  refreshProvider,
-                  userId: user?.id,
-                  waitForCheckout: paystackCheckout.waitForCheckout,
-                });
-                return;
-              }
-            }
             const recoveryFlags = await resolveCheckoutFlagsForRecovery(formData);
             setProviderProfileExists(true);
             await finalizeOnboardingSuccess({
@@ -629,13 +637,11 @@ export function OnboardingWizardProvider({
             });
             return;
           }
-          if (isTimeout) {
-            Alert.alert(
-              "Still setting up",
-              "Your business profile may still be saving. Wait a moment, then tap Submit again.",
-            );
-            return;
-          }
+          Alert.alert(
+            "Still setting up",
+            "Your business profile may still be saving. Wait a moment, then tap Submit again.",
+          );
+          return;
         }
 
         const details = (res.error as { details?: unknown }).details;
@@ -653,6 +659,7 @@ export function OnboardingWizardProvider({
       }
 
       setProviderProfileExists(true);
+      await clearStoredOnboardingInviteToken();
       await finalizeOnboardingSuccess({
         data: res.data,
         formData,

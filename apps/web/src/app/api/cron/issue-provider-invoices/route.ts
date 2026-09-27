@@ -40,6 +40,18 @@ export async function GET(request: NextRequest) {
 }
 
 async function runJob(request: NextRequest) {
+  if (process.env.CRON_ISSUE_PROVIDER_INVOICES_ENABLED === "false") {
+    console.info(
+      `[${JOB_NAME}] skipped: CRON_ISSUE_PROVIDER_INVOICES_ENABLED=false (customer-paid platform fee model)`,
+    );
+    return NextResponse.json({
+      skipped: true,
+      reason: "cron_disabled",
+      message:
+        "Scheduled platform-fee invoicing is paused. Customer-paid fees are recorded at checkout.",
+    });
+  }
+
   const supabase = getSupabaseAdmin();
   const url = new URL(request.url);
 

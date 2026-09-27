@@ -1,0 +1,52 @@
+/**
+ * Starter inventories derived from the integrations present in this repository.
+ * Owners confirm data processed, data location and DPA status during the first vendor review.
+ */
+import type { CatalogAsset, CatalogProcessingActivity, CatalogVendor } from "./types";
+
+export const VENDORS: CatalogVendor[] = [
+  { id: "supabase", name: "Supabase", service_type: "Database, authentication, storage", data_processed: "All platform personal information, credentials (hashed), uploaded files", criticality: "critical", website: "https://supabase.com" },
+  { id: "vercel", name: "Vercel", service_type: "Web hosting, serverless functions, cron", data_processed: "Request metadata, application logs, environment secrets", criticality: "critical", website: "https://vercel.com" },
+  { id: "github", name: "GitHub", service_type: "Source code, CI/CD, dependency alerts", data_processed: "Source code, CI logs, secrets for CI", criticality: "critical", website: "https://github.com" },
+  { id: "expo", name: "Expo (EAS)", service_type: "Mobile builds, updates and push delivery", data_processed: "Push tokens, build secrets", criticality: "high", website: "https://expo.dev" },
+  { id: "paystack", name: "Paystack", service_type: "Card and bank payments, payouts", data_processed: "Customer name, email, payment references; provider bank details", criticality: "critical", website: "https://paystack.com" },
+  { id: "stripe", name: "Stripe", service_type: "Card payments", data_processed: "Customer name, email, payment references", criticality: "high", website: "https://stripe.com" },
+  { id: "yoco", name: "Yoco", service_type: "Card payments and terminals", data_processed: "Payment references, transaction metadata", criticality: "high", website: "https://www.yoco.com" },
+  { id: "paycloud", name: "PayCloud", service_type: "Payments", data_processed: "Payment references, transaction metadata", criticality: "high", website: "https://paycloud.africa" },
+  { id: "flutterwave", name: "Flutterwave", service_type: "Payments", data_processed: "Payment references, transaction metadata", criticality: "medium", website: "https://flutterwave.com" },
+  { id: "didit", name: "Didit", service_type: "Identity verification (KYC)", data_processed: "ID documents, selfies, verification results", criticality: "high", website: "https://didit.me" },
+  { id: "twilio", name: "Twilio", service_type: "SMS and verification", data_processed: "Phone numbers, OTP messages", criticality: "high", website: "https://www.twilio.com" },
+  { id: "meta-whatsapp", name: "Meta (WhatsApp Business)", service_type: "Messaging", data_processed: "Phone numbers, message content", criticality: "medium", website: "https://business.whatsapp.com" },
+  { id: "resend", name: "Resend", service_type: "Transactional email", data_processed: "Email addresses, message content", criticality: "medium", website: "https://resend.com" },
+  { id: "sendgrid", name: "SendGrid (Twilio)", service_type: "Email", data_processed: "Email addresses, message content", criticality: "medium", website: "https://sendgrid.com" },
+  { id: "onesignal", name: "OneSignal", service_type: "Push notifications", data_processed: "Device tokens, user ids, notification content", criticality: "medium", website: "https://onesignal.com" },
+  { id: "pusher", name: "Pusher", service_type: "Realtime messaging", data_processed: "Realtime event payloads", criticality: "medium", website: "https://pusher.com" },
+  { id: "sentry", name: "Sentry", service_type: "Error monitoring", data_processed: "Stack traces, user ids, request metadata", criticality: "medium", website: "https://sentry.io" },
+  { id: "amplitude", name: "Amplitude", service_type: "Product analytics", data_processed: "Usage events, device and user identifiers", criticality: "low", website: "https://amplitude.com" },
+  { id: "mapbox", name: "Mapbox", service_type: "Maps and geocoding", data_processed: "Location queries", criticality: "medium", website: "https://www.mapbox.com" },
+  { id: "google", name: "Google (Maps Platform, Gemini)", service_type: "Maps, geocoding and AI features", data_processed: "Location queries; prompt content for AI features", criticality: "medium", website: "https://cloud.google.com" },
+  { id: "upstash", name: "Upstash", service_type: "Redis (rate limiting, caching)", data_processed: "Rate-limit keys (IP addresses, user ids)", criticality: "medium", website: "https://upstash.com" },
+];
+
+export const ASSETS: CatalogAsset[] = [
+  { id: "app-web", name: "Customer web app and API (apps/web)", asset_type: "application", description: "Next.js app serving the marketplace, booking flows and all /api routes.", owner_team: "engineering", criticality: "critical", data_classification: "confidential" },
+  { id: "app-admin", name: "Admin portal (apps/admin-web)", asset_type: "application", description: "Vite SPA for platform operations, finance, trust and the Security & Compliance hub.", owner_team: "engineering", criticality: "critical", data_classification: "restricted" },
+  { id: "app-provider", name: "Provider mobile app (apps/provider)", asset_type: "application", description: "Expo app for salons and independent providers.", owner_team: "engineering", criticality: "high", data_classification: "confidential" },
+  { id: "app-customer", name: "Customer mobile app (apps/customer)", asset_type: "application", description: "Expo app for customers.", owner_team: "engineering", criticality: "high", data_classification: "confidential" },
+  { id: "db-supabase-prod", name: "Supabase production project", asset_type: "datastore", description: "Postgres database, Auth, Storage buckets (including grc-evidence).", owner_team: "it_operations", criticality: "critical", data_classification: "restricted" },
+  { id: "repo-github", name: "GitHub monorepo", asset_type: "repository", description: "Source code, migrations, CI workflows.", owner_team: "engineering", criticality: "critical", data_classification: "confidential" },
+  { id: "hosting-vercel", name: "Vercel project", asset_type: "infrastructure", description: "Production and preview deployments, environment secrets, cron jobs.", owner_team: "it_operations", criticality: "critical", data_classification: "restricted" },
+  { id: "svc-payments", name: "Payment integrations", asset_type: "service", description: "Paystack, Stripe, Yoco, PayCloud, Flutterwave webhooks and payouts.", owner_team: "engineering", criticality: "critical", data_classification: "restricted" },
+  { id: "svc-messaging", name: "Messaging integrations", asset_type: "service", description: "Email, SMS, WhatsApp and push providers.", owner_team: "engineering", criticality: "high", data_classification: "confidential" },
+];
+
+export const PROCESSING_ACTIVITIES: CatalogProcessingActivity[] = [
+  { name: "Customer accounts and bookings", purpose: "Create accounts, take and manage bookings, send booking communication", lawful_basis: "Contract (POPIA s11(1)(b); GDPR Art. 6(1)(b))", data_subjects: "Customers", data_categories: "Name, email, phone, address/location, booking history, preferences", recipients: "Service providers booked; payment providers; messaging providers", cross_border_transfers: "Hosting and messaging processors outside South Africa (confirm per vendor)", retention: "Per retention schedule; inactive accounts handled by inactivity-retention job" },
+  { name: "Provider onboarding and verification", purpose: "Verify provider identity and eligibility, manage listings and payouts", lawful_basis: "Contract; legal obligation (FICA where applicable); legitimate interest in fraud prevention", data_subjects: "Providers, provider staff", data_categories: "Identity documents, selfies, business details, bank details", recipients: "Identity verification provider (Didit); payment providers", cross_border_transfers: "Identity verification processing location to be confirmed", retention: "Duration of relationship plus statutory period" },
+  { name: "Payments, refunds and payouts", purpose: "Take payments, process refunds and pay providers", lawful_basis: "Contract; legal obligation (tax and financial records)", data_subjects: "Customers, providers", data_categories: "Payment references, amounts, bank details (providers)", recipients: "Payment providers; auditors", cross_border_transfers: "Payment processors (confirm per vendor)", retention: "Financial records retained for statutory period (at least 5 years)" },
+  { name: "Customer support and disputes", purpose: "Resolve support tickets, disputes and safety reports", lawful_basis: "Contract; legitimate interest", data_subjects: "Customers, providers", data_categories: "Contact details, messages, booking details, evidence attachments", recipients: "Support staff", cross_border_transfers: "Hosting processors", retention: "Per retention schedule" },
+  { name: "Marketing communication", purpose: "Send offers and product news", lawful_basis: "Consent, or existing customer with opt-out (POPIA s69)", data_subjects: "Customers, providers", data_categories: "Name, email, phone, marketing preferences", recipients: "Email, SMS, WhatsApp and push providers", cross_border_transfers: "Messaging processors", retention: "Until consent withdrawn" },
+  { name: "Product analytics and error monitoring", purpose: "Improve the product and fix errors", lawful_basis: "Legitimate interest", data_subjects: "App and website users", data_categories: "Device identifiers, usage events, error traces", recipients: "Amplitude, Sentry", cross_border_transfers: "Analytics and monitoring processors", retention: "Per vendor retention settings" },
+  { name: "Location services", purpose: "Show nearby providers, service zones and travel fees; on-demand tracking", lawful_basis: "Contract; consent for precise device location", data_subjects: "Customers, providers", data_categories: "Addresses, precise location during active bookings", recipients: "Map providers", cross_border_transfers: "Map processors", retention: "Per retention schedule" },
+  { name: "Admin portal access and GRC records", purpose: "Operate the platform securely and demonstrate compliance", lawful_basis: "Legitimate interest; legal obligation", data_subjects: "Staff and contractors", data_categories: "Name, email, role, audit logs, training and access review records", recipients: "Internal; external auditors via audit packs", cross_border_transfers: "Hosting processors", retention: "Compliance records per retention schedule" },
+];

@@ -117,6 +117,9 @@ jobs:
       - name: i18n registry tests
         run: pnpm --filter @beautonomi/i18n test
 
+      - name: GRC database harness (RLS, segregation of duties, append-only)
+        run: pnpm --filter @beautonomi/grc-sql-harness test
+
       - name: Admin regression (Vitest + API taxonomy)
         run: |
           pnpm --filter admin-web test

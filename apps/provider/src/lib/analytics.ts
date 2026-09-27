@@ -14,6 +14,9 @@ import {
   EVENT_EXPLORE_POST_DELETED,
   EVENT_EXPLORE_POST_PUBLISHED,
   EVENT_FRONT_DESK_STATUS_CHANGE,
+  EVENT_HINT_ACTION,
+  EVENT_HINT_DISMISSED,
+  EVENT_HINT_SHOWN,
   EVENT_FRONT_DESK_VIEW,
   EVENT_INVOICE_GENERATED,
   EVENT_LOGIN_SUCCESS,
@@ -530,4 +533,16 @@ export function trackMarketSwitchDeclined(input: {
     country_code: input.countryCode,
     portal: "provider",
   });
+}
+
+export function trackHintShown(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_SHOWN, { hint_id: hintId, app });
+}
+
+export function trackHintDismissed(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_DISMISSED, { hint_id: hintId, app });
+}
+
+export function trackHintAction(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_ACTION, { hint_id: hintId, app });
 }

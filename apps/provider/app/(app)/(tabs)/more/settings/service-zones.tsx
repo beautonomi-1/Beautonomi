@@ -26,6 +26,10 @@ import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { ContextualHint } from "@/components/hints/ContextualHint";
+import { useRouter } from "expo-router";
+import { useProvider } from "@/providers/ProviderContext";
+import { providerHasNoActiveServiceZones } from "@/lib/contextual-hints/zone-selection";
 
 interface PlatformZone {
   id: string;
@@ -53,6 +57,8 @@ interface ZoneWithSelection {
 type FilterMode = "all" | "active" | "inactive" | "available";
 
 export default function ServiceZonesScreen() {
+  const router = useRouter();
+  const { provider } = useProvider();
   const { t } = useTranslation();
   const sz = useCallback(
     (key: string, opts?: Record<string, unknown>) =>
@@ -239,6 +245,25 @@ export default function ServiceZonesScreen() {
         showBack
         subtitle={sz("subtitle", { count: activeCount })}
       />
+
+      <ContextualHint
+        id="provider.serviceZones.intro"
+        mode="once"
+        message={sz("introHint")}
+        actionLabel={sz("actionTravelFees")}
+        onAction={() => router.push("/(app)/(tabs)/more/settings/travel-fees" as never)}
+      />
+      {provider?.offers_mobile_services &&
+      zones &&
+      zones.length > 0 &&
+      providerHasNoActiveServiceZones(zones) ? (
+        <ContextualHint
+          id="provider.serviceZones.noZones"
+          mode="persistent"
+          tone="warning"
+          message={sz("noZonesWarning")}
+        />
+      ) : null}
 
       {zones && zones.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>

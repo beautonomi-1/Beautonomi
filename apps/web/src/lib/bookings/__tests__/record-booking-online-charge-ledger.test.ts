@@ -5,8 +5,8 @@ vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn(async () => "tenant-1"),
 }));
 
-vi.mock("@/lib/finance/resolve-commission-percentage", () => ({
-  resolveCommissionPercentageForProvider: vi.fn(async () => 10),
+vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
+  resolveCommissionPercentageForBooking: vi.fn(async () => 10),
 }));
 
 vi.mock("@/lib/notifications/notify-staff-event", () => ({

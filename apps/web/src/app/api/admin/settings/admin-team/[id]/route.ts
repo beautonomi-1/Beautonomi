@@ -27,6 +27,7 @@ const ADMIN_ROLES: UserRole[] = [
   "admin_sales",
   "admin_onboarding",
   "admin_retention",
+  "admin_grc",
 ];
 
 const patchSchema = z.object({
@@ -46,6 +47,7 @@ const patchSchema = z.object({
       "admin_sales",
       "admin_onboarding",
       "admin_retention",
+      "admin_grc",
       "customer",
     ] as const)
     .optional(),

@@ -769,6 +769,16 @@ function withRegionHeader(request: NextRequest): NextResponse {
 
 New migrations go in `supabase/migrations/` with next sequence number (e.g. `286_regions_table.sql`, `287_region_settings.sql`). Follow existing pattern: descriptive name, idempotent where possible.
 
+### 12.8 Payroll jurisdiction packs (launch checklist)
+
+Before enabling payroll in a new `tenants.region_code`:
+
+1. Insert or activate a row in `payroll_jurisdictions` with the correct `support_level` (`manual` until verified).
+2. Publish `payroll_rule_sets` for `income_tax`, `social_contributions`, `public_holidays`, and `minimum_wage` with source URLs and passing `golden_tests`.
+3. Backfill `provider_locations.jurisdiction_code` and `timezone` for every branch.
+4. Run `scripts/payroll-impact-audit.sql` after enabling `provider_settings.payroll_v2_enabled`.
+5. Schedule `/api/cron/payroll-rules-monitor` in the deployment cron (60-day coverage alert).
+
 ---
 
 ## 13. References

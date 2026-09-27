@@ -41,7 +41,7 @@ function newConversationId(): string {
 
 export { GLOBAL_COPILOT_STARTERS };
 
-export function useAdminCopilot(pageContext?: CopilotPageContext) {
+export function useAdminCopilot(pageContext?: CopilotPageContext, desk?: string) {
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [disambiguation, setDisambiguation] = useState<CopilotDisambiguationOption[] | null>(null);
@@ -66,6 +66,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
         const res = await adminApi.postJson<CopilotResponse>("/api/admin/copilot", {
           question: trimmed,
           pageContext,
+          desk: desk?.trim() || undefined,
           conversationId: conversationIdRef.current,
           messages: [...messages, userMsg].slice(-8),
           resolvedEntities: resolvedEntitiesRef.current,
@@ -105,7 +106,7 @@ export function useAdminCopilot(pageContext?: CopilotPageContext) {
         setBusy(false);
       }
     },
-    [messages, pageContext],
+    [messages, pageContext, desk],
   );
 
   const pickDisambiguation = useCallback(

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   getProviderIdForUser,
   handleApiError,
@@ -144,13 +145,15 @@ export async function POST(
       console.error("Error creating booking event:", eventError);
     }
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         arrival_otp_verified: true,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
     if (updateError) {
       return handleApiError(updateError, "Failed to update booking");

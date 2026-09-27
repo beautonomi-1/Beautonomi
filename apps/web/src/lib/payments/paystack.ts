@@ -5,7 +5,7 @@
  * Following official Paystack API documentation: https://paystack.com/docs/api/
  */
 
-import { toCents, fromCents } from "@beautonomi/utils";
+import { toMinorUnits, fromMinorUnits } from "@beautonomi/utils";
 
 /**
  * Verify Paystack configuration
@@ -29,15 +29,15 @@ export function verifyPaystackConfig(): {
 /**
  * Convert amount to Paystack's smallest currency unit (kobo/cents)
  */
-export function convertToSmallestUnit(amount: number): number {
-  return toCents(amount);
+export function convertToSmallestUnit(amount: number, currency: string = "ZAR"): number {
+  return toMinorUnits(amount, currency);
 }
 
 /**
  * Convert from Paystack's smallest currency unit to regular amount
  */
-export function convertFromSmallestUnit(amount: number): number {
-  return fromCents(amount);
+export function convertFromSmallestUnit(amount: number, currency: string = "ZAR"): number {
+  return fromMinorUnits(amount, currency);
 }
 
 /**

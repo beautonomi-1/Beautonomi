@@ -13,7 +13,9 @@ import {
 import {
   aggregateFinanceLedgerRows,
   gatewayFeesTotalFromAggregate,
+  platformRevenueNetFromAggregate,
 } from "@/lib/admin/aggregate-finance-ledger-rows";
+import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -24,6 +26,7 @@ import {
 } from "@/lib/admin/negative-provider-payout-balances";
 import { computeAlignedBookingsGmv } from "@/lib/admin/bookings-gmv-for-reconciliation";
 import { countGatewayFeeCaptureAnomalies } from "@/lib/admin/gateway-fee-capture-anomalies";
+import { buildPlatformCashPosition } from "@/lib/admin/platform-cash-position";
 
 /**
  * GET /api/admin/finance/summary
@@ -77,14 +80,15 @@ export async function GET(request: Request) {
         .from("wallet_topups")
         .select("amount")
         .eq("status", "paid")
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true });
       if (normalizedRange.start) topupQuery = topupQuery.gte("paid_at", normalizedRange.start);
       if (normalizedRange.end) topupQuery = topupQuery.lte("paid_at", normalizedRange.end);
-      const { data: topups, error: topErr } = await topupQuery;
-      if (topErr) {
-        console.warn("Wallet topups tenant-scoped query failed:", topErr.message);
-      } else {
-        walletTopupCashCollected = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      try {
+        const { rows: topups } = await fetchAllPages<{ amount?: number | null }>(topupQuery);
+        walletTopupCashCollected = topups.reduce((s, r) => s + Number(r.amount || 0), 0);
+      } catch (topErr) {
+        console.warn("Wallet topups tenant-scoped query failed:", topErr);
       }
 
       let refQuery = supabaseAdmin
@@ -92,29 +96,32 @@ export async function GET(request: Request) {
         .select("amount")
         .eq("type", "credit")
         .eq("reference_type", "referral")
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true });
       if (normalizedRange.start) refQuery = refQuery.gte("created_at", normalizedRange.start);
       if (normalizedRange.end) refQuery = refQuery.lte("created_at", normalizedRange.end);
-      const { data: refTxs, error: refErr } = await refQuery;
-      if (refErr) {
-        console.warn("Referral wallet credits tenant-scoped query failed:", refErr.message);
-      } else {
-        referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      try {
+        const { rows: refTxs } = await fetchAllPages<{ amount?: number | null }>(refQuery);
+        referralPayouts = refTxs.reduce((s, r) => s + Number(r.amount || 0), 0);
+      } catch (refErr) {
+        console.warn("Referral wallet credits tenant-scoped query failed:", refErr);
       }
 
-      const { data: giftCards, error: giftErr } = await supabaseAdmin
+      let giftQuery = supabaseAdmin
         .from("gift_cards")
         .select("balance")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
-        .gt("balance", 0);
-      if (giftErr) {
-        console.warn("Gift card liability query failed:", giftErr.message);
-      } else {
-        outstandingGiftCardLiability = (giftCards || []).reduce(
+        .gt("balance", 0)
+        .order("id", { ascending: true });
+      try {
+        const { rows: giftCards } = await fetchAllPages<{ balance?: number | null }>(giftQuery);
+        outstandingGiftCardLiability = giftCards.reduce(
           (s, row) => s + Number(row.balance || 0),
-          0
+          0,
         );
+      } catch (giftErr) {
+        console.warn("Gift card liability query failed:", giftErr);
       }
 
       const alignedGmv = await computeAlignedBookingsGmv(
@@ -158,12 +165,7 @@ export async function GET(request: Request) {
     const cancellationFeesRetained = agg.cancellation_fees_retained;
 
     const customerPaidPlatformFees = agg.service_fee_revenue;
-    const totalPlatformRecognizedRevenue =
-      agg.platform_take_net +
-      agg.subscription_net +
-      agg.ads_net +
-      agg.marketing_credit_net +
-      customerPaidPlatformFees;
+    const totalPlatformRecognizedRevenue = platformRevenueNetFromAggregate(agg);
     const totalPlatformRecognizedRevenueAfterReferrals =
       totalPlatformRecognizedRevenue - referralPayouts;
     const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
@@ -206,6 +208,11 @@ export async function GET(request: Request) {
       previousGmv > 0 ? ((agg.service_collected_gross - previousGmv) / previousGmv) * 100 : 0;
 
     const gatewayFeesTotal = gatewayFeesTotalFromAggregate(agg);
+    const platformCashPosition = buildPlatformCashPosition({
+      agg,
+      walletTopupCashCollected,
+      gatewayFeesTotal,
+    });
     const gatewayFeesBreakdown = {
       services: agg.gateway_fees_services,
       terminal: agg.terminal_gateway_fees,
@@ -289,6 +296,8 @@ export async function GET(request: Request) {
 
         wallet_topup_revenue: walletTopupCashCollected,
         wallet_topup_cash_collected: walletTopupCashCollected,
+        currency: agg.currency,
+        reporting_currency_mixed: agg.currency === "MIXED",
         referral_payouts: referralPayouts,
         total_platform_take_after_referrals: totalPlatformRecognizedRevenueAfterReferrals,
 
@@ -299,6 +308,7 @@ export async function GET(request: Request) {
           ads: agg.ads_net,
           marketing_credits: agg.marketing_credit_net,
           service_fees: customerPaidPlatformFees,
+          gift_card_breakage: agg.gift_card_breakage_revenue,
           ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupCashCollected,
           manual_adjustments: agg.manual_adjustments_net,
@@ -377,31 +387,7 @@ export async function GET(request: Request) {
               manual_adjustments_net: agg.manual_adjustments_net,
               status: totalPlatformRecognizedRevenue < 0 ? "warning" : "ok",
             },
-            // §Phase 7: platform cash position = what the platform should hold
-            // collected − provider_payouts − refunds − gateway_fees − transfer_fees
-            platform_cash_position: {
-              collected: agg.service_collected_gross
-                + walletTopupCashCollected
-                + agg.gift_card_sales
-                + agg.subscription_gross
-                + agg.ads_gross
-                + agg.marketing_credit_gross,
-              provider_payouts: agg.payouts_paid_total,
-              refunds_gross: agg.refunds_abs_gross,
-              gateway_fees: gatewayFeesTotal,
-              payout_transfer_fees: agg.payout_transfer_fees,
-              net_platform_cash:
-                agg.service_collected_gross
-                + walletTopupCashCollected
-                + agg.gift_card_sales
-                + agg.subscription_gross
-                + agg.ads_gross
-                + agg.marketing_credit_gross
-                - agg.payouts_paid_total
-                - agg.refunds_abs_gross
-                - gatewayFeesTotal
-                - agg.payout_transfer_fees,
-            },
+            platform_cash_position: platformCashPosition,
           },
         },
         metrics_meta: {

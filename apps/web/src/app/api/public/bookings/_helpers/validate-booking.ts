@@ -26,6 +26,7 @@ import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invaria
 import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 
 function atHomeAdjustmentForOffering(
   offeringsList: Array<{
@@ -84,7 +85,10 @@ export interface ValidatedBookingData {
   showServiceFeeToCustomer: boolean;
 
   totalAmount: number;
+  /** Always 0 at create; earn is written by DB trigger on completion. */
   loyaltyPointsEarned: number;
+  /** Estimated points after completion (subtotal-based, matches trigger). */
+  loyaltyPointsProjected: number;
   loyaltyDiscountAmount: number;
   loyaltyPointsRedeemed: number;
 
@@ -213,7 +217,7 @@ export async function validateBooking(
   let providerQuery = supabase
     .from("providers")
     .select(
-      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount"
+      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"
     )
     .eq("id", draft.provider_id);
   if (marketTenantId) {
@@ -231,6 +235,15 @@ export async function validateBooking(
       "Provider is not available",
       "PROVIDER_INACTIVE",
       400
+    );
+  }
+
+  if ((provider as { online_booking_enabled?: boolean | null }).online_booking_enabled === false) {
+    return handleApiError(
+      new Error("Online booking is disabled"),
+      "This provider is not accepting online bookings at the moment.",
+      "ONLINE_BOOKING_DISABLED",
+      403
     );
   }
 
@@ -1047,32 +1060,62 @@ export async function validateBooking(
   // When no hold is present we fall back to the draft value; the holdless
   // path (direct booking creation, mobile, on-demand) stays unchanged so
   // existing journeys keep working.
-  let travelFee = draft.location_type === "at_home" ? (draft.travel_fee || 0) : 0;
-  if (draft.location_type === "at_home" && validatedDraft.hold_id) {
-    try {
-      const { data: holdMetaRow } = await supabaseAdmin
-        .from("booking_holds")
-        .select("metadata")
-        .eq("id", validatedDraft.hold_id)
-        .maybeSingle();
-      const holdMeta =
-        holdMetaRow && typeof holdMetaRow === "object"
-          ? (holdMetaRow as { metadata?: unknown }).metadata
-          : null;
-      if (holdMeta && typeof holdMeta === "object" && !Array.isArray(holdMeta)) {
-        const holdTravelFeeRaw = (holdMeta as { travel_fee?: unknown }).travel_fee;
-        const holdTravelFee =
-          typeof holdTravelFeeRaw === "number"
-            ? holdTravelFeeRaw
-            : typeof holdTravelFeeRaw === "string"
-              ? Number(holdTravelFeeRaw)
-              : null;
-        if (holdTravelFee != null && Number.isFinite(holdTravelFee) && holdTravelFee >= 0) {
-          travelFee = holdTravelFee;
+  let travelFee = 0;
+  if (draft.location_type === "at_home") {
+    if (validatedDraft.hold_id) {
+      try {
+        const { data: holdMetaRow } = await supabaseAdmin
+          .from("booking_holds")
+          .select("metadata")
+          .eq("id", validatedDraft.hold_id)
+          .maybeSingle();
+        const holdMeta =
+          holdMetaRow && typeof holdMetaRow === "object"
+            ? (holdMetaRow as { metadata?: unknown }).metadata
+            : null;
+        if (holdMeta && typeof holdMeta === "object" && !Array.isArray(holdMeta)) {
+          const holdTravelFeeRaw = (holdMeta as { travel_fee?: unknown }).travel_fee;
+          const holdTravelFee =
+            typeof holdTravelFeeRaw === "number"
+              ? holdTravelFeeRaw
+              : typeof holdTravelFeeRaw === "string"
+                ? Number(holdTravelFeeRaw)
+                : null;
+          if (holdTravelFee != null && Number.isFinite(holdTravelFee) && holdTravelFee >= 0) {
+            travelFee = holdTravelFee;
+          }
+        }
+      } catch (err) {
+        console.error("[validate-booking] failed to read hold travel_fee override:", err);
+      }
+    } else if (draft.address) {
+      const addr = draft.address as {
+        latitude?: number | string | null;
+        longitude?: number | string | null;
+        line1?: string;
+        city?: string;
+        country?: string;
+        postal_code?: string;
+      };
+      const lat = addr.latitude != null ? Number(addr.latitude) : NaN;
+      const lng = addr.longitude != null ? Number(addr.longitude) : NaN;
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        try {
+          const travelResult = await calculateTravelFeeForHold(supabaseAdmin, draft.provider_id, {
+            latitude: lat,
+            longitude: lng,
+            line1: addr.line1,
+            city: addr.city,
+            country: addr.country,
+            postal_code: addr.postal_code,
+          });
+          if (travelResult.withinServiceArea) {
+            travelFee = Math.max(0, travelResult.travelFee);
+          }
+        } catch (err) {
+          console.error("[validate-booking] server travel fee calculation failed:", err);
         }
       }
-    } catch (err) {
-      console.error("[validate-booking] failed to read hold travel_fee override:", err);
     }
   }
 
@@ -1512,11 +1555,17 @@ export async function validateBooking(
     showServiceFeeToCustomer = true;
   }
 
+  if (!showServiceFeeToCustomer) {
+    serviceFeeAmount = 0;
+    serviceFeePercentage = 0;
+  }
+
   const totalAmount = taxIncluded
     ? sumMoney(baseAfterLoyalty, tipAmount, serviceFeeAmount)
     : sumMoney(baseAfterLoyalty, tipAmount, taxAmount, serviceFeeAmount);
 
-  let loyaltyPointsEarned = 0;
+  let loyaltyPointsProjected = 0;
+  const earnBaseSubtotal = Math.max(0, subtotal + packageDiscountAmount);
   const { data: loyaltyRule } = await supabase
     .from("loyalty_rules")
     .select("points_per_currency_unit, currency")
@@ -1527,7 +1576,9 @@ export async function validateBooking(
     .maybeSingle();
 
   if (loyaltyRule?.points_per_currency_unit) {
-    loyaltyPointsEarned = Math.floor(totalAmount * Number(loyaltyRule.points_per_currency_unit));
+    loyaltyPointsProjected = Math.floor(
+      earnBaseSubtotal * Number(loyaltyRule.points_per_currency_unit),
+    );
   }
 
   // ── Appointment status ───────────────────────────────────────────────────
@@ -2220,7 +2271,8 @@ export async function validateBooking(
     showServiceFeeToCustomer,
 
     totalAmount,
-    loyaltyPointsEarned,
+    loyaltyPointsEarned: 0,
+    loyaltyPointsProjected,
     loyaltyDiscountAmount,
     loyaltyPointsRedeemed,
 

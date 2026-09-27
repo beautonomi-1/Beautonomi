@@ -9,6 +9,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isProviderOwner } from "@/lib/auth/permissions";
 import { z } from "zod";
+import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 
 const updateItemSchema = z.object({
   manual_deductions: z.number().min(0).optional(),
@@ -33,6 +34,10 @@ export async function GET(
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlocked) {
+      return handleApiError(new Error(payrollBlocked), "PAYROLL_UNAVAILABLE", 403);
+    }
 
     const { data: payRun, error: prError } = await supabaseAdmin
       .from("provider_pay_runs")
@@ -111,6 +116,43 @@ export async function GET(
 }
 
 /**
+ * DELETE /api/provider/pay-runs/[id]
+ * Delete a draft pay run.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { id } = await params;
+    const supabaseAdmin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlockedDel = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlockedDel) {
+      return handleApiError(new Error(payrollBlockedDel), "PAYROLL_UNAVAILABLE", 403);
+    }
+
+    const { data: payRun } = await supabaseAdmin
+      .from("provider_pay_runs")
+      .select("id, status")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .single();
+
+    if (!payRun || payRun.status !== "draft") {
+      return handleApiError(new Error("Only draft pay runs can be deleted"), "INVALID_STATE", 400);
+    }
+
+    await supabaseAdmin.from("provider_pay_runs").delete().eq("id", id);
+    return successResponse({ deleted: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete pay run");
+  }
+}
+
+/**
  * PATCH /api/provider/pay-runs/[id]
  * Update pay run items (deductions, etc). Only when status is draft.
  */
@@ -126,6 +168,10 @@ export async function PATCH(
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlockedPatch = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlockedPatch) {
+      return handleApiError(new Error(payrollBlockedPatch), "PAYROLL_UNAVAILABLE", 403);
+    }
 
     const { data: payRun } = await supabaseAdmin
       .from("provider_pay_runs")

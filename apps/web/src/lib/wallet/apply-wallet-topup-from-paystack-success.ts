@@ -64,9 +64,9 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     resolvedTenantId = (urow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
   }
 
-  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const currency = topupRow.currency ?? (await lastResortCurrencyFromTenantId(resolvedTenantId));
+  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0, currency);
+  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0, currency);
 
   const topupWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: resolvedTenantId,

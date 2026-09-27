@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 
 export type FutureStaffBooking = {
   id: string;
@@ -206,7 +207,8 @@ export async function reassignFutureBookingsForStaff(
     if (updErr) throw updErr;
   }
 
-  const { error: bookErr } = await supabase
+  const bookingsAdmin = getBookingsAdminClient();
+  const { error: bookErr } = await bookingsAdmin
     .from("bookings")
     .update({ staff_id: toStaffId })
     .eq("provider_id", providerId)

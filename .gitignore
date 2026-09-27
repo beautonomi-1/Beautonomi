@@ -1,5 +1,7 @@
 # --- Local scratch / imports (not versioned) ---
 .tmp/
+_i18n_tmp/
+_rtl_sweep_report.json
 
 # --- OS ---
 .DS_Store

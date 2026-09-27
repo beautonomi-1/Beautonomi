@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { notifyPayRunStaff } from "@/lib/notifications/notify-staff-event";
+import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 
 /**
  * POST /api/provider/pay-runs/[id]/approve
@@ -25,6 +26,10 @@ export async function POST(
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlocked) {
+      return handleApiError(new Error(payrollBlocked), "PAYROLL_UNAVAILABLE", 403);
+    }
 
     const { data: payRun, error: fetchError } = await supabaseAdmin
       .from("provider_pay_runs")
@@ -48,6 +53,25 @@ export async function POST(
       .eq("id", id);
 
     if (updateError) throw updateError;
+
+    const { from, to } = await import("@/lib/payroll/period-bounds").then((m) =>
+      import("@/lib/payroll/provider-payroll-context").then(async (ctx) => {
+        const tz = await ctx.getProviderPayrollTimezone(supabaseAdmin, providerId);
+        return m.resolvePayPeriodBounds(
+          payRun.pay_period_start as string,
+          payRun.pay_period_end as string,
+          tz,
+        );
+      }),
+    );
+
+    await supabaseAdmin
+      .from("staff_earnings_lines")
+      .update({ pay_run_id: id })
+      .eq("provider_id", providerId)
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .is("pay_run_id", null);
 
     void notifyPayRunStaff(supabaseAdmin, id, "staff_pay_run_approved", {
       periodStart: payRun.pay_period_start as string,

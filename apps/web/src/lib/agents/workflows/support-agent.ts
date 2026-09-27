@@ -22,6 +22,7 @@ import { buildLocalizedFallbackReply } from "../i18n-drafts";
 import { redactPromptObject, redactPromptText } from "@/lib/ai/redact-prompt-pii";
 import { hashPayload } from "@beautonomi/agent-policy";
 import { finalizeAgentRun } from "../actions/agent-run-lifecycle";
+import { SUPPORT_PAYROLL_KNOWLEDGE } from "../support-payroll-knowledge";
 
 export type SupportTriageClassification = {
   category: string;
@@ -130,6 +131,8 @@ async function classifyAndDraftWithLlm(ticket: {
       "- If the ticket involves money movement, refunds, disputes, fraud, legal threats, safety incidents, or an angry customer, set needs_human=true and say a specialist is personally reviewing it.",
       "- Do not invent order/booking details. You MAY reference the verified_context facts (they come from our database and belong to this customer) to make the reply specific — e.g. cite the booking number, its status, or a refund that already completed.",
       "- Reply in the customer's language if obvious, otherwise English.",
+      "Provider payroll and staff onboarding reference (use when relevant, do not invent details):",
+      SUPPORT_PAYROLL_KNOWLEDGE,
       "Return ONLY JSON matching the schema.",
     ].join("\n"),
     user: JSON.stringify({

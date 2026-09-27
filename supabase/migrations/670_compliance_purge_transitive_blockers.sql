@@ -102,7 +102,14 @@ BEGIN
     'UPDATE profile_questions SET created_by = NULL WHERE created_by = $1',
     'UPDATE profile_questions SET updated_by = NULL WHERE updated_by = $1',
     'UPDATE platform_zones SET created_by = NULL WHERE created_by = $1',
-    'UPDATE config_change_log SET changed_by = NULL WHERE changed_by = $1'
+    'UPDATE config_change_log SET changed_by = NULL WHERE changed_by = $1',
+    'UPDATE brand_briefs SET author_id = NULL WHERE author_id = $1',
+    'UPDATE brand_briefs SET reviewer_id = NULL WHERE reviewer_id = $1',
+    'UPDATE brand_campaigns SET owner_id = NULL WHERE owner_id = $1',
+    'UPDATE brand_campaigns SET live_confirmed_by = NULL WHERE live_confirmed_by = $1',
+    'UPDATE brand_placements SET owner_id = NULL WHERE owner_id = $1',
+    'UPDATE brand_metric_entries SET author_id = NULL WHERE author_id = $1',
+    'UPDATE brand_activity SET actor_id = NULL WHERE actor_id = $1'
   ]
   LOOP
     BEGIN
