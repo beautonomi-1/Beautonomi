@@ -3,13 +3,14 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 const patchSchema = z.object({
   channel_key: z.string().optional(),
   line_type: z.string().optional(),
   name: z.string().optional(),
   owner_id: z.string().uuid().optional(),
-  budget: z.coerce.number().optional(),
+  budget: z.union([z.coerce.number(), z.null()]).optional(),
   tracking_code: z.string().optional(),
   flight_start: z.string().optional(),
   flight_end: z.string().optional(),
@@ -39,7 +40,7 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const { data: existing } = await supabase
       .from("brand_placements")
-      .select("owner_id")
+      .select("owner_id, campaign_id")
       .eq("id", id)
       .eq("tenant_id", access.tenantId)
       .maybeSingle();
@@ -56,6 +57,15 @@ export async function PATCH(
       .select("*")
       .single();
     if (error) throw error;
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.placement_updated",
+      entityType: "brand_placement",
+      entityId: id,
+      risk: "low",
+      retention: "operational",
+      campaignId: existing.campaign_id,
+      after: data as Record<string, unknown>,
+    });
     return successResponse(data);
   } catch (error) {
     const denied = brandAccessErrorResponse(error);

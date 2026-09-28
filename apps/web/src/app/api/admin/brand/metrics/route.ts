@@ -5,6 +5,7 @@ import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/a
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
 import { convertAmount } from "@/lib/brand-marketing/fx";
 import { loadTenantCurrency } from "@/lib/brand-marketing/tenant";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 const entrySchema = z.object({
   placement_id: z.string().uuid(),
@@ -105,6 +106,15 @@ export async function POST(request: NextRequest) {
       .from("brand_placements")
       .update({ last_metric_at: new Date().toISOString() })
       .in("id", placementIds);
+
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.metrics_entered",
+      entityType: "brand_metric_entry",
+      entityId: placementIds[0] ?? access.tenantId,
+      risk: "medium",
+      retention: "financial",
+      meta: { entry_count: entries.length, placement_ids: placementIds },
+    });
 
     return successResponse({ items: data ?? [] });
   } catch (error) {

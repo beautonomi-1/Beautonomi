@@ -36,11 +36,27 @@ export async function GET(request: NextRequest) {
 
     const owned_clashes = await findOwnedChannelClashes(supabase, access.tenantId);
 
+    const { data: pendingApprovals } = await supabase
+      .from("brand_approvals")
+      .select("id, subject_type, subject_id, status, due_at")
+      .eq("tenant_id", access.tenantId)
+      .eq("approver_id", access.user.id)
+      .eq("status", "pending");
+
+    const { data: openTasks } = await supabase
+      .from("brand_tasks")
+      .select("id, title, due_at, campaign_id")
+      .eq("tenant_id", access.tenantId)
+      .eq("owner_id", access.user.id)
+      .eq("status", "open");
+
     return successResponse({
       briefs_in_review: briefsReview ?? [],
       live_campaigns: liveCampaigns ?? [],
       stale_placements: stalePlacements ?? [],
       owned_channel_clashes: owned_clashes,
+      pending_approvals: pendingApprovals ?? [],
+      open_tasks: openTasks ?? [],
       stale_metric_days: settings.stale_metric_days,
     });
   } catch (error) {

@@ -11,6 +11,7 @@ import {
 
 export type BrandPlacementRow = {
   id: string;
+  owner_id?: string | null;
   channel_key: string;
   line_type: string;
   name: string | null;

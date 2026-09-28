@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 const createSchema = z.object({
   channel_key: z.string().min(1),
@@ -71,6 +72,15 @@ export async function POST(
       .select("*")
       .single();
     if (error) throw error;
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.placement_created",
+      entityType: "brand_placement",
+      entityId: data.id,
+      risk: "low",
+      retention: "operational",
+      campaignId,
+      after: data as Record<string, unknown>,
+    });
     return successResponse(data);
   } catch (error) {
     const denied = brandAccessErrorResponse(error);

@@ -42,6 +42,13 @@ type PackPayload = {
     attributed_signups: number;
     gross_booking_value: number;
   };
+  pillars?: Array<{
+    pillar_id: string;
+    pillar_name: string;
+    campaign_count: number;
+    known_spend: number;
+    budget_envelope: number;
+  }>;
 };
 
 function funnelToBars(steps: FunnelStep[]) {
@@ -164,6 +171,31 @@ export function BrandPackPage() {
                   </div>
                 </div>
               </AdminPanel>
+
+              {(packQ.data.pillars?.length ?? 0) > 0 && (
+                <AdminPanel title="Roll-up by pillar">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-zinc-500">
+                        <th className="py-2 pr-2">Pillar</th>
+                        <th className="py-2 pr-2">Campaigns</th>
+                        <th className="py-2 pr-2">Envelope</th>
+                        <th className="py-2">Known spend</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packQ.data.pillars!.map((p) => (
+                        <tr key={p.pillar_id} className="border-b border-zinc-100">
+                          <td className="py-2 pr-2 font-medium">{p.pillar_name}</td>
+                          <td className="py-2 pr-2 tabular-nums">{p.campaign_count}</td>
+                          <td className="py-2 pr-2 tabular-nums">{p.budget_envelope.toLocaleString()}</td>
+                          <td className="py-2 tabular-nums">{p.known_spend.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </AdminPanel>
+              )}
 
               {demandBars.length > 0 && (
                 <AdminPanel title="Demand funnel (all campaigns)">

@@ -4,6 +4,7 @@ import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/a
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
 import { suggestTrackingCode } from "@/lib/brand-marketing/codes";
 import { loadTenantSlug } from "@/lib/brand-marketing/tenant";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 export async function POST(
   request: NextRequest,
@@ -81,6 +82,16 @@ export async function POST(
       );
       if (plErr) throw plErr;
     }
+
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.campaign_cloned",
+      entityType: "brand_campaign",
+      entityId: created.id,
+      risk: "medium",
+      retention: "operational",
+      campaignId: created.id,
+      meta: { cloned_from_id: id },
+    });
 
     return successResponse(created);
   } catch (error) {

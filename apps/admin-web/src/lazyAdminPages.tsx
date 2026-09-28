@@ -418,6 +418,12 @@ export const BrandPackPage = lazy(() =>
 export const BrandSettingsPage = lazy(() =>
   import("@/routes/brand/BrandSettingsPage").then((m) => ({ default: m.BrandSettingsPage }))
 );
+export const BrandStrategyPage = lazy(() =>
+  import("@/routes/brand/BrandStrategyPage").then((m) => ({ default: m.BrandStrategyPage }))
+);
+export const BrandCalendarPage = lazy(() =>
+  import("@/routes/brand/BrandCalendarPage").then((m) => ({ default: m.BrandCalendarPage }))
+);
 export const MarketingPricebookPage = lazy(() =>
   import("@/routes/marketing/MarketingPricebookPage").then((m) => ({
     default: m.MarketingPricebookPage,

@@ -8,6 +8,7 @@ import { resolveUtcPeriod } from "@/lib/brand-marketing/periods";
 import { loadBrandSettings } from "@/lib/brand-marketing/settings";
 import { buildDemandFunnel, buildSupplyFunnel } from "@/lib/brand-marketing/funnel";
 import { sumEnteredPlacementMetrics, sumKnownSpendForCampaign } from "@/lib/brand-marketing/placement-metrics";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 const patchSchema = z.object({
   name: z.string().optional(),
   objective: z.string().optional(),
@@ -18,6 +19,8 @@ const patchSchema = z.object({
   success_target: z.coerce.number().optional(),
   audience_definition: z.record(z.string(), z.unknown()).optional(),
   tracking_code: z.string().optional(),
+  pillar_id: z.string().uuid().nullable().optional(),
+  plan_id: z.string().uuid().nullable().optional(),
 });
 
 export async function GET(
@@ -137,6 +140,13 @@ export async function PATCH(
     const patch = patchSchema.parse(await request.json());
     const supabase = getSupabaseAdmin();
 
+    const { data: before } = await supabase
+      .from("brand_campaigns")
+      .select("*")
+      .eq("id", id)
+      .eq("tenant_id", access.tenantId)
+      .maybeSingle();
+
     if (patch.tracking_code) {
       const { data: clash } = await supabase
         .from("brand_campaigns")
@@ -159,6 +169,17 @@ export async function PATCH(
     if (patch.tracking_code) {
       await autoBindPlacements(supabase, access.tenantId, id, patch.tracking_code);
     }
+
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.campaign_updated",
+      entityType: "brand_campaign",
+      entityId: id,
+      risk: patch.tracking_code ? "high" : "low",
+      retention: "operational",
+      campaignId: id,
+      before: before as Record<string, unknown> | null,
+      after: data as Record<string, unknown>,
+    });
 
     return successResponse(data);
   } catch (error) {

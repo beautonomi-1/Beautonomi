@@ -15,6 +15,8 @@ type Settings = {
   go_live_budget_threshold: number;
   fiscal_year_start_month: number;
   stale_metric_days: number;
+  approval_sla_hours?: number;
+  self_approve_below?: number;
 };
 
 export function BrandSettingsPage() {
@@ -93,6 +95,31 @@ export function BrandSettingsPage() {
             Save
           </button>
         </form>
+      </AdminPanel>
+      <AdminPanel title="Governance">
+        <p className="text-sm text-zinc-600">
+          Go-live above the budget threshold requires an assigned approver to confirm in My work. Stage changes and
+          approvals are written to the platform audit log. Queue an evidence pack from a campaign when you need a
+          board-ready bundle.
+        </p>
+        <label className="mt-3 block max-w-md text-sm">
+          Approval SLA (hours)
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            value={values.approval_sla_hours ?? 48}
+            onChange={(e) => setDraft({ ...values, approval_sla_hours: Number(e.target.value) })}
+          />
+        </label>
+        <label className="mt-3 block max-w-md text-sm">
+          Self-approve briefs below (budget)
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            value={values.self_approve_below ?? 0}
+            onChange={(e) => setDraft({ ...values, self_approve_below: Number(e.target.value) })}
+          />
+        </label>
       </AdminPanel>
     </div>
   );

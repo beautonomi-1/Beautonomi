@@ -225,12 +225,15 @@ export default function App() {
           <Route path="whatsapp-content-templates" element={<P.WhatsAppContentTemplatesPage />} />
           <Route path="marketing-pricebook" element={<P.MarketingPricebookPage />} />
           <Route path="brand" element={<P.BrandMyWorkPage />} />
+          <Route path="brand/my-work" element={<P.BrandMyWorkPage />} />
           <Route path="brand/briefs" element={<P.BrandBriefsPage />} />
           <Route path="brand/briefs/:id" element={<P.BrandBriefDetailPage />} />
           <Route path="brand/board" element={<P.BrandBoardPage />} />
           <Route path="brand/campaigns/:id" element={<P.BrandCampaignDetailPage />} />
           <Route path="brand/weekly-update" element={<P.BrandWeeklyUpdatePage />} />
           <Route path="brand/pack" element={<P.BrandPackPage />} />
+          <Route path="brand/strategy" element={<P.BrandStrategyPage />} />
+          <Route path="brand/calendar" element={<P.BrandCalendarPage />} />
           <Route path="brand/settings" element={<P.BrandSettingsPage />} />
           <Route path="system-health" element={<P.SystemHealthPage />} />
           <Route path="cron-runs" element={<P.CronRunsPage />} />

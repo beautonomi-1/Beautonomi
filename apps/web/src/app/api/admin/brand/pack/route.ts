@@ -6,6 +6,7 @@ import { resolveUtcPeriod, comparisonPeriod } from "@/lib/brand-marketing/period
 import { loadBrandSettings } from "@/lib/brand-marketing/settings";
 import { sumKnownSpendForTenant } from "@/lib/brand-marketing/metrics";
 import { rollupTenantBrandPack } from "@/lib/brand-marketing/pack-rollup";
+import { rollupPackByPillar } from "@/lib/brand-marketing/pack-rollup-pillars";
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
     }
 
     const funnelRollup = await rollupTenantBrandPack(supabase, access.tenantId, period);
+    const pillars = await rollupPackByPillar(supabase, access.tenantId, period);
 
     const { data: snapshot } = await supabase
       .from("brand_period_snapshots")
@@ -107,6 +109,7 @@ export async function GET(request: NextRequest) {
       },
       period_efficiency: periodEfficiency,
       funnel: funnelRollup,
+      pillars,
       growth: {
         spend_change_pct: spendDelta,
         signup_change_pct: signupDelta,

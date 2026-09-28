@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
 import { BRAND_BRIEF_TEMPLATES } from "@/lib/brand-marketing/templates";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -78,6 +79,15 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.brief_created",
+      entityType: "brand_brief",
+      entityId: data.id,
+      risk: "low",
+      retention: "operational",
+      briefId: data.id,
+      after: data as Record<string, unknown>,
+    });
     return successResponse(data);
   } catch (error) {
     const denied = brandAccessErrorResponse(error);

@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminToast } from "@/lib/adminToast";
 import { AdminPanel } from "@/components/ui/AdminPanel";
+import { BrandBriefStrategyPickers } from "@/components/brand/BrandBriefStrategyPickers";
 
 type Props = {
   campaignId: string;
@@ -13,7 +14,8 @@ type Props = {
     flight_start: string;
     flight_end: string;
     success_target: string;
-    audience_json: string;
+    pillar_id: string;
+    plan_id: string;
   };
   onSaved: () => void;
 };
@@ -22,25 +24,17 @@ export function BrandCampaignEditForm({ campaignId, initial, onSaved }: Props) {
   const [form, setForm] = useState(initial);
 
   const saveMut = useMutation({
-    mutationFn: () => {
-      let audience_definition: Record<string, unknown> | undefined;
-      if (form.audience_json.trim()) {
-        try {
-          audience_definition = JSON.parse(form.audience_json) as Record<string, unknown>;
-        } catch {
-          throw new Error("Audience JSON is invalid");
-        }
-      }
-      return adminApi.patchJson(`/api/admin/brand/campaigns/${campaignId}`, {
+    mutationFn: () =>
+      adminApi.patchJson(`/api/admin/brand/campaigns/${campaignId}`, {
         name: form.name.trim(),
         objective: form.objective || undefined,
         budget_envelope: form.budget_envelope ? Number(form.budget_envelope) : undefined,
         flight_start: form.flight_start || undefined,
         flight_end: form.flight_end || undefined,
         success_target: form.success_target ? Number(form.success_target) : undefined,
-        audience_definition,
-      });
-    },
+        pillar_id: form.pillar_id || null,
+        plan_id: form.plan_id || null,
+      }),
     onSuccess: () => {
       adminToast.success("Campaign updated");
       onSaved();
@@ -57,6 +51,15 @@ export function BrandCampaignEditForm({ campaignId, initial, onSaved }: Props) {
           saveMut.mutate();
         }}
       >
+        <div className="md:col-span-2">
+          <p className="mb-2 text-zinc-600">Strategy link</p>
+          <BrandBriefStrategyPickers
+            pillarId={form.pillar_id}
+            planId={form.plan_id}
+            onPillarChange={(pillar_id) => setForm((f) => ({ ...f, pillar_id, plan_id: "" }))}
+            onPlanChange={(plan_id) => setForm((f) => ({ ...f, plan_id }))}
+          />
+        </div>
         <label className="block md:col-span-2">
           Name
           <input
@@ -110,15 +113,7 @@ export function BrandCampaignEditForm({ campaignId, initial, onSaved }: Props) {
             onChange={(e) => setForm((f) => ({ ...f, flight_end: e.target.value }))}
           />
         </label>
-        <label className="block md:col-span-2">
-          Audience definition (JSON)
-          <textarea
-            className="mt-1 w-full rounded border px-2 py-1.5 font-mono text-xs"
-            rows={4}
-            value={form.audience_json}
-            onChange={(e) => setForm((f) => ({ ...f, audience_json: e.target.value }))}
-          />
-        </label>
+        <p className="md:col-span-2 text-xs text-zinc-500">Audience definition is edited on the Audience tab.</p>
         <button
           type="submit"
           disabled={saveMut.isPending}

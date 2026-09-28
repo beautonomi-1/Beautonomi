@@ -358,8 +358,11 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         section: ADMIN_SECTION_MARKETING_COMMS,
         featureFlagKey: "brand_desk",
         children: [
+          { title: "Brand inbox", href: "/admin/brand/my-work", icon: Sparkles, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Strategy", href: "/admin/brand/strategy", icon: PieChart, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Briefs", href: "/admin/brand/briefs", icon: FileText, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Board", href: "/admin/brand/board", icon: Columns3, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Calendar", href: "/admin/brand/calendar", icon: Clock, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Weekly update", href: "/admin/brand/weekly-update", icon: Clock, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Pack", href: "/admin/brand/pack", icon: PieChart, section: ADMIN_SECTION_MARKETING_COMMS },
           { title: "Brand settings", href: "/admin/brand/settings", icon: Settings, section: ADMIN_SECTION_MARKETING_COMMS },

@@ -11,7 +11,8 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
 import { adminSpaTo } from "@/lib/adminSpaPath";
-import { BrandBriefEditForm, briefToFormValues } from "@/routes/brand/BrandBriefEditForm";
+import { briefToFormValues } from "@/routes/brand/BrandBriefEditForm";
+import { BrandBriefWizard } from "@/components/brand/BrandBriefWizard";
 
 export function BrandBriefDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -93,7 +94,7 @@ export function BrandBriefDetailPage() {
         </div>
       </AdminPanel>
       <AdminPanel title={editable ? "Edit brief" : "Brief (read-only)"}>
-        <BrandBriefEditForm
+        <BrandBriefWizard
           briefId={id!}
           initial={briefToFormValues(brief)}
           readOnly={!editable}

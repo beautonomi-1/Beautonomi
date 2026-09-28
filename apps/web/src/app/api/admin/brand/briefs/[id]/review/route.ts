@@ -7,6 +7,7 @@ import { acceptBrandBrief } from "@/lib/brand-marketing/accept-brief";
 import { loadTenantSlug } from "@/lib/brand-marketing/tenant";
 import { notifyAdminOps } from "@/lib/notifications/notify-admin-ops";
 import { notifyBrandBriefAccepted } from "@/lib/brand-marketing/notify";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
 
 const bodySchema = z.object({
   action: z.enum(["submit", "start_review", "request_changes", "accept", "reject", "park"]),
@@ -41,6 +42,16 @@ export async function POST(
         briefName: brief?.name ?? "Campaign",
         campaignId: result.campaignId,
       });
+      await auditBrandMutation(request, supabase, access, {
+        action: "brand.brief_accepted",
+        entityType: "brand_brief",
+        entityId: id,
+        risk: "high",
+        retention: "permanent",
+        briefId: id,
+        campaignId: result.campaignId,
+        reason: comment ?? null,
+      });
       return successResponse(result);
     }
 
@@ -65,6 +76,17 @@ export async function POST(
       .select("*")
       .single();
     if (error) throw error;
+
+    await auditBrandMutation(request, supabase, access, {
+      action: `brand.brief_${action}`,
+      entityType: "brand_brief",
+      entityId: id,
+      risk: action === "reject" ? "medium" : "low",
+      retention: "operational",
+      briefId: id,
+      after: data as Record<string, unknown>,
+      reason: comment ?? null,
+    });
 
     if (comment?.trim()) {
       await supabase.from("brand_activity").insert({

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
+import { auditBrandMutation } from "@/lib/brand-marketing/brand-audit-helper";
+import { briefRowToSnapshot } from "@/lib/brand-marketing/brief-versions";
 
 const patchSchema = z.object({
   name: z.string().optional(),
@@ -15,6 +17,12 @@ const patchSchema = z.object({
   success_target: z.coerce.number().optional(),
   channels_requested: z.array(z.string()).optional(),
   notes: z.string().optional(),
+  campaign_type: z.string().optional(),
+  business_problem: z.string().optional(),
+  proposition: z.string().optional(),
+  insight: z.string().optional(),
+  pillar_id: z.string().uuid().nullable().optional(),
+  plan_id: z.string().uuid().nullable().optional(),
   status: z
     .enum(["draft", "submitted", "in_review", "changes_requested", "accepted", "rejected", "parked"])
     .optional(),
@@ -61,6 +69,12 @@ export async function PATCH(
 
     const patch = patchSchema.parse(await request.json());
     const supabase = getSupabaseAdmin();
+    const { data: before } = await supabase
+      .from("brand_briefs")
+      .select("*")
+      .eq("id", id)
+      .eq("tenant_id", access.tenantId)
+      .maybeSingle();
     const { data, error } = await supabase
       .from("brand_briefs")
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -69,6 +83,16 @@ export async function PATCH(
       .select("*")
       .single();
     if (error) throw error;
+    await auditBrandMutation(request, supabase, access, {
+      action: "brand.brief_updated",
+      entityType: "brand_brief",
+      entityId: id,
+      risk: patch.status ? "medium" : "low",
+      retention: "operational",
+      briefId: id,
+      before: before ? briefRowToSnapshot(before as Record<string, unknown>) : null,
+      after: briefRowToSnapshot(data as Record<string, unknown>),
+    });
     return successResponse(data);
   } catch (error) {
     const denied = brandAccessErrorResponse(error);

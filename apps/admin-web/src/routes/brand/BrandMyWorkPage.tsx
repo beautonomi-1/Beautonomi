@@ -10,6 +10,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { ApprovalCard } from "@/components/brand/ApprovalCard";
 
 type MyWorkPayload = {
   briefs_in_review: { id: string; name: string; status: string }[];
@@ -23,6 +24,8 @@ type MyWorkPayload = {
     flight_end: string;
   }>;
   stale_metric_days: number;
+  pending_approvals: { id: string; subject_type: string; due_at: string | null }[];
+  open_tasks: { id: string; title: string; due_at: string | null; campaign_id: string | null }[];
 };
 
 export function BrandMyWorkPage() {
@@ -95,6 +98,37 @@ export function BrandMyWorkPage() {
           },
         ]}
       />
+
+      <AdminPanel title="Approvals waiting on you">
+        {data.pending_approvals.length === 0 ? (
+          <p className="text-sm text-zinc-500">No pending approvals.</p>
+        ) : (
+          <div className="space-y-2">
+            {data.pending_approvals.map((a) => (
+              <ApprovalCard key={a.id} approval={{ ...a, status: "pending", comment: null, approver_id: null }} onUpdated={() => void q.refetch()} />
+            ))}
+          </div>
+        )}
+      </AdminPanel>
+
+      <AdminPanel title="Open tasks">
+        {data.open_tasks.length === 0 ? (
+          <p className="text-sm text-zinc-500">No open tasks.</p>
+        ) : (
+          <ul className="divide-y text-sm">
+            {data.open_tasks.map((t) => (
+              <li key={t.id} className="flex justify-between py-2">
+                <span>{t.title}</span>
+                {t.campaign_id ? (
+                  <Link to={adminSpaTo(`/admin/brand/campaigns/${t.campaign_id}`)} className="text-violet-700">
+                    Campaign
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </AdminPanel>
 
       <AdminPanel title="Briefs waiting on review">
         {data.briefs_in_review.length === 0 ? (

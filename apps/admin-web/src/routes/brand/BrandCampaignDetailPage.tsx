@@ -20,8 +20,15 @@ import { useBrandCampaignStageChange } from "@/components/brand/BrandCampaignSta
 import { BrandAdvancedMetricsPanel } from "@/routes/brand/BrandAdvancedMetricsPanel";
 import { BrandCampaignEditForm } from "@/routes/brand/BrandCampaignEditForm";
 import { BrandPlacementForm, type BrandPlacementRow } from "@/routes/brand/BrandPlacementForm";
+import { PlacementsGrid } from "@/components/brand/PlacementsGrid";
+import { BrandCampaignAudiencePanel } from "@/components/brand/BrandCampaignAudiencePanel";
 import { channelLabel } from "@/routes/brand/brandChannels";
 import type { BrandCampaignStage } from "@/routes/brand/brandTypes";
+import { StageStepper } from "@/components/brand/StageStepper";
+import { ExportMenu } from "@/components/brand/ExportMenu";
+import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
+import { BrandCreativePanel } from "@/components/brand/BrandCreativePanel";
+import { BrandEvidencePackPanel } from "@/components/brand/BrandEvidencePackPanel";
 
 const PERIOD_VIEWS = [
   { id: "this_week", label: "This week" },
@@ -53,6 +60,8 @@ type CampaignPayload = {
     flight_end?: string;
     success_target?: number;
     audience_definition?: Record<string, unknown>;
+    pillar_id?: string | null;
+    plan_id?: string | null;
     brand_placements?: BrandPlacementRow[];
     brand_activity?: Array<{ id: string; kind: string; body: string | null; created_at: string }>;
   };
@@ -75,7 +84,7 @@ type CampaignPayload = {
   };
 };
 
-type Tab = "overview" | "placements" | "results" | "funnel" | "metrics" | "activity" | "audience";
+type Tab = "overview" | "placements" | "creative" | "results" | "funnel" | "metrics" | "activity" | "audience";
 
 export function BrandCampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -146,6 +155,7 @@ export function BrandCampaignDetailPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "placements", label: "Placements" },
+    { id: "creative", label: "Creative" },
     { id: "results", label: "Results" },
     { id: "funnel", label: "Funnel" },
     { id: "metrics", label: "Metrics" },
@@ -194,9 +204,13 @@ export function BrandCampaignDetailPage() {
             <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => cloneMut.mutate()}>
               Duplicate
             </button>
+            <ExportMenu campaignId={campaign.id} />
+            <AdminAuditTrailLink entityType="brand_campaign" entityId={campaign.id} />
           </div>
         }
       />
+
+      <StageStepper current={campaign.stage} />
 
       <AdminSavedViewChips
         views={[...PERIOD_VIEWS]}
@@ -247,7 +261,8 @@ export function BrandCampaignDetailPage() {
               flight_end: campaign.flight_end ? String(campaign.flight_end).slice(0, 10) : "",
               success_target:
                 campaign.success_target != null ? String(campaign.success_target) : "",
-              audience_json: JSON.stringify(campaign.audience_definition ?? {}, null, 2),
+              pillar_id: campaign.pillar_id ? String(campaign.pillar_id) : "",
+              plan_id: campaign.plan_id ? String(campaign.plan_id) : "",
             }}
             onSaved={() => void q.refetch()}
           />
@@ -272,9 +287,27 @@ export function BrandCampaignDetailPage() {
         <BrandAdvancedMetricsPanel campaignId={campaign.id} period={period} placements={placements} />
       )}
 
+      {tab === "creative" && (
+        <>
+          <BrandCreativePanel campaignId={campaign.id} />
+          <AdminPanel title="Evidence pack">
+            <BrandEvidencePackPanel campaignId={campaign.id} campaignName={campaign.name} />
+          </AdminPanel>
+        </>
+      )}
+
       {tab === "placements" && (
         <AdminPanel title="Placements">
-          <div className="mb-3 flex justify-between">
+          <PlacementsGrid
+            campaignId={campaign.id}
+            defaultTrackingCode={trackingCode}
+            campaignFlightStart={campaign.flight_start ? String(campaign.flight_start).slice(0, 10) : ""}
+            campaignFlightEnd={campaign.flight_end ? String(campaign.flight_end).slice(0, 10) : ""}
+            budgetEnvelope={campaign.budget_envelope != null ? Number(campaign.budget_envelope) : null}
+            placements={placements}
+            onRefresh={() => void q.refetch()}
+          />
+          <div className="mb-3 mt-6 flex justify-between">
             <p className="text-sm text-zinc-600">{placements.length} lines</p>
             <button
               type="button"
@@ -420,17 +453,14 @@ export function BrandCampaignDetailPage() {
           {audienceQ.error && <AdminRetryBlock message={audienceQ.error.message} onRetry={() => void audienceQ.refetch()} />}
           {audienceQ.data && (
             <>
-              <AdminMetricCard
-                label="Attributed signups (all time)"
-                value={String(audienceQ.data.attributed_signup_count)}
-                hint={audienceQ.data.sample_note}
+              <BrandCampaignAudiencePanel
+                campaignId={campaign.id}
+                period={period}
+                audienceDefinition={audienceQ.data.audience_definition as Record<string, unknown>}
+                marketAgeBrackets={audienceQ.data.market_age_brackets}
+                attributedSignupCount={audienceQ.data.attributed_signup_count}
+                sampleNote={audienceQ.data.sample_note}
               />
-              <AdminPanel title="Audience definition">
-                <pre className="overflow-auto text-xs">{JSON.stringify(audienceQ.data.audience_definition, null, 2)}</pre>
-              </AdminPanel>
-              <AdminPanel title="Market age brackets">
-                <pre className="overflow-auto text-xs">{JSON.stringify(audienceQ.data.market_age_brackets, null, 2)}</pre>
-              </AdminPanel>
             </>
           )}
         </>
