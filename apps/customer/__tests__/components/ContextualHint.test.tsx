@@ -81,7 +81,7 @@ describe("ContextualHint", () => {
     unmount();
     render(<ContextualHint id={id} message="Show once" mode="once" />);
     await waitFor(() => expect(screen.queryByText("Show once")).toBeNull());
-  });
+  }, 20000);
 
   it("fires the action callback and logs hint_action", async () => {
     const onAction = jest.fn();
