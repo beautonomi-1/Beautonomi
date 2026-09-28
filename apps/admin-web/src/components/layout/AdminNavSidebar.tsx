@@ -58,7 +58,7 @@ function NavRow({ item, navCounts, sidebarCollapsed, pathname, depth = 0, onNavi
         {hasChildren && !sidebarCollapsed ? (
           <button
             type="button"
-            className="inline-flex w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 touch-manipulation"
             aria-label={expanded ? "Collapse section" : "Expand section"}
             aria-expanded={expanded}
             onClick={toggleExpand}
@@ -142,7 +142,9 @@ export function AdminNavSidebar({
       {groups.map((group) => (
         <div key={group.label} className="mb-4">
           {!sidebarCollapsed ? (
-            <div className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-gray-400">{group.label}</div>
+            <div className="sticky top-0 z-10 mb-1 bg-white px-2 py-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+              {group.label}
+            </div>
           ) : null}
           <ul className="space-y-0.5">
             {group.items.map((item) => (

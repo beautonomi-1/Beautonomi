@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -29,6 +30,11 @@ import { ExportMenu } from "@/components/brand/ExportMenu";
 import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
 import { BrandCreativePanel } from "@/components/brand/BrandCreativePanel";
 import { BrandEvidencePackPanel } from "@/components/brand/BrandEvidencePackPanel";
+import { BrandCopyValueRow } from "@/components/brand/BrandCopyValueRow";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { STAGE_META, brandButtonPrimaryClass, brandButtonSecondaryClass } from "@/routes/brand/brandTypes";
+import { parseBrandCampaignDetailTab, type BrandCampaignDetailTab } from "@/routes/brand/brandCampaignUrl";
+import { cn } from "@/lib/cn";
 
 const PERIOD_VIEWS = [
   { id: "this_week", label: "This week" },
@@ -84,18 +90,54 @@ type CampaignPayload = {
   };
 };
 
-type Tab = "overview" | "placements" | "creative" | "results" | "funnel" | "metrics" | "activity" | "audience";
+type Tab = BrandCampaignDetailTab;
 
 export function BrandCampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [period, setPeriod] = useState<string>("this_month");
-  const [tab, setTab] = useState<Tab>("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = parseBrandCampaignDetailTab(searchParams.get("tab"));
+  const period = searchParams.get("period") ?? "this_month";
   const [addingPlacement, setAddingPlacement] = useState(false);
   const [editPlacementId, setEditPlacementId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(true);
+  const moreRef = useRef<HTMLDivElement>(null);
   useAdminDocumentTitle("Brand campaign");
   const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const qc = useQueryClient();
   const navigate = useNavigate();
+
+  const setTab = (next: Tab) => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("tab", next);
+        return p;
+      },
+      { replace: true },
+    );
+  };
+
+  const setPeriod = (next: string) => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("period", next);
+        return p;
+      },
+      { replace: true },
+    );
+  };
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (moreRef.current?.contains(e.target as Node)) return;
+      setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [moreOpen]);
 
   const q = useQuery({
     queryKey: adminQueryKeys.brandCampaign(id!, period),
@@ -156,12 +198,12 @@ export function BrandCampaignDetailPage() {
     { id: "overview", label: "Overview" },
     { id: "placements", label: "Placements" },
     { id: "creative", label: "Creative" },
-    { id: "results", label: "Results" },
-    { id: "funnel", label: "Funnel" },
-    { id: "metrics", label: "Metrics" },
+    { id: "performance", label: "Performance" },
     { id: "audience", label: "Audience" },
-    { id: "activity", label: "Activity" },
   ];
+
+  const showPeriod = tab === "overview" || tab === "performance";
+  const activityItems = campaign.brand_activity ?? [];
 
   const onStageSelect = (stage: BrandCampaignStage) => {
     requestStageChange(
@@ -176,57 +218,104 @@ export function BrandCampaignDetailPage() {
     );
   };
 
+  const activityPanel = (
+    <AdminPanel title="Activity">
+      <ul className="max-h-[min(24rem,50vh)] space-y-2 overflow-y-auto text-sm">
+        {activityItems.length === 0 ? (
+          <li className="text-zinc-500">No activity yet.</li>
+        ) : (
+          activityItems.map((a) => (
+            <li key={a.id} className="border-b border-zinc-100 pb-2">
+              <span className="text-xs text-zinc-500">{a.created_at.slice(0, 16)}</span>
+              <span className="ml-2 font-medium">{a.kind}</span>
+              {a.body ? <p className="text-zinc-700">{a.body}</p> : null}
+            </li>
+          ))
+        )}
+      </ul>
+    </AdminPanel>
+  );
+
   return (
     <div className="space-y-4 print:space-y-2">
       {dialogs}
       <AdminPageHeader
         title={campaign.name}
-        description={`Code: ${trackingCode} · Stage: ${campaign.stage}`}
+        description={`Code: ${trackingCode} · ${STAGE_META[campaign.stage].label}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={adminSpaTo("/admin/brand/weekly-update")}
-              className="rounded border px-3 py-1.5 text-sm hover:bg-zinc-50"
-            >
-              Weekly update
-            </Link>
-            <select
-              className="rounded border px-2 py-1.5 text-sm capitalize"
-              value={campaign.stage}
-              onChange={(e) => onStageSelect(e.target.value as BrandCampaignStage)}
-            >
-              {(["planning", "creative", "live", "measuring", "closed"] as const).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => cloneMut.mutate()}>
-              Duplicate
-            </button>
             <ExportMenu campaignId={campaign.id} />
-            <AdminAuditTrailLink entityType="brand_campaign" entityId={campaign.id} />
+            <div className="relative" ref={moreRef}>
+              <button
+                type="button"
+                className={brandButtonSecondaryClass}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                onClick={() => setMoreOpen((o) => !o)}
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+                <span className="sr-only">More actions</span>
+              </button>
+              {moreOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-30 mt-1 min-w-[12rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      cloneMut.mutate();
+                    }}
+                  >
+                    Duplicate
+                  </button>
+                  <Link
+                    role="menuitem"
+                    to={adminSpaTo("/admin/brand/weekly-update")}
+                    className="block px-3 py-2 text-sm hover:bg-gray-50"
+                    onClick={() => setMoreOpen(false)}
+                  >
+                    Weekly update
+                  </Link>
+                  <div className="border-t border-gray-100 px-3 py-2">
+                    <AdminAuditTrailLink entityType="brand_campaign" entityId={campaign.id} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         }
       />
 
-      <StageStepper current={campaign.stage} />
+      <StageStepper current={campaign.stage} onStageSelect={onStageSelect} />
 
-      <AdminSavedViewChips
-        views={[...PERIOD_VIEWS]}
-        activeViewId={period}
-        onSelect={setPeriod}
-      />
-      <p className="text-xs text-zinc-500">
-        {periodInfo.label}: {periodInfo.start.slice(0, 10)} → {periodInfo.end.slice(0, 10)} (UTC)
-      </p>
+      {showPeriod ? (
+        <>
+          <AdminSavedViewChips views={[...PERIOD_VIEWS]} activeViewId={period} onSelect={setPeriod} />
+          <p className="text-xs text-zinc-500">
+            {periodInfo.label}: {periodInfo.start.slice(0, 10)} → {periodInfo.end.slice(0, 10)} (UTC)
+          </p>
+        </>
+      ) : null}
 
-      <div className="flex flex-wrap gap-1 border-b pb-2">
+      <div
+        className="sticky top-14 z-10 -mx-1 flex flex-wrap gap-1 border-b border-gray-200 bg-gray-50/95 px-1 pb-2 pt-1 backdrop-blur-sm"
+        role="tablist"
+        aria-label="Campaign sections"
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`rounded-full px-3 py-1 text-sm ${tab === t.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"}`}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={cn(
+              "rounded-full px-3 py-1 text-sm",
+              tab === t.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100",
+            )}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -234,6 +323,8 @@ export function BrandCampaignDetailPage() {
         ))}
       </div>
 
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+        <div className="min-w-0 flex-1 space-y-4">
       {tab === "overview" && (
         <>
           <div className="grid gap-3 md:grid-cols-4">
@@ -267,24 +358,13 @@ export function BrandCampaignDetailPage() {
             onSaved={() => void q.refetch()}
           />
           <AdminPanel title="Tracking kit">
-            <ul className="space-y-1 text-sm">
-              <li>
-                <span className="text-zinc-500">Link:</span> {tracking_kit.utm_link}
-              </li>
-              <li>
-                <span className="text-zinc-500">Amplitude:</span> {tracking_kit.amplitude_filter}
-              </li>
-              <li>
-                <span className="text-zinc-500">Provider lead campaign ID (source "campaign"):</span>{" "}
-                {tracking_kit.provider_lead_source}
-              </li>
+            <ul className="space-y-2">
+              <BrandCopyValueRow label="Link" value={tracking_kit.utm_link} />
+              <BrandCopyValueRow label="Amplitude" value={tracking_kit.amplitude_filter} />
+              <BrandCopyValueRow label="Provider lead (source campaign)" value={tracking_kit.provider_lead_source} />
             </ul>
           </AdminPanel>
         </>
-      )}
-
-      {tab === "metrics" && (
-        <BrandAdvancedMetricsPanel campaignId={campaign.id} period={period} placements={placements} />
       )}
 
       {tab === "creative" && (
@@ -298,6 +378,19 @@ export function BrandCampaignDetailPage() {
 
       {tab === "placements" && (
         <AdminPanel title="Placements">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-zinc-600">{placements.length} lines</p>
+            <button
+              type="button"
+              className={brandButtonPrimaryClass}
+              onClick={() => {
+                setAddingPlacement(true);
+                setEditPlacementId(null);
+              }}
+            >
+              Add placement
+            </button>
+          </div>
           <PlacementsGrid
             campaignId={campaign.id}
             defaultTrackingCode={trackingCode}
@@ -307,19 +400,6 @@ export function BrandCampaignDetailPage() {
             placements={placements}
             onRefresh={() => void q.refetch()}
           />
-          <div className="mb-3 mt-6 flex justify-between">
-            <p className="text-sm text-zinc-600">{placements.length} lines</p>
-            <button
-              type="button"
-              className="text-sm font-medium text-violet-700"
-              onClick={() => {
-                setAddingPlacement(true);
-                setEditPlacementId(null);
-              }}
-            >
-              Add placement
-            </button>
-          </div>
           {addingPlacement && (
             <BrandPlacementForm
               campaignId={campaign.id}
@@ -331,6 +411,17 @@ export function BrandCampaignDetailPage() {
               onCancel={() => setAddingPlacement(false)}
             />
           )}
+          {placements.length === 0 && !addingPlacement ? (
+            <EmptyState
+              title="No placements yet"
+              description="Add channels and flight lines for this campaign."
+              action={
+                <button type="button" className={brandButtonPrimaryClass} onClick={() => setAddingPlacement(true)}>
+                  Add placement
+                </button>
+              }
+            />
+          ) : null}
           <ul className="mt-4 space-y-3">
             {placements.map((p) => (
               <li key={p.id} className="rounded border border-zinc-100 p-3">
@@ -370,21 +461,21 @@ export function BrandCampaignDetailPage() {
         </AdminPanel>
       )}
 
-      {tab === "results" && (
+      {tab === "performance" && (
         <>
-          <div className="grid gap-3 md:grid-cols-3">
-            <AdminMetricCard label="Signups" value={String(measured.signups ?? 0)} hint="first-touch UTM" />
-            <AdminMetricCard label="Promo redemptions" value={String(measured.promo_redemptions ?? 0)} hint="measured" />
-            <AdminMetricCard
-              label="Gross booking value"
-              value={scorecard.gross_booking_value.toLocaleString()}
-              hint="promo + attributed"
-            />
-          </div>
-          <AdminPanel title="Spend breakdown">
-            <dl className="grid gap-2 text-sm md:grid-cols-3">
+          <AdminPanel title="Results">
+            <div className="grid gap-3 md:grid-cols-3">
+              <AdminMetricCard label="Signups" value={String(measured.signups ?? 0)} hint="first-touch UTM" />
+              <AdminMetricCard label="Promo redemptions" value={String(measured.promo_redemptions ?? 0)} hint="measured" />
+              <AdminMetricCard
+                label="Gross booking value"
+                value={scorecard.gross_booking_value.toLocaleString()}
+                hint="promo + attributed"
+              />
+            </div>
+            <dl className="mt-4 grid gap-2 text-sm md:grid-cols-3">
               <div>
-                <dt className="text-zinc-500">Entered</dt>
+                <dt className="text-zinc-500">Entered spend</dt>
                 <dd className="font-medium tabular-nums">{spend.entered.toLocaleString()}</dd>
               </div>
               <div>
@@ -397,24 +488,25 @@ export function BrandCampaignDetailPage() {
               </div>
             </dl>
           </AdminPanel>
-        </>
-      )}
-
-      {tab === "funnel" && (
-        <>
-          {funnelBars.length > 0 ? (
-            <AdminFunnelBars steps={funnelBars} />
-          ) : (
-            <p className="text-sm text-zinc-500">Enter reach/clicks on placements to populate the funnel.</p>
-          )}
-          {funnel
-            .filter((s) => s.amplitude)
-            .map((s) => (
-              <AdminPanel key={s.id} title={s.label}>
-                <p className="text-sm text-zinc-600">{s.hint}</p>
-                <p className="mt-1 font-mono text-xs">{s.amplitude?.filter}</p>
-              </AdminPanel>
-            ))}
+          <AdminPanel title="Funnel">
+            {funnelBars.length > 0 ? (
+              <AdminFunnelBars steps={funnelBars} />
+            ) : (
+              <p className="text-sm text-zinc-500">Enter reach/clicks on placements to populate the funnel.</p>
+            )}
+            {funnel
+              .filter((s) => s.amplitude)
+              .map((s) => (
+                <div key={s.id} className="mt-4 border-t border-zinc-100 pt-4">
+                  <p className="text-sm font-medium text-zinc-800">{s.label}</p>
+                  <p className="text-sm text-zinc-600">{s.hint}</p>
+                  <p className="mt-1 font-mono text-xs">{s.amplitude?.filter}</p>
+                </div>
+              ))}
+          </AdminPanel>
+          <AdminPanel title="Advanced metrics">
+            <BrandAdvancedMetricsPanel campaignId={campaign.id} period={period} placements={placements} />
+          </AdminPanel>
           <AdminMetricContractsGlossary
             title="Brand metric contracts"
             contracts={[
@@ -466,23 +558,22 @@ export function BrandCampaignDetailPage() {
         </>
       )}
 
-      {tab === "activity" && (
-        <AdminPanel title="Activity">
-          <ul className="space-y-2 text-sm">
-            {(campaign.brand_activity ?? []).length === 0 ? (
-              <li className="text-zinc-500">No activity yet.</li>
-            ) : (
-              (campaign.brand_activity ?? []).map((a) => (
-                <li key={a.id} className="border-b border-zinc-100 pb-2">
-                  <span className="text-xs text-zinc-500">{a.created_at.slice(0, 16)}</span>
-                  <span className="ml-2 font-medium">{a.kind}</span>
-                  {a.body ? <p className="text-zinc-700">{a.body}</p> : null}
-                </li>
-              ))
-            )}
-          </ul>
-        </AdminPanel>
-      )}
+        </div>
+
+        <aside className="w-full shrink-0 xl:w-72">
+          <div className="xl:sticky xl:top-[7.5rem]">
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium xl:hidden"
+              onClick={() => setActivityOpen((o) => !o)}
+            >
+              Activity
+              <ChevronDown className={cn("h-4 w-4 transition-transform", activityOpen && "rotate-180")} />
+            </button>
+            <div className={cn(!activityOpen && "hidden xl:block")}>{activityPanel}</div>
+          </div>
+        </aside>
+      </div>
 
     </div>
   );

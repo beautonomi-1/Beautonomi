@@ -1170,6 +1170,31 @@
           "stageDone": "Kuphelile",
           "progressA11y": "Journey Inchubekela: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} kwe-{{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Luhla lwemibhukho · {{completed}}/{{total}}",
+          "next": "lokulandzelako: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} kubhuka requirements cedza",
+          "jumpHint": "Jump to the lokulandzelako kuyadingeka section",
+          "showRequirements": "Khombisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "umhlanganyeli {{number}}",
+          "items": {
+            "group_date": "Lilanga",
+            "group_time": "sikhatsi slot",
+            "group_duration": "Sikhatsi",
+            "group_service": "lekuhlala insita",
+            "group_staff": "Lilunga lelitimba",
+            "group_address": "At-likheli lasekhaya",
+            "group_participants": "bahlanganyeli",
+            "booking_client": "Liklayenti",
+            "booking_services": "tinsita or imikhicito",
+            "booking_schedule": "lilanga & sikhatsi",
+            "booking_staff": "basebenti assignment",
+            "booking_location": "insita likheli",
+            "booking_intake": "liklayenti forms",
+            "booking_recurring": "Luchungechunge loluphindaphindako"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content hlunga",
           "toggle_sensitive_content_filter_desc": "Nciphisa lokuthunyelwe oluneetegi zezokwelapha noma lokwelashwa",
           "toggle_require_device_auth_label": "Require lidivaysi authentication",
-          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo"
+          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo",
+          "reportingHint": "Kubika post, comment noma umlayeto, uvule bese ukhetha Bika kumenyu (⋯). Imibiko iya eqenjini lethu letetsembekile nasekuphepheni.",
+          "authPrompt": "Cinisekisa kutsi ungubani kute ubuke futsi ushintje lokucuketfwe & emasethingi ekuphepha.",
+          "authRequired": "Vula sikhiya tilungiselelo",
+          "ageBandNote": "Tinkheto letinye tilawulwa ngokuzenzakalela kuma-akhawunti eminyaka lemu-13–17 kute sive sive sakho sihambisane neminyaka.",
+          "lockedNote": "Emasethingi lamakwe njengalawulwako angeke ashintjwe ecenjini lakho leminyaka.",
+          "linkAgeSuitability": "Funda ngemfaneleko weminyaka nekuqondiswa kwabazali"
         },
         "emergencyContact": {
           "title": "Emergency Tintsana",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Inkhokhelo yeluhlelo lwakho seyicinisekisiwe. Buyela ku-Subscription kute ubone luhlelo lwakho lolusebentako.",
           "subscriptionPaymentFailed": "Inkokhelo yekubhalisa ayiphumelelanga. Hlola imali yelikhadi lakho noma uzame lindlela leyehlukile yekukhokha.",
           "subscriptionPaymentPending": "Your inkokhelo was received and cinisekisaation is still syncing with your bank. Return to Subscription and pull to vuselela in a moment.",
-          "subscriptionPaymentCancelled": "You kukhanselwe the inkokhelo. No khokhisa was made."
+          "subscriptionPaymentCancelled": "You kukhanselwe the inkokhelo. No khokhisa was made.",
+          "continueToSetupHub": "Inkhokhelo yephlanu yakho icinisekisiwe. Chubeka uye kuhhub lokusetha kute ugcine ukucala libhizinisi lakho ku-Beautonomi.",
+          "goToSetupHub": "Yiya kuhhub lokusetha"
         },
         "inventory": {
           "title": "luhlu lwesitoko umphatsi",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept emakhadi etipho as inkokhelo",
           "saving": "Iyagcina…",
           "terms": "Imigomo"
+        },
+        "reportUser": {
+          "title": "umbiko a Umsebentisi",
+          "breadcrumb": "umbiko Umsebentisi",
+          "intro": "Imibiko iya ohlwini lwethu lokuphepha. Faka ubani obikayo nokwenzekile. Ingozi ephuthumayo? Shaya izinsiza zezimo eziphuthumayo kuqala, bese uxhumana neqembu lokuphepha.",
+          "identifierLabel": "Who are you umbikoing?",
+          "identifierPlaceholder": "@handle or Umsebentisi ID",
+          "identifierHint": "Sebentisa i-@handle yalomuntfu kusuka kuphrofayili yakhe, noma i-user ID uma uyitfolile ekubhukeni.",
+          "descriptionLabel": "Kwenzekani?",
+          "descriptionPlaceholder": "Chaza lesigameko, nini kwentiwa khona, nalomunye umongo lofanele…",
+          "submit": "tfumela umbiko",
+          "submittedTitle": "umbiko received",
+          "submittedBody": "Liqembu letfu lekutetsembekile nasekuphepheni litawubuyekeza umbiko wakho. Singakutsinta uma sidzinga lwati lolunyenti.",
+          "submitFailedTitle": "Couldn't tfumela",
+          "submitFailedFallback": "Sicela zama futsi or Tintsana Partner lusito.",
+          "submitGenericError": "Kukhona lokungahambanga kahle.",
+          "supportFallback": "Awuyati @handle yabo? Vula itikithi lesekela le-Partner esikhundleni salokho"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No imikhicito are iyatfolakala right nyalo",
           "soldOut": "kutsetsengisiwe konkhe",
           "locationHours": {
-            "notListed": "emahora not listed",
-            "openUntil": "Vula until {{time}}",
-            "closed": "Valad nyalo",
-            "closedOpens": "Valad · Opens {{day}} {{time}}",
-            "closedShort": "Valad",
+            "notListed": "Amahora awacatjuli",
+            "openUntil": "Ivulekile kuze kube {{time}}",
+            "closed": "Ivaliwe manje",
+            "closedOpens": "Ivaliwe · Ivula ngo-{{day}} {{time}}",
+            "closedShort": "Ivaliwe",
             "days": {
               "sunday": "liSontfo",
               "monday": "uMsombuluko",
@@ -14297,9 +14347,9 @@
           "lockedNote": "Emasethingi lamakwe njengalawulwako angeke ashintjwe ecenjini lakho leminyaka.",
           "authPrompt": "Cinisekisa kutsi ungubani kute ubuke futsi ushintje lokucuketfwe & emasethingi ekuphepha.",
           "authRequired": "Vula sikhiya tilungiselelo",
-          "ageBandNote": "Some Tinkhetsi are managed automatishayelay for li-akhawuntis aged 13–17 to lusito Gcina your experience age-appropriate.",
+          "ageBandNote": "Tinkheto letinye tilawulwa ngokuzenzakalela kuma-akhawunti eminyaka lemu-13–17 kute sive sive sakho sihambisane neminyaka.",
           "linkAgeSuitability": "Funda ngemfaneleko weminyaka nekuqondiswa kwabazali",
-          "reportingHint": "To umbiko a Siposo, imibono, or umlayeto, vula it and khetsa Report from the menu (⋯). imibiko go to our trust & kuphepha litimba.",
+          "reportingHint": "Kubika post, comment noma umlayeto, uvule bese ukhetha Bika kumenyu (⋯). Imibiko iya eqenjini lethu letetsembekile nasekuphepheni.",
           "toggle_restricted_mode_label": "Imodi leyivinjiwe",
           "toggle_restricted_mode_desc": "Linganisa timphawu tetenhlalakahle kanye nekucuketfwe lokwentiwe ngumsebentisi kulo lonkhe luhlelo lokusebenta",
           "toggle_hide_social_feed_label": "fihla social feed",
@@ -15712,7 +15762,7 @@
           "descriptionPlaceholder": "Chaza lesigameko, nini kwentiwa khona, nalomunye umongo lofanele…",
           "submit": "tfumela umbiko",
           "submittedTitle": "umbiko received",
-          "submittedBody": "Our trust & kuphepha litimba will sibuyekezo your umbiko. You may be contacted if we need lokunye lwati.",
+          "submittedBody": "Liqembu letfu lekutetsembekile nasekuphepheni litawubuyekeza umbiko wakho. Singakutsinta uma sidzinga lwati lolunyenti.",
           "submitFailedTitle": "Couldn't tfumela",
           "submitFailedFallback": "Sicela zama futsi or Tintsana lusito.",
           "submitGenericError": "Kukhona lokungahambanga kahle.",
@@ -23555,6 +23605,31 @@
           "waitlist": "luhlu lwekulindza",
           "frontDesk": "Front Desk",
           "waitingCount": "{{count}} Kulindzile"
+        },
+        "createReadiness": {
+          "title": "Luhla lwemibhukho · {{completed}}/{{total}}",
+          "next": "lokulandzelako: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} kubhuka requirements cedza",
+          "jumpHint": "Jump to the lokulandzelako kuyadingeka section",
+          "showRequirements": "Khombisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "umhlanganyeli {{number}}",
+          "items": {
+            "group_date": "Lilanga",
+            "group_time": "sikhatsi slot",
+            "group_duration": "Sikhatsi",
+            "group_service": "lekuhlala insita",
+            "group_staff": "Lilunga lelitimba",
+            "group_address": "At-likheli lasekhaya",
+            "group_participants": "bahlanganyeli",
+            "booking_client": "Liklayenti",
+            "booking_services": "tinsita or imikhicito",
+            "booking_schedule": "lilanga & sikhatsi",
+            "booking_staff": "basebenti assignment",
+            "booking_location": "insita likheli",
+            "booking_intake": "liklayenti forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} emalanga ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi tlapha,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

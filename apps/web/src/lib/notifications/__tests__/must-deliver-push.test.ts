@@ -14,6 +14,8 @@ describe("must-deliver-push", () => {
   });
 
   it("treats explicit and pattern-matched marketing keys as marketing", () => {
+    expect(isMarketingPushTemplate("abandoned_cart")).toBe(true);
+    expect(isMustDeliverPushTemplate("abandoned_cart")).toBe(false);
     expect(isMarketingPushTemplate("admin_broadcast")).toBe(true);
     expect(isMarketingPushTemplate("promotion_available")).toBe(true);
     expect(isMarketingPushTemplate("loyalty_reward_available")).toBe(true);

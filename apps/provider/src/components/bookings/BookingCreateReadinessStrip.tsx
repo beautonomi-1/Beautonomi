@@ -30,10 +30,10 @@ const DEFAULT_LABELS: Record<string, string> = {
   booking_recurring: "Repeating series",
 };
 
-function participantLabel(id: string): string | null {
+function participantIndex(id: string): number | null {
   const m = /^group_participant_(\d+)$/.exec(id);
   if (!m) return null;
-  return `Participant ${Number(m[1]) + 1}`;
+  return Number(m[1]) + 1;
 }
 
 export function BookingCreateReadinessStrip({
@@ -57,9 +57,10 @@ export function BookingCreateReadinessStrip({
   const labelFor = (id: string) => {
     const custom = itemLabel?.(id);
     if (custom) return custom;
-    const part = participantLabel(id);
-    if (part) return part;
-    const key = id.replace(/_/g, "");
+    const partIndex = participantIndex(id);
+    if (partIndex != null) {
+      return rc("participant", { number: partIndex });
+    }
     const fromI18n = t(`provider.mobile.components.bookingCreateReadiness.items.${id}`, {
       defaultValue: "",
     }) as string;

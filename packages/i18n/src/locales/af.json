@@ -1170,6 +1170,31 @@
           "stageDone": "Klaar",
           "progressA11y": "Journey Vordering: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} van {{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Besprekingschecklys · {{completed}}/{{total}}",
+          "next": "volgende: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} bespreking requirements voltooi",
+          "jumpHint": "Jump to the volgende vereis section",
+          "showRequirements": "Wys requirements",
+          "hideRequirements": "versteek requirements",
+          "participant": "deelnemer {{number}}",
+          "items": {
+            "group_date": "Datum",
+            "group_time": "tyd slot",
+            "group_duration": "Duur",
+            "group_service": "verstek diens",
+            "group_staff": "Spanlid",
+            "group_address": "At-huisadres",
+            "group_participants": "deelnemers",
+            "booking_client": "Kliënt",
+            "booking_services": "dienste or produkte",
+            "booking_schedule": "datum & tyd",
+            "booking_staff": "personeel assignment",
+            "booking_location": "diens adres",
+            "booking_intake": "kliënt forms",
+            "booking_recurring": "Herhalende reeks"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitiewe inhoudfilter",
           "toggle_sensitive_content_filter_desc": "Verminder plasings met mediese of behandelingsverwante onderwerpe",
           "toggle_require_device_auth_label": "Require toestel authentication",
-          "toggle_require_device_auth_desc": "Vra vir Face ID, vingerafdruk of wagwoord voordat jy hierdie instellings verander"
+          "toggle_require_device_auth_desc": "Vra vir Face ID, vingerafdruk of wagwoord voordat jy hierdie instellings verander",
+          "reportingHint": "Om 'n plasing, opmerking of boodskap aan te meld, open dit en kies Rapporteer in die kieslys (⋯). Verslae gaan na ons vertroue- en veiligheidspan.",
+          "authPrompt": "Verifieer jou identiteit om inhoud- en veiligheidsinstellings te bekyk en te verander.",
+          "authRequired": "Ontsluit instellings",
+          "ageBandNote": "Sommige opsies word outomaties bestuur vir rekeninge ouderdom 13–17 om jou ervaring ouderdomstoepaslik te hou.",
+          "lockedNote": "Instellings wat as bestuur gemerk is, kan nie vir jou ouderdomsgroep verander word nie.",
+          "linkAgeSuitability": "Leer oor ouderdomsgeskiktheid en ouergids"
         },
         "emergencyContact": {
           "title": "Emergency Kontak",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Jou planbetaling is bevestig. Keer terug na Intekening om jou aktiewe plan te sien.",
           "subscriptionPaymentFailed": "Die intekeningbetaling het nie deurgegaan nie. Gaan jou kaartfondse na of probeer 'n ander betaalmetode.",
           "subscriptionPaymentPending": "Your betaling was received and bevestigation is still syncing with your bank. Return to Subscription and pull to verfris in a moment.",
-          "subscriptionPaymentCancelled": "You gekanselleer the betaling. No hef was made."
+          "subscriptionPaymentCancelled": "You gekanselleer the betaling. No hef was made.",
+          "continueToSetupHub": "Jou planbetaling is bevestig. Gaan voort na die opstelling-hub om jou besigheid op Beautonomi te begin.",
+          "goToSetupHub": "Gaan na opstelling-hub"
         },
         "inventory": {
           "title": "voorraadlys bestuurder",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept geskenkkaarte as betaling",
           "saving": "Stoor tans…",
           "terms": "Bepalings"
+        },
+        "reportUser": {
+          "title": "verslag a Gebruiker",
+          "breadcrumb": "verslag Gebruiker",
+          "intro": "Verslae gaan na ons vertroue- en veiligheid-waglys. Sluit in wie jy aanmeld en wat gebeur het. Dringende gevaar? Bel eers nooddienste, kontak dan Partner-ondersteuning.",
+          "identifierLabel": "Who are you verslaging?",
+          "identifierPlaceholder": "@handle or Gebruiker ID",
+          "identifierHint": "Gebruik die persoon se @handle vanaf hul profiel, of hul gebruiker-ID as jy dit van 'n bespreking het.",
+          "descriptionLabel": "Wat het gebeur?",
+          "descriptionPlaceholder": "Beskryf die voorval, wanneer dit gebeur het, en enige relevante konteks…",
+          "submit": "dien in verslag",
+          "submittedTitle": "verslag received",
+          "submittedBody": "Ons vertroue- en veiligheidspan sal jou verslag hersien. Ons kan jou kontak as ons meer inligting nodig het.",
+          "submitFailedTitle": "Couldn't dien in",
+          "submitFailedFallback": "Probeer weer or Kontak Partner ondersteuning asseblief.",
+          "submitGenericError": "Iets het verkeerd geloop.",
+          "supportFallback": "Ken jy nie hul @handle nie? Open eerder 'n Partner-ondersteuningskaartjie"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No produkte are beskikbaar right nou",
           "soldOut": "uitverkoop",
           "locationHours": {
-            "notListed": "ure not listed",
-            "openUntil": "open until {{time}}",
-            "closed": "Sluitd nou",
-            "closedOpens": "Sluitd · Opens {{day}} {{time}}",
-            "closedShort": "Sluitd",
+            "notListed": "Uure nie gelys nie",
+            "openUntil": "Open tot {{time}}",
+            "closed": "Nou gesluit",
+            "closedOpens": "Gesluit · Open {{day}} om {{time}}",
+            "closedShort": "Gesluit",
             "days": {
               "sunday": "Sondag",
               "monday": "Maandag",
@@ -13728,8 +13778,8 @@
           "pickupStore": {
             "directions": "Aanwysings",
             "call": "bel",
-            "pickupInstructions": "Aflaai instructions",
-            "viewAllLocations": "Sien all {{count}} liggings",
+            "pickupInstructions": "Optelinstruksies",
+            "viewAllLocations": "Bekyk al {{count}} ligginge",
             "collectAt": "Haal af by {{name}}, {{city}}",
             "deliverTo": "Lewer na {{city}}"
           },
@@ -14297,9 +14347,9 @@
           "lockedNote": "Instellings wat as bestuur gemerk is, kan nie vir jou ouderdomsgroep verander word nie.",
           "authPrompt": "Verifieer jou identiteit om inhoud- en veiligheidsinstellings te bekyk en te verander.",
           "authRequired": "Ontsluit instellings",
-          "ageBandNote": "Some Opsies are managed automatibely for rekenings aged 13–17 to hulp Hou your experience age-appropriate.",
+          "ageBandNote": "Sommige opsies word outomaties bestuur vir rekeninge ouderdom 13–17 om jou ervaring ouderdomstoepaslik te hou.",
           "linkAgeSuitability": "Leer oor ouderdomsgeskiktheid en ouergids",
-          "reportingHint": "To verslag a Plasing, opmerking, or boodskap, open it and kies Report from the menu (⋯). verslae go to our trust & veiligheid span.",
+          "reportingHint": "Om 'n plasing, opmerking of boodskap aan te meld, open dit en kies Rapporteer in die kieslys (⋯). Verslae gaan na ons vertroue- en veiligheidspan.",
           "toggle_restricted_mode_label": "Beperkte modus",
           "toggle_restricted_mode_desc": "Beperk sosiale kenmerke en gebruiker-gegenereerde inhoud regoor die toepassing",
           "toggle_hide_social_feed_label": "versteek social feed",
@@ -15712,7 +15762,7 @@
           "descriptionPlaceholder": "Beskryf die voorval, wanneer dit gebeur het, en enige relevante konteks…",
           "submit": "dien in verslag",
           "submittedTitle": "verslag received",
-          "submittedBody": "Our trust & veiligheid span will resensie your verslag. You may be contacted if we need meer inligting.",
+          "submittedBody": "Ons vertroue- en veiligheidspan sal jou verslag hersien. Ons kan jou kontak as ons meer inligting nodig het.",
           "submitFailedTitle": "Couldn't dien in",
           "submitFailedFallback": "Probeer weer or Kontak ondersteuning asseblief.",
           "submitGenericError": "Iets het verkeerd geloop.",
@@ -23555,6 +23605,31 @@
           "waitlist": "waglys",
           "frontDesk": "Front Desk",
           "waitingCount": "{{count}} Wag tans"
+        },
+        "createReadiness": {
+          "title": "Besprekingschecklys · {{completed}}/{{total}}",
+          "next": "volgende: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} bespreking requirements voltooi",
+          "jumpHint": "Jump to the volgende vereis section",
+          "showRequirements": "Wys requirements",
+          "hideRequirements": "versteek requirements",
+          "participant": "deelnemer {{number}}",
+          "items": {
+            "group_date": "Datum",
+            "group_time": "tyd slot",
+            "group_duration": "Duur",
+            "group_service": "verstek diens",
+            "group_staff": "Spanlid",
+            "group_address": "At-huisadres",
+            "group_participants": "deelnemers",
+            "booking_client": "Kliënt",
+            "booking_services": "dienste or produkte",
+            "booking_schedule": "datum & tyd",
+            "booking_staff": "personeel assignment",
+            "booking_location": "diens adres",
+            "booking_intake": "kliënt forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} dae ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi thier,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

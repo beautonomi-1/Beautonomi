@@ -31,6 +31,11 @@ const CRITICAL_ROUTE_PATHS = [
   "/admin/trust-safety-ops/ai-queue",
   "/admin/provider-ops/ai-queue",
   "/admin/control-plane/modules/agents",
+  "/admin/brand/board",
+  "/admin/brand/board?q=test&hideClosed=0",
+  "/admin/brand/calendar?group=pillar&zoom=quarter",
+  "/admin/brand/strategy?year=2026&tab=plan",
+  "/admin/brand/campaigns/00000000-0000-4000-8000-000000000001?tab=performance&period=this_month",
 ] as const;
 
 test.describe("operator overhaul critical routes (static shell)", () => {

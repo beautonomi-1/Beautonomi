@@ -102,6 +102,12 @@ function loadCuratedPhraseMaps() {
     Object.assign(sa, shop);
     Object.assign(frar, shop);
   }
+  const fixLeftoverPath = path.join(root, "_maps/t-sa-mobile-i18n-fix-leftover.json");
+  if (fs.existsSync(fixLeftoverPath)) {
+    const fix = JSON.parse(fs.readFileSync(fixLeftoverPath, "utf8"));
+    Object.assign(sa, fix);
+    Object.assign(frar, fix);
+  }
   return { sa, frar };
 }
 

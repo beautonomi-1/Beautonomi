@@ -3,7 +3,7 @@
  */
 import { i18n, initI18n, isSupportedLanguageCode } from "@beautonomi/i18n";
 
-const DEFAULT_NS = "common";
+const DEFAULT_NS = "translation";
 let ready = false;
 
 function ensureI18n(): void {

@@ -13,7 +13,7 @@ export type LocationHoursInput = {
 export function formatLocationOpenLabel(
   loc: LocationHoursInput,
   t: (key: string, opts?: Record<string, string | number>) => string,
-  prefix = "customer.mobile.shop.locationHours",
+  prefix = "customer.mobile.tabs.shop.locationHours",
 ): string {
   const state = getLocationOpenState(loc.working_hours, new Date(), loc.timezone ?? "Africa/Johannesburg");
   if (state.status === "unknown") {

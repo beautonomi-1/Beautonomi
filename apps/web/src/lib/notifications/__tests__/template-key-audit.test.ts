@@ -141,6 +141,7 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
   "membership_win_back",
   "provider_membership_cancelled",
   "abandoned_booking_reminder",
+  "abandoned_cart",
   "provider_closeout_reminder",
   "provider_booking_request_reminder",
   "customer_running_late_ack",
@@ -150,6 +151,7 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
 
 /** Explicit opt-in marketing / broadcast keys only */
 const EXPECTED_MARKETING_KEYS = new Set([
+  "abandoned_cart",
   "welcome_message",
   "promotion_available",
   "referral_bonus_earned",

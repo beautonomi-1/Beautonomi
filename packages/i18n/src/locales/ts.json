@@ -1170,6 +1170,31 @@
           "stageDone": "Swi herile",
           "progressA11y": "Journey Nhluvuko: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} eka {{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Nxaxamelo wa ku buka · {{completed}}/{{total}}",
+          "next": "lexi landzelaka: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} ku buka requirements herisa",
+          "jumpHint": "Jump to the lexi landzelaka swi laveka section",
+          "showRequirements": "Kombisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "mutirhi {{number}}",
+          "items": {
+            "group_date": "Siku",
+            "group_time": "nkarhi slot",
+            "group_duration": "Nkarhi",
+            "group_service": "xo toloveleka vukorhokeri",
+            "group_staff": "Xirho xa ntlawa",
+            "group_address": "At-adirese ya kaya",
+            "group_participants": "vatirhi",
+            "booking_client": "Muxavi",
+            "booking_services": "vukorhokeri or switirhisiwa",
+            "booking_schedule": "siku & nkarhi",
+            "booking_staff": "vatirhi assignment",
+            "booking_location": "vukorhokeri adirese",
+            "booking_intake": "muxavi forms",
+            "booking_recurring": "Ntlawa lowu pfuxaka"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content hlawula",
           "toggle_sensitive_content_filter_desc": "Hunguta swiposti leswi nga na tithegi ta vutshunguri",
           "toggle_require_device_auth_label": "Require xitirhisiwa authentication",
-          "toggle_require_device_auth_desc": "Kombela Face ID, fingerprint, kumbe passcode u nga si cinca swiyimiso leswi"
+          "toggle_require_device_auth_desc": "Kombela Face ID, fingerprint, kumbe passcode u nga si cinca swiyimiso leswi",
+          "reportingHint": "Ku tlalela poso, mavonelo kumbe rungula, pfule u hlawula Ripota eka menu (⋯). Swiviko swi ya eka ntlawa wa hina wa vutihlamuleri na vuhlayiseki.",
+          "authPrompt": "Tiyisisa vutitivisi bya wena ku languta na ku cinca swilo leswi nga endzeni & swiletelo swa vuhlayiseki.",
+          "authRequired": "Pfula khiya swilunghiselelo",
+          "ageBandNote": "Swikhetho swin'wana swi lawuriwa hi ku tirhisiwa ka xiyimo xa swona eka ti-account ta malembe ya 13–17 ku hlayisa ntokoto wa wena lowu faneleke malembe.",
+          "lockedNote": "Switirhisiwa leswi funghiweke tanihi leswi lawuriwaka a swi nge cinciwi eka ntlawa wa malembe ya wena.",
+          "linkAgeSuitability": "Dyondza hi ku faneleka ka malembe na nkongomiso wa vatswari"
         },
         "emergencyContact": {
           "title": "Emergency Hlangana",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Hakelo ya wena ya pulani yi tiyisisiwile. Vuya eka Xikhokhelo ku vona pulani ya wena leyi tirhaka.",
           "subscriptionPaymentFailed": "Ku hakela ka ku tsarisa a ku nga hundzanga. Languta mali eka khadi ra wena kumbe ringeta ndlela yin'wana ya ku hakela.",
           "subscriptionPaymentPending": "Your xihakelo was received and tiyisisaation is still syncing with your bank. Return to Subscription and pull to pfuxa in a moment.",
-          "subscriptionPaymentCancelled": "You yi khanseriwile the xihakelo. No hakelisa was made."
+          "subscriptionPaymentCancelled": "You yi khanseriwile the xihakelo. No hakelisa was made.",
+          "continueToSetupHub": "Hakelo ya pulanu ya wena yi tiyisisiwile. Yisa eka hub ya ku veka ku heta ku sungula bindzu ra wena eka Beautonomi.",
+          "goToSetupHub": "Yisa eka hub ya ku veka"
         },
         "inventory": {
           "title": "nxaxamelo wa sitoko mulawuri",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept tikhadi ta nyiko as xihakelo",
           "saving": "Yi hlayisa…",
           "terms": "Milawu"
+        },
+        "reportUser": {
+          "title": "xiviko a Mutirhisi",
+          "breadcrumb": "xiviko Mutirhisi",
+          "intro": "Swiviko swi ya eka layini wa hina wa vutihlamuleri na vuhlayiseki. Hlanganisa loko u ri karhi u vika na leswi endlekaka. Khombo ro hatlisa? Tshama u ri karhi u fonela tisebele ta xihatla, u tlhela u hlangana na nseketelo wa Partner.",
+          "identifierLabel": "Who are you xivikoing?",
+          "identifierPlaceholder": "@handle or Mutirhisi ID",
+          "identifierHint": "Tirhisa @handle ya munhu ku suka eka profayili ya yena, kumbe user ID loko u ri na yona ku suka eka ku veka.",
+          "descriptionLabel": "Ku humele yini?",
+          "descriptionPlaceholder": "Hlamusela xihoxo, nkarhi lowu xi endlekeke ha xona, na xivumbeko xo faneleka…",
+          "submit": "rhumela xiviko",
+          "submittedTitle": "xiviko received",
+          "submittedBody": "Ntlawa wa hina wa vutihlamuleri na vuhlayiseki wu ta languta xiviko xa wena. Hi nga ku hlanga loko hi lava vuxokoxoko byin'wana.",
+          "submitFailedTitle": "Couldn't rhumela",
+          "submitFailedFallback": "Ringa nakambe or Hlangana Partner nseketelo.",
+          "submitGenericError": "Ku na xihoxo lexi humeleleke.",
+          "supportFallback": "A wu tivi @handle ya vona? Pfule thikithi ya nseketelo wa Partner endhawini yaleyo"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No switirhisiwa are ya kumeka right sweswi",
           "soldOut": "swi xavisiwile hinkwaswo",
           "locationHours": {
-            "notListed": "tiawara not listed",
-            "openUntil": "Pfula until {{time}}",
-            "closed": "Pfalad sweswi",
-            "closedOpens": "Pfalad · Opens {{day}} {{time}}",
-            "closedShort": "Pfalad",
+            "notListed": "Tiawara a ti tsariwanga",
+            "openUntil": "Yi pfule ku fikela {{time}}",
+            "closed": "Yi pfale sweswi",
+            "closedOpens": "Yi pfariwile · Yi pfule {{day}} {{time}}",
+            "closedShort": "Yi pfariwile",
             "days": {
               "sunday": "Sonto",
               "monday": "Musumbhunuku",
@@ -14297,9 +14347,9 @@
           "lockedNote": "Switirhisiwa leswi funghiweke tanihi leswi lawuriwaka a swi nge cinciwi eka ntlawa wa malembe ya wena.",
           "authPrompt": "Tiyisisa vutitivisi bya wena ku languta na ku cinca swilo leswi nga endzeni & swiletelo swa vuhlayiseki.",
           "authRequired": "Pfula khiya swilunghiselelo",
-          "ageBandNote": "Some Swo hlawula are managed automatifowunelay for akhawuntis aged 13–17 to mpfuno Hlayisa your experience age-appropriate.",
+          "ageBandNote": "Swikhetho swin'wana swi lawuriwa hi ku tirhisiwa ka xiyimo xa swona eka ti-account ta malembe ya 13–17 ku hlayisa ntokoto wa wena lowu faneleke malembe.",
           "linkAgeSuitability": "Dyondza hi ku faneleka ka malembe na nkongomiso wa vatswari",
-          "reportingHint": "To xiviko a Poso, nhlamuselo, or rungula, pfula it and hlawula Report from the menu (⋯). swiviko go to our trust & vuhlayiseki ntlawa.",
+          "reportingHint": "Ku tlalela poso, mavonelo kumbe rungula, pfule u hlawula Ripota eka menu (⋯). Swiviko swi ya eka ntlawa wa hina wa vutihlamuleri na vuhlayiseki.",
           "toggle_restricted_mode_label": "Restricted mode",
           "toggle_restricted_mode_desc": "Hlayisa swihlawulekisi swa swa matirhiselo ya vanhu na swilo leswi endliweke hi vatirhisi eka app hinkwayo",
           "toggle_hide_social_feed_label": "fihla social feed",
@@ -15712,7 +15762,7 @@
           "descriptionPlaceholder": "Hlamusela xihoxo, nkarhi lowu xi endlekeke ha xona, na xivumbeko xo faneleka…",
           "submit": "rhumela xiviko",
           "submittedTitle": "xiviko received",
-          "submittedBody": "Our trust & vuhlayiseki ntlawa will xihlawulekisi your xiviko. You may be contacted if we need swin'wana rungula.",
+          "submittedBody": "Ntlawa wa hina wa vutihlamuleri na vuhlayiseki wu ta languta xiviko xa wena. Hi nga ku hlanga loko hi lava vuxokoxoko byin'wana.",
           "submitFailedTitle": "Couldn't rhumela",
           "submitFailedFallback": "Ringa nakambe or Hlangana nseketelo.",
           "submitGenericError": "Ku na xihoxo lexi humeleleke.",
@@ -23555,6 +23605,31 @@
           "waitlist": "nxaxamelo wo yima",
           "frontDesk": "Front Desk",
           "waitingCount": "{{count}} Yi yimile"
+        },
+        "createReadiness": {
+          "title": "Nxaxamelo wa ku buka · {{completed}}/{{total}}",
+          "next": "lexi landzelaka: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} ku buka requirements herisa",
+          "jumpHint": "Jump to the lexi landzelaka swi laveka section",
+          "showRequirements": "Kombisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "mutirhi {{number}}",
+          "items": {
+            "group_date": "Siku",
+            "group_time": "nkarhi slot",
+            "group_duration": "Nkarhi",
+            "group_service": "xo toloveleka vukorhokeri",
+            "group_staff": "Xirho xa ntlawa",
+            "group_address": "At-adirese ya kaya",
+            "group_participants": "vatirhi",
+            "booking_client": "Muxavi",
+            "booking_services": "vukorhokeri or switirhisiwa",
+            "booking_schedule": "siku & nkarhi",
+            "booking_staff": "vatirhi assignment",
+            "booking_location": "vukorhokeri adirese",
+            "booking_intake": "muxavi forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} masiku ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi tlaha,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

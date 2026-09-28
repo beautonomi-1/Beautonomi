@@ -60,6 +60,9 @@ export function templateKeyToPreferenceSection(templateKey: string): string {
   ) {
     return "subscription_renewal";
   }
+  if (key === "abandoned_cart") {
+    return "inspiration_and_offers";
+  }
   if (
     key.includes("reminder") ||
     key.includes("waitlist") ||

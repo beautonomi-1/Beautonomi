@@ -118,7 +118,7 @@ export default function ProductDetailScreen() {
   }, [t]);
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts ?? {}) as string,
     [t],
   );
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -663,7 +663,6 @@ export default function ProductDetailScreen() {
                     timezone={providerTimezone}
                     collectionNotes={isPickupOnly ? shipping?.collection_notes : undefined}
                     variant="compact"
-                    t={shopT}
                   />
                   {collectionLocations.length > 1 ? (
                     <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>

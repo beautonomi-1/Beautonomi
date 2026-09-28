@@ -110,7 +110,7 @@ function ProductDetailContent() {
   const { t } = useTranslation();
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts) as string,
     [t],
   );
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -791,7 +791,6 @@ function ProductDetailContent() {
                         : undefined
                     }
                     variant="full"
-                    t={shopT}
                   />
                 ))}
               </div>

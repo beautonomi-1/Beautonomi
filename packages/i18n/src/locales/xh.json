@@ -1170,6 +1170,31 @@
           "stageDone": "Kugqityiwe",
           "progressA11y": "Journey Inkqubela: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} kwe-{{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Uluhlu lokubhukisha · {{completed}}/{{total}}",
+          "next": "okulandelayo: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} ukubhukisha requirements gqiba",
+          "jumpHint": "Jump to the okulandelayo kuyafuneka section",
+          "showRequirements": "Bonisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "umthathi-nxaxheba {{number}}",
+          "items": {
+            "group_date": "Umhla",
+            "group_time": "ixesha slot",
+            "group_duration": "Ubude",
+            "group_service": "okumisiweyo inkonzo",
+            "group_staff": "Ilungu leqela",
+            "group_address": "At-idilesi yasekhaya",
+            "group_participants": "abathathi-nxaxheba",
+            "booking_client": "Umxhasi",
+            "booking_services": "iinkonzo or iimveliso",
+            "booking_schedule": "umhla & ixesha",
+            "booking_staff": "abasebenzi assignment",
+            "booking_location": "inkonzo idilesi",
+            "booking_intake": "umxhasi forms",
+            "booking_recurring": "Uchungechunge oluphindaphindayo"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content hluza",
           "toggle_sensitive_content_filter_desc": "Nciphisa izithunywa ezineetegi zezonyango okanye ukwelapha",
           "toggle_require_device_auth_label": "Require isixhobo authentication",
-          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo"
+          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo",
+          "reportingHint": "Ukubika iposti, ingxelo okanye umyalezo, uyivule uze ukhethe uXela kwimenyu (⋯). Iingxelo ziya kwiqela lethu lokuthembeka nokhuseleko.",
+          "authPrompt": "Qinisekisa ubuwena ukuze ujonge kwaye utshintshe umxholo kunye nesetingi zokhuseleko.",
+          "authRequired": "Vula isitshixo iisetingi",
+          "ageBandNote": "Ezinye iinketho zilawulwa ngokuzenzekelayo kwiakhawunti zeminyaka engama-13–17 ukuze amava akho ahambelane neminyaka.",
+          "lockedNote": "Iisetingi eziphawulwe njengezilawulwayo azinakutshintshwa kwiqela lakho lobudala.",
+          "linkAgeSuitability": "Funda ngokufanelekanga kweminyaka nokuqondiswa kwabazali"
         },
         "emergencyContact": {
           "title": "Emergency Qhagamshelana",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Intlawulo yesicwangciso sakho iqinisekisiwe. Buyela kuMrhumo ukuze ubone isicwangciso sakho esisebenzayo.",
           "subscriptionPaymentFailed": "Intlawulo yokubhalisa ayiphumelelanga. Jonga imali ekhadini lakho okanye uzame enye indlela yokuhlawula.",
           "subscriptionPaymentPending": "Your intlawulo was received and qinisekisaation is still syncing with your bank. Return to Subscription and pull to hlaziya in a moment.",
-          "subscriptionPaymentCancelled": "You kurhoxisiwe the intlawulo. No hlawulisa was made."
+          "subscriptionPaymentCancelled": "You kurhoxisiwe the intlawulo. No hlawulisa was made.",
+          "continueToSetupHub": "Intlawulo yeplani yakho iqinisekisiwe. Qhubeka uye kwiziko lokuseta ukuze ugqibeze ukusungula ishishini lakho kwi-Beautonomi.",
+          "goToSetupHub": "Yiya kwiziko lokuseta"
         },
         "inventory": {
           "title": "uluhlu lwesitokhwe umphathi",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept amakhadi ezipho as intlawulo",
           "saving": "Ivagcina…",
           "terms": "Imiqathango"
+        },
+        "reportUser": {
+          "title": "ingxelo a Umsebenzisi",
+          "breadcrumb": "ingxelo Umsebenzisi",
+          "intro": "Imibiko iya ohlwini lwethu lokuphepha. Faka ubani obikayo nokwenzekile. Ingozi ephuthumayo? Shaya izinsiza zezimo eziphuthumayo kuqala, bese uxhumana neqembu lokuphepha.",
+          "identifierLabel": "Who are you ingxeloing?",
+          "identifierPlaceholder": "@handle or Umsebenzisi ID",
+          "identifierHint": "Sebenzisa i-@handle yomntu kwiprofayile yakhe, okanye i-user ID ukuba unayo ukusuka ekubhukishweni.",
+          "descriptionLabel": "Kwenzekeni?",
+          "descriptionPlaceholder": "Chaza isiganeko, xa kwenzeka, nanaluphi na ulwazi olubalulekileyo…",
+          "submit": "ngenisa ingxelo",
+          "submittedTitle": "ingxelo received",
+          "submittedBody": "Iqela lethu lokuthembeka nokhuseleko liya kujonga ingxelo yakho. Sinokukuthinta ukuba sifuna ulwazi olungakumbi.",
+          "submitFailedTitle": "Couldn't ngenisa",
+          "submitFailedFallback": "Nceda zama kwakhona or Qhagamshelana Partner inkxaso.",
+          "submitGenericError": "Kukho into engahambanga kakuhle.",
+          "supportFallback": "Awuyazi i-@handle yabo? Vula itikiti yenkxaso ye-Partner endaweni yoko"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No iimveliso are iyafumaneka right ngoku",
           "soldOut": "kuthengisiwe konke",
           "locationHours": {
-            "notListed": "iiyure not listed",
-            "openUntil": "Vula until {{time}}",
-            "closed": "Valad ngoku",
-            "closedOpens": "Valad · Opens {{day}} {{time}}",
-            "closedShort": "Valad",
+            "notListed": "Iiyure azichazwanga",
+            "openUntil": "Ivuliwe de kube {{time}}",
+            "closed": "Ivaliwe ngoku",
+            "closedOpens": "Ivaliwe · Ivula ngo-{{day}} {{time}}",
+            "closedShort": "Ivaliwe",
             "days": {
               "sunday": "iCawe",
               "monday": "uMvulo",
@@ -14297,9 +14347,9 @@
           "lockedNote": "Iisetingi eziphawulwe njengezilawulwayo azinakutshintshwa kwiqela lakho lobudala.",
           "authPrompt": "Qinisekisa ubuwena ukuze ujonge kwaye utshintshe umxholo kunye nesetingi zokhuseleko.",
           "authRequired": "Vula isitshixo iisetingi",
-          "ageBandNote": "Some Iinketho are managed automatitsalelay for iakhawuntis aged 13–17 to uncedo Gcina your experience age-appropriate.",
+          "ageBandNote": "Ezinye iinketho zilawulwa ngokuzenzekelayo kwiakhawunti zeminyaka engama-13–17 ukuze amava akho ahambelane neminyaka.",
           "linkAgeSuitability": "Funda ngokufanelekanga kweminyaka nokuqondiswa kwabazali",
-          "reportingHint": "To ingxelo a Isihloko, izimvo, or umyalezo, vula it and khetha Report from the menu (⋯). iingxelo go to our trust & ukhuseleko iqela.",
+          "reportingHint": "Ukubika iposti, ingxelo okanye umyalezo, uyivule uze ukhethe uXela kwimenyu (⋯). Iingxelo ziya kwiqela lethu lokuthembeka nokhuseleko.",
           "toggle_restricted_mode_label": "Imowudi evinjelweyo",
           "toggle_restricted_mode_desc": "Nciphisa iimpawu zentlalo kunye nesiqulatho esiveliswe ngumsebenzisi kuyo yonke i-app",
           "toggle_hide_social_feed_label": "fihla social feed",
@@ -15712,7 +15762,7 @@
           "descriptionPlaceholder": "Chaza isiganeko, xa kwenzeka, nanaluphi na ulwazi olubalulekileyo…",
           "submit": "ngenisa ingxelo",
           "submittedTitle": "ingxelo received",
-          "submittedBody": "Our trust & ukhuseleko iqela will uluvo your ingxelo. You may be contacted if we need okungakumbi ulwazi.",
+          "submittedBody": "Iqela lethu lokuthembeka nokhuseleko liya kujonga ingxelo yakho. Sinokukuthinta ukuba sifuna ulwazi olungakumbi.",
           "submitFailedTitle": "Couldn't ngenisa",
           "submitFailedFallback": "Nceda zama kwakhona or Qhagamshelana inkxaso.",
           "submitGenericError": "Kukho into engahambanga kakuhle.",
@@ -23555,6 +23605,31 @@
           "waitlist": "uluhlu lokulinda",
           "frontDesk": "Front Desk",
           "waitingCount": "{{count}} Kulindile"
+        },
+        "createReadiness": {
+          "title": "Uluhlu lokubhukisha · {{completed}}/{{total}}",
+          "next": "okulandelayo: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} ukubhukisha requirements gqiba",
+          "jumpHint": "Jump to the okulandelayo kuyafuneka section",
+          "showRequirements": "Bonisa requirements",
+          "hideRequirements": "fihla requirements",
+          "participant": "umthathi-nxaxheba {{number}}",
+          "items": {
+            "group_date": "Umhla",
+            "group_time": "ixesha slot",
+            "group_duration": "Ubude",
+            "group_service": "okumisiweyo inkonzo",
+            "group_staff": "Ilungu leqela",
+            "group_address": "At-idilesi yasekhaya",
+            "group_participants": "abathathi-nxaxheba",
+            "booking_client": "Umxhasi",
+            "booking_services": "iinkonzo or iimveliso",
+            "booking_schedule": "umhla & ixesha",
+            "booking_staff": "abasebenzi assignment",
+            "booking_location": "inkonzo idilesi",
+            "booking_intake": "umxhasi forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} iintsuku ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi tapha,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

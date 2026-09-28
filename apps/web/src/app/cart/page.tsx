@@ -120,7 +120,7 @@ export default function CartPage() {
   const { t } = useTranslation();
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts) as string,
     [t],
   );
   const currency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -259,7 +259,6 @@ export default function CartPage() {
                       location={primaryPickup}
                       timezone={providerTimezone}
                       variant="compact"
-                      t={shopT}
                     />
                     {(pickupLocs?.length ?? 0) > 1 ? (
                       <p className="mt-1 text-xs text-gray-500">

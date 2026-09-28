@@ -1170,6 +1170,31 @@
           "stageDone": "Terminé",
           "progressA11y": "Progression du trajet : {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} sur {{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Liste de contrôle · {{completed}}/{{total}}",
+          "next": "Suivant: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} réservation requirements terminer",
+          "jumpHint": "Jump to the suivant obligatoire section",
+          "showRequirements": "Afficher requirements",
+          "hideRequirements": "Masquer requirements",
+          "participant": "Participant·e {{number}}",
+          "items": {
+            "group_date": "Date",
+            "group_time": "Heure slot",
+            "group_duration": "Durée",
+            "group_service": "Par défaut service",
+            "group_staff": "Membre de l’équipe",
+            "group_address": "At-home adresse",
+            "group_participants": "Participants",
+            "booking_client": "Client",
+            "booking_services": "Services or produits",
+            "booking_schedule": "Date & heure",
+            "booking_staff": "Attribution de l’équipe",
+            "booking_location": "Service adresse",
+            "booking_intake": "Formulaires client",
+            "booking_recurring": "Répétition série"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content filtrer",
           "toggle_sensitive_content_filter_desc": "Réduire les publications liées à la médecine ou aux traitements",
           "toggle_require_device_auth_label": "Exiger l’authentification de l’appareil",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these réglages"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these réglages",
+          "reportingHint": "Pour signaler une publication, un commentaire ou un message, ouvrez-le et choisissez Signaler dans le menu (⋯). Les signalements vont à notre équipe confiance et sécurité.",
+          "authPrompt": "Vérifiez votre identité pour afficher et modifier les paramètres de contenu et de sécurité.",
+          "authRequired": "Unlock réglages",
+          "ageBandNote": "Certaines options sont gérées automatiquement pour les comptes de 13 à 17 ans afin de garder une expérience adaptée à l’âge.",
+          "lockedNote": "Les paramètres marqués comme gérés ne peuvent pas être modifiés pour votre tranche d’âge.",
+          "linkAgeSuitability": "En savoir plus sur l’âge et le contrôle parental"
         },
         "emergencyContact": {
           "title": "Contact d’urgence",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Paiement du forfait confirmé. Retournez à Abonnement pour voir votre forfait actif.",
           "subscriptionPaymentFailed": "Le paiement de l’abonnement n’a pas abouti. Vérifiez les fonds de votre carte ou essayez un autre moyen de paiement.",
           "subscriptionPaymentPending": "Your payment was received and confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment.",
-          "subscriptionPaymentCancelled": "You annulé the paiement. Non charge was made."
+          "subscriptionPaymentCancelled": "You annulé the paiement. Non charge was made.",
+          "continueToSetupHub": "Votre paiement d’abonnement est confirmé. Continuez vers le hub de configuration pour finaliser le lancement de votre activité sur Beautonomi.",
+          "goToSetupHub": "Aller au hub de configuration"
         },
         "inventory": {
           "title": "Inventaire Manager",
@@ -12488,6 +12521,23 @@
           "acceptToggle": "Accept gift cards as payment",
           "saving": "Enregistrement…",
           "terms": "Conditions"
+        },
+        "reportUser": {
+          "title": "Signaler un utilisateur",
+          "breadcrumb": "Signaler l’utilisateur",
+          "intro": "Les signalements vont à notre équipe confiance et sécurité. Indiquez qui vous signalez et ce qui s’est passé. Danger urgent ? Appelez d’abord les urgences, puis contactez l’assistance Partenaire.",
+          "identifierLabel": "Qui signalez-vous ?",
+          "identifierPlaceholder": "@identifiant ou ID",
+          "identifierHint": "Utilisez le @identifiant du profil de la personne, ou son ID utilisateur si vous l’avez depuis une réservation ou une conversation.",
+          "descriptionLabel": "Que s’est-il passé ?",
+          "descriptionPlaceholder": "Décrivez l’incident, le moment et tout contexte utile…",
+          "submit": "Envoyer report",
+          "submittedTitle": "Signalement reçu",
+          "submittedBody": "Notre équipe confiance et sécurité examinera votre signalement. Nous pourrons vous contacter si nous avons besoin de précisions.",
+          "submitFailedTitle": "Couldn't envoyer",
+          "submitFailedFallback": "Veuillez réessayer ou contacter l’assistance Partenaire.",
+          "submitGenericError": "Une erreur s’est produite.",
+          "supportFallback": "Vous ne connaissez pas l’identifiant ? Ouvrez plutôt un ticket d’assistance Partenaire"
         }
       }
     },
@@ -13709,9 +13759,9 @@
           "noProductsAvailable": "Non produits are disponible right nonw",
           "soldOut": "Épuisé",
           "locationHours": {
-            "notListed": "Heures not listed",
-            "openUntil": "Ouvrir until {{time}}",
-            "closed": "Fermé maintenant",
+            "notListed": "Heures non renseignées",
+            "openUntil": "Ouvert jusqu'à {{time}}",
+            "closed": "Fermé actuellement",
             "closedOpens": "Fermé · Ouvre {{day}} à {{time}}",
             "closedShort": "Fermé",
             "days": {
@@ -13728,7 +13778,7 @@
             "directions": "Itinéraire",
             "call": "Appeler",
             "pickupInstructions": "Instructions de retrait",
-            "viewAllLocations": "Voir all {{count}} lieux",
+            "viewAllLocations": "Voir les {{count}} lieux",
             "collectAt": "Retrait chez {{name}}, {{city}}",
             "deliverTo": "Livraison à {{city}}"
           },
@@ -14293,12 +14343,12 @@
           "breadcrumb": "Contrôles de contenu",
           "loadFailed": "Impossible de load contenu & safety réglages",
           "updateErrorBody": "Impossible de mettre à jour setting. Veuillez réessayer.",
-          "lockedNote": "Réglages marked as managed cannot be changed for your age group.",
-          "authPrompt": "Vérifier your identity to voir and change contenu & safety réglages.",
+          "lockedNote": "Les paramètres marqués comme gérés ne peuvent pas être modifiés pour votre tranche d’âge.",
+          "authPrompt": "Vérifiez votre identité pour afficher et modifier les paramètres de contenu et de sécurité.",
           "authRequired": "Unlock réglages",
-          "ageBandNote": "Some options are managed automatically for accounts aged 13–17 to help keep your experience age-appropriate.",
+          "ageBandNote": "Certaines options sont gérées automatiquement pour les comptes de 13 à 17 ans afin de garder une expérience adaptée à l’âge.",
           "linkAgeSuitability": "En savoir plus sur l’âge et le contrôle parental",
-          "reportingHint": "To report a post, comment, or message, open it and choose Report from the menu (⋯). Reports go to our trust & safety team.",
+          "reportingHint": "Pour signaler une publication, un commentaire ou un message, ouvrez-le et choisissez Signaler dans le menu (⋯). Les signalements vont à notre équipe confiance et sécurité.",
           "toggle_restricted_mode_label": "Mode restreint",
           "toggle_restricted_mode_desc": "Limiter les fonctions sociales et le contenu généré par les utilisateurs",
           "toggle_hide_social_feed_label": "Masquer le fil social",
@@ -15711,7 +15761,7 @@
           "descriptionPlaceholder": "Décrivez l’incident, le moment et tout contexte utile…",
           "submit": "Envoyer report",
           "submittedTitle": "Signalement reçu",
-          "submittedBody": "Our trust & safety team will review your report. You may be contacted if we need more information.",
+          "submittedBody": "Notre équipe confiance et sécurité examinera votre signalement. Nous pourrons vous contacter si nous avons besoin de précisions.",
           "submitFailedTitle": "Couldn't envoyer",
           "submitFailedFallback": "Veuillez réessayer or contacter l’assistance.",
           "submitGenericError": "Une erreur s’est produite.",
@@ -23554,6 +23604,31 @@
           "waitlist": "Liste d’attente",
           "frontDesk": "Front desk",
           "waitingCount": "{{count}} waiting"
+        },
+        "createReadiness": {
+          "title": "Liste de contrôle · {{completed}}/{{total}}",
+          "next": "Suivant: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} réservation requirements terminer",
+          "jumpHint": "Jump to the suivant obligatoire section",
+          "showRequirements": "Show requirements",
+          "hideRequirements": "Hide requirements",
+          "participant": "Participant {{number}}",
+          "items": {
+            "group_date": "Date",
+            "group_time": "Heure slot",
+            "group_duration": "Durée",
+            "group_service": "Default service",
+            "group_staff": "Membre de l’équipe",
+            "group_address": "At-home adresse",
+            "group_participants": "Participants",
+            "booking_client": "Client",
+            "booking_services": "Services or produits",
+            "booking_schedule": "Date & heure",
+            "booking_staff": "Staff assignment",
+            "booking_location": "Service adresse",
+            "booking_intake": "Client forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34674,5 +34749,16 @@
     "daysAgo": "{{count}} jours ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi there,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

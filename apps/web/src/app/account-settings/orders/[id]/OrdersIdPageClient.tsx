@@ -215,7 +215,7 @@ export default function OrderDetailPage() {
   const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts) as string,
     [t],
   );
   const [order, setOrder] = useState<ProductOrder | null>(null);
@@ -784,7 +784,6 @@ export default function OrderDetailPage() {
                   variant="full"
                   showPhone
                   showMapLink
-                  t={shopT}
                 />
               )}
               {isDel && (est || instr) && (

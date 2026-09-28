@@ -145,7 +145,7 @@ export default function MarketAvailabilityGate() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const ma = (key: string, options?: Record<string, string>) =>
-    (options != null ? t(`customer.mobile.components.marketAvailability.${key}`, options as never) : t(`customer.mobile.components.marketAvailability.${key}`)) as string;
+    (options != null ? t(`customer.mobile.screens.marketAvailability.${key}`, options as never) : t(`customer.mobile.screens.marketAvailability.${key}`)) as string;
   const sessionDismiss = useRef({ za: false, unsupportedG: false, regional: false });
 
   const [panel, setPanel] = useState<Panel>(null);

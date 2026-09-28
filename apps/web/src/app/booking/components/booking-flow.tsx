@@ -1469,13 +1469,13 @@ export default function BookingFlow() {
       case "services":
         return t("booking.selectService");
       case "groupParticipants":
-        return t("web.booking.groupParticipants.title");
+        return t("web.booking.steps.groupParticipants.title");
       case "venue":
         return t("web.book.engine.whereAppointment");
       case "calendar":
         return t("web.book.engine.chooseDateTime");
       case "promotions":
-        return t("web.booking.promotions.title");
+        return t("web.booking.steps.promotions.title");
       case "yourInfo":
         return t("web.book.engine.yourDetails");
       case "forms":

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { formatLocationOpenLabel } from "@/lib/shop/formatLocationOpenLabel";
 
 export interface PickupStoreLocation {
@@ -17,6 +19,9 @@ export interface PickupStoreLocation {
   working_hours?: unknown;
 }
 
+const PICKUP_I18N = "customer.mobile.tabs.shop.pickupStore";
+const HOURS_I18N = "customer.mobile.tabs.shop.locationHours";
+
 type Props = {
   location: PickupStoreLocation;
   timezone?: string | null;
@@ -26,8 +31,6 @@ type Props = {
   onSelect?: () => void;
   showPhone?: boolean;
   showMapLink?: boolean;
-  t: (key: string, opts?: Record<string, string | number>) => string;
-  i18nPrefix?: string;
 };
 
 function fullAddress(loc: PickupStoreLocation): string {
@@ -45,13 +48,16 @@ export function PickupStoreCard({
   onSelect,
   showPhone = false,
   showMapLink = false,
-  t,
-  i18nPrefix = "customer.mobile.shop.pickupStore",
 }: Props) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, opts?: Record<string, string | number>) => t(`${PICKUP_I18N}.${key}`, opts) as string,
+    [t],
+  );
   const hoursLabel = formatLocationOpenLabel(
     { working_hours: location.working_hours, timezone },
-    t,
-    "customer.mobile.shop.locationHours",
+    (key, opts) => t(key, opts) as string,
+    HOURS_I18N,
   );
   const lat = Number(location.latitude);
   const lng = Number(location.longitude);
@@ -92,7 +98,7 @@ export function PickupStoreCard({
           <p className="mt-1.5 text-sm text-gray-800">{hoursLabel}</p>
           {collectionNotes ? (
             <div className="mt-2 rounded-lg bg-orange-50 p-2">
-              <p className="text-xs font-semibold text-orange-800">{t(`${i18nPrefix}.pickupInstructions`)}</p>
+              <p className="text-xs font-semibold text-orange-800">{tr("pickupInstructions")}</p>
               <p className="mt-0.5 text-xs leading-relaxed text-orange-900">{collectionNotes}</p>
             </div>
           ) : null}
@@ -105,12 +111,12 @@ export function PickupStoreCard({
                 className="font-semibold text-pink-600 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
-                {t(`${i18nPrefix}.directions`)}
+                {tr("directions")}
               </a>
             ) : null}
             {showPhone && location.phone ? (
               <a href={`tel:${location.phone.replace(/\s/g, "")}`} className="font-semibold text-pink-600 hover:underline">
-                {t(`${i18nPrefix}.call`)}
+                {tr("call")}
               </a>
             ) : null}
           </div>

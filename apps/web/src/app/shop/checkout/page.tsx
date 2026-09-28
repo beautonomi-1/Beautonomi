@@ -84,7 +84,7 @@ export default function ProductCheckoutPage() {
   const { t } = useTranslation();
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts) as string,
     [t],
   );
   const providerId = searchParams.get("provider_id");
@@ -853,7 +853,6 @@ export default function ProductCheckoutPage() {
                   onSelect={() => setSelectedLocation(loc.id)}
                   showPhone
                   showMapLink={selectedLocation === loc.id}
-                  t={shopT}
                 />
               ))}
             </div>

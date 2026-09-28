@@ -1170,6 +1170,31 @@
           "stageDone": "Ho felile",
           "progressA11y": "Journey Tsoelo-pele: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}} ho {{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Lenane la ho behela · {{completed}}/{{total}}",
+          "next": "e latelang: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} buking requirements qeta",
+          "jumpHint": "Jump to the e latelang hoa hlokahala section",
+          "showRequirements": "Bontša requirements",
+          "hideRequirements": "pata requirements",
+          "participant": "moahi {{number}}",
+          "items": {
+            "group_date": "Letsatsi",
+            "group_time": "nako slot",
+            "group_duration": "Nako",
+            "group_service": "ea kamehla tšebeletso",
+            "group_staff": "Setho sa sehlopha",
+            "group_address": "At-aterese ea lehae",
+            "group_participants": "baahi",
+            "booking_client": "Moreki",
+            "booking_services": "litšebeletso or lihlahisoa",
+            "booking_schedule": "letsatsi & nako",
+            "booking_staff": "basebetsi assignment",
+            "booking_location": "tšebeletso aterese",
+            "booking_intake": "moreki forms",
+            "booking_recurring": "Matseno a pheta-pheta"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content sefa",
           "toggle_sensitive_content_filter_desc": "Fokotsa liposo tse nang le li-tag tsa bongaka kapa phekolo",
           "toggle_require_device_auth_label": "Require sesebelisoa authentication",
-          "toggle_require_device_auth_desc": "Kopa Face ID, menoana, kapa paskhoutu pele u fetola litlhophiso tsena"
+          "toggle_require_device_auth_desc": "Kopa Face ID, menoana, kapa paskhoutu pele u fetola litlhophiso tsena",
+          "reportingHint": "Ho tlaleha poso, maikutlo kapa molaetsa, e bula ebe o khetha Tlaleha ho menu (⋯). Ditlaleho di ya sehlopheng sa rona sa tšhepo le polokeho.",
+          "authPrompt": "Netefatsa boitsebiso ba hau ho bona le ho fetola litaba le litlhophiso tsa polokeho.",
+          "authRequired": "Bula senotlolo litlhophiso",
+          "ageBandNote": "Dikgetho tse ding di laolwa ka bo eona bakeng sa li-account tsa lilemo tsa 13–17 ho boloka boiphihlelo ba hao bo loketseng lilemo.",
+          "lockedNote": "Litlhophiso tse tšoailoeng hore li laoloa li ke ke tsa fetoloa ho latela lilemo tsa hau.",
+          "linkAgeSuitability": "Ithute ka ho lokela ha lilemo le taelo ea batswadi"
         },
         "emergencyContact": {
           "title": "Emergency Ikopanye",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Tefo ea moralo oa hau e netefalitsoe. Khutlela ho Ngoliso ho bona moralo oa hau o sebetsang.",
           "subscriptionPaymentFailed": "Tefo ea peeletso ha e a atleha. Sheba chelete e kareting ea hau kapa leka mokhoa o mong oa ho lefa.",
           "subscriptionPaymentPending": "Your tefo was received and netefatsaation is still syncing with your bank. Return to Subscription and pull to nchafatsa in a moment.",
-          "subscriptionPaymentCancelled": "You e hlakotsoe the tefo. No lefisa was made."
+          "subscriptionPaymentCancelled": "You e hlakotsoe the tefo. No lefisa was made.",
+          "continueToSetupHub": "Tefo ya moralo oa hau e netefalitsoe. Tsoela pele ho hub ea ho theha ho qetela ho qala khoebo ea hau ho Beautonomi.",
+          "goToSetupHub": "Eya ho hub ea ho theha"
         },
         "inventory": {
           "title": "lethathamo la stock molaoli",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept likarete tsa mpho as tefo",
           "saving": "E a boloka…",
           "terms": "Liwumelwano"
+        },
+        "reportUser": {
+          "title": "tlaleho a Mosebelisi",
+          "breadcrumb": "tlaleho Mosebelisi",
+          "intro": "Litlaleho li ea moleng oa rona oa tšhepo le polokeho. Kenyelletsa motho eo u mo tlalehileng le se etsahetseng. Kotsi e potlakileng? Letsetsa litšebeletso tsa tshohanyetso pele, ebe o ikopanya le tšehetso ea Partner.",
+          "identifierLabel": "Who are you tlalehoing?",
+          "identifierPlaceholder": "@handle or Mosebelisi ID",
+          "identifierHint": "Sebelisa @handle ea motho ho tsoa profaeleng ea hae, kapa user ID haeba u e na le eona ho tsoa booking.",
+          "descriptionLabel": "Ho etsahetse'ng?",
+          "descriptionPlaceholder": "Hlalosa ketsahalo, nako eo e etsahetseng, le boemo bo amehang…",
+          "submit": "romela tlaleho",
+          "submittedTitle": "tlaleho received",
+          "submittedBody": "Sehlopha sa rona sa tšhepo le polokeho se tla hlahloba tlaleho ea hau. Re ka u ikopanya haeba re hloka lintlha tse ling.",
+          "submitFailedTitle": "Couldn't romela",
+          "submitFailedFallback": "Ka kopo leka hape or Ikopanye Partner tšehetso.",
+          "submitGenericError": "Ho na le phoso e etsahetseng.",
+          "supportFallback": "Ha o tsebe @handle ea bona? Bula tekete ea tšehetso ea Partner ho e-na le moo"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No lihlahisoa are e teng right hona joale",
           "soldOut": "ho rekisitsoe kaofela",
           "locationHours": {
-            "notListed": "lihora not listed",
-            "openUntil": "Bula until {{time}}",
-            "closed": "Koalad hona joale",
-            "closedOpens": "Koalad · Opens {{day}} {{time}}",
-            "closedShort": "Koalad",
+            "notListed": "Lihora ha li ngolilohe",
+            "openUntil": "E butswe ho fihlela {{time}}",
+            "closed": "E koetsoe hona joale",
+            "closedOpens": "E koetsoe · E bula {{day}} ka {{time}}",
+            "closedShort": "E koetsoe",
             "days": {
               "sunday": "Sontaha",
               "monday": "Mantaha",
@@ -14297,9 +14347,9 @@
           "lockedNote": "Litlhophiso tse tšoailoeng hore li laoloa li ke ke tsa fetoloa ho latela lilemo tsa hau.",
           "authPrompt": "Netefatsa boitsebiso ba hau ho bona le ho fetola litaba le litlhophiso tsa polokeho.",
           "authRequired": "Bula senotlolo litlhophiso",
-          "ageBandNote": "Some Dikhetho are managed automatiletsay for akhaontos aged 13–17 to thuso Boloka your experience age-appropriate.",
+          "ageBandNote": "Dikgetho tse ding di laolwa ka bo eona bakeng sa li-account tsa lilemo tsa 13–17 ho boloka boiphihlelo ba hao bo loketseng lilemo.",
           "linkAgeSuitability": "Ithute ka ho lokela ha lilemo le taelo ea batswadi",
-          "reportingHint": "To tlaleho a Poso, maikutlo, or molaetsa, bula it and khetha Report from the menu (⋯). litlaleho go to our trust & tšireletso sehlopha.",
+          "reportingHint": "Ho tlaleha poso, maikutlo kapa molaetsa, e bula ebe o khetha Tlaleha ho menu (⋯). Ditlaleho di ya sehlopheng sa rona sa tšhepo le polokeho.",
           "toggle_restricted_mode_label": "Restricted mode",
           "toggle_restricted_mode_desc": "Fokotsa likarolo tsa sechaba le litaba tse hlahisoang ke basebelisi ho app",
           "toggle_hide_social_feed_label": "pata social feed",
@@ -15712,7 +15762,7 @@
           "descriptionPlaceholder": "Hlalosa ketsahalo, nako eo e etsahetseng, le boemo bo amehang…",
           "submit": "romela tlaleho",
           "submittedTitle": "tlaleho received",
-          "submittedBody": "Our trust & tšireletso sehlopha will maikutlo your tlaleho. You may be contacted if we need tse ding tsebo.",
+          "submittedBody": "Sehlopha sa rona sa tšhepo le polokeho se tla hlahloba tlaleho ea hau. Re ka u ikopanya haeba re hloka lintlha tse ling.",
           "submitFailedTitle": "Couldn't romela",
           "submitFailedFallback": "Ka kopo leka hape or Ikopanye tšehetso.",
           "submitGenericError": "Ho na le phoso e etsahetseng.",
@@ -23555,6 +23605,31 @@
           "waitlist": "lenane la ho ema",
           "frontDesk": "Front Desk",
           "waitingCount": "{{count}} E emetse"
+        },
+        "createReadiness": {
+          "title": "Lenane la ho behela · {{completed}}/{{total}}",
+          "next": "e latelang: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} buking requirements qeta",
+          "jumpHint": "Jump to the e latelang hoa hlokahala section",
+          "showRequirements": "Bontša requirements",
+          "hideRequirements": "pata requirements",
+          "participant": "moahi {{number}}",
+          "items": {
+            "group_date": "Letsatsi",
+            "group_time": "nako slot",
+            "group_duration": "Nako",
+            "group_service": "ea kamehla tšebeletso",
+            "group_staff": "Setho sa sehlopha",
+            "group_address": "At-aterese ea lehae",
+            "group_participants": "baahi",
+            "booking_client": "Moreki",
+            "booking_services": "litšebeletso or lihlahisoa",
+            "booking_schedule": "letsatsi & nako",
+            "booking_staff": "basebetsi assignment",
+            "booking_location": "tšebeletso aterese",
+            "booking_intake": "moreki forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} matsatsi ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi tmona,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

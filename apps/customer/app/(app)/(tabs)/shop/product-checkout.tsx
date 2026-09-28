@@ -216,7 +216,7 @@ export default function ProductCheckoutScreen() {
   const [providerTimezone] = useState("Africa/Johannesburg");
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts ?? {}) as string,
     [t],
   );
   const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
@@ -1467,7 +1467,6 @@ export default function ProductCheckoutScreen() {
                   onPress={() => setSelectedLocation(loc.id)}
                   showPhone
                   showMap={selectedLocation === loc.id}
-                  t={shopT}
                 />
               ))}
             </View>

@@ -578,6 +578,7 @@ function resolveExistingAndroidChannelId(data: unknown): string {
     return ANDROID_CHANNEL_IDS.payments;
   }
   if (key.includes("reminder")) return ANDROID_CHANNEL_IDS.reminders;
+  if (key === "abandoned_cart") return ANDROID_CHANNEL_IDS.marketing;
   if (
     key.includes("promo") ||
     key.includes("marketing") ||
@@ -1986,8 +1987,13 @@ export async function sendTemplateNotification(
     // which is why template events never surfaced a banner while the super-admin
     // broadcast (which omits the flag) did. Keep this a normal visible alert.
     notificationPayload.ios_sound = "default";
-    notificationPayload.priority = 10;
-    notificationPayload.ios_interruption_level = "time_sensitive";
+    if (templateKey === "abandoned_cart") {
+      notificationPayload.priority = 5;
+      notificationPayload.ios_interruption_level = "active";
+    } else {
+      notificationPayload.priority = 10;
+      notificationPayload.ios_interruption_level = "time_sensitive";
+    }
   }
 
   // NOTE: email/SMS are intentionally NOT added to the OneSignal payload here.

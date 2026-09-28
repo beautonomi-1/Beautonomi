@@ -30,6 +30,10 @@ function Harness({ path }: { path: string }) {
 }
 
 describe("useApi authorization failure handling", () => {
+  // Each case waits out resume jitter (~1.8s) after the hook settles. The
+  // default 5s Jest limit flakes when turbo runs this file beside other suites.
+  jest.setTimeout(20_000);
+
   beforeEach(() => {
     jest.clearAllMocks();
     clearApiCache();

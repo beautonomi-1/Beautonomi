@@ -81,6 +81,8 @@ export function AdminChrome() {
   const [activeIndex, setActiveIndex] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const navScrollRef = useRef<HTMLElement>(null);
+  const NAV_SCROLL_STORAGE_KEY = "admin_nav_scroll";
 
   const navCountsQuery = useQuery({
     queryKey: adminQueryKeys.navCounts(),
@@ -403,20 +405,74 @@ export function AdminChrome() {
     return () => window.clearTimeout(timer);
   }, [location.pathname, location.search, location.hash]);
 
+  const prevPathnameRef = useRef(location.pathname);
+  useEffect(() => {
+    const hash = location.hash.replace(/^#/, "").trim();
+    if (prevPathnameRef.current !== location.pathname && !hash) {
+      window.scrollTo(0, 0);
+    }
+    prevPathnameRef.current = location.pathname;
+  }, [location.pathname, location.hash]);
+
+  useEffect(() => {
+    const el = navScrollRef.current;
+    if (!el || typeof window === "undefined") return;
+    const saved = window.sessionStorage.getItem(NAV_SCROLL_STORAGE_KEY);
+    if (saved != null) {
+      const top = Number(saved);
+      if (Number.isFinite(top)) el.scrollTop = top;
+    }
+    const onScroll = () => {
+      window.sessionStorage.setItem(NAV_SCROLL_STORAGE_KEY, String(el.scrollTop));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = navScrollRef.current;
+    if (!el) return;
+    const timer = window.setTimeout(() => {
+      const active = el.querySelector<HTMLElement>('[aria-current="page"]');
+      active?.scrollIntoView({ block: "nearest" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [sidebarOpen]);
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside
+        role={sidebarOpen ? "dialog" : undefined}
+        aria-modal={sidebarOpen ? true : undefined}
+        aria-label={sidebarOpen ? "Navigation menu" : undefined}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 transform border-r border-gray-200 bg-white transition-all md:static md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          "z-40 flex h-dvh flex-col border-r border-gray-200 bg-white transition-[width,transform]",
+          "max-md:fixed max-md:inset-y-0 max-md:left-0 md:sticky md:top-0 md:self-start",
+          sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full md:translate-x-0",
           sidebarCollapsed ? "md:w-[4.5rem]" : "md:w-64",
-          "w-64"
+          "w-64",
         )}
       >
-        <div className={cn(
-          "flex h-14 items-center border-b border-gray-100 font-semibold text-gray-900",
-          sidebarCollapsed ? "justify-center px-2" : "justify-between px-4",
-        )}>
+        <div
+          className={cn(
+            "flex h-14 shrink-0 items-center border-b border-gray-100 font-semibold text-gray-900",
+            sidebarCollapsed ? "justify-center px-2" : "justify-between px-4",
+          )}
+        >
           {sidebarCollapsed ? (
             <span className="text-primary text-lg">B</span>
           ) : (
@@ -435,10 +491,13 @@ export function AdminChrome() {
             {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
-        <nav className={cn(
-          "max-h-[calc(100vh-3.5rem)] overflow-y-auto text-sm",
-          sidebarCollapsed ? "p-1.5" : "p-3",
-        )}>
+        <nav
+          ref={navScrollRef}
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain text-sm [scrollbar-gutter:stable] [scrollbar-width:thin] hover:[scrollbar-color:rgb(209_213_219)_transparent]",
+            sidebarCollapsed ? "p-1.5" : "p-3",
+          )}
+        >
           <AdminNavSidebar
             groups={filteredNav}
             navCounts={navCounts}

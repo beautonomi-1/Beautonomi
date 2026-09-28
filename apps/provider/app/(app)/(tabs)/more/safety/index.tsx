@@ -239,7 +239,7 @@ export default function SafetyHubScreen() {
                 Alert.alert(ph("bookingSafetyTitle"), ph("bookingSafetyBody"), [
                   { text: t("common.ok") },
                   {
-                    text: t("customer.mobile.tabs.bookings", { defaultValue: "Bookings" }),
+                    text: t("provider.bookings"),
                     onPress: () => router.push("/(app)/(tabs)/bookings" as never),
                   },
                 ]);

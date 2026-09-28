@@ -1170,6 +1170,31 @@
           "stageDone": "Done",
           "progressA11y": "Journey progress: {{stage}}",
           "currentStageSummary": "{{stage}} · {{current}}/{{total}}"
+        },
+        "bookingCreateReadiness": {
+          "title": "Daftar periksa booking · {{completed}}/{{total}}",
+          "next": "Ifuatayo: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} uhifadhi requirements kamilisha",
+          "jumpHint": "Jump to the ifuatayo inahitajika section",
+          "showRequirements": "Show requirements",
+          "hideRequirements": "Hide requirements",
+          "participant": "Participant {{number}}",
+          "items": {
+            "group_date": "Tarehe",
+            "group_time": "Muda slot",
+            "group_duration": "Duration",
+            "group_service": "Default huduma",
+            "group_staff": "Team member",
+            "group_address": "At-home anwani",
+            "group_participants": "Participants",
+            "booking_client": "Client",
+            "booking_services": "Huduma or bidhaa",
+            "booking_schedule": "Tarehe & muda",
+            "booking_staff": "Staff assignment",
+            "booking_location": "Huduma anwani",
+            "booking_intake": "Client forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "screens": {
@@ -1340,7 +1365,13 @@
           "toggle_sensitive_content_filter_label": "Sensitive content filter",
           "toggle_sensitive_content_filter_desc": "Reduce posts tagged with medical or treatment-related topics",
           "toggle_require_device_auth_label": "Require device authentication",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings",
+          "reportingHint": "To report a post, comment, or message, open it and choose Report from the menu (⋯). Reports go to our trust & safety team.",
+          "authPrompt": "Verify your identity to view and change content & safety settings.",
+          "authRequired": "Unlock mipangilio",
+          "ageBandNote": "Some options are managed automatically for accounts aged 13–17 to help keep your experience age-appropriate.",
+          "lockedNote": "Settings marked as managed cannot be changed for your age group.",
+          "linkAgeSuitability": "Learn about age suitability & parental guidance"
         },
         "emergencyContact": {
           "title": "Emergency contact",
@@ -7155,7 +7186,9 @@
           "returnToSubscription": "Your plan payment was confirmed. Return to Subscription to see your active plan.",
           "subscriptionPaymentFailed": "The subscription payment did not go through. Check your card funds or try another payment method.",
           "subscriptionPaymentPending": "Your payment was received and confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment.",
-          "subscriptionPaymentCancelled": "You cancelled the payment. No charge was made."
+          "subscriptionPaymentCancelled": "You cancelled the payment. No charge was made.",
+          "continueToSetupHub": "Your plan payment was confirmed. Continue to the setup hub to finish launching your business on Beautonomi.",
+          "goToSetupHub": "Go to setup hub"
         },
         "inventory": {
           "title": "Inventory Manager",
@@ -12489,6 +12522,23 @@
           "acceptToggle": "Accept gift cards as payment",
           "saving": "Saving…",
           "terms": "Terms"
+        },
+        "reportUser": {
+          "title": "Report a user",
+          "breadcrumb": "Report user",
+          "intro": "Reports go to our trust & safety queue. Include who you're reporting and what happened. Urgent danger? Call emergency services first, then contact Partner support.",
+          "identifierLabel": "Who are you reporting?",
+          "identifierPlaceholder": "@handle or user ID",
+          "identifierHint": "Use the person's @handle from their profile, or their user ID if you have it from a booking or message thread.",
+          "descriptionLabel": "What happened?",
+          "descriptionPlaceholder": "Describe the incident, when it happened, and any relevant context…",
+          "submit": "Wasilisha report",
+          "submittedTitle": "Report received",
+          "submittedBody": "Our trust & safety team will review your report. You may be contacted if we need more information.",
+          "submitFailedTitle": "Couldn't wasilisha",
+          "submitFailedFallback": "Tafadhali jaribu tena or contact Partner support.",
+          "submitGenericError": "Kuna tatizo limetokea.",
+          "supportFallback": "Don't know their handle? Open a Partner support ticket instead"
         }
       }
     },
@@ -13710,11 +13760,11 @@
           "noProductsAvailable": "No products are available right now",
           "soldOut": "Sold out",
           "locationHours": {
-            "notListed": "Hours not listed",
-            "openUntil": "Open until {{time}}",
-            "closed": "Closed now",
-            "closedOpens": "Closed · Opens {{day}} {{time}}",
-            "closedShort": "Closed",
+            "notListed": "Jam operasional tidak tercantum",
+            "openUntil": "Buka hingga {{time}}",
+            "closed": "Tutup sekarang",
+            "closedOpens": "Tutup · Buka {{day}} pukul {{time}}",
+            "closedShort": "Tutup",
             "days": {
               "sunday": "Sunday",
               "monday": "Monday",
@@ -23555,6 +23605,31 @@
           "waitlist": "Waitlist",
           "frontDesk": "Front desk",
           "waitingCount": "{{count}} waiting"
+        },
+        "createReadiness": {
+          "title": "Daftar periksa booking · {{completed}}/{{total}}",
+          "next": "Ifuatayo: {{label}}",
+          "a11ySummary": "{{completed}} of {{total}} uhifadhi requirements kamilisha",
+          "jumpHint": "Jump to the ifuatayo inahitajika section",
+          "showRequirements": "Show requirements",
+          "hideRequirements": "Hide requirements",
+          "participant": "Participant {{number}}",
+          "items": {
+            "group_date": "Tarehe",
+            "group_time": "Muda slot",
+            "group_duration": "Duration",
+            "group_service": "Default huduma",
+            "group_staff": "Team member",
+            "group_address": "At-home anwani",
+            "group_participants": "Participants",
+            "booking_client": "Client",
+            "booking_services": "Huduma or bidhaa",
+            "booking_schedule": "Tarehe & muda",
+            "booking_staff": "Staff assignment",
+            "booking_location": "Huduma anwani",
+            "booking_intake": "Client forms",
+            "booking_recurring": "Repeating series"
+          }
         }
       },
       "finance": {
@@ -34675,5 +34750,16 @@
     "daysAgo": "{{count}} days ago",
     "am": "AM",
     "pm": "PM"
+  },
+  "agent": {
+    "support": {
+      "greeting_named": "Hi {{name}},",
+      "greeting": "Hi there,",
+      "fallback_escalation": "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.",
+      "fallback_standard": "Our support team is looking into this and will get back to you as soon as possible.",
+      "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
+      "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
+      "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
   }
 }

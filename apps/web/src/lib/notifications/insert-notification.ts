@@ -93,6 +93,9 @@ const VALID_TYPES_912 = new Set<string>([
   "support_queue",
 ]);
 
+// Values added by migration 968 (abandoned cart recovery).
+const VALID_TYPES_968 = new Set<string>(["abandoned_cart"]);
+
 /**
  * Closest 413-valid enum value for any new type. Used when migration 570
  * has not yet run on the target DB so the row is preserved (with slightly
@@ -143,6 +146,7 @@ function normaliseType(raw: string): string {
   if (VALID_TYPES_612.has(raw)) return raw;
   if (VALID_TYPES_685.has(raw)) return raw;
   if (VALID_TYPES_912.has(raw)) return raw;
+  if (VALID_TYPES_968.has(raw)) return raw;
   return TYPE_FALLBACK[raw] ?? "system";
 }
 

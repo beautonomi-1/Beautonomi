@@ -1,5 +1,7 @@
-import { View, Text, TouchableOpacity, Linking, Platform } from "react-native";
+import { useCallback } from "react";
+import { View, Text, TouchableOpacity, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
 import { formatLocationOpenLabel } from "@/lib/shop/formatLocationOpenLabel";
@@ -19,6 +21,9 @@ export interface PickupStoreLocation {
   working_hours?: unknown;
 }
 
+const PICKUP_I18N = "customer.mobile.tabs.shop.pickupStore";
+const HOURS_I18N = "customer.mobile.tabs.shop.locationHours";
+
 type Props = {
   location: PickupStoreLocation;
   timezone?: string | null;
@@ -28,8 +33,6 @@ type Props = {
   onPress?: () => void;
   showPhone?: boolean;
   showMap?: boolean;
-  t: (key: string, opts?: Record<string, string | number>) => string;
-  i18nPrefix?: string;
 };
 
 function fullAddress(loc: PickupStoreLocation): string {
@@ -54,13 +57,16 @@ export function PickupStoreCard({
   onPress,
   showPhone = false,
   showMap = false,
-  t,
-  i18nPrefix = "customer.mobile.shop.pickupStore",
 }: Props) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, opts?: Record<string, string | number>) => t(`${PICKUP_I18N}.${key}`, opts) as string,
+    [t],
+  );
   const hoursLabel = formatLocationOpenLabel(
     { working_hours: location.working_hours, timezone },
-    t,
-    "customer.mobile.shop.locationHours",
+    (key, opts) => t(key, opts) as string,
+    HOURS_I18N,
   );
   const lat = Number(location.latitude);
   const lng = Number(location.longitude);
@@ -98,9 +104,7 @@ export function PickupStoreCard({
           <Text style={{ fontSize: 13, color: "#374151", marginTop: 6 }}>{hoursLabel}</Text>
           {collectionNotes ? (
             <View style={{ marginTop: 8, backgroundColor: "#FFF7ED", borderRadius: 8, padding: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "#C2410C" }}>
-                {t(`${i18nPrefix}.pickupInstructions`)}
-              </Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#C2410C" }}>{tr("pickupInstructions")}</Text>
               <Text style={{ fontSize: 12, color: "#92400E", marginTop: 2, lineHeight: 17 }}>{collectionNotes}</Text>
             </View>
           ) : null}
@@ -122,7 +126,7 @@ export function PickupStoreCard({
             >
               <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
               <Text style={{ marginStart: 4, color: Colors.primary, fontWeight: "600", fontSize: 13 }}>
-                {t(`${i18nPrefix}.directions`)}
+                {tr("directions")}
               </Text>
             </TouchableOpacity>
             {showPhone && location.phone ? (
@@ -135,7 +139,7 @@ export function PickupStoreCard({
               >
                 <Ionicons name="call-outline" size={16} color={Colors.primary} />
                 <Text style={{ marginStart: 4, color: Colors.primary, fontWeight: "600", fontSize: 13 }}>
-                  {t(`${i18nPrefix}.call`)}
+                  {tr("call")}
                 </Text>
               </TouchableOpacity>
             ) : null}

@@ -19,6 +19,7 @@ export const NON_RECONCILABLE_PUSH_TEMPLATE_KEYS = new Set<string>([
  * / admin broadcast transport, plus retry + reconcile safety nets).
  */
 export const MARKETING_PUSH_TEMPLATE_KEYS = new Set<string>([
+  "abandoned_cart",
   "admin_broadcast",
   "provider_broadcast",
   "promotion_available",

@@ -190,7 +190,7 @@ export default function ProductOrderDetailScreen() {
   );
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts ?? {}) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts ?? {}) as string,
     [t],
   );
   const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
@@ -600,7 +600,6 @@ export default function ProductOrderDetailScreen() {
               variant="full"
               showPhone
               showMap
-              t={shopT}
             />
           </View>
         ) : null}
@@ -995,7 +994,7 @@ export default function ProductOrderDetailScreen() {
           {order.fulfillment_type === "collection" &&
           order.collection_location &&
           order.status !== "ready_for_collection" ? (
-            <PickupStoreCard location={order.collection_location} variant="full" showPhone showMap t={shopT} />
+            <PickupStoreCard location={order.collection_location} variant="full" showPhone showMap />
           ) : null}
           {(formatEstimatedDeliveryDate(order.estimated_delivery_date) || order.delivery_instructions?.trim()) &&
           order.fulfillment_type === "delivery" ? (

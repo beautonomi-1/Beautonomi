@@ -123,7 +123,7 @@ export default function CartScreen() {
   );
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
-      t(`customer.mobile.shop.${key}`, opts) as string,
+      t(`customer.mobile.tabs.shop.${key}`, opts) as string,
     [t],
   );
   const navigation = useNavigation();
@@ -386,7 +386,6 @@ export default function CartScreen() {
                     <PickupStoreCard
                       location={pickupLocationsByProvider[g.provider.id][0]}
                       variant="compact"
-                      t={shopT}
                     />
                     {(pickupLocationsByProvider[g.provider.id]?.length ?? 0) > 1 ? (
                       <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
