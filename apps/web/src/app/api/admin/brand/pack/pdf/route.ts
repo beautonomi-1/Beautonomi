@@ -4,6 +4,7 @@ import { handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
 import { resolveUtcPeriod } from "@/lib/brand-marketing/periods";
 import { sumKnownSpendForTenant } from "@/lib/brand-marketing/metrics";
+import { rollupPackByPillar } from "@/lib/brand-marketing/pack-rollup-pillars";
 import { createBrandPdf, pdfResponse, pdfToBuffer } from "@/lib/brand-marketing/pdf/document";
 
 export async function GET(request: NextRequest) {
@@ -23,6 +24,12 @@ export async function GET(request: NextRequest) {
     const doc = createBrandPdf(`Brand pack — ${period.label}`);
     doc.text(`Period: ${period.start.toISOString().slice(0, 10)} → ${period.end.toISOString().slice(0, 10)}`);
     doc.text(`Known spend: ${spend.known}`);
+    doc.moveDown();
+    const pillars = await rollupPackByPillar(supabase, access.tenantId, period);
+    doc.text("Roll-up by pillar");
+    for (const p of pillars) {
+      doc.text(`${p.pillar_name}: spend ${p.known_spend}, envelope ${p.budget_envelope}, plan budget ${p.plan_budget}`);
+    }
 
     const buffer = await pdfToBuffer(doc);
     return pdfResponse(buffer, `brand-pack-${period.start.toISOString().slice(0, 10)}.pdf`);

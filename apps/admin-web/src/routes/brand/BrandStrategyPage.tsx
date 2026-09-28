@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -8,170 +9,214 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { adminToast } from "@/lib/adminToast";
+import { StrategyHeaderForm } from "@/components/brand/strategy/StrategyHeaderForm";
+import { StrategyStatusBar } from "@/components/brand/strategy/StrategyStatusBar";
+import { PillarList, type PillarRow } from "@/components/brand/strategy/PillarList";
+import { PlanGrid } from "@/components/brand/strategy/PlanGrid";
+import { StrategyScorecardTab } from "@/components/brand/strategy/StrategyScorecardTab";
+import { StrategyKpiEditor, type StrategyKpiRow } from "@/components/brand/strategy/StrategyKpiEditor";
+import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
-type PlanRow = { id: string; year: number; quarter: number; budget?: number };
-type PillarRow = { id: string; name: string; brand_plans?: PlanRow[] };
-type StrategyRow = { id: string; year: number; status: string; positioning?: string; brand_promise?: string; brand_pillars?: PillarRow[] };
-
-function StrategyYearPanel({ strategy }: { strategy: StrategyRow }) {
-  const qc = useQueryClient();
-  const [pillarName, setPillarName] = useState("");
-  const [planPillarId, setPlanPillarId] = useState("");
-  const [planQuarter, setPlanQuarter] = useState("1");
-
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ["brand-strategy"] });
-
-  const pillarMut = useMutation({
-    mutationFn: () =>
-      adminApi.postJson("/api/admin/brand/strategy/pillars", {
-        strategy_id: strategy.id,
-        name: pillarName.trim(),
-      }),
-    onSuccess: () => {
-      setPillarName("");
-      adminToast.success("Pillar added");
-      invalidate();
-    },
-    onError: (e: Error) => adminToast.error(e.message),
-  });
-
-  const planMut = useMutation({
-    mutationFn: () =>
-      adminApi.postJson("/api/admin/brand/strategy/plans", {
-        pillar_id: planPillarId,
-        year: strategy.year,
-        quarter: Number(planQuarter),
-      }),
-    onSuccess: () => {
-      adminToast.success("Plan added");
-      invalidate();
-    },
-    onError: (e: Error) => adminToast.error(e.message),
-  });
-
-  const pillars = strategy.brand_pillars ?? [];
-
-  return (
-    <AdminPanel title={`${strategy.year} — ${strategy.status}`}>
-      <p className="text-sm">{strategy.positioning ?? "—"}</p>
-      <p className="mt-1 text-xs text-zinc-500">Promise: {strategy.brand_promise ?? "—"}</p>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <input
-          className="rounded border px-2 py-1.5 text-sm"
-          placeholder="New pillar name"
-          value={pillarName}
-          onChange={(e) => setPillarName(e.target.value)}
-        />
-        <button
-          type="button"
-          className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
-          disabled={!pillarName.trim() || pillarMut.isPending}
-          onClick={() => pillarMut.mutate()}
-        >
-          Add pillar
-        </button>
-      </div>
-
-      <ul className="mt-4 space-y-3 text-sm">
-        {pillars.map((p) => (
-          <li key={p.id} className="rounded border border-zinc-100 p-3">
-            <p className="font-medium">{p.name}</p>
-            <ul className="mt-1 text-xs text-zinc-600">
-              {(p.brand_plans ?? []).map((pl) => (
-                <li key={pl.id}>
-                  {pl.year} Q{pl.quarter}
-                  {pl.budget != null ? ` · budget ${pl.budget}` : ""}
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-
-      {pillars.length > 0 ? (
-        <div className="mt-4 flex flex-wrap items-end gap-2 border-t pt-3">
-          <label className="text-sm">
-            <span className="text-zinc-600">Pillar</span>
-            <select
-              className="ml-2 rounded border px-2 py-1"
-              value={planPillarId}
-              onChange={(e) => setPlanPillarId(e.target.value)}
-            >
-              <option value="">Select…</option>
-              {pillars.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-zinc-600">Quarter</span>
-            <select className="ml-2 rounded border px-2 py-1" value={planQuarter} onChange={(e) => setPlanQuarter(e.target.value)}>
-              {[1, 2, 3, 4].map((q) => (
-                <option key={q} value={String(q)}>
-                  Q{q}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            disabled={!planPillarId || planMut.isPending}
-            onClick={() => planMut.mutate()}
-          >
-            Add quarterly plan
-          </button>
-        </div>
-      ) : null}
-    </AdminPanel>
-  );
-}
+type PlanRow = { id: string; quarter: number; budget?: number };
+type StrategyRow = {
+  id: string;
+  year: number;
+  status: string;
+  positioning?: string | null;
+  brand_promise?: string | null;
+  notes?: string | null;
+  archived_at?: string | null;
+  brand_pillars?: Array<PillarRow & { brand_plans?: PlanRow[] }>;
+  brand_strategy_kpis?: StrategyKpiRow[];
+};
 
 export function BrandStrategyPage() {
   useAdminDocumentTitle("Brand strategy");
   const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [tab, setTab] = useState<"plan" | "scorecard">("plan");
+  const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
+  const { requestConfirm, ConfirmDialog } = useAdminConfirmAction();
+  const qc = useQueryClient();
 
   const q = useQuery({
-    queryKey: ["brand-strategy"],
-    queryFn: () => adminApi.getJson<{ items: StrategyRow[] }>("/api/admin/brand/strategy"),
+    queryKey: ["brand-strategy", includeArchived],
+    queryFn: () =>
+      adminApi.getJson<{ items: StrategyRow[] }>(
+        `/api/admin/brand/strategy${includeArchived ? "?include_archived=1" : ""}`,
+      ),
+  });
+
+  const items = q.data?.items ?? [];
+  const yearParam = searchParams.get("year");
+  const selected = useMemo(() => {
+    if (!items.length) return null;
+    if (yearParam) {
+      const y = Number(yearParam);
+      return items.find((s) => s.year === y) ?? items[0];
+    }
+    return items[0];
+  }, [items, yearParam]);
+
+  const locked = selected ? selected.status !== "draft" || !!selected.archived_at : true;
+
+  const patchMut = useMutation({
+    mutationFn: (patch: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/brand/strategy/${selected!.id}`, patch),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["brand-strategy"] }),
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const createMut = useMutation({
-    mutationFn: () =>
+    mutationFn: (year: number) =>
       adminApi.postJson("/api/admin/brand/strategy", {
-        year: new Date().getFullYear(),
-        positioning: "Draft positioning",
+        year,
+        positioning: "",
+        brand_promise: "",
       }),
-    onSuccess: () => {
+    onSuccess: (_data, year) => {
       adminToast.success("Strategy year created");
+      setSearchParams({ year: String(year) });
       void q.refetch();
     },
     onError: (e: Error) => adminToast.error(e.message),
   });
 
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["brand-strategy"] });
+
   if (denied) return denied;
   if (q.isLoading) return <AdminPageSkeleton rows={4} />;
 
-  const items = q.data?.items ?? [];
-
   return (
     <div className="space-y-4">
+      <ConfirmDialog />
       <AdminPageHeader
         title="Strategy"
-        description="Link briefs and campaigns to pillars and quarterly plans."
+        description="Pillars, quarterly plans, KPI scorecard and approval."
         actions={
-          <button type="button" className="rounded bg-violet-700 px-3 py-1.5 text-sm text-white" onClick={() => createMut.mutate()}>
+          <button
+            type="button"
+            className="rounded bg-violet-700 px-3 py-1.5 text-sm text-white"
+            onClick={() =>
+              requestConfirm({
+                title: "Add strategy year",
+                consequence: "Creates a draft strategy for the calendar year.",
+                confirmLabel: "Create",
+                preview: (
+                  <label className="block space-y-2">
+                    <span className="text-sm text-gray-600">Year</span>
+                    <input
+                      type="number"
+                      className="h-11 w-full rounded-xl border border-gray-300 px-3 text-sm"
+                      value={newYear}
+                      onChange={(e) => setNewYear(e.target.value)}
+                    />
+                  </label>
+                ),
+                onConfirm: () => {
+                  const year = Number(newYear);
+                  if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+                    adminToast.error("Enter a valid year");
+                    throw new Error("Invalid year");
+                  }
+                  createMut.mutate(year);
+                },
+              })
+            }
+          >
             Add year
           </button>
         }
       />
+
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={includeArchived} onChange={(e) => setIncludeArchived(e.target.checked)} />
+        Show archived
+      </label>
+
       {items.length === 0 ? (
-        <p className="text-sm text-zinc-500">No strategy yet. Add a year, then pillars and plans for brief linking.</p>
+        <p className="text-sm text-zinc-500">No strategy yet. Add a year to begin.</p>
       ) : (
-        items.map((s) => <StrategyYearPanel key={s.id} strategy={s} />)
+        <>
+          <div className="flex flex-wrap gap-2 border-b pb-2">
+            {items.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`rounded px-3 py-1 text-sm ${selected?.id === s.id ? "bg-violet-100 font-medium text-violet-900" : "hover:bg-zinc-50"}`}
+                onClick={() => setSearchParams({ year: String(s.year) })}
+              >
+                {s.year}
+                {s.archived_at ? " (archived)" : ""}
+              </button>
+            ))}
+          </div>
+
+          {selected ? (
+            <>
+              <StrategyStatusBar strategyId={selected.id} status={selected.status} locked={locked} onChanged={refresh} />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={`rounded px-3 py-1 text-sm ${tab === "plan" ? "bg-zinc-900 text-white" : "border"}`}
+                  onClick={() => setTab("plan")}
+                >
+                  Plan
+                </button>
+                <button
+                  type="button"
+                  className={`rounded px-3 py-1 text-sm ${tab === "scorecard" ? "bg-zinc-900 text-white" : "border"}`}
+                  onClick={() => setTab("scorecard")}
+                >
+                  Scorecard
+                </button>
+              </div>
+
+              {tab === "scorecard" ? (
+                <StrategyScorecardTab strategyId={selected.id} />
+              ) : (
+                <>
+                  <AdminPanel title={`${selected.year} strategy`}>
+                    <StrategyHeaderForm
+                      positioning={selected.positioning ?? ""}
+                      brandPromise={selected.brand_promise ?? ""}
+                      notes={selected.notes ?? ""}
+                      locked={locked}
+                      onSave={(patch) => patchMut.mutate(patch)}
+                    />
+                  </AdminPanel>
+                  <AdminPanel title="Pillars">
+                    <PillarList
+                      strategyId={selected.id}
+                      pillars={selected.brand_pillars ?? []}
+                      locked={locked}
+                      onChanged={refresh}
+                    />
+                  </AdminPanel>
+                  <AdminPanel title="Quarterly plans">
+                    <PlanGrid
+                      strategyYear={selected.year}
+                      pillars={selected.brand_pillars ?? []}
+                      locked={locked}
+                      onChanged={refresh}
+                    />
+                  </AdminPanel>
+                  <AdminPanel title="KPI targets">
+                    <StrategyKpiEditor
+                      strategyId={selected.id}
+                      year={selected.year}
+                      kpis={selected.brand_strategy_kpis ?? []}
+                      pillars={selected.brand_pillars ?? []}
+                      locked={locked}
+                      onChanged={refresh}
+                    />
+                  </AdminPanel>
+                </>
+              )}
+            </>
+          ) : null}
+        </>
       )}
     </div>
   );

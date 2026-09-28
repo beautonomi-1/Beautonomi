@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { hashGuestToken, decideBrandApproval } from "@/lib/brand-marketing/approvals";
+import { applyStrategyDecision } from "@/lib/brand-marketing/strategy";
 import { extractRequestMeta, writeAuditLog } from "@/lib/audit/audit";
 
 export async function GET(
@@ -49,7 +50,7 @@ export async function POST(
     const hash = hashGuestToken(token);
     const { data: approval } = await supabase
       .from("brand_approvals")
-      .select("id, tenant_id, status, guest_token_expires_at")
+      .select("id, tenant_id, status, guest_token_expires_at, subject_type, subject_id")
       .eq("guest_token_hash", hash)
       .maybeSingle();
     if (!approval) return errorResponse("Invalid link", "NOT_FOUND", 404);
@@ -66,6 +67,16 @@ export async function POST(
       evidence: { guest: true, reviewer_name: body.reviewer_name, ...meta },
     });
     if (decided.ok === false) return errorResponse(decided.message, "VALIDATION_ERROR", 400);
+
+    if (approval.subject_type === "strategy") {
+      await applyStrategyDecision(
+        supabase,
+        approval.tenant_id,
+        approval.subject_id,
+        body.decision,
+        approval.id,
+      );
+    }
 
     await writeAuditLog({
       action: "brand.guest_review",

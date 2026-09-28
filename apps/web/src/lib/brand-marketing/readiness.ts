@@ -107,10 +107,15 @@ async function blockersForTarget(
   }
 
   if (target === "creative" || targetIdx >= ["planning", "creative", "live", "measuring", "closed"].indexOf("live")) {
+    const flightYear = campaign.flight_start
+      ? new Date(String(campaign.flight_start).slice(0, 10)).getUTCFullYear()
+      : new Date().getUTCFullYear();
     const { count: planCount } = await supabase
       .from("brand_plans")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
+      .eq("tenant_id", tenantId)
+      .eq("year", flightYear)
+      .is("archived_at", null);
     if ((planCount ?? 0) > 0 && !campaign.plan_id) {
       blockers.push({
         kind: "campaign",

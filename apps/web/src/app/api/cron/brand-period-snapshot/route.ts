@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { resolveUtcPeriod } from "@/lib/brand-marketing/periods";
 import { sumKnownSpendForTenant } from "@/lib/brand-marketing/metrics";
+import { writeKpiSnapshotsForTenant } from "@/lib/brand-marketing/scorecard";
+import { runStrategyPacingAlertsForTenant } from "@/lib/brand-marketing/strategy-pacing-alerts";
 
 const JOB_NAME = "brand-period-snapshot";
 export const maxDuration = 300;
@@ -65,6 +67,10 @@ async function runJob() {
         { onConflict: "tenant_id,period_kind,period_start,period_end" },
       );
       if (!error) written += 1;
+      if (kind === "week") {
+        await writeKpiSnapshotsForTenant(supabase, t.id, period);
+        await runStrategyPacingAlertsForTenant(supabase, t.id, period);
+      }
     }
   }
 

@@ -24,7 +24,13 @@ type MyWorkPayload = {
     flight_end: string;
   }>;
   stale_metric_days: number;
-  pending_approvals: { id: string; subject_type: string; due_at: string | null }[];
+  pending_approvals: {
+    id: string;
+    subject_type: string;
+    subject_id: string;
+    due_at: string | null;
+    strategy_year?: number | null;
+  }[];
   open_tasks: { id: string; title: string; due_at: string | null; campaign_id: string | null }[];
 };
 
@@ -105,7 +111,20 @@ export function BrandMyWorkPage() {
         ) : (
           <div className="space-y-2">
             {data.pending_approvals.map((a) => (
-              <ApprovalCard key={a.id} approval={{ ...a, status: "pending", comment: null, approver_id: null }} onUpdated={() => void q.refetch()} />
+              <div key={a.id} className="space-y-1">
+                <ApprovalCard
+                  approval={{ ...a, status: "pending", comment: null, approver_id: null }}
+                  onUpdated={() => void q.refetch()}
+                />
+                {a.subject_type === "strategy" && a.strategy_year ? (
+                  <Link
+                    to={adminSpaTo(`/admin/brand/strategy?year=${a.strategy_year}`)}
+                    className="text-xs text-violet-700 hover:underline"
+                  >
+                    Open {a.strategy_year} strategy
+                  </Link>
+                ) : null}
+              </div>
             ))}
           </div>
         )}

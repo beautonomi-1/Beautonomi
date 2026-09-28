@@ -5,6 +5,7 @@ import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/a
 import { requireBrandDeskAccess, brandAccessErrorResponse } from "@/lib/brand-marketing/auth";
 import { approveGoLiveRequest } from "@/lib/brand-marketing/stage";
 import { decideBrandApproval } from "@/lib/brand-marketing/approvals";
+import { applyStrategyDecision } from "@/lib/brand-marketing/strategy";
 import { extractRequestMeta } from "@/lib/audit/audit";
 import { auditBrand } from "@/lib/brand-marketing/audit";
 
@@ -72,6 +73,17 @@ export async function POST(
       evidence: meta,
     });
     if (decided.ok === false) return errorResponse(decided.message, "VALIDATION_ERROR", 400);
+
+    if (approval.subject_type === "strategy") {
+      const applied = await applyStrategyDecision(
+        supabase,
+        access.tenantId,
+        approval.subject_id,
+        body.decision,
+        access.user.id,
+      );
+      if (applied.ok === false) return errorResponse(applied.message, "VALIDATION_ERROR", 400);
+    }
 
     await auditBrand(request, {
       supabase,

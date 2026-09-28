@@ -4,9 +4,15 @@ import { Link } from "react-router";
 import { adminApi } from "@/lib/adminClient";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
-type PillarRow = { id: string; name: string; brand_plans?: PlanRow[] };
-type PlanRow = { id: string; year: number; quarter: number };
-type StrategyRow = { id: string; year: number; brand_pillars?: PillarRow[] };
+type PillarRow = { id: string; name: string; archived_at?: string | null; brand_plans?: PlanRow[] };
+type PlanRow = { id: string; year: number; quarter: number; archived_at?: string | null };
+type StrategyRow = {
+  id: string;
+  year: number;
+  status: string;
+  archived_at?: string | null;
+  brand_pillars?: PillarRow[];
+};
 
 type Props = {
   pillarId: string;
@@ -29,16 +35,35 @@ export function BrandBriefStrategyPickers({
   });
 
   const pillars = useMemo(() => {
-    const items = strategyQ.data?.items ?? [];
-    return items.flatMap((s) =>
-      (s.brand_pillars ?? []).map((p) => ({ ...p, strategyYear: s.year })),
+    const items = (strategyQ.data?.items ?? []).filter((s) => !s.archived_at);
+    const active = items.flatMap((s) =>
+      (s.brand_pillars ?? [])
+        .filter((p) => !p.archived_at)
+        .map((p) => ({ ...p, strategyYear: s.year, strategyStatus: s.status })),
     );
-  }, [strategyQ.data?.items]);
+    if (pillarId && !active.some((p) => p.id === pillarId)) {
+      const found = (strategyQ.data?.items ?? []).flatMap((s) =>
+        (s.brand_pillars ?? []).map((p) => ({ ...p, strategyYear: s.year, strategyStatus: s.status })),
+      ).find((p) => p.id === pillarId);
+      if (found) {
+        active.unshift({ ...found, name: `${found.name} (archived)`, strategyStatus: "archived" });
+      }
+    }
+    return active;
+  }, [strategyQ.data?.items, pillarId, planId]);
 
   const plans = useMemo(() => {
     const pillar = pillars.find((p) => p.id === pillarId);
-    return pillar?.brand_plans ?? [];
-  }, [pillars, pillarId]);
+    const list = (pillar?.brand_plans ?? []).filter((pl) => !pl.archived_at);
+    if (planId && !list.some((pl) => pl.id === planId)) {
+      const archived = (strategyQ.data?.items ?? [])
+        .flatMap((s) => s.brand_pillars ?? [])
+        .flatMap((p) => p.brand_plans ?? [])
+        .find((pl) => pl.id === planId);
+      if (archived) list.push({ ...archived, quarter: archived.quarter, year: archived.year });
+    }
+    return list;
+  }, [pillars, pillarId, planId, strategyQ.data?.items]);
 
   if (strategyQ.isLoading) {
     return <p className="text-xs text-zinc-500">Loading strategy…</p>;
@@ -72,7 +97,7 @@ export function BrandBriefStrategyPickers({
           <option value="">Select pillar…</option>
           {pillars.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} ({p.strategyYear})
+              {p.name} ({p.strategyYear}{p.strategyStatus !== "approved" ? ` · ${p.strategyStatus}` : ""})
             </option>
           ))}
         </select>

@@ -264,6 +264,20 @@ export const CRITICAL_ADMIN_FLOWS: CriticalAdminFlow[] = [
     rbac: "section",
   },
   {
+    id: "brand-strategy",
+    description: "Brand strategy pillars, plans, scorecard and approval",
+    appPath: "brand/strategy",
+    pageModule: "routes/brand/BrandStrategyPage.tsx",
+    rbac: "section",
+  },
+  {
+    id: "brand-calendar",
+    description: "Brand calendar swimlanes, quarter bands and ICS export",
+    appPath: "brand/calendar",
+    pageModule: "routes/brand/BrandCalendarPage.tsx",
+    rbac: "section",
+  },
+  {
     id: "finance-payroll-rules",
     description: "Payroll jurisdiction rule sets (verify / publish)",
     appPath: "payroll-rules",

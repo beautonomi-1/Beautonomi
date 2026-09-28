@@ -36,12 +36,24 @@ export async function GET(request: NextRequest) {
 
     const owned_clashes = await findOwnedChannelClashes(supabase, access.tenantId);
 
-    const { data: pendingApprovals } = await supabase
+    const { data: pendingApprovalsRaw } = await supabase
       .from("brand_approvals")
       .select("id, subject_type, subject_id, status, due_at")
       .eq("tenant_id", access.tenantId)
       .eq("approver_id", access.user.id)
       .eq("status", "pending");
+
+    const pendingApprovals = await Promise.all(
+      (pendingApprovalsRaw ?? []).map(async (a) => {
+        if (a.subject_type !== "strategy") return a;
+        const { data: strat } = await supabase
+          .from("brand_strategies")
+          .select("year")
+          .eq("id", a.subject_id)
+          .maybeSingle();
+        return { ...a, strategy_year: strat?.year ?? null };
+      }),
+    );
 
     const { data: openTasks } = await supabase
       .from("brand_tasks")

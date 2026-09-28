@@ -146,6 +146,16 @@ export async function PATCH(
       .eq("id", id)
       .eq("tenant_id", access.tenantId)
       .maybeSingle();
+    if (!before) return errorResponse("Not found", "NOT_FOUND", 404);
+
+    const rescheduling = patch.flight_start !== undefined || patch.flight_end !== undefined;
+    if (rescheduling && before.stage !== "planning") {
+      return errorResponse(
+        "Only planning campaigns can be rescheduled from the calendar",
+        "CAMPAIGN_LOCKED",
+        400,
+      );
+    }
 
     if (patch.tracking_code) {
       const { data: clash } = await supabase
