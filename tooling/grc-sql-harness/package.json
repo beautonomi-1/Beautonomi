@@ -1,0 +1,15 @@
+{
+  "name": "@beautonomi/grc-sql-harness",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Runs GRC migrations 949+ on an in-process Postgres (PGlite) and exercises RBAC, SoD and workflow rules.",
+  "scripts": {
+    "test": "pnpm --filter @beautonomi/grc-catalog build && pnpm --filter @beautonomi/admin-access build && node run.mjs"
+  },
+  "devDependencies": {
+    "@beautonomi/admin-access": "workspace:*",
+    "@beautonomi/grc-catalog": "workspace:*",
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

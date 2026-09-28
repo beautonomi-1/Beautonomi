@@ -683,6 +683,7 @@ export default function ServiceDetailScreen() {
                       editable={editing}
                       accessibilityLabel={cd("homePriceA11y")}
                     />
+                    <Text style={twStyle("mt-1 text-xs text-gray-500")}>{cd("homePriceAdjustmentHint")}</Text>
                   </View>
                   <View style={twStyle("flex-1")}>
                     <Text style={twStyle("mb-1 text-xs text-gray-500")}>

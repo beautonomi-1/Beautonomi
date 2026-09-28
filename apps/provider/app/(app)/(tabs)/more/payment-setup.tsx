@@ -9,6 +9,7 @@ import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 
 const SETUP_ITEMS = [
   {
@@ -72,6 +73,8 @@ export default function PaymentSetupScreen() {
   const terminalCatalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
   const terminalShopEnabled = terminalEcommerceEnabled || terminalCatalogEnabled;
 
+  const paymentHintFlags = [yocoEnabled, paycloudEnabled, paystackTerminalEnabled].filter(Boolean).length;
+
   const visibleItems = SETUP_ITEMS.filter((item) => {
     if (item.flag === "payment_yoco") return yocoEnabled;
     if (item.flag === "payment_paycloud") return paycloudEnabled;
@@ -88,6 +91,19 @@ export default function PaymentSetupScreen() {
         showBack
         onBack={handleBack}
       />
+      {paymentHintFlags >= 2 ? (
+        <ContextualHint
+          id="provider.paymentSetup.devices"
+          mode="once"
+          message={[
+            yocoEnabled ? t("provider.mobile.screens.paymentSetup.hintYoco") : null,
+            paycloudEnabled ? t("provider.mobile.screens.paymentSetup.hintCardMachines") : null,
+            paystackTerminalEnabled ? t("provider.mobile.screens.paymentSetup.hintPaystackTerminal") : null,
+          ]
+            .filter(Boolean)
+            .join("\n")}
+        />
+      ) : null}
       {visibleItems.map((item) => {
         const itemLabel = t(item.labelKey);
         const itemSubtitle = t(item.subtitleKey);

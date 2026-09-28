@@ -1161,6 +1161,15 @@
         },
         "staticMap": {
           "mapUnavailable": "Map no disponible"
+        },
+        "journeyProgress": {
+          "stageConfirmed": "Confirmed",
+          "stageEnRoute": "En route",
+          "stageArrived": "Arrived",
+          "stageInService": "In service",
+          "stageDone": "Done",
+          "progressA11y": "Journey progress: {{stage}}",
+          "currentStageSummary": "{{stage}} · {{current}}/{{total}}"
         }
       },
       "screens": {
@@ -3903,7 +3912,8 @@
           "trackingUrlA11y": "Seguimiento URL",
           "trackingUrlHelp": "Paste the carrier's tracking page so customers can tap through from their order.",
           "saving": "Guardando…",
-          "confirmShipped": "Confirmar Enviado"
+          "confirmShipped": "Confirmar Enviado",
+          "estimatedDeliveryDate": "Estimated delivery date (optional)"
         },
         "yocoDevices": {
           "title": "Yoco dispositivos",
@@ -13698,7 +13708,39 @@
           "noProductsTitle": "No products found",
           "tryDifferentSearch": "Try a different search term",
           "noProductsAvailable": "No products are available right now",
-          "soldOut": "agotado"
+          "soldOut": "agotado",
+          "locationHours": {
+            "notListed": "Hours not listed",
+            "openUntil": "Open until {{time}}",
+            "closed": "Closed now",
+            "closedOpens": "Closed · Opens {{day}} {{time}}",
+            "closedShort": "Closed",
+            "days": {
+              "sunday": "Sunday",
+              "monday": "Monday",
+              "tuesday": "Tuesday",
+              "wednesday": "Wednesday",
+              "thursday": "Thursday",
+              "friday": "Friday",
+              "saturday": "Saturday"
+            }
+          },
+          "pickupStore": {
+            "directions": "Directions",
+            "call": "Call",
+            "pickupInstructions": "Pickup instructions",
+            "viewAllLocations": "View all {{count}} locations",
+            "collectAt": "Collect at {{name}}, {{city}}",
+            "deliverTo": "Deliver to {{city}}"
+          },
+          "delivery": {
+            "feeEstimate": "Delivery fee estimate",
+            "calculatedAtCheckout": "Calculated at checkout",
+            "outsideRadius": "This address is outside the delivery area.",
+            "confirmOnMap": "Confirm this address on the map to check delivery.",
+            "instructionsLabel": "Delivery instructions (optional)",
+            "instructionsPlaceholder": "Gate code, landmarks, where to leave the order…"
+          }
         },
         "chats": {
           "searchPlaceholder": "Search providers or messages",
@@ -14029,7 +14071,9 @@
           "checkoutPickupCta": "pago for Recogida — {{amount}}",
           "checkoutCta": "pago — {{amount}}",
           "total": "Total",
-          "alsoCheckoutOnWeb": "Also pago on web"
+          "alsoCheckoutOnWeb": "Also pago on web",
+          "pickupLocationsMore": "{{count}} pickup locations — choose at checkout",
+          "deliveryEtaDays": "Estimated delivery within {{days}} business day(s)"
         },
         "productCheckout": {
           "title": "Pago",
@@ -14092,7 +14136,51 @@
           "placeOrderA11y": "Place pedido",
           "placeOrderHint": "Double tap to enviar your pedido",
           "itemFallback": "Artículo",
-          "loadAddressesFailed": "No se pudo cargar direcciones"
+          "loadAddressesFailed": "No se pudo cargar direcciones",
+          "deliveryInstructionsLabel": "Delivery instructions (optional)",
+          "deliveryFeeCalculating": "Calculating delivery fee…",
+          "deliveryFeeEstimate": "Estimated delivery: {{amount}}",
+          "deliveryOutsideRadius": "Address is outside the delivery area.",
+          "deliveryConfirmMap": "Confirm your address on the map to enable delivery.",
+          "feeEstimateGuest": "Estimated delivery fee (sign in for exact quote)",
+          "cartEmptyTitle": "Cart is empty",
+          "cartEmptyBody": "Add products from this seller before checkout.",
+          "addressRequiredTitle": "Address required",
+          "addressRequiredBody": "Please select a delivery address",
+          "locationRequiredTitle": "Location required",
+          "locationRequiredBody": "Please select a collection location",
+          "orderFailedTitle": "Order failed",
+          "orderFailedBody": "Your order could not be placed. Please try again.",
+          "signInToCheckoutTitle": "Sign in to checkout",
+          "signInToCheckoutBody": "Create an account or sign in so we can process payment and delivery.",
+          "notNow": "Not now",
+          "orderPlacedTitle": "Order placed!",
+          "orderPlacedWalletBody": "Your order {{orderNumber}} has been paid from your wallet.",
+          "orderPlacedCardOnDeliveryBody": "Your order {{orderNumber}} has been placed. Please have your card ready at delivery/collection.",
+          "orderPlacedNoEmailBody": "Your order {{orderNumber}} has been placed. Payment is pending — add an email in account settings to pay online, or complete payment from Orders.",
+          "orderConfirmFailedBody": "We could not confirm your order. Please check Product orders or try again.",
+          "orderCreatedPayFailedTitle": "Order created",
+          "orderCreatedPayFailedBody": "Your order {{orderNumber}} was placed but payment could not be initialized. You can pay later from your orders.",
+          "paymentSuccessConfirmedBody": "Your order {{orderNumber}} has been confirmed.",
+          "paymentPendingCheckoutBody": "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
+          "paymentSuccessTitle": "Payment successful",
+          "paymentPendingTitle": "Payment pending",
+          "viewOrdersCta": "View orders",
+          "orderNumberLabel": "Order number",
+          "itemsLabel": "Items",
+          "orderSuccessFooterHint": "Tap continue to view your orders.",
+          "placingOrder": "Placing your order…",
+          "processingPayment": "Processing payment…",
+          "openingPaymentPage": "Opening payment page…",
+          "confirmingPayment": "Confirming your payment…",
+          "securePaymentTitle": "Secure payment",
+          "savedCardChargeFailed": "Could not charge your saved card. Try again or use a different payment method.",
+          "checkingOrderStatus": "Checking your order status…",
+          "orderStatusUnknownTitle": "Still confirming your order",
+          "orderStatusUnknownBody": "We could not confirm whether your order went through. Check My Orders before trying again.",
+          "paymentCancelledTitle": "Payment cancelled",
+          "paymentCancelledOrderBody": "No card charge was completed. Order #{{orderNumber}} is still pending — complete payment from My Orders. Any wallet amount applied stays on the order until you pay or the checkout expires.",
+          "orderCreatedPayPendingBody": "Order #{{orderNumber}} was created. Complete payment from My Orders if it does not confirm shortly."
         },
         "authSignup": {
           "signUpFailedTitle": "Sign up failed",
@@ -14429,7 +14517,9 @@
           "itemCountOne": "{{count}} artículo",
           "itemCountOther": "{{count}} artículos",
           "returnLabel": "Return {{status}}",
-          "tracking": "Seguimiento: {{number}}"
+          "tracking": "Seguimiento: {{number}}",
+          "collectAt": "Collect at {{name}}, {{city}}",
+          "deliverTo": "Deliver to {{city}}"
         },
         "productReviews": {
           "title": "Reseñas",
@@ -14752,7 +14842,14 @@
           "totalDifferenceHint": "Small differences can come from rounding or promotions applied at checkout.",
           "soldBy": "Sold by",
           "requestReturnCta": "solicitud Return / reembolso",
-          "returnWindowPassed": "Return window ({{days}} days) has passed. For help, open Profile → Help centre → New ticket."
+          "returnWindowPassed": "Return window ({{days}} days) has passed. For help, open Profile → Help centre → New ticket.",
+          "readyForPickupTitle": "Ready for pickup",
+          "lineFulfilment": "Fulfilment: {{status}}",
+          "unitLabel": "Unit",
+          "buildingLabel": "Building",
+          "accessLabel": "Access",
+          "parkingLabel": "Parking",
+          "landmarksLabel": "Landmarks"
         },
         "customRequestsList": {
           "startPaymentFailed": "Failed to start payment",
@@ -16192,7 +16289,9 @@
           "addToCartWithPrice": "Añadir to Carrito · {{price}}",
           "checkoutCart": "pago Carrito ({{count}})",
           "addToCartFirst": "Añadir to Carrito first",
-          "moreFrom": "más from {{name}}"
+          "moreFrom": "más from {{name}}",
+          "deliveryCalculatedAtCheckout": "Delivery fee calculated at checkout",
+          "estimatedDeliveryDays": "Estimated delivery within {{days}} business day(s)"
         },
         "deactivateAccount": {
           "passwordPlaceholder": "Enter your password",
@@ -28297,7 +28396,8 @@
           "statusDelivered": "delivered",
           "statusCancelled": "cancelado",
           "statusRefunded": "reembolsado",
-          "paid": "pagado"
+          "paid": "pagado",
+          "estimatedDeliveryDate": "Estimated delivery date (optional)"
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override ubicación Opevaloración horas",

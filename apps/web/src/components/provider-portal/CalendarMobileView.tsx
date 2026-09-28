@@ -70,6 +70,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot } from "@/components/provider-portal/DragDropCalendar";
 import { MangomintStatusLegend } from "@/components/calendar/MangomintStatusLegend";
+import { CalendarIconLegend } from "@/components/provider-portal/CalendarIconLegend";
 import {
   getFirstHourAnyStaffAvailable,
   getAppointmentColors,
@@ -839,6 +840,9 @@ export function CalendarMobileView({
           </div>
           
           <div className="flex items-center gap-1">
+            <div className="[&_button]:text-white [&_button]:border-white/30 [&_button]:hover:bg-white/10 [&_button]:text-xs [&_button]:h-8">
+              <CalendarIconLegend />
+            </div>
             <MangomintStatusLegend
               variant="popover"
               showKinds={false}
@@ -1700,7 +1704,7 @@ export function CalendarMobileView({
                                         "flex items-center justify-center",
                                         icon.colorClass,
                                       )}
-                                      title={icon.tooltip}
+                                      title={t(`web.provider.scheduling.calendarIcons.${icon.flagKey}`)}
                                     >
                                       <IconComponent className="w-1.5 h-1.5" />
                                     </div>
@@ -2094,7 +2098,7 @@ export function CalendarMobileView({
                                     "flex items-center justify-center",
                                     icon.colorClass,
                                   )}
-                                  title={icon.tooltip}
+                                  title={t(`web.provider.scheduling.calendarIcons.${icon.flagKey}`)}
                                 >
                                   <IconComponent className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
                                 </div>

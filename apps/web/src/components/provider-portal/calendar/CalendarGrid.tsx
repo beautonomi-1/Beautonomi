@@ -12,6 +12,7 @@ import {
 } from "@/lib/scheduling/mangomintAdapter";
 import { useCalendarPreferences } from "@/lib/settings/calendarPreferences";
 import { DragGhostOverlay } from "@/components/provider-portal/DragDropCalendar";
+import { CalendarIconLegend } from "@/components/provider-portal/CalendarIconLegend";
 import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { formatDateKeyInTimeZone } from "@beautonomi/utils";
@@ -357,6 +358,9 @@ function CalendarGridComponent({
       className="ltr-island flex flex-1 h-full min-h-0 w-full max-w-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden box-border"
     >
       <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex justify-end px-3 py-1.5 border-b border-gray-100 bg-white flex-shrink-0">
+          <CalendarIconLegend />
+        </div>
         {/* Header Row — multi-staff: horizontal scroll synced with grid body */}
         <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white flex-shrink-0 min-w-0">
           <div className="flex-shrink-0 border-e border-gray-200" style={{ width: `${TIME_COLUMN_WIDTH}px` }} />

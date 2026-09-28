@@ -8,6 +8,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { notifyCustomerRunningLateAck } from "@/lib/notifications/notification-service";
 
@@ -50,13 +51,15 @@ export async function POST(
       Number(booking.customer_running_late_minutes),
     );
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         provider_late_ack_at: nowIso,
         updated_at: nowIso,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
     if (updateError) throw updateError;
 

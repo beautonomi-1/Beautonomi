@@ -1,4 +1,5 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   requireRoleInApi,
   handleApiError,
@@ -103,13 +104,15 @@ export async function POST(
     }
 
     // Update booking
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         arrival_otp_verified: true,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("customer_id", user.id);
 
     if (updateError) {
       return handleApiError(updateError, "Failed to update booking");

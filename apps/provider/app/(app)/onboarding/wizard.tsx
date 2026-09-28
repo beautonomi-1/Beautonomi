@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { OnboardingWizardProvider } from "@/features/provider-onboarding/OnboardingWizardContext";
 import { WizardChrome } from "@/features/provider-onboarding/WizardChrome";
 import { wizardStepForSetupStatusId } from "@/features/provider-onboarding/setupStepMap";
 import { STEPS } from "@/features/provider-onboarding/state";
+import { storeOnboardingInviteToken } from "@/features/provider-onboarding/invite-token";
 
 /**
  * Full native provider onboarding wizard (all steps in-app; no WebView).
@@ -16,7 +17,12 @@ import { STEPS } from "@/features/provider-onboarding/state";
  *                step a provider still needs to fix.
  */
 export default function ProviderOnboardingWizardScreen() {
-  const params = useLocalSearchParams<{ step?: string; focus?: string }>();
+  const params = useLocalSearchParams<{ step?: string; focus?: string; invite?: string }>();
+
+  useEffect(() => {
+    const invite = typeof params.invite === "string" ? params.invite.trim() : "";
+    if (invite) void storeOnboardingInviteToken(invite);
+  }, [params.invite]);
 
   const focusId = typeof params.focus === "string" ? params.focus : null;
   const mappedFocus = wizardStepForSetupStatusId(focusId);

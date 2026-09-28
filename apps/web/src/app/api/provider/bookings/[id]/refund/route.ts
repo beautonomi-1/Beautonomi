@@ -576,18 +576,21 @@ export async function POST(
 
     if (isFullyRefunded) {
       try {
-        const pointsToRefund = Number(
-          (booking as { loyalty_points_used?: number | null }).loyalty_points_used ??
-            (booking as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
-            0,
-        );
-        if (pointsToRefund > 0 && booking.customer_id) {
+        if (booking.customer_id) {
           const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
           await refundRedeemedLoyaltyPoints(supabaseAdmin, {
             bookingId,
             customerId: booking.customer_id,
-            pointsRedeemed: pointsToRefund,
             reason: "provider_refund",
+          });
+          const { clawBackEarnedLoyaltyForBooking } = await import(
+            "@/lib/loyalty/claw-back-earned-for-booking"
+          );
+          await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
+            bookingId,
+            customerId: booking.customer_id,
+            bookingNumber: (booking as { booking_number?: string | null }).booking_number,
+            metadataSource: "provider_refund_earn_clawback",
           });
         }
       } catch (loyaltyErr) {

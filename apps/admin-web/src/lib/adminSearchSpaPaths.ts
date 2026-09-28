@@ -3,7 +3,7 @@
  * Leading `/` required so links are not resolved relative to the current route.
  */
 export function adminSearchResultSpaPath(
-  kind: "user" | "booking" | "provider" | "lead" | "onboarding_draft",
+  kind: "user" | "booking" | "provider" | "lead" | "onboarding_draft" | "brand_campaign" | "brand_brief",
   id: string,
 ): string {
   switch (kind) {
@@ -17,5 +17,9 @@ export function adminSearchResultSpaPath(
       return `/provider-ops/leads/${id}`;
     case "onboarding_draft":
       return `/provider-ops/tracker/${id}`;
+    case "brand_campaign":
+      return `/brand/campaigns/${id}`;
+    case "brand_brief":
+      return `/brand/briefs/${id}`;
   }
 }

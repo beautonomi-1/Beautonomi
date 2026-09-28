@@ -12,6 +12,8 @@ import type { PaystackEvent, SupabaseClient } from "./shared";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { slackNotifyUnrecognizedPayments } from "@/lib/integrations/slack/ops-triggers";
 
 // ─── Two-phase payout ledger reversal ────────────────────────────────────────
 
@@ -163,6 +165,31 @@ export async function handleTransferEvent(
   }
 
   const payoutData = payout as any;
+
+  const transferAmountMajor = convertFromSmallestUnit(
+    Number(data?.amount ?? 0),
+    String(data?.currency ?? payoutData.currency ?? "ZAR"),
+  );
+  const expectedNet = Number(payoutData.net_amount ?? payoutData.amount ?? 0);
+  if (
+    transferAmountMajor > 0 &&
+    expectedNet > 0 &&
+    Math.abs(transferAmountMajor - expectedNet) > 0.01
+  ) {
+    console.warn("[transfer-events] Paystack transfer amount mismatch", {
+      payoutId: payoutData.id,
+      transferAmountMajor,
+      expectedNet,
+      eventType,
+    });
+    slackNotifyUnrecognizedPayments({
+      tenantId: payoutData.tenant_id ?? null,
+      count: 1,
+      amountMajor: transferAmountMajor,
+      currency: typeof payoutData.currency === "string" ? payoutData.currency : null,
+      source: "paystack_transfer:amount_mismatch",
+    });
+  }
 
   const isTransferSuccess = eventType === "transfer.success";
   const isTransferFailure = eventType === "transfer.failed" || eventType === "transfer.reversed";

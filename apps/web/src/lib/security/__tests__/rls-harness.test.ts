@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const repoRoot = join(__dirname, "../../../../../..");
@@ -107,9 +107,51 @@ describe("RLS harness (static policy verification)", () => {
     expect(sql).not.toMatch(/GRANT EXECUTE[\s\S]{0,80}validate_portal_token[\s\S]{0,40}anon/);
   });
 
+  it("944 removes direct client INSERT/UPDATE policies on bookings", () => {
+    const sql = readMigration("944_bookings_client_write_lockdown.sql");
+    expect(sql).toContain('DROP POLICY IF EXISTS "Customers can update own bookings"');
+    expect(sql).toContain('DROP POLICY IF EXISTS "Providers can update own provider bookings"');
+    expect(sql).toContain('DROP POLICY IF EXISTS "Customers can create own bookings"');
+    expect(sql).not.toMatch(/CREATE POLICY[\s\S]*Customers can update own bookings/);
+    expect(sql).not.toMatch(/CREATE POLICY[\s\S]*Providers can update own provider bookings/);
+    expect(sql).not.toMatch(/CREATE POLICY[\s\S]*Customers can create own bookings/);
+  });
+
+  it("945 adds shadow booking status transition guard", () => {
+    const sql = readMigration("945_booking_status_transition_guard.sql");
+    expect(sql).toContain("booking_status_transition_violations");
+    expect(sql).toContain("guard_booking_status_transition");
+    expect(sql).toContain("BEFORE UPDATE OF status");
+    expect(sql).not.toMatch(/RAISE EXCEPTION 'ILLEGAL_STATUS_TRANSITION'/);
+  });
+
+  it("deferred status-guard enforce script raises and stays out of migrations until shadow window passes", () => {
+    const sql = readFileSync(
+      join(repoRoot, "docs/audit-remediation/deferred/booking_status_guard_enforce.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("ILLEGAL_STATUS_TRANSITION");
+    expect(existsSync(join(repoRoot, "supabase/migrations/949_booking_status_guard_enforce.sql"))).toBe(false);
+  });
+
   it("STRICT_TENANT_HOST_RESOLUTION documented in web env example", () => {
     const envExample = readFileSync(join(repoRoot, "apps/web/.env.example"), "utf8");
     expect(envExample).toContain("STRICT_TENANT_HOST_RESOLUTION=true");
+  });
+
+  it("950 GRC RBAC defines grc_has_permission and append-only activity log", () => {
+    const sql = readMigration("950_grc_rbac.sql");
+    expect(sql).toContain("grc_has_permission");
+    expect(sql).toContain("grc_activity_log");
+    expect(sql).toContain("grc_role_assignments");
+  });
+
+  it("955 GRC evidence bucket is private with insert/select policies only for authenticated", () => {
+    const sql = readMigration("955_grc_evidence.sql");
+    expect(sql).toContain("grc-evidence");
+    expect(sql).toContain("grc_evidence_bucket_insert");
+    expect(sql).toContain("grc_evidence_bucket_select");
+    expect(sql).not.toContain("grc_evidence_bucket_delete");
   });
 });
 

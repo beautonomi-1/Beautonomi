@@ -35,6 +35,7 @@ import { AdminNotificationBell } from "@/components/layout/AdminNotificationBell
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { GlobalFloatingCopilot } from "@/components/agent-assist/GlobalFloatingCopilot";
+import { TENANT_PRODUCT_FEATURE_KEYS, useTenantFeatureFlags } from "@/hooks/useTenantFeatureFlags";
 
 export function AdminChrome() {
   const qc = useQueryClient();
@@ -183,6 +184,17 @@ export function AdminChrome() {
     return () => clearTimeout(t);
   }, [searchQuery, canUseGlobalSearch]);
 
+  const brandDeskFlagQ = useTenantFeatureFlags(
+    [TENANT_PRODUCT_FEATURE_KEYS.BRAND_DESK],
+    bootstrap?.isSuperadmin !== true,
+  );
+  const featureFlags = useMemo(
+    () => ({
+      brand_desk: bootstrap?.isSuperadmin === true || Boolean(brandDeskFlagQ.data?.features?.brand_desk),
+    }),
+    [bootstrap?.isSuperadmin, brandDeskFlagQ.data?.features?.brand_desk],
+  );
+
   const filteredNav = useMemo(() => {
     const role = bootstrap?.role as UserRole;
     if (!role) return [];
@@ -191,6 +203,7 @@ export function AdminChrome() {
       canAccess,
       opsDesk: deskForAdminRole(role),
       isOpsManager: isOpsDeskManager(role),
+      featureFlags,
     };
     return NAV_GROUPS.map((g) => ({
       ...g,
@@ -198,7 +211,7 @@ export function AdminChrome() {
         .map((item) => filterNavTree(item, opts))
         .filter((item): item is NonNullable<typeof item> => item != null),
     })).filter((g) => g.items.length > 0);
-  }, [bootstrap, canAccess]);
+  }, [bootstrap, canAccess, featureFlags]);
 
   type NavMatch = { title: string; href: string; group: string; icon: LucideIcon };
 

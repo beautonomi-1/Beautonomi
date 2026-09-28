@@ -11,6 +11,7 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   hasHardLookupSignal,
   isMetaOrHelpQuestion,
+  isProceduralHowToQuestion,
   isWeakSearchPhrase,
 } from "./copilot-capabilities";
 
@@ -31,6 +32,7 @@ export type CopilotIntent =
   | "ops.health"
   | "report.deeplink"
   | "copilot.help"
+  | "howto.knowledge"
   | "unknown";
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -256,6 +258,10 @@ export async function resolveCopilotQuestion(input: CopilotInput): Promise<Resol
 
   if (isMetaOrHelpQuestion(question) && !hasHardLookupSignal(question) && !wantsDifferentEntity(question)) {
     return { status: "help", resolvedEntities: resolved };
+  }
+
+  if (isProceduralHowToQuestion(question)) {
+    return { status: "ready", intent: "howto.knowledge", resolvedEntities: resolved };
   }
 
   if (!hasPrimary || wantsDifferentEntity(question)) {

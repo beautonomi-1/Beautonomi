@@ -75,7 +75,9 @@ type ReconciliationRow = Record<string, unknown> & {
 type ListMeta = { page: number; limit: number; total: number; has_more: boolean };
 
 function monthStartYmd(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  return `${year}-${String(month).padStart(2, "0")}-01`;
 }
 
 function todayYmd(d: Date = new Date()): string {

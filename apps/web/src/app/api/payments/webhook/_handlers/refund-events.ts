@@ -42,7 +42,7 @@ export async function handleRefundEvent(
 
 async function handleRefundProcessed(data: Record<string, unknown>, supabase: SupabaseClient) {
   const reference = data?.transaction_reference || data?.reference;
-  const refundAmount = data?.amount != null ? convertFromSmallestUnit(Number(data.amount)) : 0;
+  const refundAmount = data?.amount != null ? convertFromSmallestUnit(Number(data.amount), String(data?.currency ?? "ZAR")) : 0;
   const refundReference = data?.refund_reference || data?.id;
 
   if (!reference) {

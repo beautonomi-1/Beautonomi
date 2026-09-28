@@ -313,7 +313,7 @@ async function handlePost(request: NextRequest) {
         // Load provider
         const { data: provider, error: providerError } = await supabase
           .from("providers")
-          .select("id, currency, status, business_name, timezone")
+          .select("id, currency, status, business_name, timezone, online_booking_enabled")
           .eq("id", provider_id)
           .eq("tenant_id", tenantId)
           .single();
@@ -333,6 +333,15 @@ async function handlePost(request: NextRequest) {
             "Provider is not available",
             "PROVIDER_INACTIVE",
             400
+          );
+        }
+
+        if ((provider as { online_booking_enabled?: boolean | null }).online_booking_enabled === false) {
+          return handleApiError(
+            new Error("Online booking is disabled"),
+            "This provider is not accepting online bookings at the moment.",
+            "ONLINE_BOOKING_DISABLED",
+            403
           );
         }
 

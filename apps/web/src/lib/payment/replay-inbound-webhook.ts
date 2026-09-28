@@ -41,12 +41,18 @@ type PaystackHandlers = {
   handleTransferEvent: (event: PaystackEvent, supabase: SupabaseClient) => Promise<unknown>;
   handleSubscriptionEvent: (event: PaystackEvent, supabase: SupabaseClient) => Promise<unknown>;
   handleRefundEvent: (event: PaystackEvent, supabase: SupabaseClient) => Promise<unknown>;
+  handlePaystackDisputeEvent: (
+    event: PaystackEvent,
+    supabase: SupabaseClient,
+    eventId?: string | null,
+  ) => Promise<unknown>;
 };
 
 type StripeHandlers = {
   handleStripePaymentIntentSucceeded: (intent: Record<string, unknown>) => Promise<void>;
   handleStripeChargeRefunded: (charge: Record<string, unknown>) => Promise<void>;
   handleStripeChargeDisputeCreated: (dispute: Record<string, unknown>, eventId?: string) => Promise<void>;
+  handleStripeChargeDisputeClosed: (dispute: Record<string, unknown>, eventId?: string) => Promise<void>;
 };
 
 type FlutterwaveHandlers = {
@@ -62,11 +68,12 @@ export type ReplayHandlerLoaders = {
 /** Lazy imports keep the admin route bundle small and make handlers mockable in tests. */
 export const defaultReplayHandlerLoaders: ReplayHandlerLoaders = {
   paystack: async () => {
-    const [charge, subs, transfers, refunds] = await Promise.all([
+    const [charge, subs, transfers, refunds, disputes] = await Promise.all([
       import("@/app/api/payments/webhook/_handlers/charge-success"),
       import("@/app/api/payments/webhook/_handlers/subscription-events"),
       import("@/app/api/payments/webhook/_handlers/transfer-events"),
       import("@/app/api/payments/webhook/_handlers/refund-events"),
+      import("@/app/api/payments/webhook/_handlers/paystack-dispute-events"),
     ]);
     return {
       handleChargeSuccess: charge.handleChargeSuccess,
@@ -74,6 +81,7 @@ export const defaultReplayHandlerLoaders: ReplayHandlerLoaders = {
       handleSubscriptionEvent: subs.handleSubscriptionEvent,
       handleTransferEvent: transfers.handleTransferEvent,
       handleRefundEvent: refunds.handleRefundEvent,
+      handlePaystackDisputeEvent: disputes.handlePaystackDisputeEvent,
     };
   },
   stripe: async () => {
@@ -85,6 +93,7 @@ export const defaultReplayHandlerLoaders: ReplayHandlerLoaders = {
       handleStripePaymentIntentSucceeded: charge.handleStripePaymentIntentSucceeded as StripeHandlers["handleStripePaymentIntentSucceeded"],
       handleStripeChargeRefunded: charge.handleStripeChargeRefunded as StripeHandlers["handleStripeChargeRefunded"],
       handleStripeChargeDisputeCreated: dispute.handleStripeChargeDisputeCreated as StripeHandlers["handleStripeChargeDisputeCreated"],
+      handleStripeChargeDisputeClosed: dispute.handleStripeChargeDisputeClosed as StripeHandlers["handleStripeChargeDisputeClosed"],
     };
   },
   flutterwave: async () => {
@@ -184,6 +193,11 @@ export async function replayInboundWebhookEvent(
       } else if (eventType.startsWith("refund.")) {
         fn = h.handleRefundEvent;
         handlerName = "handleRefundEvent";
+      } else if (eventType.startsWith("charge.dispute.") || eventType.startsWith("dispute.")) {
+        await markProcessing();
+        await h.handlePaystackDisputeEvent(event, supabase, row.event_id);
+        await markProcessed();
+        return { ok: true, replayed: true, handler: "handlePaystackDisputeEvent" };
       }
       if (!fn) return { ok: true, replayed: false, reason: "unhandled_event_type" };
       await markProcessing();
@@ -204,6 +218,9 @@ export async function replayInboundWebhookEvent(
       } else if (eventType === "charge.dispute.created") {
         run = () => h.handleStripeChargeDisputeCreated(object, row.event_id);
         handlerName = "handleStripeChargeDisputeCreated";
+      } else if (eventType === "charge.dispute.closed") {
+        run = () => h.handleStripeChargeDisputeClosed(object, row.event_id);
+        handlerName = "handleStripeChargeDisputeClosed";
       }
       if (!run) return { ok: true, replayed: false, reason: "unhandled_event_type" };
       await markProcessing();

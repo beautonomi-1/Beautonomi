@@ -86,6 +86,7 @@ import {
   ADMIN_SECTION_PLATFORM_CONFIG,
   ADMIN_SECTION_PROVIDER_OPS,
   ADMIN_SECTION_COMMERCIAL,
+  ADMIN_SECTION_SECURITY_COMPLIANCE,
 } from "@beautonomi/admin-access";
 
 export interface NavItemConfig {
@@ -107,6 +108,8 @@ export interface NavItemConfig {
   opsDesks?: OpsDesk[];
   /** Provider Ops settings / quotas — managers only. */
   opsManagersOnly?: boolean;
+  /** Hidden for non-superadmins when the tenant feature flag is off. */
+  featureFlagKey?: string;
 }
 
 export type OpsDesk = "sales" | "onboarding" | "retention";
@@ -141,9 +144,13 @@ export function filterNavTree(
     canAccess: (section: AdminSection) => boolean;
     opsDesk: OpsDesk | null;
     isOpsManager: boolean;
+    featureFlags?: Record<string, boolean>;
   },
 ): NavItemConfig | null {
   if (item.superadminOnly && !opts.isSuperadmin) return null;
+  if (item.featureFlagKey && !opts.isSuperadmin) {
+    if (!opts.featureFlags?.[item.featureFlagKey]) return null;
+  }
   if (item.opsManagersOnly && !opts.isOpsManager && !opts.isSuperadmin) return null;
   if (item.opsDesks?.length && !opts.isOpsManager && !opts.isSuperadmin) {
     if (!opts.opsDesk || !item.opsDesks.includes(opts.opsDesk)) return null;
@@ -257,6 +264,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
           { title: "Reconciliation Exceptions", href: "/admin/reconciliation-exceptions", icon: AlertCircle, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
           { title: "Ledger Repair", href: "/admin/ledger-repair", icon: GitMerge, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
           { title: "Ledger Health", href: "/admin/ledger-health", icon: Activity, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
+          { title: "Payroll rule sets", href: "/admin/payroll-rules", icon: Scale, section: ADMIN_SECTION_FINANCE },
           { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard, section: ADMIN_SECTION_FINANCE, superadminOnly: true, subheader: "Subscriptions & Plans" },
           { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
           { title: "Plans & Pricing", href: "/admin/plans", icon: CreditCard, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
@@ -343,6 +351,23 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Gamification", href: "/admin/gamification", icon: Medal, section: ADMIN_SECTION_MARKETING_COMMS },
       { title: "Automations", href: "/admin/automations", icon: Zap, section: ADMIN_SECTION_MARKETING_COMMS },
       { title: "Marketing Pricebook", href: "/admin/marketing-pricebook", icon: ListFilter, section: ADMIN_SECTION_MARKETING_COMMS },
+      {
+        title: "Brand desk",
+        href: "/admin/brand",
+        icon: Sparkles,
+        section: ADMIN_SECTION_MARKETING_COMMS,
+        featureFlagKey: "brand_desk",
+        children: [
+          { title: "Brand inbox", href: "/admin/brand/my-work", icon: Sparkles, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Strategy", href: "/admin/brand/strategy", icon: PieChart, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Briefs", href: "/admin/brand/briefs", icon: FileText, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Board", href: "/admin/brand/board", icon: Columns3, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Calendar", href: "/admin/brand/calendar", icon: Clock, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Weekly update", href: "/admin/brand/weekly-update", icon: Clock, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Pack", href: "/admin/brand/pack", icon: PieChart, section: ADMIN_SECTION_MARKETING_COMMS },
+          { title: "Brand settings", href: "/admin/brand/settings", icon: Settings, section: ADMIN_SECTION_MARKETING_COMMS },
+        ],
+      },
     ],
   },
 
@@ -418,6 +443,38 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Terminal Reporting", href: "/admin/commercial/terminal-reporting", icon: PieChart, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Vendors", href: "/admin/commercial/terminal-vendors", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Pickup Locations", href: "/admin/commercial/terminal-collection-locations", icon: MapPinned, section: ADMIN_SECTION_COMMERCIAL },
+    ],
+  },
+
+  // ─── Security & Compliance (GRC hub) ─────────────────────────────────────
+  {
+    label: "Security & Compliance",
+    items: [
+      { title: "Overview", href: "/admin/grc", icon: ShieldCheck, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+      { title: "My work", href: "/admin/grc/my-work", icon: ClipboardList, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+      {
+        title: "Compliance modules",
+        href: "/admin/grc/compliance-modules",
+        icon: ScrollText,
+        section: ADMIN_SECTION_SECURITY_COMPLIANCE,
+        children: [
+          { title: "Setup wizard", href: "/admin/grc/setup", icon: GraduationCap, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Controls", href: "/admin/grc/controls", icon: ShieldCheck, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Statement of Applicability", href: "/admin/grc/soa", icon: ListFilter, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Policies", href: "/admin/grc/documents", icon: FileText, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Risks", href: "/admin/grc/risks", icon: AlertCircle, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Vendors & assets", href: "/admin/grc/vendors", icon: Building2, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Privacy", href: "/admin/grc/privacy", icon: Eye, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Evidence locker", href: "/admin/grc/evidence", icon: Lock, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Access reviews", href: "/admin/grc/access-reviews", icon: UserCheck, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Findings", href: "/admin/grc/findings", icon: Flag, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Incidents & BC/DR", href: "/admin/grc/incidents", icon: ShieldAlert, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "People & training", href: "/admin/grc/people", icon: Users, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Audits & management review", href: "/admin/grc/audits", icon: BookOpen, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Audit packs", href: "/admin/grc/audit-packs", icon: Package, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+          { title: "Settings", href: "/admin/grc/settings", icon: Settings, section: ADMIN_SECTION_SECURITY_COMPLIANCE },
+        ],
+      },
     ],
   },
 

@@ -20,6 +20,13 @@ export function effectiveZoneSuggestStatus(
   return undefined;
 }
 
+export const ONBOARDING_STEP_MAP_VERSION = 2;
+
+export function remapLegacyWebDraftNumericStep(step: number): number {
+  if (step >= 10 && step <= 14) return step + 1;
+  return step;
+}
+
 const MOBILE_STEP_KEY_TO_ID: Record<WizardStepKey, number> = {
   team_size: 1,
   identity: 2,

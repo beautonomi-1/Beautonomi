@@ -8,11 +8,15 @@ import {
   nowInTz,
   resolveTz,
 } from "@/lib/dates/provider-tz";
-import { RECOGNIZED_REVENUE_TYPES, recognizedRevenueInRange } from "@/lib/reports/provider-revenue-semantics";
+import {
+  RECOGNIZED_REVENUE_TYPES,
+  recognizedRevenueInRange,
+  type RecognizedRevenueInRangeRow,
+} from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
-import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
+import { filterLedgerRowsForLocation, type LocationLinkedLedgerRow } from "@/lib/reports/provider-report-utils";
 import {
   dashboardBookingLocationOrFilter,
   dashboardGroupBookingLocationOrFilter,
@@ -473,7 +477,7 @@ export async function computeBookingsStats(
     ledgerQuery.lte("created_at", window.ledgerTo.toISOString());
   }
 
-  const ledgerRows = await fetchAllLedgerPages(
+  const ledgerRows = await fetchAllLedgerPages<RecognizedRevenueInRangeRow & LocationLinkedLedgerRow>(
     ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
     MAX_FINANCE_TRANSACTIONS,
   );

@@ -8,6 +8,7 @@ type BillingItem = {
   amount: number;
   fees: number;
   net: number;
+  currency: string;
   status: string;
   kind?: string;
   is_renewal: boolean;
@@ -123,12 +124,19 @@ export async function GET(request: NextRequest) {
       const reference = (meta.reference as string | undefined) ?? null;
       const sortTs = new Date(r.created_at).getTime();
 
+      const paidCurrency =
+        (typeof meta.currency === "string" && meta.currency) ||
+        (typeof (meta as { plan_currency?: string }).plan_currency === "string"
+          ? (meta as { plan_currency?: string }).plan_currency
+          : "ZAR");
+
       items.push({
         id: r.id,
         date: r.created_at,
         amount: Number(r.amount ?? 0),
         fees: Number(r.fees ?? 0),
         net: Number(r.net ?? r.amount ?? 0),
+        currency: paidCurrency,
         status: "paid",
         kind: meta.kind as string | undefined,
         is_renewal: isRenewal,
@@ -158,6 +166,7 @@ export async function GET(request: NextRequest) {
         amount: Number(row.amount ?? 0),
         fees: 0,
         net: Number(row.amount ?? 0),
+        currency: String(row.currency || "ZAR"),
         status: row.status === "pending" ? "pending" : "failed",
         kind: meta.kind as string | undefined,
         is_renewal: isRenewal,

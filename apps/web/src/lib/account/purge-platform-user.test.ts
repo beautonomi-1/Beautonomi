@@ -73,7 +73,11 @@ describe("purgePlatformUserAccountFully", () => {
     });
     expect(mockPurgeUserMessageAttachmentFiles).toHaveBeenCalledWith(admin, "user-id");
     expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith("user-id");
+    expect(admin.rpc).toHaveBeenCalledWith("brand_clear_user_references", {
+      p_user_id: "user-id",
+    });
     expect(calls).toEqual([
+      "rpc:brand_clear_user_references",
       "rpc:compliance_clear_user_references",
       "rpc:compliance_diagnose_user_delete_blockers",
       "storage",

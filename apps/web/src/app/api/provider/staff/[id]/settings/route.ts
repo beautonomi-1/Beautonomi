@@ -119,7 +119,9 @@ const updateSettingsSchema = z.object({
   desktop_notifications_enabled: z.boolean().optional(),
   work_hours_enabled: z.boolean().optional(),
   commission_enabled: z.boolean().optional(),
-  commission_rate: z.number().optional(),
+  commission_rate: z.number().min(0).max(100).optional(),
+  service_commission_rate: z.number().min(0).max(100).optional(),
+  product_commission_rate: z.number().min(0).max(100).optional(),
   hourly_rate: z.number().optional(),
   salary: z.number().optional(),
   tips_enabled: z.boolean().optional(),
@@ -213,6 +215,22 @@ export async function PATCH(
       if (Object.keys(updateData).length === 0) {
         return errorResponse("No allowed fields to update", "VALIDATION_ERROR", 400);
       }
+    }
+
+    const payFieldKeys = new Set([
+      "commission_enabled",
+      "commission_rate",
+      "service_commission_rate",
+      "product_commission_rate",
+      "hourly_rate",
+      "salary",
+    ]);
+    const { getStaffPermissions } = await import("@/lib/auth/permissions");
+    const perms = await getStaffPermissions(user.id, undefined, request);
+    if (!perms.manage_payroll) {
+      updateData = Object.fromEntries(
+        Object.entries(updateData).filter(([key]) => !payFieldKeys.has(key)),
+      );
     }
 
     const mapped: any = { ...updateData };

@@ -104,6 +104,7 @@ export async function hasRole(
     admin_sales: 4,
     admin_onboarding: 4,
     admin_retention: 4,
+    admin_grc: 4,
     provider_owner: 3,
     provider_staff: 2,
     provider_onboarding: 2,

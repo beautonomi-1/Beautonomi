@@ -67,7 +67,11 @@
     },
     "discard": "Discard",
     "tryAgain": "Try again.",
-    "duration": "Duration"
+    "duration": "Duration",
+    "hints": {
+      "gotIt": "Got it",
+      "dismissA11y": "Dismiss tip"
+    }
   },
   "authGate": {
     "checkingAccess": "Checking your account…",
@@ -231,7 +235,8 @@
       "loading": "Loading travel fee estimate",
       "finalAmountAtCheckout": "Final amount confirmed at checkout",
       "errorGeneric": "Could not get travel fee estimate.",
-      "outsideServiceArea": "This address is outside the service area."
+      "outsideServiceArea": "This provider doesn't travel to this address. Try another address, or book at the salon.",
+      "outsideServiceAreaNoSalon": "This provider doesn't travel to this address. Try another address."
     },
     "houseCallPricing": {
       "venueStepHint": "Choose where your appointment happens. Service prices on the next step reflect this choice.",
@@ -240,7 +245,8 @@
       "includesHouseCallFee": "Includes {{currency}} {{amount}} house-call fee",
       "houseCallFeeLine": "House-call service fee",
       "houseCallFeeSummary": "House-call fees ({{count}} services)",
-      "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately."
+      "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately.",
+      "atHomeVenueCombined": "At-home bookings can include a house-call fee on some services, plus a travel fee based on your address."
     },
     "providerNotFound": "Provider not found",
     "providerUnavailableTitle": "This professional is no longer available",
@@ -286,7 +292,10 @@
     "addressRequired": "Address required",
     "addressRequiredBody": "Please enter your address for this at-home appointment before continuing.",
     "loadingPackage": "Loading package…",
-    "packageNoLineItems": "Package details will appear here when available."
+    "packageNoLineItems": "Package details will appear here when available.",
+    "contextualHints": {
+      "waitlistJoin": "Joining doesn't reserve a time. We'll let you know if one opens."
+    }
   },
   "provider": {
     "dashboard": "Dashboard",
@@ -915,6 +924,15 @@
           "cameraRequired": "Camera permission is required to scan barcodes.",
           "continue": "Continue",
           "openSettings": "Open settings"
+        },
+        "journeyProgress": {
+          "stageConfirmed": "Confirmed",
+          "stageEnRoute": "En route",
+          "stageArrived": "Arrived",
+          "stageInService": "In service",
+          "stageDone": "Done",
+          "progressA11y": "Journey progress: {{stage}}",
+          "currentStageSummary": "{{stage}} · {{current}}/{{total}}"
         },
         "wizardChrome": {
           "milestoneProfile": "Profile",
@@ -1790,7 +1808,8 @@
           "chargeNoteApple": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.",
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "Opening App Store purchase…",
-          "openingCheckout": "Opening secure checkout…"
+          "openingCheckout": "Opening secure checkout…",
+          "introHint": "Sponsored listings appear on the customer home screen and in search results."
         },
         "waitingRoom": {
           "title": "Front Desk",
@@ -1848,7 +1867,8 @@
           "serviceFallback": "Service",
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "Running late",
-          "runningLateMinutes": "Running late {{minutes}}m"
+          "runningLateMinutes": "Running late {{minutes}}m",
+          "introHint": "Today at a glance: confirm new requests, check clients in when they arrive, and start their service."
         },
         "groupBookings": {
           "statusAll": "All",
@@ -2499,7 +2519,8 @@
           "selectCurrencyA11y": "Select currency {{code}}",
           "savePaymentSettings": "Save Payment Settings",
           "saving": "Saving…",
-          "unsavedChanges": "You have unsaved changes"
+          "unsavedChanges": "You have unsaved changes",
+          "noShowFeeAmountHint": "Taken only from what the client has already paid online, up to this amount."
         },
         "bookingsList": {
           "title": "Bookings",
@@ -3372,7 +3393,10 @@
           "giftCardsLabel": "Gift cards",
           "giftCardsSubtitle": "Accept platform gift cards",
           "terminalShopLabel": "Terminal Shop",
-          "terminalShopSubtitle": "Order card machines from the Beautonomi catalog"
+          "terminalShopSubtitle": "Order card machines from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco card reader.",
+          "hintCardMachines": "Card machines: PayCloud terminals for in-person card payments.",
+          "hintPaystackTerminal": "Paystack Terminal: take payment on your phone with a QR code."
         },
         "businessSettings": {
           "title": "Business details",
@@ -4332,7 +4356,7 @@
           "requireDeposit": "Require Deposit",
           "requireDepositHint": "Clients must pay a deposit to confirm booking",
           "depositPercentageLabel": "Deposit Percentage (%)",
-          "depositPercentageHint": "Percentage of service price required as deposit",
+          "depositPercentageHint": "Clients pay this share of the price when they book. A late-cancellation fee comes out of it.",
           "saveSettings": "Save Settings",
           "qrSheetTitle": "Booking QR Code",
           "scanToBook": "Scan to book",
@@ -5224,7 +5248,8 @@
           "productCartJson": "Product cart (JSON)",
           "productCartHint": "JSON array: product_id (UUID), quantity (1–999), optional product_variant_id.",
           "clearAllPrefillA11y": "Clear all prefill",
-          "clearAllPrefill": "Clear all prefill"
+          "clearAllPrefill": "Clear all prefill",
+          "introHint": "Express links open booking with your chosen services, staff and location already filled in. You can set an expiry date or a usage limit."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Selected photo preview",
@@ -5873,7 +5898,8 @@
           "deleteBody": "Remove \"{{name}}\"?",
           "cancel": "Cancel",
           "delete": "Delete",
-          "copySuffix": "{{name}} (Copy)"
+          "copySuffix": "{{name}} (Copy)",
+          "introHint": "Members get their discount automatically when they book with you. They don't need a promo code."
         },
         "payoutAccounts": {
           "title": "Payout Accounts",
@@ -6272,6 +6298,7 @@
           "share": "Share",
           "embedUrl": "Embed URL",
           "embedHint": "For embedding on your website",
+          "copyIframe": "Copy iframe code",
           "qrHint": "QR code for your booking page",
           "shareLink": "Share link",
           "settings": "Settings",
@@ -6865,7 +6892,8 @@
           "deleteServiceA11y": "Delete service",
           "deleting": "Deleting…",
           "deleteService": "Delete service",
-          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons."
+          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons.",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "daysOff": {
           "staffFallback": "Staff",
@@ -7413,7 +7441,7 @@
           "balanceLoading": "Withdrawable balance is still loading. Pull to refresh.",
           "pendingPayout": "{{amount}} pending payout",
           "minimumPayout": "Minimum payout: {{amount}}",
-          "balanceHint": "Business-wide balance (not filtered by branch). Platform-held payoutable money after completed payouts and pending requests. Cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly are excluded.",
+          "balanceHint": "Money from online payments, after Beautonomi's commission, any hold period, and payouts you've already requested. Cash and card-machine payments you took yourself aren't included. This covers your whole business, not one branch.",
           "payoutScheduleNamed": "{{schedule}} payout schedule",
           "payoutSchedule": "Payout schedule",
           "scheduleFallback": "Request a payout when your available balance reaches the minimum.",
@@ -7933,6 +7961,10 @@
           "bookingPaymentStatus": "Booking payment status",
           "pendingFailed": "Pending {{pending}} · Failed {{failed}}",
           "successfulPayments": "Successful payment_transactions rows: {{success}} (includes terminal / wallet-settlement refs). Card-terminal captures: {{gateway}}.",
+          "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+          "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for full totals.",
+          "membershipEarnings": "Membership earnings (ledger)",
+          "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
           "cashWithoutLedgerTitle": "Cash / walk-in without ledger row",
           "cashWithoutLedger_one": "{{count}} payment · approx {{amount}}",
           "cashWithoutLedger_other": "{{count}} payments · approx {{amount}}",
@@ -8073,7 +8105,10 @@
           "setAsDefault": "Set as Default Policy",
           "toggleDefaultA11y": "Toggle default policy",
           "saving": "Saving…",
-          "updatePolicy": "Update Policy"
+          "updatePolicy": "Update Policy",
+          "hoursBeforeHint": "Cancellations closer to the appointment than this count as late.",
+          "refundPercentageHint": "How much of what the client paid is refunded for a late cancellation.",
+          "feeAmountHint": "Only used when the refund is 0%."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will review it shortly.",
@@ -9148,7 +9183,10 @@
           "notes": "Notes",
           "notesPlaceholder": "Optional notes...",
           "updateZone": "Update Zone",
-          "addZone": "Add Zone"
+          "addZone": "Add Zone",
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone."
         },
         "staffNotifications": {
           "saveFailedTitle": "Could not save",
@@ -9814,6 +9852,8 @@
           "bodyCompleteLive": "Your profile is live. Accept bookings and manage your business from the app.",
           "bodySuspended": "Your provider account is suspended. Contact support to restore access.",
           "bodyNoSteps": "Create your business profile first. You can leave setup any time and come back when you're ready.",
+          "verificationRequiredTitle": "Identity verification required to go live",
+          "verificationRequiredBody": "Complete identity verification so we can approve your listing for public bookings.",
           "remainingSteps_one": "{{count}} required step left before you can go fully live.",
           "remainingSteps_other": "{{count}} required steps left before you can go fully live.",
           "bodyCompleteRequired": "Complete the required steps to start accepting bookings.",
@@ -10114,7 +10154,9 @@
           "thisMonth": "This Month",
           "avgFee": "Avg Fee",
           "trips": "Trips",
-          "saveSettings": "Save Settings"
+          "saveSettings": "Save Settings",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone.",
+          "actionChooseZones": "Choose zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.",
@@ -10581,6 +10623,14 @@
           "signInHint": "Sign in with the email that received this invite. Use the set-password link from your invitation email, or sign in with email OTP — you do not need an existing password.",
           "signInHintWithEmail": "Sign in with the email that received this invite ({{email}}). Use the set-password link from your invitation email, or sign in with email OTP — you do not need an existing password.",
           "signInContinue": "Sign in to continue",
+          "setPasswordTitle": "Create your password",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters",
           "settingUp": "Setting up your access…",
           "openApp": "Open app",
           "acceptInvite": "Accept invite",
@@ -10842,7 +10892,8 @@
           "myEarnings": "My earnings",
           "title": "Team & pay",
           "subtitleOwner": "Payroll & staff performance",
-          "subtitleStaff": "Your pay stubs"
+          "subtitleStaff": "Your pay stubs",
+          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Confirming payment",
@@ -11375,7 +11426,9 @@
           "delete": "Delete",
           "typeNameRequired": "Enter a type name.",
           "deleteTypeTitle": "Delete blocked time type",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category.",
+          "introHint": "Blocks close time on the calendar so clients can't book it. For staff leave, use Days off.",
+          "actionDaysOff": "Days off"
         },
         "authLogin": {
           "accountSuspended": "Your account has been suspended. Contact support if you believe this is an error.",
@@ -12423,7 +12476,8 @@
           "customerFallback": "Customer",
           "atHome": "At home",
           "atSalon": "At salon",
-          "budgetRange": " · Budget {{min}} – {{max}}"
+          "budgetRange": " · Budget {{min}} – {{max}}",
+          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Please wait",
@@ -13642,6 +13696,11 @@
         },
         "chipCombobox": {
           "loading": "Loading…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You paid for the group",
+          "paidBy": "Paid by {{name}}",
+          "covered": "Covered"
         }
       },
       "tabs": {
@@ -14133,7 +14192,45 @@
           "deliveryFeeEstimate": "Estimated delivery: {{amount}}",
           "deliveryOutsideRadius": "Address is outside the delivery area.",
           "deliveryConfirmMap": "Confirm your address on the map to enable delivery.",
-          "feeEstimateGuest": "Estimated delivery fee (sign in for exact quote)"
+          "feeEstimateGuest": "Estimated delivery fee (sign in for exact quote)",
+          "cartEmptyTitle": "Cart is empty",
+          "cartEmptyBody": "Add products from this seller before checkout.",
+          "addressRequiredTitle": "Address required",
+          "addressRequiredBody": "Please select a delivery address",
+          "locationRequiredTitle": "Location required",
+          "locationRequiredBody": "Please select a collection location",
+          "orderFailedTitle": "Order failed",
+          "orderFailedBody": "Your order could not be placed. Please try again.",
+          "signInToCheckoutTitle": "Sign in to checkout",
+          "signInToCheckoutBody": "Create an account or sign in so we can process payment and delivery.",
+          "notNow": "Not now",
+          "orderPlacedTitle": "Order placed!",
+          "orderPlacedWalletBody": "Your order {{orderNumber}} has been paid from your wallet.",
+          "orderPlacedCardOnDeliveryBody": "Your order {{orderNumber}} has been placed. Please have your card ready at delivery/collection.",
+          "orderPlacedNoEmailBody": "Your order {{orderNumber}} has been placed. Payment is pending — add an email in account settings to pay online, or complete payment from Orders.",
+          "orderConfirmFailedBody": "We could not confirm your order. Please check Product orders or try again.",
+          "orderCreatedPayFailedTitle": "Order created",
+          "orderCreatedPayFailedBody": "Your order {{orderNumber}} was placed but payment could not be initialized. You can pay later from your orders.",
+          "orderCreatedPayPendingBody": "Order #{{orderNumber}} was created. Complete payment from My Orders if it does not confirm shortly.",
+          "paymentSuccessConfirmedBody": "Your order {{orderNumber}} has been confirmed.",
+          "paymentPendingCheckoutBody": "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
+          "paymentSuccessTitle": "Payment successful",
+          "paymentPendingTitle": "Payment pending",
+          "viewOrdersCta": "View orders",
+          "orderNumberLabel": "Order number",
+          "itemsLabel": "Items",
+          "orderSuccessFooterHint": "Tap continue to view your orders.",
+          "placingOrder": "Placing your order…",
+          "processingPayment": "Processing payment…",
+          "openingPaymentPage": "Opening payment page…",
+          "confirmingPayment": "Confirming your payment…",
+          "securePaymentTitle": "Secure payment",
+          "savedCardChargeFailed": "Could not charge your saved card. Try again or use a different payment method.",
+          "checkingOrderStatus": "Checking your order status…",
+          "orderStatusUnknownTitle": "Still confirming your order",
+          "orderStatusUnknownBody": "We could not confirm whether your order went through. Check My Orders before trying again.",
+          "paymentCancelledTitle": "Payment cancelled",
+          "paymentCancelledOrderBody": "No card charge was completed. Order #{{orderNumber}} is still pending — complete payment from My Orders. Any wallet amount applied stays on the order until you pay or the checkout expires."
         },
         "authSignup": {
           "signUpFailedTitle": "Sign up failed",
@@ -16320,7 +16417,13 @@
           "missingRequestId": "Missing request ID",
           "back": "Back",
           "retry": "Retry",
-          "help": "Help"
+          "help": "Help",
+          "waitingTitle": "Request sent",
+          "waitingHeadline": "Waiting for your provider",
+          "waitingProviderMessage": "This isn't confirmed yet. We'll book it as soon as {{provider}} accepts.",
+          "providerFallbackName": "your provider",
+          "waitingTimerLabel": "Time remaining",
+          "waitingCancelCta": "Cancel request"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Could not load booking details. Check your bookings list.",
@@ -16583,7 +16686,8 @@
           "budgetInvalid": "Budget must be a positive number.",
           "budgetMaxLessThanMin": "Maximum budget must be greater than or equal to minimum budget.",
           "durationOutOfRange": "Duration must be between {{min}} and {{max}} minutes.",
-          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat."
+          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat.",
+          "hintOnce": "Nothing is booked yet. The provider replies with a price and time, and it's confirmed when you pay their offer. Requests close after {{days}} days."
         },
         "notificationPreferences": {
           "loadFailed": "Failed to load preferences.",
@@ -17414,7 +17518,19 @@
     "platformFeeInclusive": " (incl. platform fee {{amount}})",
     "securePaymentTitle": "Secure payment",
     "paymentCancelledTitle": "Payment cancelled",
-    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed."
+    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed.",
+    "contextualHints": {
+      "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
+      "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
+      "depositLateCancel": "A late-cancellation fee comes out of what you've paid.",
+      "groupBooking": "You pay for everyone in one payment. Guests only need a name.",
+      "customOfferConfirm": "Paying this offer confirms your booking.",
+      "customOfferExpires": "Offer expires {{date}}.",
+      "groupSwitchOn": "On",
+      "groupSwitchOff": "Off",
+      "groupGuestsLimit_one": "Add up to {{count}} guest.",
+      "groupGuestsLimit_other": "Add up to {{count}} guests."
+    }
   },
   "payments": {
     "pay": "Pay",
@@ -17786,6 +17902,8 @@
         "loadingBooking": "Loading booking...",
         "onlineBookingUnavailable": "Online booking is not available",
         "onlineBookingDisabled": "{{name}} has not enabled online booking. Please contact them directly to book.",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found",
         "findAnotherProvider": "Find another provider"
       },
       "continue": {
@@ -23722,6 +23840,10 @@
             "title": "Service Zones",
             "description": "Select service areas"
           },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
+          },
           "categories": {
             "title": "Service Categories",
             "description": "Select categories"
@@ -23742,6 +23864,9 @@
             "title": "Choose Your Plan",
             "description": "Select a subscription plan"
           }
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         },
         "toast": {
           "resumedDraft": "Resumed from saved draft",
@@ -23793,6 +23918,7 @@
           "verifyEmail": "Please verify your email address",
           "phoneRequired": "Phone number is required",
           "verifyPhone": "Please verify your phone number",
+          "dobRequired": "Date of birth is required for identity verification",
           "businessName": "Business name is required",
           "vatRequired": "VAT number is required when VAT registered",
           "vatDigits": "VAT number must be 10 digits",
@@ -23858,6 +23984,7 @@
           "ownerContactTitle": "Owner and contact details",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Your Name",
+          "dateOfBirth": "Date of birth",
           "emailAddress": "Email Address"
         },
         "photos": {
@@ -24094,6 +24221,8 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "Categories help clients discover you in search and filters.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name",
           "noCategoriesAvailable": "No categories available. Please contact support."
         },
         "catalog": {
@@ -25183,6 +25312,9 @@
             "bookingQrAlt": "Booking QR code",
             "clientsCanScan": "Clients can scan to open your booking page",
             "shareLinkHint": "Share this link so clients can book directly.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share",
             "embedUrl": "Embed URL (for iframes)",
             "embedIframe": "Embed with iframe",
             "embedIframeHint": "Paste this into your website to show the booking flow on the page. Card payment and Google or Apple sign-in open on Beautonomi so the customer can finish securely; pay-at-venue stays on your site.",
@@ -27619,6 +27751,10 @@
             "nativeCancelled": "You cancelled the payment. No charge was made.",
             "nativeInvalid": "This payment return link is invalid or incomplete."
           }
+        },
+        "serviceZones": {
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27760,7 +27896,16 @@
           "inviteGeneric": "You've been invited to join a team on Beautonomi.",
           "signInWithEmail": "Sign in or create an account with",
           "theEmailThatReceived": "the email that received this invite",
-          "signInHint": ". Use the set-password link from your invitation email, or sign in with email OTP — you do not need an existing password.",
+          "signInHint": ", or set a password below first.",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters",
           "continueToSignIn": "Continue to sign in",
           "settingUp": "Setting up your access…",
           "acceptInvite": "Accept invite",
@@ -29141,6 +29286,12 @@
             "title": "Payment Summary",
             "subtitle": "Appointment gross vs ledger-settled customer funds (different dates — see facts below)",
             "unableToLoad": "Unable to load payment summary data",
+            "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
+            "methodEft": "Bank transfer (EFT)",
             "ledgerReconTitle": "Ledger reconciliation note",
             "cashStyle_one": "This period includes {{count}} walk-in or cash-style payment (≈ {{amount}}) recorded in booking payments but with no matching settlement row in finance_transactions.",
             "cashStyle_other": "This period includes {{count}} walk-in or cash-style payments (≈ {{amount}}) recorded in booking payments but with no matching settlement row in finance_transactions.",
@@ -30267,7 +30418,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "Description (Optional)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "serviceDialog": {
           "shortHair": "Short Hair",
@@ -32110,7 +32262,8 @@
         "services": "Services",
         "expiresCol": "Expires",
         "clicks": "Clicks",
-        "itemsSelected": "Items Selected"
+        "itemsSelected": "Items Selected",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Service",
@@ -32421,6 +32574,8 @@
         "progressDone": "{{done}} of {{total}} required steps done — finish the rest to start accepting bookings.",
         "completeSteps": "Complete the steps below to start accepting bookings.",
         "nextUp": "Next up: {{title}}",
+        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings.",
         "continueSetup": "Continue setup",
         "requiredToGoLive": "Required to go live",
         "boostProfile": "Boost your profile",
@@ -33030,6 +33185,22 @@
         "optionalParen": "(Optional)",
         "nameRequired": "Name *",
         "other": "Other"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {

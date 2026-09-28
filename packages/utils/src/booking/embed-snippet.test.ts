@@ -6,6 +6,8 @@ import {
   buildBookingButtonScriptSnippet,
   buildBookingEmbedUrl,
   buildBookingIframeSnippet,
+  buildExpressBookingEmbedUrl,
+  buildExpressBookingIframeSnippet,
   clampBookingEmbedHeight,
   createBookingEmbedMessage,
   isBookingEmbedEnabled,
@@ -65,6 +67,17 @@ describe("embed-snippet", () => {
     expect(isBookingEmbedMessage(msg)).toBe(true);
     expect(isBookingEmbedMessage({ source: "other", type: "resize" })).toBe(false);
     expect(msg.source).toBe(BOOKING_EMBED_MESSAGE_SOURCE);
+  });
+
+  it("builds express link iframe URLs with embed=1", () => {
+    expect(buildExpressBookingEmbedUrl("https://app.beautonomi.com", "abc123")).toBe(
+      "https://app.beautonomi.com/book/l/abc123?embed=1",
+    );
+    const html = buildExpressBookingIframeSnippet({
+      origin: "https://app.beautonomi.com",
+      linkCode: "abc123",
+    });
+    expect(html).toContain("/book/l/abc123?embed=1");
   });
 
   it("clamps iframe height and strips trailing slashes on origin", () => {

@@ -24,6 +24,7 @@ interface SetupStatus {
   completionPercentage: number;
   steps: SetupStep[];
   providerStatus?: string | null;
+  blocked_by_verification?: boolean;
 }
 
 export default function GetStartedPage() {
@@ -176,9 +177,16 @@ export default function GetStartedPage() {
 
   const requiredSteps = setupStatus.steps.filter((s) => s.required);
   const optionalSteps = setupStatus.steps.filter((s) => !s.required);
+  const sortedRequiredSteps = setupStatus.blocked_by_verification
+    ? [...requiredSteps].sort((a, b) => {
+        if (a.id === "identity-verification") return -1;
+        if (b.id === "identity-verification") return 1;
+        return 0;
+      })
+    : requiredSteps;
   const completedRequired = requiredSteps.filter((s) => s.completed).length;
   const remaining = requiredSteps.length - completedRequired;
-  const nextIncomplete = requiredSteps.find((s) => !s.completed);
+  const nextIncomplete = sortedRequiredSteps.find((s) => !s.completed);
 
   // ── All done ──────────────────────────────────────────────────────────────
   if (setupStatus.isComplete) {
@@ -277,6 +285,17 @@ export default function GetStartedPage() {
           </div>
         </div>
 
+        {setupStatus.blocked_by_verification ? (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-950">
+              {t("web.provider.getStartedPage.verificationRequiredToGoLive")}
+            </p>
+            <p className="text-xs text-amber-900 mt-1">
+              {t("web.provider.getStartedPage.verificationRequiredBody")}
+            </p>
+          </div>
+        ) : null}
+
         {nextIncomplete ? (
           <div className="mb-6 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -304,7 +323,7 @@ export default function GetStartedPage() {
             {t("web.provider.getStartedPage.requiredToGoLive")}
           </p>
           <div className="space-y-2">
-            {requiredSteps.map((step) => (
+            {sortedRequiredSteps.map((step) => (
               <StepCard
                 key={step.id}
                 step={step}

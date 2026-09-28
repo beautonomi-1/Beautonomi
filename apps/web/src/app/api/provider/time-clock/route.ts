@@ -133,7 +133,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already clocked in
-    const today = new Date().toISOString().split('T')[0];
+    const { getProviderPayrollTimezone } = await import("@/lib/payroll/provider-payroll-context");
+    const { calendarDayInTimezone } = await import("@/lib/payroll/period-bounds");
+    const tz = await getProviderPayrollTimezone(supabase, providerId);
+    const today = calendarDayInTimezone(new Date(), tz);
     const { data: activeTimeCard } = await supabase
       .from("staff_time_cards")
       .select("id")

@@ -341,9 +341,8 @@ export async function POST(request: NextRequest) {
       deliveryDistanceKm = quoteResult.quote.distanceKm;
     }
 
-    // Calculate totals
+    // Calculate totals (tax applies after promotion discount on the discounted subtotal)
     let subtotal = 0;
-    let taxAmount = 0;
     const orderItems: Array<{
       product_id: string;
       product_variant_id: string | null;
@@ -359,9 +358,7 @@ export async function POST(request: NextRequest) {
       const variant = item.product_variant;
       const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
       const lineTotal = unitPrice * item.quantity;
-      const lineTax = percentOf(lineTotal, parseFloat(p.tax_rate || "0"));
       subtotal += lineTotal;
-      taxAmount += lineTax;
       orderItems.push({
         product_id: p.id,
         product_variant_id: variant?.id ?? null,
@@ -392,6 +389,28 @@ export async function POST(request: NextRequest) {
       promotionDiscount = Math.min(promo.discountAmount, subtotal);
     }
     const discountedSubtotal = Math.max(0, Math.round((subtotal - promotionDiscount) * 100) / 100);
+
+    let taxAmount = 0;
+    if (subtotal > 0 && promotionDiscount > 0) {
+      const discountRatio = discountedSubtotal / subtotal;
+      for (const item of validatedCartItems) {
+        const p = item.product;
+        const variant = item.product_variant;
+        const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
+        const lineTotal = unitPrice * item.quantity;
+        const discountedLine = Math.round(lineTotal * discountRatio * 100) / 100;
+        taxAmount += percentOf(discountedLine, parseFloat(p.tax_rate || "0"));
+      }
+    } else {
+      for (const item of validatedCartItems) {
+        const p = item.product;
+        const variant = item.product_variant;
+        const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
+        const lineTotal = unitPrice * item.quantity;
+        taxAmount += percentOf(lineTotal, parseFloat(p.tax_rate || "0"));
+      }
+    }
+    taxAmount = Math.round(taxAmount * 100) / 100;
 
     // Calculate platform fee for online orders
     let platformFee = 0;

@@ -181,6 +181,7 @@ export async function createBookingFromHold(
     bookingData.address_longitude = addr.longitude ?? addr.lng ?? null;
   }
 
+  // Booking insert is SECURITY DEFINER RPC only (no `.from("bookings").insert` on user JWT).
   const { data: bookingId, error: rpcError } = await adminSupabase.rpc("create_booking_with_locking", {
     p_booking_data: bookingData,
     p_booking_services: services,

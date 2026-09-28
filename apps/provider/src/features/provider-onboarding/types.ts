@@ -180,6 +180,7 @@ export interface OnboardingFormData {
   selected_zone_ids?: string[];
   zone_suggest_status?: "matched" | "none" | "error" | "no_coords";
   current_step_key?: WizardStepKey;
+  step_map_version?: number;
   /** Travel-fee configuration for mobile / both providers (mirrors the settings screen). */
   travel_fees?: OnboardingTravelFees;
   global_category_ids: string[];

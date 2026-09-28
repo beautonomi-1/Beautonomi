@@ -82,6 +82,13 @@ Examples:
 | `message_thread_open` | thread_id, participant_type | Web, Customer, Provider |
 | `message_sent` | thread_id, message_type | Web, Customer, Provider |
 
+### Contextual hints (3 events)
+| Event | Properties | Platforms |
+|---|---|---|
+| `hint_shown` | hint_id, app | Customer, Provider |
+| `hint_dismissed` | hint_id, app | Customer, Provider |
+| `hint_action` | hint_id, app | Customer, Provider |
+
 ### App lifecycle & attribution (4 events)
 | Event | Properties | Platforms |
 |-------|-----------|-----------|
@@ -288,3 +295,7 @@ Examples:
 **Canonical constants:** Use event name constants from `@beautonomi/analytics` (see `packages/analytics/src/events.ts`) when integrating in new code so web and mobile stay aligned. Property keys (e.g. `provider_id`, `booking_id`, `post_id`) should match the tables above for funnel and provider ROI consistency.
 
 For dashboard/query templates, see `docs/analytics/MARKET_ROUTING_DASHBOARD_SPEC.md`.
+
+## Brand desk attribution (event property)
+
+When session or first-touch UTM params are present, web and native clients also set **`brand_campaign_code`** on event properties, equal to session `utm_campaign`. Use this property in Amplitude to filter integrated brand campaigns (admin Brand desk pack shows measured DB steps separately from Amplitude-only funnel rows).

@@ -37,22 +37,37 @@ export function groupPaymentBadge(status: string | null | undefined): PaymentBad
  * Per-participant payment badge. When the group balance is fully settled,
  * show "Covered" instead of a child booking's misleading pending/unpaid state.
  */
+type GroupPaymentTranslate = (key: string, opts?: Record<string, string | number>) => string;
+
 export function participantPaymentBadge(
   participantStatus: string | null | undefined,
   groupBalanceDue: number,
+  t?: GroupPaymentTranslate,
 ): PaymentBadgeStyle | null {
   if (groupBalanceDue <= 0) {
-    return { label: "Covered", bg: "#DCFCE7", fg: "#15803D" };
+    const covered =
+      t?.("customer.mobile.components.groupBookingPayment.covered") ?? "Covered";
+    return { label: covered, bg: "#DCFCE7", fg: "#15803D" };
   }
   return groupPaymentBadge(participantStatus);
 }
 
 /** Human-readable payer line for the group payment summary card. */
-export function groupPayerSummaryLine(opts: {
-  isPrimaryPayer: boolean;
-  paidBy: string | null;
-}): string | null {
-  if (opts.isPrimaryPayer) return "You paid for the group";
-  if (opts.paidBy) return `Paid by ${opts.paidBy}`;
+export function groupPayerSummaryLine(
+  opts: {
+    isPrimaryPayer: boolean;
+    paidBy: string | null;
+  },
+  t?: GroupPaymentTranslate,
+): string | null {
+  if (opts.isPrimaryPayer) {
+    return t?.("customer.mobile.components.groupBookingPayment.youPaidForGroup") ?? "You paid for the group";
+  }
+  if (opts.paidBy) {
+    return (
+      t?.("customer.mobile.components.groupBookingPayment.paidBy", { name: opts.paidBy }) ??
+      `Paid by ${opts.paidBy}`
+    );
+  }
   return null;
 }

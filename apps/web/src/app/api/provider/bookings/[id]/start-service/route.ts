@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   getProviderIdForUser,
   successResponse,
@@ -133,7 +134,8 @@ export async function POST(
 
     // Update booking with version bump
     const currentVersion = (bookingData as { version?: number }).version || 0;
-    const { data: updatedRows, error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { data: updatedRows, error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         status: "in_progress",
@@ -143,6 +145,7 @@ export async function POST(
         version: currentVersion + 1,
       })
       .eq("id", id)
+      .eq("provider_id", providerId)
       .eq("version", currentVersion)
       .select("id");
 

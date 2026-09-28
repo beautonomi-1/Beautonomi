@@ -133,14 +133,21 @@ describe("generateProviderInvoice", () => {
     expect(inserted[0].currency).toBe("ZAR");
   });
 
-  it("falls back to the default commission rate when no fee is stamped", async () => {
+  it("skips unstamped bookings for scheduled platform-fee invoices", async () => {
     const { supabase, inserted } = makeSupabase({
       bookings: [{ id: "b1", ref_number: "BK-1", total_amount: 1000, platform_fee_amount: 0 }],
     });
 
-    await generateProviderInvoice(supabase, { providerId: "p1", ...PERIOD });
+    const result = await generateProviderInvoice(supabase, {
+      providerId: "p1",
+      ...PERIOD,
+      invoiceType: "platform_fee",
+      generatedBy: "scheduled",
+      skipIfEmpty: true,
+    });
 
-    expect(inserted[0].subtotal).toBe(150);
+    expect(result.skipped).toBe("no_billable_activity");
+    expect(inserted).toHaveLength(0);
   });
 
   it("does not open a zero-value invoice for a scheduled run with no activity", async () => {

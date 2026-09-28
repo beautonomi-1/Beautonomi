@@ -8,6 +8,7 @@ import {
   type NegativeBalanceProvidersPayload,
 } from "@/lib/admin/negative-provider-payout-balances";
 import { getActiveProviderPayoutHoldsForProviders } from "@/lib/fraud/provider-payout-hold";
+import { fetchAllPages, type PageableQuery } from "@/lib/admin/finance-ledger-tenant";
 
 type PayoutRow = {
   id?: string;
@@ -49,7 +50,14 @@ function paystackTransferStatus(response: unknown): string {
   return typeof rec.status === "string" ? rec.status : "";
 }
 
-function payoutsToCsv(rows: Array<PayoutRow & { provider?: any; bank_account?: any }>) {
+function payoutsToCsv(
+  rows: Array<PayoutRow & { provider?: any; bank_account?: any }>,
+  options?: { truncated?: boolean; exportLimit?: number; total?: number },
+) {
+  const truncationNote =
+    options?.truncated && options.exportLimit
+      ? `# Export truncated at ${options.exportLimit} rows (total matching: ${options.total ?? "unknown"}). Narrow filters for a complete export.\n`
+      : "";
   const headers = [
     "payout_id",
     "payout_number",
@@ -102,7 +110,8 @@ function payoutsToCsv(rows: Array<PayoutRow & { provider?: any; bank_account?: a
       r.failure_reason,
     ].map(csvEscape).join(",")
   );
-  return [headers.join(","), ...lines].join("\r\n");
+  const body = [headers.join(","), ...lines].join("\r\n");
+  return truncationNote ? `${truncationNote}${body}` : body;
 }
 
 /**
@@ -135,6 +144,7 @@ export async function GET(request: NextRequest) {
           total: 0,
           has_more: false,
           negative_balance_providers: negativeBalanceProviders,
+          payout_status_summary_truncated: false,
         },
       });
     }
@@ -218,8 +228,12 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const { data: summaryRows } = await buildBaseQuery({ select: "status, amount, currency, providers!inner(tenant_id)" })
-      .limit(10000);
+    const summaryQuery = buildBaseQuery({
+      select: "status, amount, currency, providers!inner(tenant_id)",
+    }).order("id", { ascending: true });
+    const { rows: summaryRows, truncated: payoutStatusSummaryTruncated } = await fetchAllPages(
+      summaryQuery as unknown as PageableQuery<{ status?: string; amount?: number }>,
+    );
     const summary = (summaryRows || []).reduce(
       (acc: Record<string, { count: number; amount: number }>, row: any) => {
         const key = String(row.status ?? "unknown");
@@ -242,6 +256,7 @@ export async function GET(request: NextRequest) {
           has_more: false,
           summary,
           negative_balance_providers: negativeBalanceProviders,
+          payout_status_summary_truncated: payoutStatusSummaryTruncated,
         },
       });
     }
@@ -329,13 +344,21 @@ export async function GET(request: NextRequest) {
     });
 
     if (exportFormat === "csv") {
-      return new NextResponse(payoutsToCsv(enrichedPayouts as any), {
-        headers: {
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="payouts-${new Date().toISOString().slice(0, 10)}.csv"`,
-          "Cache-Control": "no-store",
+      const exportTruncated = (count ?? 0) > requestedLimit;
+      return new NextResponse(
+        payoutsToCsv(enrichedPayouts as any, {
+          truncated: exportTruncated,
+          exportLimit: requestedLimit,
+          total: count ?? undefined,
+        }),
+        {
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename="payouts-${new Date().toISOString().slice(0, 10)}.csv"`,
+            "Cache-Control": "no-store",
+          },
         },
-      });
+      );
     }
 
     return NextResponse.json({
@@ -348,6 +371,7 @@ export async function GET(request: NextRequest) {
         has_more: (count || 0) > offset + limit,
         summary,
         negative_balance_providers: negativeBalanceProviders,
+        payout_status_summary_truncated: payoutStatusSummaryTruncated,
       },
     });
   } catch (error) {

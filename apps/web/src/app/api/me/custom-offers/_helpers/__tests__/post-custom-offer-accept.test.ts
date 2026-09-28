@@ -27,6 +27,7 @@ const mockChargeAuthorization = vi.fn();
 const mockPatchCustomOfferMessageAttachments = vi.fn();
 const mockFinalizeCustomOfferPayment = vi.fn();
 const mockIsPaymentMethodExpired = vi.fn();
+const mockCreditWalletForCustomOfferAbandon = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -73,6 +74,11 @@ vi.mock("@/lib/subscriptions/entitlements", () => ({
 vi.mock("@/lib/bookings/resolve-payment-tenant", () => ({
   resourceTenantMatchesHostTenant: (...args: unknown[]) =>
     mockResourceTenantMatchesHostTenant(...args),
+}));
+
+vi.mock("@/lib/custom-offers/credit-wallet-for-offer-abandon", () => ({
+  creditWalletForCustomOfferAbandon: (...args: unknown[]) =>
+    mockCreditWalletForCustomOfferAbandon(...args),
 }));
 
 vi.mock("../custom-offer-pricing", () => ({
@@ -436,10 +442,10 @@ describe("postCustomOfferAccept — zero-Paystack (wallet fully covers)", () => 
     expect(res.status).toBe(500);
     expect(body.error.code).toBe("FINALIZE_FAILED");
 
-    // Wallet debited then credited back.
+    // Wallet debited then credited back via admin idempotent reversal.
     const rpcNames = (supabase.rpc as any).mock.calls.map((c: unknown[]) => c[0]);
     expect(rpcNames).toContain("wallet_debit_self");
-    expect(rpcNames).toContain("wallet_credit_self");
+    expect(mockCreditWalletForCustomOfferAbandon).toHaveBeenCalled();
 
     // Offer reset to pending so the customer can retry, chat card kept in sync.
     expect(updates.some((u) => u.status === "payment_pending")).toBe(true);

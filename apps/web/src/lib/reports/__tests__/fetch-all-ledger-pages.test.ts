@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchAllLedgerPages, LEDGER_PAGE_SIZE } from "../fetch-all-ledger-pages";
+import {
+  fetchAllLedgerPages,
+  fetchAllLedgerPagesWithMeta,
+  LEDGER_PAGE_SIZE,
+} from "../fetch-all-ledger-pages";
 
 /** Fake Supabase query whose `.range(from,to)` serves slices of a backing array. */
 function pageableQuery(total: number) {
@@ -31,6 +35,13 @@ describe("fetchAllLedgerPages", () => {
     const { query } = pageableQuery(100_000);
     const rows = await fetchAllLedgerPages(query, 3 * LEDGER_PAGE_SIZE);
     expect(rows).toHaveLength(3 * LEDGER_PAGE_SIZE);
+  });
+
+  it("fetchAllLedgerPagesWithMeta sets truncated when cap is hit on a full page", async () => {
+    const { query } = pageableQuery(100_000);
+    const { rows, truncated } = await fetchAllLedgerPagesWithMeta(query, 2 * LEDGER_PAGE_SIZE);
+    expect(rows).toHaveLength(2 * LEDGER_PAGE_SIZE);
+    expect(truncated).toBe(true);
   });
 
   it("propagates query errors", async () => {

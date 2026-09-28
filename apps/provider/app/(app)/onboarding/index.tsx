@@ -40,6 +40,7 @@ type SetupStatus = {
   isComplete?: boolean;
   completionPercentage?: number;
   steps?: SetupStep[];
+  blocked_by_verification?: boolean;
 };
 
 /**
@@ -73,6 +74,7 @@ export default function OnboardingHubScreen() {
   const optionalPending = allSteps.filter((s) => !s.required && !s.completed);
   const remaining = pendingRequired.length;
   const pct = status?.completionPercentage ?? 0;
+  const blockedByVerification = status?.blocked_by_verification === true;
 
   const tabletCenter = isTablet
     ? {
@@ -290,6 +292,20 @@ export default function OnboardingHubScreen() {
         </LinearGradient>
 
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 32 }}>
+          {blockedByVerification && isPendingApproval ? (
+            <View
+              style={twStyle(
+                "mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3",
+              )}
+            >
+              <Text style={twStyle("text-[14px] font-semibold text-amber-950")}>
+                {oh("verificationRequiredTitle")}
+              </Text>
+              <Text style={twStyle("mt-1 text-[12px] text-amber-900")}>
+                {oh("verificationRequiredBody")}
+              </Text>
+            </View>
+          ) : null}
           {!isComplete && !hasSetupSteps && (
             <View
               style={[
@@ -370,7 +386,14 @@ export default function OnboardingHubScreen() {
                   per-row state (done vs pending). Previously only pending
                   rows were rendered, so providers had no visual confirmation
                   that the work they finished elsewhere counted. */}
-              {requiredSteps.map((s, idx) => (
+              {(blockedByVerification
+                ? [...requiredSteps].sort((a, b) => {
+                    if (a.id === "identity-verification") return -1;
+                    if (b.id === "identity-verification") return 1;
+                    return 0;
+                  })
+                : requiredSteps
+              ).map((s, idx) => (
                 <TouchableOpacity
                   key={s.id}
                   onPress={() => openStep(s)}

@@ -42,6 +42,8 @@ import {
   lineHasHouseCallAdjustment,
 } from "@beautonomi/utils";
 import { HouseCallLineFootnote, toHouseCallTranslate } from "@/components/booking/HouseCallPricingNotes";
+import { ContextualHint } from "@/components/hints/ContextualHint";
+import { sumHouseCallAdjustmentsFromSnapshot } from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
@@ -1675,6 +1677,10 @@ export default function BookCheckoutScreen() {
   const subtotal = hold ? primarySubtotal + groupParticipantsSubtotal : 0;
   const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
+  const houseCallFeeTotal =
+    hold?.location_type === "at_home" && hold?.booking_services_snapshot
+      ? sumHouseCallAdjustmentsFromSnapshot(hold.booking_services_snapshot)
+      : 0;
   const addonsSubtotal = addonsList
     .filter((a) => selectedAddonIds.includes(a.id))
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
@@ -3570,7 +3576,10 @@ export default function BookCheckoutScreen() {
                       setIsGroupBooking((b) => !b);
                       if (!isGroupBooking) setGroupParticipants([]);
                     }}
-                    style={{ flexDirection: "row", alignItems: "center" }}
+                    style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}
+                    accessibilityRole="switch"
+                    accessibilityLabel={bc("groupBooking")}
+                    accessibilityState={{ checked: isGroupBooking }}
                   >
                     <View
                       style={{
@@ -3593,15 +3602,25 @@ export default function BookCheckoutScreen() {
                       />
                     </View>
                     <Text style={{ fontSize: 13, color: "#6B7280", marginStart: 8 }}>
-                      {isGroupBooking ? "On" : "Off"}
+                      {isGroupBooking
+                        ? t("checkout.contextualHints.groupSwitchOn")
+                        : t("checkout.contextualHints.groupSwitchOff")}
                     </Text>
                   </Pressable>
                 </View>
+                {isGroupBooking ? (
+                  <ContextualHint
+                    id="customer.checkout.groupBooking"
+                    mode="persistent"
+                    message={t("checkout.contextualHints.groupBooking")}
+                  />
+                ) : null}
                 {isGroupBooking && (
                   <>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-                      Add up to {Math.max(0, maxGroupSize - 1)} guest
-                      {Math.max(0, maxGroupSize - 1) === 1 ? "" : "s"}.
+                      {t("checkout.contextualHints.groupGuestsLimit", {
+                        count: Math.max(0, maxGroupSize - 1),
+                      })}
                     </Text>
                     {groupParticipants.length < Math.max(0, maxGroupSize - 1) && (
                       <TouchableOpacity
@@ -4030,6 +4049,17 @@ export default function BookCheckoutScreen() {
             )}
 
             {/* Travel Fee */}
+            {hold.location_type === "at_home" && houseCallFeeTotal > 0 && travelFee > 0 ? (
+              <ContextualHint
+                id="customer.checkout.dualFees"
+                mode="persistent"
+                message={t("checkout.contextualHints.dualFees", {
+                  houseCall: formatCurrency(houseCallFeeTotal, currency),
+                  travel: formatCurrency(travelFee, currency),
+                })}
+              />
+            ) : null}
+
             {hold.location_type === "at_home" && travelFee > 0 && (
               <View
                 style={{
@@ -4877,13 +4907,21 @@ export default function BookCheckoutScreen() {
                     </Text>
                   </Pressable>
                 </View>
-                {paymentOption === "deposit" && (
-                  <Text style={{ marginTop: 8, fontSize: 12, color: "#6B7280" }}>
-                    {t("checkout.remainingDueAtAppointment", {
-                      amount: formatCurrency(total - depositAmount, currency),
-                    })}
-                  </Text>
-                )}
+                <ContextualHint
+                  id="customer.checkout.deposit"
+                  mode="persistent"
+                  message={
+                    hold && cancellationPolicyRequiresCustomerAck(hold.cancellation_policy)
+                      ? `${t("checkout.contextualHints.depositPayNow", {
+                          deposit: formatCurrency(depositAmount, currency),
+                          balance: formatCurrency(total - depositAmount, currency),
+                        })} ${t("checkout.contextualHints.depositLateCancel")}`
+                      : t("checkout.contextualHints.depositPayNow", {
+                          deposit: formatCurrency(depositAmount, currency),
+                          balance: formatCurrency(total - depositAmount, currency),
+                        })
+                  }
+                />
               </View>
             )}
 

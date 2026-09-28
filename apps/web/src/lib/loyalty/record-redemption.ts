@@ -52,6 +52,10 @@ export async function recordLoyaltyRedemption(
 
   if (rpcError) {
     console.error("Loyalty ledger redeem append failed:", rpcError);
+    const msg = String((rpcError as { message?: string }).message ?? "");
+    if (msg.includes("insufficient_loyalty_balance")) {
+      return { recorded: false, points: 0, reason: "insufficient_balance" };
+    }
     return { recorded: false, points: 0, reason: "rpc_error" };
   }
 

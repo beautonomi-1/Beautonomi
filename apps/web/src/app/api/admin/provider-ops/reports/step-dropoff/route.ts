@@ -19,11 +19,12 @@ const STEP_NAMES: Record<number, string> = {
   7: "Location",
   8: "Photos",
   9: "Service Zones",
-  10: "Categories",
-  11: "Services",
-  12: "Operating Hours",
-  13: "Review",
-  14: "Plan Selection",
+  10: "Travel Fees",
+  11: "Categories",
+  12: "Services",
+  13: "Operating Hours",
+  14: "Review",
+  15: "Plan Selection",
 };
 
 export async function GET(request: NextRequest) {
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
       number,
       { step: number; name: string; count: number }
     > = {};
-    for (let s = 1; s <= 14; s++) {
+    for (let s = 1; s <= 15; s++) {
       stepDropoff[s] = { step: s, name: STEP_NAMES[s], count: 0 };
     }
 

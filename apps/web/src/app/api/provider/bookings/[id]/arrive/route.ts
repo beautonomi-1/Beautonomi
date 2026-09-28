@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -156,10 +157,12 @@ export async function POST(
       if (latitude != null && longitude != null) {
         arriveUpdate.provider_location = { latitude, longitude };
       }
-      const { error: updateError } = await supabase
+      const bookingsAdmin = getBookingsAdminClient();
+      const { error: updateError } = await bookingsAdmin
         .from("bookings")
         .update(arriveUpdate)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("provider_id", providerId);
 
       if (updateError) {
         throw updateError;
@@ -232,10 +235,12 @@ export async function POST(
       if (latitude != null && longitude != null) {
         arriveUpdate.provider_location = { latitude, longitude };
       }
-      const { error: updateError } = await supabase
+      const bookingsAdminFallback = getBookingsAdminClient();
+      const { error: updateError } = await bookingsAdminFallback
         .from("bookings")
         .update(arriveUpdate)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("provider_id", providerId);
 
       if (updateError) {
         throw updateError;
@@ -347,10 +352,12 @@ export async function POST(
       updateData.qr_code_verified = false;
     }
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update(updateData)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
     if (updateError) {
       throw updateError;

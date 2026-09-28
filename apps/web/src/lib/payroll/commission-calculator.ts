@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { percentOf, sumMoney } from "@beautonomi/utils";
+import { resolveStaffRates } from "./resolve-staff-rates";
 
 export interface CommissionResult {
   serviceCommission: number;
@@ -40,7 +41,7 @@ export async function calculateStaffCommission(
   const { data: staff, error: staffError } = await supabaseAdmin
     .from("provider_staff")
     .select(
-      "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate"
+      "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage"
     )
     .eq("id", staffId)
     .eq("provider_id", providerId)
@@ -50,8 +51,7 @@ export async function calculateStaffCommission(
     return result;
   }
 
-  const baseServiceRate = staff.service_commission_rate ?? staff.commission_rate ?? 0;
-  const baseProductRate = staff.product_commission_rate ?? staff.commission_rate ?? 0;
+  const { serviceRate: baseServiceRate, productRate: baseProductRate } = resolveStaffRates(staff);
 
   if (staff.commission_enabled === false && baseServiceRate === 0 && baseProductRate === 0) {
     return result;

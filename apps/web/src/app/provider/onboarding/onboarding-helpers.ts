@@ -40,7 +40,7 @@ export type WizardStepKey =
   | "review"
   | "plan";
 
-const WEB_STEP_KEY_TO_ID: Partial<Record<WizardStepKey, number>> = {
+const WEB_STEP_KEY_TO_ID: Record<WizardStepKey, number> = {
   team_size: 1,
   identity: 2,
   business: 3,
@@ -50,12 +50,22 @@ const WEB_STEP_KEY_TO_ID: Partial<Record<WizardStepKey, number>> = {
   location: 7,
   photos: 8,
   zones: 9,
-  categories: 10,
-  catalog: 11,
-  hours: 12,
-  review: 13,
-  plan: 14,
+  travel_fees: 10,
+  categories: 11,
+  catalog: 12,
+  hours: 13,
+  review: 14,
+  plan: 15,
 };
+
+/** Bump when the web wizard step map changes; legacy numeric drafts remap on load. */
+export const ONBOARDING_STEP_MAP_VERSION = 2;
+
+/** Pre–travel-fees web drafts used steps 10–14 for categories…plan; insert travel at 10. */
+export function remapLegacyWebDraftNumericStep(step: number): number {
+  if (step >= 10 && step <= 14) return step + 1;
+  return step;
+}
 
 const MOBILE_STEP_KEY_TO_ID: Record<WizardStepKey, number> = {
   team_size: 1,
@@ -75,52 +85,16 @@ const MOBILE_STEP_KEY_TO_ID: Record<WizardStepKey, number> = {
   plan: 15,
 };
 
-/** Web wizard has no travel_fees step; resume maps to categories (10). */
 export function wizardStepIdForKey(key: WizardStepKey, platform: "web" | "mobile" = "web"): number {
-  if (platform === "web") {
-    if (key === "travel_fees") return WEB_STEP_KEY_TO_ID.categories ?? 10;
-    return WEB_STEP_KEY_TO_ID[key] ?? 1;
+  if (platform === "mobile") {
+    return MOBILE_STEP_KEY_TO_ID[key];
   }
-  return MOBILE_STEP_KEY_TO_ID[key];
+  return WEB_STEP_KEY_TO_ID[key] ?? 1;
 }
 
 export function wizardStepKeyForId(stepId: number, platform: "web" | "mobile" = "web"): WizardStepKey | null {
-  const entries =
-    platform === "mobile"
-      ? ([
-          ["team_size", 1],
-          ["identity", 2],
-          ["business", 3],
-          ["payment", 4],
-          ["software", 5],
-          ["payroll", 6],
-          ["location", 7],
-          ["photos", 8],
-          ["zones", 9],
-          ["travel_fees", 10],
-          ["categories", 11],
-          ["catalog", 12],
-          ["hours", 13],
-          ["review", 14],
-          ["plan", 15],
-        ] as const)
-      : ([
-          ["team_size", 1],
-          ["identity", 2],
-          ["business", 3],
-          ["payment", 4],
-          ["software", 5],
-          ["payroll", 6],
-          ["location", 7],
-          ["photos", 8],
-          ["zones", 9],
-          ["categories", 10],
-          ["catalog", 11],
-          ["hours", 12],
-          ["review", 13],
-          ["plan", 14],
-        ] as const);
-  for (const [key, id] of entries) {
+  const map = platform === "mobile" ? MOBILE_STEP_KEY_TO_ID : WEB_STEP_KEY_TO_ID;
+  for (const [key, id] of Object.entries(map) as [WizardStepKey, number][]) {
     if (id === stepId) return key;
   }
   return null;
@@ -138,6 +112,10 @@ export function zonesStepVisible(data: ZoneFormSlice): boolean {
   if (data.business_type !== "mobile" && data.business_type !== "both") return false;
   const status = effectiveZoneSuggestStatus(data);
   return status !== "matched";
+}
+
+export function travelFeesStepVisible(data: Pick<ZoneFormSlice, "business_type">): boolean {
+  return data.business_type === "mobile" || data.business_type === "both";
 }
 
 /** Clear zone auto-match when the business address coordinates change. */

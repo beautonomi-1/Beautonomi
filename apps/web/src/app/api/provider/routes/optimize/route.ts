@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
 import { addOneDayYmd, dateRangeBoundsUtc, resolveTz } from "@/lib/dates/provider-tz";
 
@@ -64,7 +65,8 @@ export async function POST(request: NextRequest) {
       throw deleteSegError;
     }
 
-    const { error: clearChainError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: clearChainError } = await bookingsAdmin
       .from("bookings")
       .update({
         previous_booking_id: null,
@@ -232,7 +234,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Update booking with route information
-      const { error: bookingUpdateError } = await supabase
+      const { error: bookingUpdateError } = await bookingsAdmin
         .from("bookings")
         .update({
           route_segment_id: segment.id,
@@ -242,7 +244,8 @@ export async function POST(request: NextRequest) {
           travel_fee_method: "route_chained",
           travel_fee: travelFee,
         })
-        .eq("id", booking.id);
+        .eq("id", booking.id)
+        .eq("provider_id", providerId);
 
       if (bookingUpdateError) {
         throw bookingUpdateError;
@@ -250,10 +253,11 @@ export async function POST(request: NextRequest) {
 
       // Update previous booking's next_booking_id
       if (previousBookingId) {
-        const { error: nextErr } = await supabase
+        const { error: nextErr } = await bookingsAdmin
           .from("bookings")
           .update({ next_booking_id: booking.id })
-          .eq("id", previousBookingId);
+          .eq("id", previousBookingId)
+          .eq("provider_id", providerId);
         if (nextErr) {
           throw nextErr;
         }

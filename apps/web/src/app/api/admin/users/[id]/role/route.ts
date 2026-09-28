@@ -26,6 +26,7 @@ const MANAGEABLE_USER_ROLES = [
   "admin_sales",
   "admin_onboarding",
   "admin_retention",
+  "admin_grc",
 ] as const satisfies readonly UserRole[];
 
 const roleUpdateSchema = z.object({

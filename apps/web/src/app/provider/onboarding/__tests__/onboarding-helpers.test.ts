@@ -13,10 +13,10 @@ describe("onboarding-helpers", () => {
     expect(ensureHttpsUrl("https://x.com/a")).toBe("https://x.com/a");
   });
 
-  it("wizardStepIdForKey maps travel_fees to categories on web", () => {
+  it("wizardStepIdForKey uses travel_fees as step 10 on web and mobile", () => {
     expect(wizardStepIdForKey("travel_fees", "web")).toBe(10);
     expect(wizardStepIdForKey("travel_fees", "mobile")).toBe(10);
-    expect(wizardStepIdForKey("categories", "web")).toBe(10);
+    expect(wizardStepIdForKey("categories", "web")).toBe(11);
     expect(wizardStepIdForKey("categories", "mobile")).toBe(11);
   });
 

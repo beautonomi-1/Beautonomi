@@ -1,5 +1,7 @@
 # --- Local scratch / imports (not versioned) ---
 .tmp/
+_i18n_tmp/
+_rtl_sweep_report.json
 
 # --- OS ---
 .DS_Store
@@ -18,6 +20,10 @@ package-lock.json
 .next/
 dist/
 build/
+# Next.js App Router segment (not a compile artifact)
+!apps/web/src/app/api/admin/brand/evidence-pack/*/
+!apps/web/src/app/api/admin/brand/evidence-pack/*/build/
+!apps/web/src/app/api/admin/brand/evidence-pack/*/build/**
 out/
 coverage/
 *.log

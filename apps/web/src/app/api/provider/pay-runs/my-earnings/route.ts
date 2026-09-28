@@ -18,6 +18,8 @@ import {
   type PayRunPeriod,
 } from "@/lib/payroll/staff-earnings-from-lines";
 import { startOfDay, startOfWeek, startOfMonth, endOfDay, subDays } from "date-fns";
+import { getProviderPayrollTimezone } from "@/lib/payroll/provider-payroll-context";
+import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 
 const SETTLEMENT_LOOKBACK_DAYS = 120;
 
@@ -36,6 +38,10 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
+    if (payrollBlocked) {
+      return handleApiError(new Error(payrollBlocked), "PAYROLL_UNAVAILABLE", 403);
+    }
 
     const owner = await isProviderOwner(user.id, request);
     if (!owner) {
@@ -106,6 +112,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const payrollTimezone = await getProviderPayrollTimezone(supabaseAdmin, providerId);
+
     const payRunPeriods: PayRunPeriod[] = [...payRunMap.values()].map((pr) => ({
       id: String(pr.id),
       status: String(pr.status ?? "draft"),
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest) {
     }));
 
     const settlement = {
-      ...splitStaffEarningsLinesBySettlement(recentLines, payRunPeriods),
+      ...splitStaffEarningsLinesBySettlement(recentLines, payRunPeriods, payrollTimezone),
       lookback_days: SETTLEMENT_LOOKBACK_DAYS,
       all: summarizeStaffEarningsLines(recentLines),
     };

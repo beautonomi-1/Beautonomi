@@ -134,6 +134,14 @@ export async function POST(request: NextRequest) {
     }
 
     const startedAt = new Date().toISOString();
+    if (!dry_run) {
+      const { error: brandResetErr } = await admin.rpc("brand_reset_tenant_data", {
+        p_tenant_id: tenant_id,
+      });
+      if (brandResetErr) {
+        console.warn("[reset-tenant] brand_reset_tenant_data:", brandResetErr.message);
+      }
+    }
     const { data: rpcData, error: rpcError } = await admin.rpc(
       "compliance_reset_tenant_transactions",
       {

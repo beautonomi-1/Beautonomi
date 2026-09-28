@@ -25,4 +25,10 @@ describe("copilot-planner", () => {
       shouldInvokePlanner({ intent: "provider.health", hasPrimary: true, resolverStatus: "ready" }),
     ).toBe(false);
   });
+
+  it("skips planner for howto.knowledge", () => {
+    expect(
+      shouldInvokePlanner({ intent: "howto.knowledge", hasPrimary: false, resolverStatus: "ready" }),
+    ).toBe(false);
+  });
 });

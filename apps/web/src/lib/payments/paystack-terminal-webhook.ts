@@ -446,9 +446,9 @@ export async function recordPaystackTerminalCharge(
     return { recorded: false, reason: "missing_provider" };
   }
 
-  const paidAmount = convertFromSmallestUnit(Number(data.amount ?? 0));
-  const feeAmount = convertFromSmallestUnit(Number(data.fees ?? 0));
   const currency = String(data.currency ?? context.currency ?? "ZAR").toUpperCase();
+  const paidAmount = convertFromSmallestUnit(Number(data.amount ?? 0), currency);
+  const feeAmount = convertFromSmallestUnit(Number(data.fees ?? 0), currency);
   const customerReference =
     metadataString(metadata, "customer_reference") ?? customFieldString(data, "customer_reference");
   const { suggestion, candidates } = await suggestTerminalPaymentTargets(

@@ -1,35 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import { refundRedeemedLoyaltyPoints } from "../refund-redeemed-points";
 
-function makeAdmin() {
-  const from = vi.fn();
+function chainMaybeSingle(result: { data: unknown; error: unknown }) {
+  return {
+    eq: () => chainMaybeSingle(result),
+    contains: () => chainMaybeSingle(result),
+    limit: () => ({
+      maybeSingle: async () => result,
+    }),
+    maybeSingle: async () => result,
+  };
+}
+
+function makeAdmin(sequence: Array<{ data: unknown; error: unknown }>) {
+  let call = 0;
+  const from = vi.fn(() => ({
+    select: () => chainMaybeSingle(sequence[call++] ?? { data: null, error: null }),
+  }));
   const rpc = vi.fn();
   return { from, rpc } as any;
 }
 
 describe("refundRedeemedLoyaltyPoints", () => {
   it("no-ops when booking_refund marker already exists", async () => {
-    const admin = makeAdmin();
-    admin.from.mockImplementation(() => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            eq: () => ({
-              contains: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({ data: { id: "done" }, error: null }),
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    }));
+    const admin = makeAdmin([{ data: { id: "done" }, error: null }]);
 
     const out = await refundRedeemedLoyaltyPoints(admin, {
       bookingId: "b1",
       customerId: "c1",
-      pointsRedeemed: 20,
       reason: "cancel",
     });
     expect(out.refunded).toBe(false);
@@ -37,32 +35,35 @@ describe("refundRedeemedLoyaltyPoints", () => {
     expect(admin.rpc).not.toHaveBeenCalled();
   });
 
-  it("appends adjusted positive points with booking_refund metadata", async () => {
-    const admin = makeAdmin();
-    admin.from.mockImplementation(() => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            eq: () => ({
-              contains: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({ data: null, error: null }),
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    }));
+  it("no-ops when no redeemed ledger row exists", async () => {
+    const admin = makeAdmin([
+      { data: null, error: null },
+      { data: null, error: null },
+    ]);
+
+    const out = await refundRedeemedLoyaltyPoints(admin, {
+      bookingId: "b1",
+      customerId: "c1",
+      reason: "cancel",
+    });
+    expect(out.refunded).toBe(false);
+    expect(out.reason).toBe("no_redeem_row");
+  });
+
+  it("refunds absolute value of redeemed ledger row", async () => {
+    const admin = makeAdmin([
+      { data: null, error: null },
+      { data: { id: "r1", points_amount: -20 }, error: null },
+    ]);
     admin.rpc.mockResolvedValue({ error: null });
 
     const out = await refundRedeemedLoyaltyPoints(admin, {
       bookingId: "b1",
       customerId: "c1",
-      pointsRedeemed: 20,
       reason: "customer_cancel",
     });
     expect(out.refunded).toBe(true);
+    expect(out.points).toBe(20);
     expect(admin.rpc).toHaveBeenCalledWith("append_loyalty_ledger_entry", {
       p_customer_id: "c1",
       p_transaction_type: "adjusted",

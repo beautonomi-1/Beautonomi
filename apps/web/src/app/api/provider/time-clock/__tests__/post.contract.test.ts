@@ -22,6 +22,15 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+const providersTable = () => ({
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn().mockResolvedValue({
+    data: { timezone: "Africa/Johannesburg", tenant_id: null },
+    error: null,
+  }),
+});
+
 async function parseJson(res: Response) {
   return res.json() as Promise<{ data: unknown; error: { message?: string; code?: string } | null }>;
 }
@@ -95,6 +104,7 @@ describe("POST /api/provider/time-clock (clock-in PIN contract)", () => {
             single: vi.fn().mockResolvedValue({ data: staff, error: null }),
           };
         }
+        if (table === "providers") return providersTable();
         if (table === "staff_time_cards") {
           return {
             select: vi.fn().mockReturnThis(),
@@ -136,6 +146,7 @@ describe("POST /api/provider/time-clock (clock-in PIN contract)", () => {
             single: vi.fn().mockResolvedValue({ data: staff, error: null }),
           };
         }
+        if (table === "providers") return providersTable();
         if (table === "staff_time_cards") {
           timeCardsCall += 1;
           if (timeCardsCall === 1) {

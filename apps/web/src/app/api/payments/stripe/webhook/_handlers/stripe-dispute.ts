@@ -88,20 +88,81 @@ export async function handleStripeChargeDisputeCreated(
   );
 
   if (reference && subjects.bookingId) {
-    const { processBookingChargeback } = await import(
-      "@/lib/bookings/process-booking-chargeback"
-    );
     const amountMajor =
       dispute.amount != null && Number.isFinite(Number(dispute.amount))
         ? Math.round(Number(dispute.amount)) / 100
-        : undefined;
+        : 0;
+    const { upsertOpenPaymentDispute } = await import(
+      "@/lib/bookings/paystack-dispute-lifecycle"
+    );
+    await upsertOpenPaymentDispute({
+      supabase,
+      paymentProvider: "stripe",
+      disputeId,
+      reference,
+      amountMajor,
+      currency: dispute.currency ? String(dispute.currency).toUpperCase() : "ZAR",
+      status: "open",
+      resolution: dispute.reason ?? null,
+      rawPayload: dispute as Record<string, unknown>,
+      bookingId: subjects.bookingId,
+      providerId: subjects.subjectProviderId,
+      tenantId: subjects.tenantId,
+    });
+  }
+}
+
+/**
+ * Stripe `charge.dispute.closed` — customer win posts clawback; merchant win releases hold.
+ */
+export async function handleStripeChargeDisputeClosed(
+  dispute: StripeDisputeLike,
+  eventId?: string,
+): Promise<void> {
+  const disputeId = dispute.id?.trim();
+  if (!disputeId) return;
+
+  const supabase: SupabaseClient = getSupabaseAdmin();
+  const status = String(dispute.status ?? "").toLowerCase();
+  const reference =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : typeof dispute.charge === "string"
+        ? dispute.charge
+        : "";
+
+  const amountMajor =
+    dispute.amount != null && Number.isFinite(Number(dispute.amount))
+      ? Math.round(Number(dispute.amount)) / 100
+      : 0;
+
+  const { upsertOpenPaymentDispute } = await import("@/lib/bookings/paystack-dispute-lifecycle");
+  const disputeStatus = status === "lost" ? "customer_won" : status === "won" ? "merchant_won" : "awaiting_bank";
+
+  await upsertOpenPaymentDispute({
+    supabase,
+    paymentProvider: "stripe",
+    disputeId,
+    reference,
+    amountMajor,
+    currency: dispute.currency ? String(dispute.currency).toUpperCase() : "ZAR",
+    status: disputeStatus,
+    resolution: status,
+    rawPayload: { ...(dispute as Record<string, unknown>), event_id: eventId ?? null },
+    bookingId: null,
+    providerId: null,
+    tenantId: null,
+  });
+
+  if (status === "lost" && reference) {
+    const { processBookingChargeback } = await import("@/lib/bookings/process-booking-chargeback");
     await processBookingChargeback({
       supabase,
       paymentProvider: "stripe",
       reference,
       disputeId,
-      eventType: "charge.dispute.created",
-      amountMajor,
+      eventType: "charge.dispute.closed",
+      amountMajor: amountMajor > 0 ? amountMajor : undefined,
     });
   }
 }

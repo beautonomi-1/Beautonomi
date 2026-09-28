@@ -7,6 +7,8 @@ import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { clearProviderGateCache } from "@/app/provider/ProviderPortalGate";
 
@@ -52,6 +54,11 @@ function ProviderStaffJoinPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -120,6 +127,40 @@ function ProviderStaffJoinPage() {
   const loginHref = `/login?next=${encodeURIComponent(`/provider/join?token=${token}`)}`;
   const businessName = preview?.business_name || t("web.provider.pages.join.teamFallback");
 
+  const handleSetPassword = useCallback(async () => {
+    if (!token) return;
+    setPasswordError(null);
+    setPasswordMessage(null);
+    if (password.length < 8) {
+      setPasswordError(t("web.provider.pages.join.passwordTooShort"));
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setPasswordError(t("web.provider.pages.join.passwordMismatch"));
+      return;
+    }
+    setSettingPassword(true);
+    try {
+      await fetcher.post("/api/provider/staff/join/set-password", {
+        token,
+        password,
+      });
+      setPasswordMessage(t("web.provider.pages.join.setPasswordSuccess"));
+      setPassword("");
+      setPasswordConfirm("");
+    } catch (err) {
+      setPasswordError(
+        err instanceof FetchError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t("web.provider.pages.join.setPasswordFailed"),
+      );
+    } finally {
+      setSettingPassword(false);
+    }
+  }, [token, password, passwordConfirm, t]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
@@ -146,7 +187,47 @@ function ProviderStaffJoinPage() {
           {!token ? null : authLoading ? (
             <p className="text-sm text-gray-500">{t("web.provider.pages.join.loading")}</p>
           ) : !user ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/80 p-4">
+                <p className="text-sm font-medium text-gray-900">
+                  {t("web.provider.pages.join.setPasswordTitle")}
+                </p>
+                <p className="text-xs text-gray-600">{t("web.provider.pages.join.setPasswordHint")}</p>
+                <div className="space-y-2">
+                  <Label htmlFor="join-password">{t("web.provider.pages.join.passwordLabel")}</Label>
+                  <Input
+                    id="join-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="join-password-confirm">
+                    {t("web.provider.pages.join.passwordConfirmLabel")}
+                  </Label>
+                  <Input
+                    id="join-password-confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                  />
+                </div>
+                {passwordError ? <p className="text-sm text-red-600">{passwordError}</p> : null}
+                {passwordMessage ? <p className="text-sm text-green-700">{passwordMessage}</p> : null}
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={settingPassword || !preview?.valid}
+                  onClick={() => void handleSetPassword()}
+                >
+                  {settingPassword
+                    ? t("web.provider.pages.join.loading")
+                    : t("web.provider.pages.join.setPasswordSubmit")}
+                </Button>
+              </div>
               <p className="text-sm text-gray-600">
                 {t("web.provider.pages.join.signInWithEmail")}{" "}
                 {preview?.email_hint ? (
@@ -156,7 +237,7 @@ function ProviderStaffJoinPage() {
                 )}
                 {t("web.provider.pages.join.signInHint")}
               </p>
-              <Button asChild className="w-full">
+              <Button asChild className="w-full" variant="outline">
                 <Link href={loginHref}>{t("web.provider.pages.join.continueToSignIn")}</Link>
               </Button>
             </div>

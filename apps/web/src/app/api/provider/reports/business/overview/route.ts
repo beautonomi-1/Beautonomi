@@ -19,7 +19,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
-import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { fetchAllLedgerPagesWithMeta } from "@/lib/reports/fetch-all-ledger-pages";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import {
   RECOGNIZED_REVENUE_TYPES,
@@ -38,7 +38,11 @@ async function recognizedBreakdownForWindow(
   locationId: string | null,
   start: Date,
   end: Date,
-): Promise<{ breakdown: ProviderRevenueBreakdown; attribution: LedgerLocationAttributionSummary }> {
+): Promise<{
+  breakdown: ProviderRevenueBreakdown;
+  attribution: LedgerLocationAttributionSummary;
+  ledger_truncated: boolean;
+}> {
   const financeQuery = supabaseAdmin
     .from("finance_transactions")
     .select("transaction_type, net, amount, booking_id, product_order_id, refund_component")
@@ -47,10 +51,11 @@ async function recognizedBreakdownForWindow(
     .gte("created_at", start.toISOString())
     .lte("created_at", end.toISOString())
     .order("created_at", { ascending: true });
-  let rows = (await fetchAllLedgerPages(
-    financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+  const { rows: ledgerRows, truncated: ledger_truncated } = await fetchAllLedgerPagesWithMeta(
+    financeQuery as Parameters<typeof fetchAllLedgerPagesWithMeta>[0],
     MAX_FINANCE_TRANSACTIONS,
-  )) as Array<{
+  );
+  let rows = ledgerRows as Array<{
     transaction_type: string;
     net?: number | null;
     amount?: number | null;
@@ -62,7 +67,7 @@ async function recognizedBreakdownForWindow(
   if (locationId) {
     rows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, rows, locationId);
   }
-  return { breakdown: computeProviderRevenueBreakdown(rows), attribution };
+  return { breakdown: computeProviderRevenueBreakdown(rows), attribution, ledger_truncated };
 }
 
 export async function GET(request: NextRequest) {
@@ -185,7 +190,11 @@ export async function GET(request: NextRequest) {
     // Single source of truth: recognized provider revenue (provider_earnings + tips +
     // travel + cancellation fees + walk-in add-ons) net of provider refund clawbacks.
     // Matches the dashboard headline, payment summary and sales history.
-    const { breakdown, attribution: revenueLocationAttribution } = await recognizedBreakdownForWindow(
+    const {
+      breakdown,
+      attribution: revenueLocationAttribution,
+      ledger_truncated: ledgerTruncated,
+    } = await recognizedBreakdownForWindow(
       supabaseAdmin,
       providerId,
       locationId,
@@ -354,6 +363,8 @@ export async function GET(request: NextRequest) {
             ? "Location-filtered business overview excludes provider-level recognized-revenue/refund ledger rows with no booking/order linkage and reports them as unattributed."
             : "All provider locations and provider-level ledger rows.",
       },
+      ledger_truncated: ledgerTruncated,
+      max_finance_transactions: MAX_FINANCE_TRANSACTIONS,
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_OVERVIEW_ERROR", 500);

@@ -22,12 +22,15 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
+import { buildBookingIframeSnippet } from "@beautonomi/utils";
+import { APP_URL } from "@/config/public-env";
 
 interface BookingLink {
   id: string;
   slug: string;
   url: string;
   embed_url: string;
+  iframe_snippet?: string;
   business_name: string;
   is_active: boolean;
   stats?: {
@@ -246,6 +249,27 @@ export default function BookingLinkScreen() {
           >
             {link.embed_url}
           </Text>
+          <TouchableOpacity
+            style={twStyle("mt-3 flex-row items-center rounded-lg bg-gray-100 px-3 py-2 self-start")}
+            onPress={() => {
+              const origin = (APP_URL || "").replace(/\/$/, "");
+              const snippet =
+                link.iframe_snippet ||
+                (origin && link.slug
+                  ? buildBookingIframeSnippet({ origin, slug: link.slug })
+                  : link.embed_url);
+              void handleCopy(snippet, "iframe");
+            }}
+          >
+            <Ionicons
+              name={copied === "iframe" ? "checkmark" : "code-outline"}
+              size={14}
+              color="#6366f1"
+            />
+            <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+              {copied === "iframe" ? bl("copied") : bl("copyIframe")}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 

@@ -49,6 +49,7 @@ interface ReconciliationPayload {
   total_mismatches: number;
   checked: number;
   healthy: number;
+  wallets_truncated?: boolean;
 }
 
 const QK = adminQueryKeys.finance.walletReconciliation();
@@ -114,7 +115,14 @@ export function WalletReconciliationPage() {
     );
   }
 
-  const { mismatches = [], checked_wallets, checked = 0, healthy = 0, total_mismatches = 0 } = q.data ?? {};
+  const {
+    mismatches = [],
+    checked_wallets,
+    checked = 0,
+    healthy = 0,
+    total_mismatches = 0,
+    wallets_truncated: walletsTruncated,
+  } = q.data ?? {};
 
   const fullList = checked_wallets?.length ? checked_wallets : mismatches;
   const rows = mismatchesOnly ? mismatches : fullList;
@@ -125,6 +133,15 @@ export function WalletReconciliationPage() {
         title="Wallet Reconciliation"
         description="Stored wallet balances vs ledger sums. Identify the account, then fix drift or open the user to post an admin credit."
       />
+
+      {walletsTruncated ? (
+        <AdminPanel>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Wallet scan hit the pagination safety bound — some wallets may not have been checked. Narrow tenant scope
+            or run again after ops reduces wallet count.
+          </div>
+        </AdminPanel>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <AdminPanel>

@@ -23,7 +23,7 @@ import StepForms from "./steps/step-forms";
 import StepPayment from "./steps/step-payment";
 import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
@@ -45,6 +45,8 @@ import {
   type ProviderServiceLike,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeAtHomeLinePrice } from "@beautonomi/utils";
@@ -356,6 +358,7 @@ export default function BookingFlow() {
    * (drop the step); true = render it.
    */
   const [hasFormsStep, setHasFormsStep] = useState<boolean | null>(null);
+  const [providerGate, setProviderGate] = useState<null | "not_found" | "disabled">(null);
   /** B11: StepForms broadcasts "all required fields satisfied" so the sticky
    * action bar can enable Continue without duplicating the validation rules
    * here. `true` when the step isn't shown (no forms configured). */
@@ -731,15 +734,27 @@ export default function BookingFlow() {
     if (providerSlug && !bookingState.providerId) {
       const loadProviderId = async () => {
         try {
+          setProviderGate(null);
           const response = await fetch(`/api/public/providers/${encodeURIComponent(providerSlug)}`);
           const data = await response.json();
-          if (data.data?.id) {
-            updateBookingState({
-              providerId: data.data.id,
-              taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
-              taxIncluded: Boolean(data.data.tax_inclusive),
-              providerTimezone: data.data.timezone ?? null,
-            });
+          if (!response.ok || !data.data?.id) {
+            setProviderGate("not_found");
+            return;
+          }
+          updateBookingState({
+            providerId: data.data.id,
+            taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
+            taxIncluded: Boolean(data.data.tax_inclusive),
+            providerTimezone: data.data.timezone ?? null,
+          });
+          try {
+            await fetcher.get(
+              `/api/public/providers/${encodeURIComponent(providerSlug)}/online-booking-settings`,
+            );
+          } catch (settingsErr) {
+            if (settingsErr instanceof FetchError && settingsErr.status === 403) {
+              setProviderGate("disabled");
+            }
           }
           // If provider opted out of search engine indexing, inject a noindex meta into this page
           if (data.data?.seo_indexable === false) {
@@ -1471,6 +1486,33 @@ export default function BookingFlow() {
         return t("booking.bookAppointment");
     }
   };
+
+  if (providerGate === "not_found") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-xl font-semibold">{t("web.book.providerClient.providerNotFound")}</h1>
+          <Button asChild variant="outline">
+            <Link href="/search">{t("web.book.providerClient.findAnotherProvider")}</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (providerGate === "disabled") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-xl font-semibold">{t("web.book.providerClient.onlineBookingUnavailable")}</h1>
+          <p className="text-muted-foreground">{t("web.book.providerClient.onlineBookingDisabledGeneric")}</p>
+          <Button asChild variant="outline">
+            <Link href="/search">{t("web.book.providerClient.findAnotherProvider")}</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col safe-area-inset">

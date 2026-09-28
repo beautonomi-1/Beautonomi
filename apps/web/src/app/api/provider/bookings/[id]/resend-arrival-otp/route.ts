@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   getProviderIdForUser,
   handleApiError,
@@ -158,7 +159,12 @@ export async function POST(
       updatePayload.qr_code_verified = false;
     }
 
-    const { error: updateErr } = await supabase.from("bookings").update(updatePayload).eq("id", id);
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateErr } = await bookingsAdmin
+      .from("bookings")
+      .update(updatePayload)
+      .eq("id", id)
+      .eq("provider_id", providerId);
     if (updateErr) {
       throw updateErr;
     }

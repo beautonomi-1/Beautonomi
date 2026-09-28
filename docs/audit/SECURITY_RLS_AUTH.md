@@ -24,12 +24,17 @@
 
 ### Role System
 
+**Canonical source of truth:** `public.users.role` (`user_role` enum). API helpers (`requireRoleInApi`, admin section guards) load the role from this table after `auth.getUser()` — not from client-editable `auth.users` metadata alone.
+
 | Role | Stored In | Assignment |
 |------|-----------|------------|
-| `customer` | `auth.users.raw_user_meta_data.role` | Set during sign-up |
-| `provider_owner` | `auth.users.raw_user_meta_data.role` | Set during provider sign-up |
-| `provider_staff` | `auth.users.raw_user_meta_data.role` | Set when staff invite is accepted |
-| `superadmin` | `auth.users.raw_user_meta_data.role` | Manually set in Supabase dashboard |
+| `customer` | `public.users.role` (synced from sign-up) | Default for new accounts |
+| `provider_owner` / `provider_staff` | `public.users.role` | Provider onboarding and staff invites |
+| Admin roles (`admin_*`, `support_agent`) | `public.users.role` | Superadmin / platform config |
+| `superadmin` | `public.users.role` | Platform operators |
+| `admin_grc` | `public.users.role` | GRC-only admin shell access (Security & Compliance hub) |
+
+**GRC action permissions** (controls, evidence, audit packs, etc.) are separate from portal section RBAC: they use `grc_role_assignments` + `grc_role_permissions` and the `grc_has_permission(uid, key)` SQL function, enforced in `/api/admin/grc/*` via `requireGrcPermission`.
 
 ### Provider ID Resolution
 

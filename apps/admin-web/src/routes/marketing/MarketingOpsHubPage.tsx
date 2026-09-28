@@ -12,6 +12,7 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { AdminSectionQueueHub } from "@/components/admin/AdminSectionQueueHub";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { TENANT_PRODUCT_FEATURE_KEYS, useTenantFeatureFlags } from "@/hooks/useTenantFeatureFlags";
 
 export function MarketingOpsHubPage() {
   useAdminDocumentTitle("Marketing");
@@ -26,6 +27,9 @@ export function MarketingOpsHubPage() {
     enabled: allowed,
     refetchInterval: 60_000,
   });
+
+  const brandFlagQ = useTenantFeatureFlags([TENANT_PRODUCT_FEATURE_KEYS.BRAND_DESK], allowed);
+  const brandDeskEnabled = brandFlagQ.data?.features?.[TENANT_PRODUCT_FEATURE_KEYS.BRAND_DESK] ?? false;
 
   if (denied) return denied;
   if (countsQ.isLoading) {
@@ -129,6 +133,17 @@ export function MarketingOpsHubPage() {
           icon: Megaphone,
           accent: "from-indigo-600 to-violet-800",
         },
+        ...(brandDeskEnabled
+          ? [
+              {
+                to: adminSpaTo("/admin/brand"),
+                label: "Brand desk",
+                description: "Integrated briefs, campaign board, and period pack.",
+                icon: Megaphone,
+                accent: "from-fuchsia-600 to-purple-900",
+              },
+            ]
+          : []),
       ]}
     />
   );

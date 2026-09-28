@@ -4,6 +4,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { getBookingsAdminClient } from '@/lib/bookings/bookings-admin-write';
 import { getGroupBooking } from './group-booking';
 import type { CancellationPolicy } from './cancellation-policy';
 import type { CancellationSettledBy } from './settle-booking-cancellation';
@@ -60,7 +61,8 @@ export async function cancelGroupBooking(
       cancellationFee = amounts.cancellationFeeApplied;
     }
 
-    const { error } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error } = await bookingsAdmin
       .from('bookings')
       .update({
         status: 'cancelled',
@@ -75,7 +77,7 @@ export async function cancelGroupBooking(
       if (options?.settleFinance) {
         try {
           await settleBookingFinanceById(
-            supabase,
+            bookingsAdmin,
             booking.id,
             options.financeActor ?? "customer",
             {
@@ -158,7 +160,8 @@ export async function cancelGroupBookingParticipant(
 
   if (linkedBookingId) {
     const now = new Date().toISOString();
-    await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    await bookingsAdmin
       .from('bookings')
       .update({
         status: 'cancelled',
@@ -173,7 +176,7 @@ export async function cancelGroupBookingParticipant(
 
     try {
       const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
-      await settleBookingFinanceById(supabase, linkedBookingId, "provider");
+      await settleBookingFinanceById(bookingsAdmin, linkedBookingId, "provider");
     } catch (settleErr) {
       console.error("[group participant cancel] finance settlement failed:", settleErr);
     }

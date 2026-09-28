@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Info, Link2, Copy, Check, QrCode } from "lucide-react";
+import { Info, Link2, Copy, Check, QrCode, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -424,6 +424,51 @@ export default function OnlineBookingSettings() {
                   <p className="text-xs text-gray-500">
                     {t("web.provider.settings.pages.appointment-activity/online-booking.shareLinkHint")}
                   </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const text = encodeURIComponent(bookingLink.url);
+                        window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.shareWhatsApp")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const subject = encodeURIComponent(bookingLink.url);
+                        window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(bookingLink.url)}`;
+                      }}
+                    >
+                      <Mail className="h-4 w-4 me-1" />
+                      {t("web.provider.settings.pages.appointment-activity/online-booking.shareEmail")}
+                    </Button>
+                    {typeof navigator !== "undefined" && typeof navigator.share === "function" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await navigator.share({
+                              title: t("web.provider.settings.pages.appointment-activity/online-booking.onlineBooking"),
+                              url: bookingLink.url,
+                            });
+                          } catch {
+                            /* user cancelled */
+                          }
+                        }}
+                      >
+                        <Share2 className="h-4 w-4 me-1" />
+                        {t("web.provider.settings.pages.appointment-activity/online-booking.shareNative")}
+                      </Button>
+                    ) : null}
+                  </div>
 
                   {/* Embed URL */}
                   <div className="space-y-2">

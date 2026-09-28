@@ -16,28 +16,30 @@ vi.mock("@/lib/bookings/resolve-booking-refund-payment-id", () => ({
 }));
 
 describe("shouldProcessPaystackDisputeChargeback", () => {
-  it("processes dispute.create", () => {
-    expect(shouldProcessPaystackDisputeChargeback("dispute.create", {})).toBe(true);
+  it("does not chargeback on dispute.create (hold only)", () => {
+    expect(shouldProcessPaystackDisputeChargeback("dispute.create", {})).toBe(false);
+    expect(shouldProcessPaystackDisputeChargeback("charge.dispute.create", {})).toBe(false);
   });
 
   it("skips dispute.remind", () => {
     expect(shouldProcessPaystackDisputeChargeback("dispute.remind", {})).toBe(false);
   });
 
-  it("skips merchant-won resolve", () => {
+  it("chargebacks when merchant accepted the dispute (customer wins)", () => {
     expect(
       shouldProcessPaystackDisputeChargeback("dispute.resolve", {
         resolution: "merchant-accepted",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("processes customer-won resolve", () => {
+  it("skips merchant-won resolve (declined + resolved)", () => {
     expect(
       shouldProcessPaystackDisputeChargeback("dispute.resolve", {
         resolution: "declined",
+        status: "resolved",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

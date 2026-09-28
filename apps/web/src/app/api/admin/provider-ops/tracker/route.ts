@@ -31,11 +31,12 @@ const STEP_NAMES: Record<number, string> = {
   7: "Location",
   8: "Photos",
   9: "Service Zones",
-  10: "Categories",
-  11: "Services",
-  12: "Operating Hours",
-  13: "Review",
-  14: "Plan Selection",
+  10: "Travel Fees",
+  11: "Categories",
+  12: "Services",
+  13: "Operating Hours",
+  14: "Review",
+  15: "Plan Selection",
 };
 
 function extractDraftSummary(
@@ -279,7 +280,7 @@ export async function GET(request: NextRequest) {
         full_name: user?.full_name ?? null,
         phone: user?.phone ?? null,
         signup_date: user?.created_at ?? provider.created_at ?? null,
-        current_step: 14,
+        current_step: 15,
         current_step_name: "Completed",
         last_activity: lastActivity,
         stall_status: "completed",

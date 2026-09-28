@@ -33,6 +33,7 @@ export const copilotInputSchema = z.object({
   adminUserId: z.string().uuid(),
   allowedSections: z.array(z.string()),
   pageContext: copilotPageContextSchema.optional(),
+  desk: z.string().max(64).optional(),
   selectedEntity: copilotEntityRefSchema.optional(),
   conversationId: z.string().uuid().optional(),
   messages: z.array(copilotMessageSchema).max(16).optional(),

@@ -86,6 +86,7 @@ function makeSupabase() {
     gte: () => chain,
     lte: () => chain,
     limit: () => Promise.resolve({ data: [], error: null }),
+    range: () => Promise.resolve({ data: [], error: null }),
   };
   return { from: () => chain };
 }

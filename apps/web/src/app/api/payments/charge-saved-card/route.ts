@@ -183,10 +183,11 @@ export async function POST(request: NextRequest) {
         : null;
 
     const supabaseAdmin = getSupabaseAdmin();
+    let chargeCurrency: string = currency;
 
     if (productOrderIdFromMeta) {
       const { data: poRow, error: poErr } = await (supabase.from("product_orders") as any)
-        .select("id, tenant_id, customer_id")
+        .select("id, tenant_id, customer_id, currency")
         .eq("id", productOrderIdFromMeta)
         .maybeSingle();
       if (poErr || !poRow) {
@@ -202,6 +203,7 @@ export async function POST(request: NextRequest) {
       if (poRow.customer_id !== user.id) {
         return errorResponse("You do not have permission to charge this order", "FORBIDDEN", 403);
       }
+      chargeCurrency = String(poRow.currency || "ZAR").toUpperCase();
     }
 
     // Additional-charge card-on-file path: requires approved status (customer consented).
@@ -309,7 +311,7 @@ export async function POST(request: NextRequest) {
     if (bookingIdFromMeta && !productOrderIdFromMeta) {
       const { data: bookingRow, error: bookingErr } = await supabase
         .from("bookings")
-        .select("id, tenant_id, customer_id")
+        .select("id, tenant_id, customer_id, currency")
         .eq("id", bookingIdFromMeta)
         .maybeSingle();
       if (bookingErr || !bookingRow) {
@@ -326,6 +328,7 @@ export async function POST(request: NextRequest) {
         return errorResponse("You do not have permission to charge this booking", "FORBIDDEN", 403);
       }
       bookingTenantId = bookingRow.tenant_id ?? null;
+      chargeCurrency = String(bookingRow.currency || "ZAR").toUpperCase();
     }
 
     let amountInSmallestUnit: number;
@@ -342,35 +345,38 @@ export async function POST(request: NextRequest) {
     } else if (additionalChargeIdFromMeta && additionalChargeBookingId) {
       // Derive amount directly from the charge row (server is the source of truth).
       const { data: acAmountRow } = await (supabase.from("additional_charges") as any)
-        .select("amount")
+        .select("amount, currency")
         .eq("id", additionalChargeIdFromMeta)
         .maybeSingle();
       const acAmount = Number((acAmountRow as { amount?: number } | null)?.amount ?? 0);
       if (!Number.isFinite(acAmount) || acAmount <= 0) {
         return errorResponse("Invalid additional charge amount", "INVALID_CHARGE", 400);
       }
-      amountInSmallestUnit = convertToSmallestUnit(acAmount);
+      chargeCurrency = (acAmountRow as { currency?: string | null } | null)?.currency || lastResortCurrency;
+      amountInSmallestUnit = convertToSmallestUnit(acAmount, chargeCurrency);
     } else if (giftCardOrderIdFromMeta && !productOrderIdFromMeta) {
       const { data: gcoAmount } = await (supabase.from("gift_card_orders") as any)
-        .select("total_amount")
+        .select("total_amount, currency")
         .eq("id", giftCardOrderIdFromMeta)
         .maybeSingle();
       const total = Number((gcoAmount as { total_amount?: number } | null)?.total_amount ?? 0);
       if (!Number.isFinite(total) || total <= 0) {
         return errorResponse("Invalid gift card order amount", "INVALID_ORDER", 400);
       }
-      amountInSmallestUnit = convertToSmallestUnit(total);
+      chargeCurrency = (gcoAmount as { currency?: string | null } | null)?.currency || lastResortCurrency;
+      amountInSmallestUnit = convertToSmallestUnit(total, chargeCurrency);
     } else if (adsBudgetOrderIdFromMeta && !productOrderIdFromMeta && !bookingIdFromMeta) {
       const { data: adsOrderAmount } = await supabaseAdmin
         .from("ads_budget_orders")
-        .select("amount")
+        .select("amount, currency")
         .eq("id", adsBudgetOrderIdFromMeta)
         .maybeSingle();
       const adsAmount = Number((adsOrderAmount as { amount?: number } | null)?.amount ?? 0);
       if (!Number.isFinite(adsAmount) || adsAmount <= 0) {
         return errorResponse("Invalid ads order amount", "INVALID_ORDER", 400);
       }
-      amountInSmallestUnit = convertToSmallestUnit(adsAmount);
+      chargeCurrency = (adsOrderAmount as { currency?: string | null } | null)?.currency || lastResortCurrency;
+      amountInSmallestUnit = convertToSmallestUnit(adsAmount, chargeCurrency);
     } else if (bookingIdFromMeta) {
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {
@@ -382,7 +388,7 @@ export async function POST(request: NextRequest) {
       }
       amountInSmallestUnit = resolved.amountSmallestUnit;
     } else {
-      amountInSmallestUnit = convertToSmallestUnit(body.amount!);
+      amountInSmallestUnit = convertToSmallestUnit(body.amount!, chargeCurrency);
     }
 
     const chargeReference = generateTransactionReference(
@@ -414,7 +420,7 @@ export async function POST(request: NextRequest) {
         payment_method_id: body.payment_method_id,
         user_id: user.id,
       },
-      { tenantId, reference: chargeReference }
+      { tenantId, reference: chargeReference, currency: chargeCurrency }
     );
 
     if (!chargeResult.status) {
@@ -424,7 +430,7 @@ export async function POST(request: NextRequest) {
         reference: chargeReference,
         bookingId: bookingIdFromMeta || additionalChargeBookingId,
         orderId: productOrderIdFromMeta,
-        amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+        amountMajor: convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency),
         reason: chargeResult.message || "Charge failed",
         customerEmail: body.email,
       });
@@ -437,6 +443,7 @@ export async function POST(request: NextRequest) {
     }
 
     const chargeStatus = String(chargeResult.data?.status ?? "");
+    const paidCurrency = chargeResult.data?.currency || chargeCurrency;
     const chargeSucceeded = chargeStatus === "success";
 
     // Additional-charge card-on-file: settle commission + earnings accounting.
@@ -448,7 +455,7 @@ export async function POST(request: NextRequest) {
             source: "saved_card",
             reference: chargeReference,
             bookingId: additionalChargeBookingId,
-            amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+            amountMajor: convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency),
             reason: chargeResult.message || "Card charge did not complete",
             customerEmail: body.email,
           });
@@ -484,13 +491,13 @@ export async function POST(request: NextRequest) {
     ) {
       try {
         const chargeData = chargeResult.data as { reference?: string; fees?: number };
-        const amountMajorForOrder = convertFromSmallestUnit(amountInSmallestUnit);
+        const amountMajorForOrder = convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency);
         const payRecord = await recordProductOrderPayment({
           supabase: supabaseAdmin,
           productOrderId: productOrderIdFromMeta,
           reference: String(chargeData.reference),
           amountMajor: amountMajorForOrder,
-          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0),
+          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0, paidCurrency),
           source: "paystack_verify",
           provider: "paystack",
         });
@@ -544,7 +551,7 @@ export async function POST(request: NextRequest) {
             reference: chargeReference,
             bookingId: bookingIdFromMeta,
             orderId: productOrderIdFromMeta,
-            amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+            amountMajor: convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency),
             reason: chargeResult.message || "Card charge did not complete",
             customerEmail: body.email,
           });
@@ -563,8 +570,8 @@ export async function POST(request: NextRequest) {
       };
       const amountMajor =
         typeof chargeData.amount === "number"
-          ? convertFromSmallestUnit(chargeData.amount)
-          : convertFromSmallestUnit(amountInSmallestUnit);
+          ? convertFromSmallestUnit(chargeData.amount, paidCurrency)
+          : convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency);
       const recordedPayment = await recordBookingPaystackPayment(supabaseAdmin, {
         bookingId: bookingIdFromMeta,
         tenantId: bookingTenantId,
@@ -638,8 +645,9 @@ export async function POST(request: NextRequest) {
           reference: String(chargeData.reference ?? chargeReference),
           amountMajor: convertFromSmallestUnit(
             typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+            paidCurrency,
           ),
-          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0),
+          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0, paidCurrency),
           paymentProvider: "paystack",
         });
       } catch (adsErr) {

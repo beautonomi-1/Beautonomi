@@ -15,10 +15,10 @@ vi.mock("@/lib/fraud/resolve-payment-fraud-subjects", () => ({
   }),
 }));
 
-const processBookingChargebackMock = vi.fn().mockResolvedValue({ processed: true });
+const upsertOpenPaymentDisputeMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/lib/bookings/process-booking-chargeback", () => ({
-  processBookingChargeback: (...args: unknown[]) => processBookingChargebackMock(...args),
+vi.mock("@/lib/bookings/paystack-dispute-lifecycle", () => ({
+  upsertOpenPaymentDispute: (...args: unknown[]) => upsertOpenPaymentDisputeMock(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -57,11 +57,13 @@ describe("handleStripeChargeDisputeCreated", () => {
       }),
       expect.anything(),
     );
-    expect(processBookingChargebackMock).toHaveBeenCalledWith(
+    expect(upsertOpenPaymentDisputeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         paymentProvider: "stripe",
         reference: "pi_test",
         disputeId: "dp_test123",
+        status: "open",
+        bookingId: "booking-1",
       }),
     );
   });

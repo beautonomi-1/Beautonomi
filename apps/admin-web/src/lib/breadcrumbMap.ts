@@ -98,6 +98,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "reconciliation-exceptions": { label: "Reconciliation Exceptions", parentHref: null },
   "ledger-repair": { label: "Ledger Repair", parentHref: null },
   "ledger-health": { label: "Ledger Health", parentHref: null },
+  "payroll-rules": { label: "Payroll rule sets", parentHref: null },
   "fx-rates": { label: "FX rates", parentHref: null },
   "workflow-runs": { label: "Workflow Runs", parentHref: null },
   "cron-runs": { label: "Cron Runs", parentHref: null },

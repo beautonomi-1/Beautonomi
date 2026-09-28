@@ -859,11 +859,33 @@ export function formatReportDataForExport(
         { Metric: exportMetric("Customer Payments by Method Total"), Value: fm(data.customerPaymentsByMethodTotal, currencyCode) },
         { Metric: exportMetric("Gateway charge rows (payment_transactions)"), Value: (data as ReportRow).gatewayChargeCount ?? "" },
         { Metric: exportMetric("Provider Earnings"), Value: fm(data.providerEarnings, currencyCode) },
+        ...((data as ReportRow).membershipProviderEarnings != null &&
+        Number((data as ReportRow).membershipProviderEarnings) > 0
+          ? [
+              {
+                Metric: exportMetric("Membership Provider Earnings"),
+                Value: fm(Number((data as ReportRow).membershipProviderEarnings), currencyCode),
+              },
+            ]
+          : []),
+        ...(Boolean((data as ReportRow).ledger_truncated)
+          ? [
+              {
+                Metric: exportMetric("Ledger truncated at cap"),
+                Value: String((data as ReportRow).max_finance_transactions ?? ""),
+              },
+            ]
+          : []),
         { Metric: exportMetric("Provider Net Activity"), Value: fm(data.providerNetActivity ?? data.netAmount, currencyCode) },
         { Metric: exportMetric("Refunded Amount"), Value: fm(data.refundedAmount, currencyCode) },
         { Metric: exportMetric("Refund Rate"), Value: `${Number(data.refundRate ?? 0).toFixed(1)}%` },
         ...((data.paymentsByMethod as ReportRow[]) || []).map((p) => ({
           Method: p.method,
+          Count: p.count,
+          Amount: fm(((p.amount as number) || 0), currencyCode),
+        })),
+        ...(((data as ReportRow).providerCollectedByMethod as ReportRow[]) || []).map((p) => ({
+          "Provider-collected method": p.method,
           Count: p.count,
           Amount: fm(((p.amount as number) || 0), currencyCode),
         })),

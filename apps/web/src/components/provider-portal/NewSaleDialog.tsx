@@ -289,7 +289,7 @@ export function NewSaleDialog({
   // Amounts
   const [tipAmount, setTipAmount] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
-  const [taxRate] = useState(0.15); // 15% VAT
+  const [taxRatePercent, setTaxRatePercent] = useState(15);
 
   useEffect(() => {
     if (open) {
@@ -379,10 +379,11 @@ export function NewSaleDialog({
 
   const loadData = async () => {
     // Load all data in parallel for faster opening
-    const [membersResult, categoriesResult, productsResult] = await Promise.allSettled([
+    const [membersResult, categoriesResult, productsResult, taxResult] = await Promise.allSettled([
       providerApi.listTeamMembers(),
       providerApi.listServiceCategories(),
       providerApi.listProducts(),
+      providerPortalFetch("/api/provider/tax-rate"),
     ]);
 
     // Handle team members
@@ -414,6 +415,18 @@ export function NewSaleDialog({
     } else {
       console.error("Failed to load products:", productsResult.reason);
       setProducts([]);
+    }
+
+    if (taxResult.status === "fulfilled" && taxResult.value.ok) {
+      try {
+        const payload = await taxResult.value.json();
+        const rate = Number(payload?.data?.taxRate ?? payload?.taxRate);
+        if (Number.isFinite(rate) && rate >= 0) {
+          setTaxRatePercent(rate);
+        }
+      } catch {
+        /* keep default */
+      }
     }
   };
 
@@ -800,7 +813,7 @@ export function NewSaleDialog({
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const tax = subtotal * taxRate;
+  const tax = subtotal * (taxRatePercent / 100);
   const giftCardApplied = Math.min(giftCardBalance, subtotal + tax + tipAmount - discountAmount);
   const total = Math.max(0, subtotal + tax + tipAmount - discountAmount - giftCardApplied);
 
@@ -860,7 +873,7 @@ export function NewSaleDialog({
       tax,
       total,
       discount_amount: discountAmount,
-      tax_rate: taxRate,
+      tax_rate: taxRatePercent,
       tip_amount: tipAmount,
       payment_method: selectedPaymentMethod,
       location_id: serviceLocationType === "at-salon" ? selectedLocationId : undefined,

@@ -49,11 +49,11 @@ describe("nav-model structural invariants", () => {
     visibleCount: countVisibleTopLevel(g.items),
   }));
 
-  it("has at most 14 top-level groups", () => {
+  it("has at most 15 top-level groups", () => {
     expect(
       groups.length,
-      `Expected ≤14 nav groups but found ${groups.length}: ${groups.map((g) => g.label).join(", ")}`,
-    ).toBeLessThanOrEqual(14);
+      `Expected ≤15 nav groups but found ${groups.length}: ${groups.map((g) => g.label).join(", ")}`,
+    ).toBeLessThanOrEqual(15);
   });
 
   it("has at least 1 nav group (sanity check the parser)", () => {

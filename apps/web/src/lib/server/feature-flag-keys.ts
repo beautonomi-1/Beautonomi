@@ -203,6 +203,9 @@ export const FEATURE_FLAG_KEYS = {
 
   /** Mobile-first bottom-sheet booking shell on provider web (strangler migration). Default off. */
   PROVIDER_BOOKING_MOBILE_SHELL: "provider_booking_mobile_shell",
+
+  /** One-time contextual hints on customer and provider mobile apps. */
+  CONTEXTUAL_HINTS: "contextual_hints",
 } as const;
 
 export type PaymentRelatedFeatureKey =

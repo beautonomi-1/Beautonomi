@@ -13,6 +13,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { APP_URL } from "@/config/public-env";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -39,6 +40,9 @@ interface ExpressLinkRow {
   id: string;
   name: string;
   slug: string;
+  full_url?: string;
+  embed_url?: string;
+  iframe_snippet?: string;
   is_active?: boolean;
   use_count?: number;
   service_ids?: string[] | null;
@@ -503,6 +507,8 @@ export default function ExpressBookingScreen() {
         subtitle={eb("subtitle")}
       />
 
+      <ContextualHint id="provider.expressBooking.intro" mode="once" message={eb("introHint")} />
+
       {loading ? (
         <LoadingState fullScreen={false} />
       ) : (
@@ -810,9 +816,11 @@ export default function ExpressBookingScreen() {
                 {expressLinks.map((el, idx) => {
                       // Never produce a relative URL (broken when copied/shared):
                       // fall back to the public site when EXPO_PUBLIC_APP_URL is unset.
-                      const shareBase = (APP_URL || "https://beautonomi.com").replace(/\/$/, "");
-                      const fullUrl = `${shareBase}/book/l/${encodeURIComponent(el.slug)}`;
-                      const embedUrl = `${fullUrl}?embed=1`;
+                      const base = (APP_URL || "").replace(/\/$/, "");
+                      const fullUrl =
+                        el.full_url ||
+                        (base ? `${base}/book/l/${encodeURIComponent(el.slug)}` : "");
+                      const embedUrl = el.embed_url || (fullUrl ? `${fullUrl}?embed=1` : "");
                       const isCopied = copiedShortId === el.id;
                       const expiresLabel = el.expires_at ? formatDateInputFromIso(el.expires_at) : null;
                       const serviceCount = Array.isArray(el.service_ids) ? el.service_ids.length : 0;
@@ -919,7 +927,12 @@ export default function ExpressBookingScreen() {
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={async () => {
                                   try {
-                                    await Clipboard.setStringAsync(embedUrl);
+                                    const snippet =
+                                      el.iframe_snippet ||
+                                      (embedUrl
+                                        ? `<iframe src="${embedUrl}" width="100%" height="800" style="border:0;" allow="payment *; clipboard-write" referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`
+                                        : "");
+                                    await Clipboard.setStringAsync(snippet || embedUrl);
                                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                     Alert.alert(eb("copiedTitle"), eb("embedCopiedBody"));
                                   } catch {

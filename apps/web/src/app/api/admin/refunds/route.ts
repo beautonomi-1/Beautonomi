@@ -24,6 +24,7 @@ import {
 } from "@/lib/admin/refund-queue-rows";
 import { parseRefundAmount } from "@/lib/admin/booking-refund-context";
 import { fetchBookingTenderSyntheticRows } from "@/lib/admin/fetch-booking-tender-rows";
+import { fetchAllPages, type PageableQuery } from "@/lib/admin/finance-ledger-tenant";
 
 const REFUND_ELIGIBLE_OR =
   "transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success";
@@ -183,11 +184,13 @@ export async function GET(request: NextRequest) {
     if (startDate) bookingQuery = bookingQuery.gte("created_at", startDate);
     if (endDate) bookingQuery = bookingQuery.lte("created_at", endDate);
 
-    const scanLimit = status === "needs_action" ? 500 : 1000;
-    bookingQuery = bookingQuery.limit(scanLimit);
+    bookingQuery = bookingQuery.order("id", { ascending: false });
+    const scanMaxRows = status === "needs_action" ? 500 : 20_000;
 
-    const [bookingResult, orphanRows] = await Promise.all([
-      bookingQuery,
+    const [bookingPage, orphanRows] = await Promise.all([
+      fetchAllPages(bookingQuery as unknown as PageableQuery<RefundListRow>, {
+        maxRows: scanMaxRows,
+      }),
       status === "needs_action"
         ? Promise.resolve([])
         : fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
@@ -198,11 +201,8 @@ export async function GET(request: NextRequest) {
           }),
     ]);
 
-    if (bookingResult.error) {
-      throw bookingResult.error;
-    }
-
-    const bookingLinked = (bookingResult.data || []) as RefundListRow[];
+    const bookingLinked = bookingPage.rows;
+    const scanTruncated = bookingPage.truncated;
     const orphansWithBookingNull: RefundListRow[] = orphanRows.map((row) => ({
       ...row,
       booking: null,
@@ -290,7 +290,7 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         total_pages: Math.ceil(total / limit) || 0,
-        is_estimate: merged.length >= scanLimit,
+        is_estimate: scanTruncated,
       },
       statistics,
     });

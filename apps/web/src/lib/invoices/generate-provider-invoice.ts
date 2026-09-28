@@ -179,8 +179,7 @@ export async function generateProviderInvoice(
       .eq("id", providerId)
       .single();
 
-    // Default commission rate (15% of booking total)
-    let commissionRate = 0.15;
+    let commissionRate = 0;
     const feeConfigId = (providerFee as { provider_fee_config_id?: string | null } | null)
       ?.provider_fee_config_id;
     if (feeConfigId) {
@@ -202,12 +201,18 @@ export async function generateProviderInvoice(
       const storedFeePercentage = Number(
         booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0,
       );
-      // Platform-fee invoices should reconcile to the fee stamped on the booking.
-      // Commission invoices remain rate-based because they are an operator charge model.
-      const invoiceAmount =
-        invoiceType === "platform_fee" && storedPlatformFee > 0
-          ? storedPlatformFee
-          : percentOf(Number(booking.total_amount || 0), commissionRate * 100);
+      let invoiceAmount = 0;
+      if (invoiceType === "platform_fee") {
+        if (storedPlatformFee <= 0) {
+          continue;
+        }
+        invoiceAmount = storedPlatformFee;
+      } else {
+        if (commissionRate <= 0) {
+          continue;
+        }
+        invoiceAmount = percentOf(Number(booking.total_amount || 0), commissionRate * 100);
+      }
       subtotal += invoiceAmount;
 
       lineItems.push({

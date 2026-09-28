@@ -13,6 +13,7 @@ import { buildStripDateParams } from "@/lib/bookings-list-query";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
@@ -370,6 +371,8 @@ export default function WaitingRoomScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title={wr("title")} subtitle={headerSubtitle} showBack />
+
+      <ContextualHint id="provider.waitingRoom.intro" mode="once" message={wr("introHint")} />
 
       <ScrollView
         style={twStyle("flex-1")}

@@ -200,7 +200,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, duplicate: true });
     }
     if (!lease.acquired) {
-      return NextResponse.json({ received: true, processing: true });
+      return NextResponse.json({ received: true, processing: true }, { status: 503 });
     }
     if (lease.stale_lease_reclaimed) {
       console.warn(`[stripe/webhook] event ${eventId} stale lease reclaimed`);
@@ -230,7 +230,7 @@ export async function POST(request: Request) {
           if ((existingEvent as { status?: string }).status === "processed") {
             return NextResponse.json({ received: true, duplicate: true });
           }
-          return NextResponse.json({ received: true, processing: true });
+          return NextResponse.json({ received: true, processing: true }, { status: 503 });
         }
       }
       throw insertError;
@@ -278,9 +278,13 @@ export async function POST(request: Request) {
       case "charge.dispute.created":
         await handleStripeChargeDisputeCreated(eventObject, eventId);
         break;
-      case "charge.dispute.closed":
-        console.info("[stripe/webhook] received", eventType, eventId);
+      case "charge.dispute.closed": {
+        const { handleStripeChargeDisputeClosed } = await import(
+          "./_handlers/stripe-dispute"
+        );
+        await handleStripeChargeDisputeClosed(eventObject, eventId);
         break;
+      }
       default:
         break;
     }

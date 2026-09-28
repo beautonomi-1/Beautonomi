@@ -21,7 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
@@ -266,7 +266,8 @@ async function backfillMissingCustomOfferFinance(
     tenant_id: b.tenant_id ?? null,
     provider_id: b.provider_id ?? null,
   });
-  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
+  const commissionRate = await resolveCommissionPercentageForBooking(adminSupabase, {
+    bookingId: b.id as string,
     tenantId: financeTenantId,
     providerId: b.provider_id ?? null,
   });
@@ -1039,7 +1040,8 @@ export async function finalizeCustomOfferPayment(
   });
 
   // ── 10. Commission + finance ledger ───────────────────────────────────────
-  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
+  const commissionRate = await resolveCommissionPercentageForBooking(adminSupabase, {
+    bookingId: (booking as { id: string }).id,
     tenantId: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
     providerId: req.provider_id ?? null,
   });
@@ -1472,17 +1474,19 @@ export async function finalizeCustomOfferPaymentFromPaystackEvent(
     metadata: Record<string, unknown>;
     amount?: number; // smallest unit
     fees?: number; // smallest unit
+    currency?: string;
     customer?: { email?: string };
   },
 ): Promise<FinalizeCustomOfferPaymentResult> {
   const offerId = String(payload.metadata?.custom_offer_id ?? "");
   if (!offerId) return { ok: false, reason: "missing_offer_id" };
 
+  const paystackCurrency = String(payload.currency || "ZAR").toUpperCase();
   return finalizeCustomOfferPayment(adminSupabase, {
     offerId,
     reference: payload.reference,
-    paystackAmountMajor: convertFromSmallestUnit(payload.amount || 0),
-    paystackFeesMajor: convertFromSmallestUnit(payload.fees || 0),
+    paystackAmountMajor: convertFromSmallestUnit(payload.amount || 0, paystackCurrency),
+    paystackFeesMajor: convertFromSmallestUnit(payload.fees || 0, paystackCurrency),
     walletAmountApplied: Number(payload.metadata?.wallet_amount_applied ?? 0),
     giftCardAmountApplied: Number(payload.metadata?.gift_card_amount_applied ?? 0),
     giftCardId: (payload.metadata?.gift_card_id as string | null | undefined) ?? null,

@@ -3660,6 +3660,9 @@ export class ProviderApiClient implements ProviderApi {
     id: string;
     name: string;
     slug: string;
+    full_url?: string;
+    embed_url?: string;
+    iframe_snippet?: string;
     service_ids?: string[] | null;
     staff_ids?: string[] | null;
     location_id?: string | null;
@@ -3679,7 +3682,9 @@ export class ProviderApiClient implements ProviderApi {
       id: row.id,
       name: row.name,
       short_code: row.slug,
-      full_url: `${origin}/book/l/${encodeURIComponent(row.slug)}`,
+      full_url: row.full_url ?? `${origin}/book/l/${encodeURIComponent(row.slug)}`,
+      embed_url: row.embed_url ?? `${origin}/book/l/${encodeURIComponent(row.slug)}?embed=1`,
+      iframe_snippet: row.iframe_snippet,
       service_id: row.service_ids?.[0],
       service_ids: row.service_ids ?? undefined,
       team_member_id: row.staff_ids?.[0],

@@ -63,6 +63,43 @@ export function buildBookingEmbedUrl(origin: string, slug: string, extra?: Recor
   return `${base}?${params.toString()}`;
 }
 
+/** Express short-link path: `/book/l/{code}?embed=1` */
+export function buildExpressBookingEmbedUrl(
+  origin: string,
+  linkCode: string,
+  extra?: Record<string, string>,
+): string {
+  const base = `${normalizePublicOrigin(origin)}/book/l/${encodeURIComponent(linkCode)}`;
+  const params = new URLSearchParams({ [BOOKING_EMBED_QUERY_KEY]: BOOKING_EMBED_QUERY_VALUE });
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (value) params.set(key, value);
+    }
+  }
+  return `${base}?${params.toString()}`;
+}
+
+export function buildExpressBookingIframeSnippet(input: {
+  origin: string;
+  linkCode: string;
+  height?: number;
+}): string {
+  const embedUrl = buildExpressBookingEmbedUrl(input.origin, input.linkCode);
+  const height = clampBookingEmbedHeight(input.height);
+  return [
+    `<iframe`,
+    `  src="${escapeHtmlAttr(embedUrl)}"`,
+    `  title="Book an appointment"`,
+    `  width="100%"`,
+    `  height="${height}"`,
+    `  loading="lazy"`,
+    `  referrerpolicy="strict-origin-when-cross-origin"`,
+    `  allow="payment *; clipboard-write"`,
+    `  style="width:100%;min-height:${height}px;border:0;border-radius:12px;"`,
+    `></iframe>`,
+  ].join("\n");
+}
+
 export function buildBookContinuePath(holdId: string, embed: boolean): string {
   const params = new URLSearchParams({ hold_id: holdId });
   if (embed) params.set(BOOKING_EMBED_QUERY_KEY, BOOKING_EMBED_QUERY_VALUE);

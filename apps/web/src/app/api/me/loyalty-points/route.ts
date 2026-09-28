@@ -4,6 +4,8 @@ import { handleApiError, successResponse, requireRoleInApi, getOffsetPaginationP
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveLoyaltyConfig } from "@/lib/loyalty/resolve-loyalty-config";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/me/loyalty-points
@@ -27,42 +29,25 @@ export async function GET(request: NextRequest) {
     let redemption_rate = 100;
     let currency = lastResortCurrency;
     let min_redemption_points = 50;
+    let max_redemption_percentage = 50;
+    let points_expiry_days = 365;
+    let earning_rate = 1.0;
     let recent_transactions: { id: string; type: string; points: number; description: string; created_at: string }[] = [];
 
     try {
-      const { data: config } = await supabase
-        .from("loyalty_point_config")
-        .select("*")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const admin = getSupabaseAdmin();
+      const cfg = await resolveLoyaltyConfig(admin, lastResortCurrency);
+      redemption_rate = cfg.redemptionRate;
+      currency = cfg.currency;
+      min_redemption_points = cfg.minRedemptionPoints;
+      max_redemption_percentage = cfg.maxRedemptionPercentage;
+      points_expiry_days = cfg.pointsExpiryDays ?? 365;
+      earning_rate = cfg.pointsPerCurrencyUnit;
 
       const { data: balanceData } = await supabase
         .rpc("get_customer_available_points", { customer_uuid: user.id });
 
       available_balance = Number(balanceData) || 0;
-
-      if (config) {
-        redemption_rate = Number(config.redemption_rate) || 10;
-        const parsedMinRedemption = Number(config.min_redemption_points);
-        min_redemption_points = Number.isFinite(parsedMinRedemption) ? parsedMinRedemption : 50;
-      } else {
-        const { data: legacyRule } = await supabase
-          .from("loyalty_rules")
-          .select("redemption_rate, currency, min_redemption_points")
-          .eq("is_active", true)
-          .order("effective_from", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (legacyRule) {
-          redemption_rate = Number(legacyRule.redemption_rate) || 100;
-          currency = legacyRule.currency || lastResortCurrency;
-          const parsedMin = Number(legacyRule.min_redemption_points);
-          min_redemption_points = Number.isFinite(parsedMin) ? parsedMin : 50;
-        }
-      }
 
       const { data: balanceSummary } = await supabase
         .from("loyalty_points_balance")
@@ -155,9 +140,9 @@ export async function GET(request: NextRequest) {
       },
       config: {
         min_redemption_points,
-        max_redemption_percentage: 50,
-        points_expiry_days: 365,
-        earning_rate: 1.0,
+        max_redemption_percentage,
+        points_expiry_days,
+        earning_rate,
       },
       minimum_redemption: min_redemption_points,
       recent_transactions: recent_transactions,

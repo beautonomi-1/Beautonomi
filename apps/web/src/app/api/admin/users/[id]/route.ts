@@ -17,7 +17,10 @@ import {
   daysSince,
   type CompletedBookingLite,
 } from "@/lib/admin/marketplace-health";
-import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  financeExportRowsAsLedgerRows,
+} from "@/lib/admin/finance-ledger-tenant";
 import { sumPlatformContributionForBookings } from "@/lib/admin/marketplace-health-contribution";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
@@ -161,7 +164,10 @@ export async function GET(
         { start: "1970-01-01T00:00:00.000Z", end: new Date().toISOString() },
         {},
       );
-      stats.contribution_to_date = sumPlatformContributionForBookings(ledger, bookingIds);
+      stats.contribution_to_date = sumPlatformContributionForBookings(
+        financeExportRowsAsLedgerRows(ledger),
+        bookingIds,
+      );
 
       const { data: recentPo } = await admin
         .from("product_orders")

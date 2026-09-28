@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { formatCalendarEventSummary } from "@/lib/calendar/format-customer-name-for-feed";
 
 function escapeIcalText(s: string) {
   return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/;/g, "\\;").replace(/,/g, "\\,");
@@ -86,9 +87,10 @@ export async function GET(
     const row = b as any;
     const start = new Date(row.scheduled_at);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
-    const title =
-      (row.customers?.full_name ? `${row.customers.full_name} — ` : "") +
-      (row.booking_number || "Booking");
+    const title = formatCalendarEventSummary({
+      customerFullName: row.customers?.full_name,
+      bookingNumber: row.booking_number,
+    });
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${row.id}@beautonomi`);
     lines.push(`DTSTAMP:${formatIcalDate(now)}`);

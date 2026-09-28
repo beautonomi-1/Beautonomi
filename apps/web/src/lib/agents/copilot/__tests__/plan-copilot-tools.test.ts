@@ -78,4 +78,19 @@ describe("planToolsForIntent", () => {
     });
     expect(withOps).toEqual([{ name: "ops.readSystemHealth", input: { environment: "production" } }]);
   });
+
+  it("plans admin.searchKnowledge for howto.knowledge with desk in query", async () => {
+    const calls = await planToolsForIntent({
+      intent: "howto.knowledge",
+      question: "How do I review a brief?",
+      environment: "production",
+      allowedSections: ["overview"],
+      tenantId: "t1",
+      resolvedEntities: {},
+      desk: "brand desk",
+    });
+    expect(calls).toEqual([
+      { name: "admin.searchKnowledge", input: { query: "brand desk How do I review a brief?" } },
+    ]);
+  });
 });

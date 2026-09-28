@@ -186,7 +186,7 @@ export async function POST(request: Request) {
     // Create transfer request
     const transferRequest: CreateTransferRequest = {
       source: "balance",
-      amount: convertToSmallestUnit(amount),
+      amount: convertToSmallestUnit(amount, currency || payoutAccount.currency || fallbackCurrency),
       recipient: payoutAccount.recipient_code,
       reason: reason || `Payout to provider ${provider_id}`,
       reference: reference || `payout_${provider_id}_${Date.now()}`,

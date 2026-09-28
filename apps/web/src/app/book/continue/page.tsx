@@ -655,7 +655,7 @@ function BookContinueContent() {
         // Fetch loyalty points balance for logged-in users (non-blocking)
         if (user) {
           fetcher
-            .get<{ data?: { balance?: number; points?: number }; balance?: number; points?: number }>("/api/me/loyalty-points/balance")
+            .get<{ data?: { balance?: number; points?: number }; balance?: number; points?: number }>("/api/me/loyalty/balance")
             .then((res) => {
               const raw = (res as any)?.data ?? res;
               const pts = raw?.balance ?? raw?.points ?? (res as any)?.data?.balance ?? (res as any)?.data?.points;
@@ -1040,6 +1040,13 @@ function BookContinueContent() {
       }
       if (loyaltyPointsApplied > 0) {
         payload.loyalty_points_used = loyaltyPointsApplied;
+      }
+      if (embed) {
+        payload.embed = true;
+        const returnParam = searchParams.get("return_url")?.trim();
+        if (returnParam) {
+          payload.embed_return_url = returnParam;
+        }
       }
       if (consumePackageId) {
         payload.package_id = consumePackageId;

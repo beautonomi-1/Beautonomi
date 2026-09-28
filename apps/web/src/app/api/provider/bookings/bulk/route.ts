@@ -114,6 +114,33 @@ export async function POST(request: NextRequest) {
             results.failed.push({ id: booking.id, reason: deleteError.message });
             continue;
           }
+          const deleteCustomerId = row.customer_id;
+          if (deleteCustomerId) {
+            try {
+              const { refundRedeemedLoyaltyPoints } = await import(
+                "@/lib/loyalty/refund-redeemed-points"
+              );
+              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
+                bookingId: booking.id,
+                customerId: deleteCustomerId,
+                reason: "provider_bulk_delete",
+              });
+            } catch (loyaltyRestoreErr) {
+              console.error(`Failed to restore loyalty for booking ${booking.id}:`, loyaltyRestoreErr);
+            }
+            try {
+              const { clawBackEarnedLoyaltyForBooking } = await import(
+                "@/lib/loyalty/claw-back-earned-for-booking"
+              );
+              await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
+                bookingId: booking.id,
+                customerId: deleteCustomerId,
+                bookingNumber: row.booking_number ?? booking.id,
+              });
+            } catch (loyaltyError) {
+              console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
+            }
+          }
         } else {
           const updateData: Record<string, unknown> = {
             status: newStatus,
@@ -146,38 +173,30 @@ export async function POST(request: NextRequest) {
           }
 
           const customerId = row.customer_id;
-          // Completed bookings: loyalty earn is handled by DB trigger on status -> completed.
-          if (newStatus === "cancelled") {
-            const loyaltyPointsEarned = row.loyalty_points_earned ?? 0;
-            if (loyaltyPointsEarned > 0 && customerId) {
-              try {
-                const { data: existingClaw } = await supabaseAdmin
-                  .from("loyalty_points_ledger")
-                  .select("id")
-                  .eq("booking_id", booking.id)
-                  .eq("customer_id", customerId)
-                  .contains("metadata", { source: "booking_cancel_earn_clawback" })
-                  .maybeSingle();
-
-                if (!existingClaw) {
-                  const { error: clawErr } = await (supabaseAdmin.rpc as any)("append_loyalty_ledger_entry", {
-                    p_customer_id: customerId,
-                    p_transaction_type: "adjusted",
-                    p_points_amount: -loyaltyPointsEarned,
-                    p_booking_id: booking.id,
-                    p_description: `Points reversed for cancelled booking ${row.booking_number ?? booking.id}`,
-                    p_metadata: { source: "booking_cancel_earn_clawback" },
-                    p_expires_at: null,
-                  });
-                  if (clawErr) {
-                    console.error(`Loyalty clawback RPC failed for booking ${booking.id}:`, clawErr);
-                  } else {
-                    console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${booking.id}`);
-                  }
-                }
-              } catch (loyaltyError) {
-                console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
-              }
+          if (newStatus === "cancelled" && customerId) {
+            try {
+              const { refundRedeemedLoyaltyPoints } = await import(
+                "@/lib/loyalty/refund-redeemed-points"
+              );
+              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
+                bookingId: booking.id,
+                customerId,
+                reason: "provider_bulk_cancel",
+              });
+            } catch (loyaltyRestoreErr) {
+              console.error(`Failed to restore loyalty for booking ${booking.id}:`, loyaltyRestoreErr);
+            }
+            try {
+              const { clawBackEarnedLoyaltyForBooking } = await import(
+                "@/lib/loyalty/claw-back-earned-for-booking"
+              );
+              await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
+                bookingId: booking.id,
+                customerId,
+                bookingNumber: row.booking_number ?? booking.id,
+              });
+            } catch (loyaltyError) {
+              console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
             }
           }
         }

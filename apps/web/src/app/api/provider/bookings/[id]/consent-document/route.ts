@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getStorageServiceClientOrUser } from "@/lib/supabase/storage-service-client";
 import {
   requireRoleInApi,
@@ -93,7 +94,8 @@ export async function POST(
     const updated = { ...formFields, _consent_document_url: publicUrl };
     const newResponses = { ...responses, [formId]: updated };
 
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update({
         provider_form_responses: newResponses,

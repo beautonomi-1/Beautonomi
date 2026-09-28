@@ -15,11 +15,18 @@ export interface RangePageableQuery {
  *
  * Shared by the provider dashboard and finance route so there is one pagination contract.
  */
-export async function fetchAllLedgerPages<T = any>(
+export type FetchAllLedgerPagesResult<T> = {
+  rows: T[];
+  /** True when more ledger rows exist beyond `maxRows` (provider report cap). */
+  truncated: boolean;
+};
+
+export async function fetchAllLedgerPagesWithMeta<T = unknown>(
   query: RangePageableQuery,
   maxRows: number = MAX_FINANCE_TRANSACTIONS,
-): Promise<T[]> {
+): Promise<FetchAllLedgerPagesResult<T>> {
   const rows: T[] = [];
+  let truncated = false;
   for (let from = 0; from < maxRows; from += LEDGER_PAGE_SIZE) {
     const to = Math.min(from + LEDGER_PAGE_SIZE, maxRows) - 1;
     const { data, error } = await query.range(from, to);
@@ -30,6 +37,18 @@ export async function fetchAllLedgerPages<T = any>(
     const page = (data || []) as T[];
     rows.push(...page);
     if (page.length < LEDGER_PAGE_SIZE) break;
+    if (rows.length >= maxRows) {
+      truncated = true;
+      break;
+    }
   }
+  return { rows: rows.slice(0, maxRows), truncated };
+}
+
+export async function fetchAllLedgerPages<T = unknown>(
+  query: RangePageableQuery,
+  maxRows: number = MAX_FINANCE_TRANSACTIONS,
+): Promise<T[]> {
+  const { rows } = await fetchAllLedgerPagesWithMeta<T>(query, maxRows);
   return rows;
 }

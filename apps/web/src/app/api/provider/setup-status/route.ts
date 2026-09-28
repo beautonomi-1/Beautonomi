@@ -37,6 +37,8 @@ export interface SetupStatus {
   steps: SetupStatusStep[];
   /** Current providers.status when a provider row exists. */
   providerStatus?: string | null;
+  /** Held for identity verification while checklist is otherwise complete. */
+  blocked_by_verification?: boolean;
 }
 
 /**
@@ -493,12 +495,19 @@ export async function GET(request: NextRequest) {
       native_route: NATIVE_ROUTE_BY_ID[s.id] ?? null,
     }));
 
+    const providerStatus = (provider as { status?: string | null }).status ?? null;
+    const blockedByVerification =
+      providerStatus === "pending_approval" &&
+      verificationPolicy.requiredForProviders &&
+      !isIdentityVerified;
+
     return successResponse<SetupStatus>({
       isComplete,
       completionPercentage: isComplete ? 100 : completionPercentage,
       missing_steps: missingSteps,
       steps: stepsWithNativeRoute,
-      providerStatus: (provider as { status?: string | null }).status ?? null,
+      providerStatus,
+      blocked_by_verification: blockedByVerification,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check setup status");

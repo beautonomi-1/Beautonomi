@@ -178,11 +178,19 @@ export default function GroupBookingDetailScreen() {
   const constrained = isTablet ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const colors = statusColor(data?.status ?? "confirmed");
   const groupPayment = groupPaymentBadge(data?.payment_status);
+  const gbp = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.components.groupBookingPayment.${key}`, opts) as string,
+    [t],
+  );
   const payerLine = data
-    ? groupPayerSummaryLine({
-        isPrimaryPayer: Boolean(data.is_primary_payer),
-        paidBy: data.paid_by ?? null,
-      })
+    ? groupPayerSummaryLine(
+        {
+          isPrimaryPayer: Boolean(data.is_primary_payer),
+          paidBy: data.paid_by ?? null,
+        },
+        gbp,
+      )
     : null;
   const groupBalanceDue = Number(data?.balance_due ?? 0);
   const isPrimaryContact = Boolean(data?.participants.some((p) => p.is_current_user && p.is_primary_contact));
@@ -372,7 +380,7 @@ export default function GroupBookingDetailScreen() {
               </Text>
             )}
             {data.participants.map((p) => {
-              const badge = participantPaymentBadge(p.payment_status, groupBalanceDue);
+              const badge = participantPaymentBadge(p.payment_status, groupBalanceDue, gbp);
               return (
                 <TouchableOpacity
                   key={p.id}

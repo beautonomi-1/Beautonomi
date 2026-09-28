@@ -111,6 +111,7 @@
     "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
+    "grc:seed": "pnpm --filter @beautonomi/grc-catalog build && node scripts/grc-seed.mjs",
     "audit:agents:discovery": "node scripts/agents/generate-discovery-inventories.mjs",
     "audit:tenant-admin": "node docs/scripts/check-admin-tenant-scope.mjs",
     "audit:tenant-api-hints": "node docs/scripts/check-non-admin-api-tenant-hints.mjs",

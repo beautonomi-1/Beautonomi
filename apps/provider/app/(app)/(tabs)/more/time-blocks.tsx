@@ -16,10 +16,12 @@ import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useBusinessToday } from "@/hooks/useBusinessToday";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useRouter } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
 import { startOfBusinessDayLocalDate } from "@beautonomi/utils";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ContextualHint } from "@/components/hints/ContextualHint";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -1120,6 +1122,7 @@ export function TimeBlocksContent() {
 }
 
 export default function TimeBlocksScreen() {
+  const router = useRouter();
   const { t } = useTranslation();
   const tb = (key: string, opts?: Record<string, unknown>) =>
     t(`provider.mobile.screens.timeBlocks.${key}`, opts) as string;
@@ -1138,6 +1141,13 @@ export default function TimeBlocksScreen() {
         title={tb("title")}
         showBack
         subtitle={tb("headerSubtitle", { month: thisMonthLabel, count: blocks.length })}
+      />
+      <ContextualHint
+        id="provider.timeBlocks.intro"
+        mode="once"
+        message={tb("introHint")}
+        actionLabel={tb("actionDaysOff")}
+        onAction={() => router.push("/(app)/(tabs)/more/days-off" as never)}
       />
       <TimeBlocksContent />
     </ScreenContainer>

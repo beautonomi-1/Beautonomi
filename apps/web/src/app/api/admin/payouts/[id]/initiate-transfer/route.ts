@@ -171,7 +171,7 @@ export async function POST(
 
     const transferRequest = {
       source: "balance" as const,
-      amount: convertToSmallestUnit(Number(p.amount || 0)),
+      amount: convertToSmallestUnit(Number(p.amount || 0), p.currency || acct.currency || lastResortCurrency),
       recipient: acct.recipient_code,
       reason: reason || `Payout ${p.payout_number || p.id}`,
       reference: `payout_${p.id}`,

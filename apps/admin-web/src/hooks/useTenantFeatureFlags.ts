@@ -3,6 +3,10 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 
 /** Keys aligned with `apps/web/src/lib/server/feature-flag-keys.ts` and DB `feature_flags.feature_key`. */
+export const TENANT_PRODUCT_FEATURE_KEYS = {
+  BRAND_DESK: "brand_desk",
+} as const;
+
 export const TENANT_PAYMENT_FEATURE_KEYS = {
   GIFT_CARDS: "gift_cards",
   PAYMENT_WALLET: "payment_wallet",

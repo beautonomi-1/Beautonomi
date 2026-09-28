@@ -22,6 +22,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { AdminVirtualList } from "@/components/admin/AdminVirtualList";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 interface BookingListRow {
   id: string;
@@ -279,7 +280,7 @@ export function BookingsPage() {
               ["Completed", stats.completed],
               ["Cancelled", stats.cancelled],
               ["No show", stats.no_show],
-              ["Booked GMV (completed)", `R ${stats.revenue.toLocaleString()}`],
+              ["Booked GMV (completed)", formatAdminCurrency(stats.revenue)],
             ] as const
           ).map(([label, value]) => (
             <div key={label} className="min-w-[100px]">

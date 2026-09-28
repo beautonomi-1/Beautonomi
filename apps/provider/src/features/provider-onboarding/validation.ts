@@ -271,3 +271,14 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     selected_plan_id: formData.selected_plan_id ?? null,
   };
 }
+
+export function buildSubmitPayloadWithInvite(
+  formData: Partial<OnboardingFormData>,
+  inviteToken: string | null | undefined,
+): Record<string, unknown> {
+  const payload = buildSubmitPayload(formData);
+  if (inviteToken?.trim()) {
+    payload.invite_token = inviteToken.trim();
+  }
+  return payload;
+}

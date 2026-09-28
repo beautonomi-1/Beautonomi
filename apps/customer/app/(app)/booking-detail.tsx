@@ -1590,7 +1590,10 @@ export default function BookingDetailScreen() {
       : Math.max(0, Number(booking.discount_amount || 0));
 
   /** Subtotal / tax / fees / total — same figures as Receipt (Details tab parity). */
-  const renderPaymentBreakdownCore = () => (
+  const renderPaymentBreakdownCore = () => {
+    const bookingCurrency = booking.currency || getTenantDefaultCurrency();
+    const moneyFmt = (amount: number) => formatMoney(amount, bookingCurrency);
+    return (
     <>
       {packageName ? (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
@@ -1607,8 +1610,7 @@ export default function BookingDetailScreen() {
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentSubtotal")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
-            {booking.currency}{" "}
-            {(Number(booking.subtotal) || 0).toFixed(2)}
+            {moneyFmt(Number(booking.subtotal) || 0)}
           </Text>
         </View>
       )}
@@ -1789,7 +1791,8 @@ export default function BookingDetailScreen() {
         </View>
       )}
     </>
-  );
+    );
+  };
 
   const handlePayAdditionalCharge = async (chargeId: string, chargeAmount: number) => {
     if (!id || !booking) return;

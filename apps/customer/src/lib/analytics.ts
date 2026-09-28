@@ -23,6 +23,9 @@ import {
   EVENT_EXPLORE_POST_IMPRESSION,
   EVENT_EXPLORE_POST_SAVE,
   EVENT_GIFT_CARD_CHECKOUT_START,
+  EVENT_HINT_ACTION,
+  EVENT_HINT_DISMISSED,
+  EVENT_HINT_SHOWN,
   EVENT_HOME_VIEW,
   EVENT_LOGIN_SUCCESS,
   EVENT_LOGOUT,
@@ -506,4 +509,16 @@ export function trackContentReportSubmitted(targetType: string) {
 
 export function trackUserReportSubmitted(reportType: string) {
   track(EVENT_USER_REPORT_SUBMITTED, { report_type: reportType, portal: "customer" });
+}
+
+export function trackHintShown(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_SHOWN, { hint_id: hintId, app });
+}
+
+export function trackHintDismissed(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_DISMISSED, { hint_id: hintId, app });
+}
+
+export function trackHintAction(hintId: string, app: "customer" | "provider") {
+  track(EVENT_HINT_ACTION, { hint_id: hintId, app });
 }

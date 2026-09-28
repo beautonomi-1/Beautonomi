@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -53,7 +54,8 @@ export async function PATCH(
     const now = new Date().toISOString();
 
     if (body.status === "approved") {
-      const { error: uErr } = await supabase
+      const bookingsAdmin = getBookingsAdminClient();
+      const { error: uErr } = await bookingsAdmin
         .from("bookings")
         .update({
           scheduled_at: reqRow.new_start,

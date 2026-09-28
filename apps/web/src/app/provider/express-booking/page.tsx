@@ -354,15 +354,17 @@ export default function ExpressBookingLinksPage() {
                           size="sm"
                           className="h-8 px-2"
                           onClick={async () => {
-                            const embedUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/book/l/${encodeURIComponent(link.short_code)}?embed=1`;
-                            const copied = await copyTextToClipboard(embedUrl);
+                            const snippet =
+                              link.iframe_snippet ||
+                              `<iframe src="${link.embed_url || `${link.full_url}?embed=1`}" width="100%" height="800" style="border:0;" allow="payment *; clipboard-write" referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+                            const copied = await copyTextToClipboard(snippet);
                             if (copied) {
-toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.embedUrlCopied"));
+toast.success(t("web.provider.settings.pages.appointment-activity/online-booking.iframeCodeCopied"));
                               return;
                             }
 toast.error(t("web.provider.expressBooking.unableToCopyEmbed"));
                           }}
-title={t("web.provider.expressBooking.copyEmbedUrl")}
+title={t("web.provider.expressBooking.copyEmbedSnippet")}
                         >
                           <Copy className="w-3 h-3" />
                         </Button>

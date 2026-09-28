@@ -7,7 +7,8 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { requireOpsDesk, requireProviderOpsAnyDesk } from "@/lib/provider-ops/ops-desk-auth";
+import { requireOpsDesk } from "@/lib/provider-ops/ops-desk-auth";
+import { requireProviderOpsAnyDesk } from "@/lib/provider-ops/ops-route-auth";
 import { logRetentionCaseTouch, type TouchChannel } from "@/lib/provider-ops/retention-touch";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 

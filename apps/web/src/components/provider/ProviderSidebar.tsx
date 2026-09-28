@@ -54,6 +54,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 import { useTranslation } from "@beautonomi/i18n";
 import { useLocale } from "@/components/i18n/LocaleProvider";
@@ -147,7 +148,7 @@ const navigationSections: { titleKey: string; items: NavItemConfig[] }[] = [
       { icon: Users, labelKey: "web.provider.sidebar.items.team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
       { icon: Users, labelKey: "web.provider.sidebar.items.teamMembers", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
       { icon: PiggyBank, labelKey: "web.provider.sidebar.items.payroll", href: "/provider/team/payroll", permission: "view_team" as keyof StaffPermissions },
-      { icon: DollarSign, labelKey: "web.provider.sidebar.items.myEarnings", href: "/provider/team/my-earnings", permission: "view_sales" as keyof StaffPermissions },
+      { icon: DollarSign, labelKey: "web.provider.sidebar.items.myEarnings", href: "/provider/team/my-earnings", permission: "view_own_earnings" as keyof StaffPermissions },
       { icon: Star, labelKey: "web.provider.sidebar.items.reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, labelKey: "web.provider.sidebar.items.messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
       { icon: Megaphone, labelKey: "web.provider.sidebar.items.marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
@@ -293,6 +294,8 @@ export function ProviderSidebar() {
   const { signOut, user: _user, role } = useAuth();
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
+  const { provider } = useProviderPortal();
+  const isFreelancer = provider?.business_type === "freelancer";
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
@@ -398,6 +401,9 @@ export function ProviderSidebar() {
     const withFilteredItems = navigationSections.map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        if (isFreelancer && (item.href === "/provider/team/payroll" || item.href === "/provider/team/my-earnings")) {
+          return false;
+        }
         if (!passesFeatureFlag(item)) return false;
         if (isOwner) return true;
         return passesPermission(item);

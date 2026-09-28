@@ -24,6 +24,11 @@ import { z } from "zod";
 import { syncPortalRoleAfterWorkplaceChange } from "@/lib/auth/effective-provider-role";
 import { reassignStaffWorkload } from "@/lib/provider/reassign-staff-workload";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  revokeStaffInvitesForMember,
+  revokeStaffUserSessionsIfOrphaned,
+} from "@/lib/provider/staff-offboarding";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const updateStaffSchema = z.object({
   name: z.string().optional(),
@@ -441,6 +446,11 @@ export async function PATCH(
     }
 
     if (d.is_active === false) {
+      const admin = getSupabaseAdmin();
+      await revokeStaffInvitesForMember(admin, id, providerId, user.id);
+      if (existing.user_id) {
+        await revokeStaffUserSessionsIfOrphaned(admin, existing.user_id);
+      }
       void staffAuditEntry(request, user, "staff.deactivated", id, providerId, {
         before: { is_active: true },
         after: { is_active: false },
@@ -661,6 +671,12 @@ export async function DELETE(
 
     if (existing.user_id) {
       await syncPortalRoleAfterWorkplaceChange(existing.user_id);
+    }
+
+    const admin = getSupabaseAdmin();
+    await revokeStaffInvitesForMember(admin, id, providerId, user.id);
+    if (existing.user_id) {
+      await revokeStaffUserSessionsIfOrphaned(admin, existing.user_id);
     }
 
     void staffAuditEntry(request, user, "staff.removed", id, providerId, {

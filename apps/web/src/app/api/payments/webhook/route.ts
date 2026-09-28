@@ -300,7 +300,7 @@ export async function POST(request: Request) {
           // Return 200 but flag so Paystack will retry later; the stale
           // reclaim window (5 min) will let a future retry succeed if the
           // holder dies.
-          return NextResponse.json({ received: true, processing: true });
+          return NextResponse.json({ received: true, processing: true }, { status: 503 });
         }
         if (lease.stale_lease_reclaimed) {
           console.warn(
@@ -335,7 +335,7 @@ export async function POST(request: Request) {
               if ((existingEvent as any).status === "processed") {
                 return NextResponse.json({ received: true, duplicate: true });
               }
-              return NextResponse.json({ received: true, processing: true });
+              return NextResponse.json({ received: true, processing: true }, { status: 503 });
             }
           }
           throw insertError;
@@ -379,115 +379,15 @@ export async function POST(request: Request) {
         response = await handleSubscriptionEvent(event, supabase);
       } else if (eventType.startsWith("refund.")) {
         response = await handleRefundEvent(event, supabase);
-      } else if (eventType.startsWith("dispute.")) {
-        // Paystack dispute events: log with merchant/transaction context for manual review
-        const disputeData = event.data as Record<string, unknown> | null | undefined;
-        const disputeTx = typeof disputeData?.transaction === "object" && disputeData?.transaction
-          ? (disputeData.transaction as Record<string, unknown>)
-          : null;
-        const disputeRef = (disputeTx?.reference ?? disputeData?.reference) as string | undefined;
-        console.warn(`[webhook] dispute event received: ${eventType}`, {
-          reference: disputeRef,
-          amount: (disputeData?.amount ?? disputeTx?.amount) as number | undefined,
-          status: disputeData?.status as string | undefined,
-          resolution: disputeData?.resolution as string | undefined,
-          eventId,
-        });
-        // Chargeback on an ads pre-pay: immediately stop serving and reverse the
-        // recognized revenue. Idempotent across dispute.create/remind/resolve.
-        if (disputeRef) {
-          try {
-            const { data: disputedTxn } = await (supabase.from("payment_transactions") as any)
-              .select("amount, metadata")
-              .eq("reference", String(disputeRef))
-              .eq("status", "success")
-              .maybeSingle();
-            const disputedMeta = (disputedTxn?.metadata ?? {}) as Record<string, unknown>;
-            if (disputedMeta?.kind === "marketing_credit_topup") {
-              // Chargeback on a marketing credit top-up: claw back unspent
-              // credits and reverse the recognized revenue.
-              const { reverseMarketingCreditTopupPayment } = await import(
-                "@/lib/marketing/marketing-credit-topup-payment"
-              );
-              await reverseMarketingCreditTopupPayment({
-                supabase: supabase as never,
-                providerId: String(disputedMeta.provider_id ?? ""),
-                reference: String(disputeRef),
-                amountMajor: Number((disputedTxn as { amount?: number } | null)?.amount ?? 0),
-                reason: `chargeback:${eventType}`,
-              });
-            } else if (disputedMeta?.kind === "ads_budget_order" && disputedMeta?.ads_budget_order_id) {
-              const { reverseAdsBudgetOrderPayment } = await import(
-                "@/lib/ads/ads-budget-order-payment"
-              );
-              await reverseAdsBudgetOrderPayment({
-                supabase: supabase as never,
-                orderId: String(disputedMeta.ads_budget_order_id),
-                finalOrderStatus: "refunded",
-                reason: `chargeback:${eventType}`,
-                reference: String(disputeRef),
-              });
-            } else if (
-              disputedMeta?.kind === "provider_subscription_order" ||
-              disputedMeta?.kind === "subscription_authorization" ||
-              disputedMeta?.kind === "subscription_renewal"
-            ) {
-              // Chargeback on a subscription charge: reverse the recognized
-              // revenue, disable Paystack billing, and fall the provider to free.
-              const { reverseProviderSubscriptionPayment } = await import(
-                "@/lib/subscriptions/provider-subscription-payment"
-              );
-              await reverseProviderSubscriptionPayment({
-                supabase: supabase as never,
-                reason: `chargeback:${eventType}`,
-                reference: String(disputeRef),
-                orderId: (disputedMeta.provider_subscription_order_id as string) ?? null,
-                subscriptionCode: (disputedMeta.subscription_code as string) ?? null,
-                providerIdHint: (disputedMeta.provider_id as string) ?? null,
-              });
-            } else {
-              const {
-                shouldProcessPaystackDisputeChargeback,
-                processBookingChargeback,
-              } = await import("@/lib/bookings/process-booking-chargeback");
-              if (shouldProcessPaystackDisputeChargeback(eventType, disputeData ?? undefined)) {
-                const disputeId = String(
-                  disputeData?.id ?? disputeData?.dispute_id ?? `${disputeRef}:${eventType}`,
-                );
-                const disputeAmountRaw =
-                  (disputeData?.amount ?? disputeTx?.amount) as number | undefined;
-                await processBookingChargeback({
-                  supabase: supabase as never,
-                  paymentProvider: "paystack",
-                  reference: String(disputeRef),
-                  disputeId,
-                  eventType,
-                  amountSmallestUnit:
-                    disputeAmountRaw != null && Number.isFinite(Number(disputeAmountRaw))
-                      ? Number(disputeAmountRaw)
-                      : undefined,
-                });
-              }
-            }
-          } catch (disputeReversalError) {
-            console.error("[webhook] dispute reversal failed:", disputeReversalError);
-          }
-          try {
-            const { openFraudCaseFromPaystackDispute } = await import(
-              "@/lib/fraud/open-fraud-from-paystack-dispute"
-            );
-            await openFraudCaseFromPaystackDispute({
-              eventType,
-              eventId: eventId != null ? String(eventId) : undefined,
-              reference: String(disputeRef),
-              disputeData: disputeData as Record<string, unknown> | null,
-              supabase: supabase as never,
-            });
-          } catch (fraudCaseErr) {
-            console.error("[webhook] fraud case open failed:", fraudCaseErr);
-          }
-        }
-        response = NextResponse.json({ received: true });
+      } else if (eventType.startsWith("charge.dispute.") || eventType.startsWith("dispute.")) {
+        const { handlePaystackDisputeEvent } = await import(
+          "./_handlers/paystack-dispute-events"
+        );
+        response = await handlePaystackDisputeEvent(
+          event,
+          supabase,
+          eventId != null ? String(eventId) : null,
+        );
       } else {
         console.log(`[webhook] unhandled event type: ${eventType}`, { eventId });
         response = NextResponse.json({ received: true });

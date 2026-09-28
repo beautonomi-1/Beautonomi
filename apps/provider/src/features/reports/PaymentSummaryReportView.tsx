@@ -19,6 +19,7 @@ const METHOD_KEYS: Record<string, string> = {
   wallet: "methodWallet",
   other: "methodOther",
   cashback: "methodCashback",
+  eft: "methodBankTransfer",
 };
 
 function omitKeys(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -50,6 +51,10 @@ function isPaymentSummaryPayload(data: unknown): data is Record<string, unknown>
   averageTransactionValue?: number;
   cashStylePaymentsWithoutLedgerCount?: number;
   cashStylePaymentsWithoutLedgerAmount?: number;
+  membershipProviderEarnings?: number;
+  providerCollectedByMethod?: { method: string; count: number; amount: number; percentage?: number }[];
+  ledger_truncated?: boolean;
+  max_finance_transactions?: number;
   collectionBreakdown?: Record<string, unknown>;
 } {
   return data != null && typeof data === "object" && !Array.isArray(data) && "collectionBreakdown" in data;
@@ -75,6 +80,8 @@ export function PaymentSummaryReportView({ data }: { data: unknown }) {
   const basis = data.reportBasis ?? "";
   const tz = data.timezone ?? "";
   const methods = (data.paymentsByMethod ?? []).filter((m) => Number(m.amount) > 0);
+  const providerCollected = (data.providerCollectedByMethod ?? []).filter((m) => Number(m.amount) > 0);
+  const membershipEarnings = Number(data.membershipProviderEarnings ?? 0);
   const avgBooked = Number(data.averageBookedValueNonPending ?? data.averageTransactionValue ?? 0);
 
   const detailPayload = omitKeys(data as Record<string, unknown>, [
@@ -168,6 +175,24 @@ export function PaymentSummaryReportView({ data }: { data: unknown }) {
         </View>
       ) : null}
 
+      {data.ledger_truncated ? (
+        <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3")}>
+          <Text style={twStyle("text-xs font-semibold text-amber-950")}>{ps("ledgerTruncatedTitle")}</Text>
+          <Text style={twStyle("mt-1 text-sm text-amber-950")}>
+            {ps("ledgerTruncated", { max: data.max_finance_transactions ?? 50000 })}
+          </Text>
+        </View>
+      ) : null}
+
+      {membershipEarnings > 0 ? (
+        <View style={twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
+          <Text style={twStyle("text-xs font-medium text-indigo-900")}>{ps("membershipEarnings")}</Text>
+          <Text style={twStyle("mt-1 text-lg font-semibold tabular-nums text-indigo-950")}>
+            {formatCurrency(membershipEarnings)}
+          </Text>
+        </View>
+      ) : null}
+
       {(data.cashStylePaymentsWithoutLedgerCount ?? 0) > 0 ? (
         <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold text-amber-950")}>{ps("cashWithoutLedgerTitle")}</Text>
@@ -177,6 +202,29 @@ export function PaymentSummaryReportView({ data }: { data: unknown }) {
               amount: formatCurrency(data.cashStylePaymentsWithoutLedgerAmount ?? 0),
             })}
           </Text>
+        </View>
+      ) : null}
+
+      {providerCollected.length > 0 ? (
+        <View>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+            {ps("providerCollectedByMethod")}
+          </Text>
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+            {providerCollected.map((m) => (
+              <View
+                key={`collected-${m.method}`}
+                style={twStyle("flex-row justify-between border-b border-gray-50 px-4 py-3 last:border-b-0")}
+              >
+                <Text style={twStyle("text-sm text-gray-900")}>
+                  {METHOD_KEYS[m.method] ? ps(METHOD_KEYS[m.method]) : m.method.replace(/_/g, " ")}
+                </Text>
+                <Text style={twStyle("text-sm font-semibold tabular-nums text-gray-900")}>
+                  {formatCurrency(Number(m.amount))}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
 

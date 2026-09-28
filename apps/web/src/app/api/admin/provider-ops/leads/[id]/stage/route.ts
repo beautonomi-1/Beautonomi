@@ -35,7 +35,7 @@ export async function PATCH(
       request,
     );
 
-    if (!result.ok) {
+    if (result.ok === false) {
       if (result.code === "NOT_FOUND") {
         return errorResponse(result.message, "NOT_FOUND", 404);
       }

@@ -3,6 +3,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
+import { assertPayrollEnabledForProvider } from "@/lib/payroll/payroll-access";
 import { z } from "zod";
 
 const createSchema = z
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) {
       return handleApiError(new Error("Provider not found"), "NOT_FOUND", 404);
+    }
+
+    const payrollGateList = await assertPayrollEnabledForProvider(supabaseAdmin, providerId);
+    if (payrollGateList.ok === false) {
+      return handleApiError(new Error(payrollGateList.message), "PAYROLL_UNAVAILABLE", 403);
     }
 
     const { data: payRuns, error } = await supabaseAdmin
@@ -72,9 +78,14 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error("Provider not found"), "NOT_FOUND", 404);
     }
 
+    const payrollGate = await assertPayrollEnabledForProvider(supabaseAdmin, providerId);
+    if (payrollGate.ok === false) {
+      return handleApiError(new Error(payrollGate.message), "PAYROLL_UNAVAILABLE", 403);
+    }
+
     const body = createSchema.parse(await request.json());
-    const periodStart = new Date(body.pay_period_start);
-    const periodEnd = new Date(body.pay_period_end);
+    const periodStart = body.pay_period_start;
+    const periodEnd = body.pay_period_end;
     const periodType = body.period_type || "weekly";
 
     const { data: overlapping } = await supabaseAdmin
@@ -110,6 +121,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         pay_period_start: body.pay_period_start,
         pay_period_end: body.pay_period_end,
+        period_type: periodType,
         status: "draft",
       })
       .select("id")

@@ -41,6 +41,8 @@ function buildEventProps(first: Record<string, string>, session: Record<string, 
     if (first[k]) out[`mkt_first_${k}`] = first[k];
     if (session[k]) out[`mkt_session_${k}`] = session[k];
   }
+  const sessionCampaign = session.utm_campaign ?? first.utm_campaign;
+  if (sessionCampaign) out.brand_campaign_code = sessionCampaign.slice(0, 500);
   return out;
 }
 

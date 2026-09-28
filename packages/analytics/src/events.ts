@@ -67,6 +67,11 @@ export const EVENT_PROVIDER_ANALYTICS_VIEW = "provider_analytics_view";
 export const EVENT_MESSAGE_THREAD_OPEN = "message_thread_open";
 export const EVENT_MESSAGE_SENT = "message_sent";
 
+// Contextual hints (mobile)
+export const EVENT_HINT_SHOWN = "hint_shown";
+export const EVENT_HINT_DISMISSED = "hint_dismissed";
+export const EVENT_HINT_ACTION = "hint_action";
+
 // App lifecycle & attribution (mobile-first; web emits page_view instead of app_open)
 export const EVENT_APP_OPEN = "app_open";
 export const EVENT_PAGE_VIEW = "page_view";

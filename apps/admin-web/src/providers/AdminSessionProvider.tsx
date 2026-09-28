@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserRole } from "@beautonomi/types";
 import type { AdminSection } from "@beautonomi/admin-access";
-import { ADMIN_SECTION_OVERVIEW, canAccessSection } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_OVERVIEW, ADMIN_SECTION_SECURITY_COMPLIANCE, canAccessSection } from "@beautonomi/admin-access";
 import { AdminApiError, isForbiddenStatus, isUnauthorizedStatus } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -21,12 +21,7 @@ export interface BootstrapState {
 interface AdminSessionContextValue {
   bootstrap: BootstrapState | null;
   sectionRoles: Record<AdminSection, UserRole[]> | null;
-  /** True when section-permissions API failed; nav falls back to code defaults (may differ from DB). */
   sectionPermissionsError: boolean;
-  /**
-   * First load of section permissions for non-superadmin users. When true, defer shell navigation
-   * so `canAccess` does not briefly use code defaults before DB-backed roles apply.
-   */
   isSectionPermissionsPending: boolean;
   refetchSectionPermissions: () => void;
   isLoading: boolean;
@@ -37,6 +32,11 @@ interface AdminSessionContextValue {
   signOut: () => Promise<void>;
   canAccess: (section: AdminSection) => boolean;
   canUseGlobalSearch: boolean;
+  grcHubEnabled: boolean;
+  grcRoles: string[];
+  /** Effective GRC permission keys from bootstrap (the API re-checks every call). */
+  grcPermissions: string[];
+  hasGrc: (permission: string) => boolean;
 }
 
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
@@ -86,9 +86,13 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
 
   const value = useMemo<AdminSessionContextValue>(() => {
     const role = (bootstrap?.role as UserRole) ?? ("customer" as UserRole);
-    const canAccess = (section: AdminSection) =>
-      canAccessSection(role, section, sectionRoles ?? undefined);
-    /** Anyone with Overview (all admin-shell roles) can use header search; API is scoped the same. */
+    const grcPermissions = bootstrap?.grc_permissions ?? [];
+    const canAccess = (section: AdminSection) => {
+      if (section === ADMIN_SECTION_SECURITY_COMPLIANCE) {
+        return bootstrap?.feature_flags?.grc_hub_enabled === true && bootstrap?.can_access_security_compliance === true;
+      }
+      return canAccessSection(role, section, sectionRoles ?? undefined);
+    };
     const canUseGlobalSearch = canAccess(ADMIN_SECTION_OVERVIEW);
     const isSectionPermissionsPending = Boolean(
       bootstrap &&
@@ -129,6 +133,10 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
       },
       canAccess,
       canUseGlobalSearch,
+      grcHubEnabled: bootstrap?.feature_flags?.grc_hub_enabled === true,
+      grcRoles: bootstrap?.grc_roles ?? [],
+      grcPermissions,
+      hasGrc: (permission: string) => grcPermissions.includes(permission),
     };
   }, [
     bootstrap,
@@ -153,7 +161,6 @@ export function useAdminSession() {
   return ctx;
 }
 
-/** Safe optional hook for login page (no provider). */
 export function useAdminSessionOptional() {
   return useContext(AdminSessionContext);
 }

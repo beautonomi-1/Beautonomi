@@ -44,6 +44,10 @@ import { computeCatalogPackageServiceDiscount, getMissingRequiredProviderFormFie
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
+import {
+  calculatePlatformFeeAmount,
+  getEffectivePlatformFeeConfig,
+} from "@/lib/platform-service-fee-settings";
 import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/booking-request-policy";
 import {
   computeProviderCreateTaxableAmount,
@@ -1234,12 +1238,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // For walk-in bookings, set Platform Fee to 0 (platform doesn't charge direct customers)
     const isWalkIn = bookingSource === "walk_in";
-    const platformFeeAmount = isWalkIn
-      ? 0
-      : (body.platform_fee_amount ?? body.service_fee_amount ?? 0);
-    const platformFeePercentage = isWalkIn
-      ? 0
-      : (body.platform_fee_percentage ?? body.service_fee_percentage ?? 0);
 
     const numOrNull = (v: unknown): number | null => {
       if (v == null || v === "") return null;
@@ -1426,7 +1424,22 @@ async function handleCreateProviderBooking(request: NextRequest) {
       membershipDiscountAmount = explicitMembershipDiscount;
     }
     const serverTipAmount = Number(body.tip_amount) || 0;
-    const serverPlatformFeeAmount = Number(platformFeeAmount) || 0;
+    let platformFeeAmount = 0;
+    let platformFeePercentage = 0;
+    if (!isWalkIn) {
+      const platformFeeBase = Math.max(
+        0,
+        serverSubtotal -
+          serverDiscountAmount -
+          serverPromotionDiscountAmount -
+          membershipDiscountAmount,
+      );
+      const feeConfig = await getEffectivePlatformFeeConfig(providerId, platformFeeBase);
+      platformFeeAmount = calculatePlatformFeeAmount(feeConfig, platformFeeBase);
+      platformFeePercentage =
+        feeConfig.feeType === "percentage" ? Number(feeConfig.percentage || 0) : 0;
+    }
+    const serverPlatformFeeAmount = platformFeeAmount;
     const taxableAmount = computeProviderCreateTaxableAmount({
       subtotal: serverSubtotal,
       discountAmount: serverDiscountAmount,
@@ -1796,6 +1809,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
             })()
           : endAt.toISOString();
 
+      // Inserts run in SECURITY DEFINER `create_booking_with_locking` (not user-JWT insert).
       const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc(
         "create_booking_with_locking",
         {

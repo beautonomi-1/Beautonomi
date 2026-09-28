@@ -82,8 +82,8 @@ vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
 }));
 
 // Platform settings say 10% — provider_collected must ignore this and post 0.
-vi.mock("@/lib/finance/resolve-commission-percentage", () => ({
-  resolveCommissionPercentageForProvider: vi.fn(async () => 10),
+vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
+  resolveCommissionPercentageForBooking: vi.fn(async () => 10),
 }));
 
 type Row = Record<string, unknown>;

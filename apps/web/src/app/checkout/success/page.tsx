@@ -16,6 +16,7 @@ import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
 import { isLikelyFramed, postBookingEmbedMessage } from "@/lib/booking/embed-host";
 import { isBookingEmbedEnabled } from "@beautonomi/utils";
 import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
+import { verifyEmbedReturnUrl } from "@/lib/booking/embed-return-url";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -90,7 +91,11 @@ function CheckoutSuccessContent() {
   const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
   const offerId = searchParams?.get("offer_id");
   const embed = isBookingEmbedEnabled(searchParams);
+  const embedReturnUrl = searchParams?.get("return")?.trim() || "";
+  const embedReturnSig = searchParams?.get("return_sig");
   const embedBookedPosted = useRef(false);
+  const embedReturnRedirectStarted = useRef(false);
+  const [embedReturnCountdown, setEmbedReturnCountdown] = useState<number | null>(null);
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
   const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
@@ -554,6 +559,42 @@ function CheckoutSuccessContent() {
     isCustomOffer,
   ]);
 
+  useEffect(() => {
+    if (embedReturnRedirectStarted.current) return;
+    if (!embedReturnUrl || !resolvedBookingId) return;
+    if (!verifyEmbedReturnUrl(embedReturnUrl, resolvedBookingId, embedReturnSig)) return;
+    if (paystackReference && verifyStatus === "idle") return;
+    if (paystackReference && verifyStatus === "verifying") return;
+    if (paystackReference && verifyStatus === "success" && !bookingPollComplete && !isCustomOffer) return;
+    if (verifyFailed) return;
+
+    embedReturnRedirectStarted.current = true;
+    setEmbedReturnCountdown(3);
+    const target = new URL(embedReturnUrl);
+    if (bookingNumber) target.searchParams.set("beautonomi_booking", bookingNumber);
+
+    const tick = window.setInterval(() => {
+      setEmbedReturnCountdown((c) => (c != null && c > 1 ? c - 1 : c));
+    }, 1000);
+    const go = window.setTimeout(() => {
+      window.location.href = target.href;
+    }, 3000);
+    return () => {
+      window.clearInterval(tick);
+      window.clearTimeout(go);
+    };
+  }, [
+    embedReturnUrl,
+    embedReturnSig,
+    resolvedBookingId,
+    bookingNumber,
+    paystackReference,
+    verifyStatus,
+    bookingPollComplete,
+    isCustomOffer,
+    verifyFailed,
+  ]);
+
   if (providerBranch) {
     /**
      * §Provider-paystack-audit 2026-05: provider Paystack payment landed here
@@ -751,6 +792,11 @@ function CheckoutSuccessContent() {
                   Booking #{bookingNumber}
                 </p>
               )}
+              {embedReturnCountdown != null && embedReturnUrl ? (
+                <p className="text-sm leading-relaxed mb-2" style={{ color: TEXT_SECONDARY }}>
+                  Booking confirmed — returning to the salon in {embedReturnCountdown}s…
+                </p>
+              ) : null}
               {verifyFailed ? (
                 <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
                   {verifyMessage ||

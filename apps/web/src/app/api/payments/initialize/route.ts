@@ -28,6 +28,8 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+
     const rateLimitResult = await checkPaymentInitRateLimit(request, auth.user?.id);
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
     // Verify booking belongs to user; use booking tenant for PSP + currency (immutable market for this booking).
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, customer_id, total_amount, status, tenant_id")
+      .select("id, customer_id, total_amount, status, tenant_id, currency")
       .eq("id", booking_id)
       .eq("customer_id", auth.user.id)
       .single();
@@ -86,7 +88,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const bookingData = booking as { tenant_id?: string | null; status?: string };
+    const bookingData = booking as {
+      tenant_id?: string | null;
+      status?: string;
+      currency?: string | null;
+    };
     const tenantResolved = await resolvePaymentTenantForBookingRequest(
       request,
       bookingData.tenant_id,
@@ -142,7 +148,11 @@ export async function POST(request: Request) {
 
     const amountInSmallestUnit = resolved.amountSmallestUnit;
     const transactionReference = generateTransactionReference("booking", booking_id);
-    const chargeCurrency = (currency || lastResortCurrency).toUpperCase();
+    const chargeCurrency = (
+      bookingData.currency ||
+      currency ||
+      lastResortCurrency
+    ).toUpperCase();
 
     const fxReady = await assertReportingCurrencyReady(admin, chargeCurrency);
     if (fxReady.ok === false) {
@@ -244,12 +254,13 @@ export async function POST(request: Request) {
         settlementModel,
       });
 
-      await (supabase.from("bookings") as any)
+      await (supabaseAdmin.from("bookings") as any)
         .update({
           payment_reference: stripeInit.reference,
           payment_status: "pending",
         })
-        .eq("id", booking_id);
+        .eq("id", booking_id)
+        .eq("customer_id", auth.user.id);
 
       return NextResponse.json({
         data: {
@@ -288,13 +299,14 @@ export async function POST(request: Request) {
     });
 
     // Store payment reference in booking
-    await (supabase
+    await (supabaseAdmin
       .from("bookings") as any)
       .update({
         payment_reference: paystackData.data.reference,
         payment_status: "pending",
       })
-      .eq("id", booking_id);
+      .eq("id", booking_id)
+      .eq("customer_id", auth.user.id);
 
     return NextResponse.json({
       data: {

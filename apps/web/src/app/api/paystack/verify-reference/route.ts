@@ -104,7 +104,8 @@ export async function GET(request: NextRequest) {
     const d = json.data;
     const txStatus = d.status || "";
     const amountKobo = Number(d.amount ?? 0);
-    const amountInCurrency = convertFromSmallestUnit(amountKobo);
+    const paystackCurrency = d.currency || lastResortCurrency;
+    const amountInCurrency = convertFromSmallestUnit(amountKobo, paystackCurrency);
     const metadata = (d.metadata || {}) as Record<string, unknown>;
     const admin = getSupabaseAdmin();
 
@@ -180,7 +181,7 @@ export async function GET(request: NextRequest) {
         productOrderId,
         reference: d.reference ?? reference,
         amountMajor: amountInCurrency,
-        feesMajor: convertFromSmallestUnit(Number(d.fees ?? 0)),
+        feesMajor: convertFromSmallestUnit(Number(d.fees ?? 0), paystackCurrency),
         source: "paystack_verify",
         provider: "paystack",
       });
@@ -272,7 +273,7 @@ export async function GET(request: NextRequest) {
         terminalOrderId,
         reference: d.reference ?? reference,
         amountMajor: amountInCurrency,
-        feesMajor: convertFromSmallestUnit(Number(d.fees ?? 0)),
+        feesMajor: convertFromSmallestUnit(Number(d.fees ?? 0), paystackCurrency),
         commercialModel: (order.commercial_model ?? "once_off_purchase") as
           | "once_off_purchase"
           | "rental"

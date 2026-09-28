@@ -31,23 +31,24 @@ export function isPlatformBillingPaymentKind(kind: unknown): boolean {
 }
 
 /**
- * Paystack dispute.* events that should create a booking chargeback clawback.
- * Skips remind-only noise and merchant-won resolutions.
+ * Paystack dispute resolve events where the customer won and a booking chargeback
+ * clawback should run. Opens (`dispute.create`) only reserve balance — no refund row.
  */
 export function shouldProcessPaystackDisputeChargeback(
   eventType: string,
   disputeData: Record<string, unknown> | null | undefined,
 ): boolean {
-  if (eventType === "dispute.create") return true;
-  if (eventType === "dispute.resolve") {
-    const resolution = String(disputeData?.resolution ?? "").toLowerCase();
-    if (
-      resolution.includes("merchant") &&
-      (resolution.includes("accepted") || resolution.includes("won") || resolution.includes("declined"))
-    ) {
-      return false;
-    }
+  const normalized = eventType.startsWith("charge.dispute.")
+    ? `dispute.${eventType.slice("charge.dispute.".length)}`
+    : eventType;
+  if (normalized !== "dispute.resolve") return false;
+  const resolution = String(disputeData?.resolution ?? "").toLowerCase();
+  const status = String(disputeData?.status ?? "").toLowerCase();
+  if (resolution.includes("merchant") && resolution.includes("accepted")) {
     return true;
+  }
+  if (resolution === "declined" && status.includes("resolved")) {
+    return false;
   }
   return false;
 }
@@ -63,6 +64,8 @@ export type ProcessBookingChargebackParams = {
   amountMajor?: number;
   /** Paystack amounts may be in kobo when amountMajor omitted */
   amountSmallestUnit?: number;
+  /** ISO currency of amountSmallestUnit (defaults to ZAR) */
+  currency?: string;
 };
 
 export type ProcessBookingChargebackResult = {
@@ -130,7 +133,7 @@ export async function processBookingChargeback(
 
   let refundAmount = params.amountMajor;
   if (refundAmount == null && params.amountSmallestUnit != null) {
-    refundAmount = convertFromSmallestUnit(Number(params.amountSmallestUnit));
+    refundAmount = convertFromSmallestUnit(Number(params.amountSmallestUnit), params.currency);
   }
   if (refundAmount == null || !Number.isFinite(refundAmount) || refundAmount <= 0) {
     refundAmount = Number((txn as { amount?: number }).amount ?? 0);

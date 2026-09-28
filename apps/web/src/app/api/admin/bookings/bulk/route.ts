@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -73,10 +74,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Perform bulk update
-    const { error: updateError } = await supabase
+    const bookingsAdmin = getBookingsAdminClient();
+    const { error: updateError } = await bookingsAdmin
       .from("bookings")
       .update(updateData)
-      .in("id", booking_ids);
+      .in("id", booking_ids)
+      .eq("tenant_id", tenantId);
 
     if (updateError) {
       throw updateError;

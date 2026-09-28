@@ -95,6 +95,8 @@ const consumeBodySchema = z.object({
       },
       { message: "Invalid paystack_callback_url" },
     ),
+  embed: z.boolean().optional(),
+  embed_return_url: z.string().trim().optional(),
 });
 
 /** Consumes per-session hold state; responses are `Cache-Control: no-store` (never edge-cached). */
@@ -236,6 +238,8 @@ async function handlePost(
     const idempotencyKey = parsed.data.idempotency_key ?? request.headers.get("idempotency-key")?.trim() ?? undefined;
     const subscribeRecurringReq = parsed.data.subscribe_recurring;
     const paystackCallbackUrl = parsed.data.paystack_callback_url;
+    const embedFlag = parsed.data.embed;
+    const embedReturnUrl = parsed.data.embed_return_url;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isGiftCardsEnabledForTenant(marketTenantId);
@@ -564,6 +568,12 @@ async function handlePost(
       membership_plan_id: membershipPlanId ?? undefined,
       campaign_id: campaignId ?? undefined,
     };
+    if (embedFlag === true) {
+      draft.embed = true;
+    }
+    if (embedReturnUrl?.trim()) {
+      draft.embed_return_url = embedReturnUrl.trim();
+    }
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;
       draft.group_participants = groupParticipants;

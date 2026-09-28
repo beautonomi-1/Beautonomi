@@ -248,7 +248,7 @@ export async function POST(
       );
     }
 
-    const amountInSmallestUnit = convertToSmallestUnit(paystackAmount);
+    const amountInSmallestUnit = convertToSmallestUnit(paystackAmount, currency);
 
     const remainingAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
     const remainingCallbackUrl =

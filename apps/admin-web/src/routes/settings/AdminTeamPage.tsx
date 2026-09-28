@@ -42,6 +42,7 @@ const ADMIN_ROLES = [
   "admin_sales",
   "admin_onboarding",
   "admin_retention",
+  "admin_grc",
 ] as const;
 
 type AdminRole = (typeof ADMIN_ROLES)[number];
@@ -61,6 +62,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin_sales: "Provider sales",
   admin_onboarding: "Provider onboarding",
   admin_retention: "Provider retention",
+  admin_grc: "Security & Compliance",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -78,6 +80,7 @@ const ROLE_COLORS: Record<string, string> = {
   admin_sales: "bg-sky-100 text-sky-800",
   admin_onboarding: "bg-teal-100 text-teal-800",
   admin_retention: "bg-rose-100 text-rose-800",
+  admin_grc: "bg-slate-200 text-slate-800",
 };
 
 type AdminMember = {

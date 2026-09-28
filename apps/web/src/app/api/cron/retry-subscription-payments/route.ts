@@ -118,19 +118,20 @@ async function runJob(request: NextRequest) {
 
       const reference = generateTransactionReference("sub_dunning", row.id);
       const tenantId = prov?.tenant_id ?? undefined;
+      const planCurrency = plan?.currency || "ZAR";
 
       try {
         const chargeResult = await chargeAuthorization(
           String(row.paystack_authorization_code),
           email,
-          convertToSmallestUnit(amountMajor),
+          convertToSmallestUnit(amountMajor, planCurrency),
           {
             provider_id: row.provider_id,
             plan_id: row.plan_id,
             dunning_retry: true,
             subscription_id: row.id,
           },
-          { tenantId, reference },
+          { tenantId, reference, currency: planCurrency },
         );
 
         const status = String(chargeResult.data?.status ?? "");
@@ -138,7 +139,10 @@ async function runJob(request: NextRequest) {
           throw new Error(chargeResult.message || "Charge not successful");
         }
 
-        const feesMajor = convertFromSmallestUnit(Number(chargeResult.data?.fees ?? 0));
+        const feesMajor = convertFromSmallestUnit(
+          Number(chargeResult.data?.fees ?? 0),
+          chargeResult.data?.currency || planCurrency,
+        );
         await recordProviderSubscriptionPayment({
           supabase,
           providerId: row.provider_id,

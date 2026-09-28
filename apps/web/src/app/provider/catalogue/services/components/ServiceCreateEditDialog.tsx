@@ -1064,7 +1064,7 @@ export function ServiceCreateEditDialog({
                         placeholder={t("web.provider.catalogue.serviceDialog.homePricePlaceholder")}
                         className="mt-1.5"
                       />
-                      <p className="text-xs text-gray-500 mt-1.5">{t("provider.mobile.screens.serviceForm.atHomePriceHint")}</p>
+                      <p className="text-xs text-gray-500 mt-1.5">{t("web.provider.catalogue.services.homePriceAdjustmentHint")}</p>
                     </div>
                   </div>
                 )}

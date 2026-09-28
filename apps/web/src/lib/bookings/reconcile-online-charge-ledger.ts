@@ -51,6 +51,7 @@ type PaystackVerifyResponse = {
     amount?: number;
     fees?: number;
     reference?: string;
+    currency?: string;
   };
 };
 
@@ -254,7 +255,7 @@ async function reconcilePaystackMissingLedger(
 
     const amountMajor =
       typeof verified.amount === "number"
-        ? convertFromSmallestUnit(verified.amount)
+        ? convertFromSmallestUnit(verified.amount, verified.currency || row.bookings?.currency || "ZAR")
         : Number(row.amount ?? 0);
 
     const settlement = await recordPaystackBookingSettlement(supabase, {
@@ -322,16 +323,17 @@ async function patchBackfilledFees(
 
     const { data: bookingRow } = await supabase
       .from("bookings")
-      .select("tenant_id")
+      .select("tenant_id, currency")
       .eq("id", pt.booking_id)
       .maybeSingle();
     const tenantId = (bookingRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const bookingCurrency = (bookingRow as { currency?: string | null } | null)?.currency ?? null;
 
     const verified = await verifyPaystackReference(reference, tenantId);
     const verifiedFees = Number(verified?.fees ?? 0);
     if (!verified || verified.status !== "success" || verifiedFees <= 0) continue;
 
-    const feesMajor = convertFromSmallestUnit(verifiedFees);
+    const feesMajor = convertFromSmallestUnit(verifiedFees, verified.currency || bookingCurrency || "ZAR");
     const amountMajor = Number(pt.amount ?? 0);
 
     const { error: ptUpdateError } = await supabase

@@ -88,6 +88,8 @@ type FinanceSummary = {
   total_platform_take_after_referrals: number;
   gmv_growth: number;
   period: FinancePeriod;
+  currency?: string;
+  reporting_currency_mixed?: boolean;
   platform_revenue?: {
     booking_commission?: number;
     customer_paid_platform_fees?: number;
@@ -347,6 +349,10 @@ export function FinanceOverviewPage() {
       { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
       { label: "Marketing credits (net)", value: summary.platform_revenue?.marketing_credits ?? summary.marketing_credit_net ?? 0 },
       { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
+      {
+        label: "Gift card breakage",
+        value: (summary.platform_revenue as { gift_card_breakage?: number } | undefined)?.gift_card_breakage ?? 0,
+      },
     ];
   }, [summary]);
 
@@ -514,6 +520,12 @@ export function FinanceOverviewPage() {
           >
             Clear provider filter
           </button>
+        </div>
+      ) : null}
+      {summary?.reporting_currency_mixed ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Totals combine multiple currencies ({summary.currency ?? "MIXED"}). Do not treat headline sums as one
+          currency — export ledger rows or narrow filters.
         </div>
       ) : null}
       {showWalletDisabledBanner ? (
