@@ -20,6 +20,10 @@ package-lock.json
 .next/
 dist/
 build/
+# Next.js App Router segment (not a compile artifact)
+!apps/web/src/app/api/admin/brand/evidence-pack/*/
+!apps/web/src/app/api/admin/brand/evidence-pack/*/build/
+!apps/web/src/app/api/admin/brand/evidence-pack/*/build/**
 out/
 coverage/
 *.log

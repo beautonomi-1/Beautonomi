@@ -32,6 +32,7 @@ const BRAND_ADMIN_API_ROUTES = [
   "strategy/plans/[id]/route.ts",
   "strategy/kpis/route.ts",
   "strategy/kpis/[id]/route.ts",
+  "kpis/catalog/route.ts",
   "calendar/route.ts",
   "calendar.ics/route.ts",
   "pack/pdf/route.ts",
