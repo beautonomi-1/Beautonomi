@@ -4,8 +4,7 @@ import { NextRequest } from 'next/server';
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { createClient } from '@supabase/supabase-js';
 import { format, subDays } from "date-fns";
-import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
-import { formatProviderPortalLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
+import { checkBookingLimit, providerBookingEligibilityFromLimit } from "@/lib/subscriptions/limit-checker";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import {
@@ -950,11 +949,10 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       const activityWindow = activityPayload.window;
 
       const bookingLimit = await checkBookingLimit(providerId, supabaseAdmin);
+      const eligibility = providerBookingEligibilityFromLimit(bookingLimit);
       bookingEligibility = {
-        can_accept_online_bookings: bookingLimit.canProceed,
-        booking_limit_message: bookingLimit.canProceed
-          ? null
-          : formatProviderPortalLimitMessage(bookingLimit, "Subscription"),
+        can_accept_online_bookings: eligibility.can_accept_online_bookings,
+        booking_limit_message: eligibility.booking_limit_message,
       };
 
       insights = {
