@@ -314,7 +314,8 @@ async function checkBookingLimitFromTables(
     .from("bookings")
     .select("id", { count: "exact", head: true })
     .eq("provider_id", providerId)
-    .not("status", "in", "(cancelled,refunded)")
+    .neq("status", "cancelled")
+    .neq("payment_status", "refunded")
     .or("booking_source.eq.online,booking_source.is.null")
     .gte("created_at", start)
     .lt("created_at", end);

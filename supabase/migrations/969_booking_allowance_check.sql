@@ -13,14 +13,15 @@ AS $$
   SELECT COALESCE(COUNT(*)::integer, 0)
   FROM public.bookings AS b
   WHERE b.provider_id = provider_id_param
-    AND b.status NOT IN ('cancelled', 'refunded')
+    AND b.status <> 'cancelled'
+    AND b.payment_status IS DISTINCT FROM 'refunded'
     AND COALESCE(b.booking_source, 'online') = 'online'
     AND b.created_at >= date_trunc('month', CURRENT_DATE)
     AND b.created_at < date_trunc('month', CURRENT_DATE) + interval '1 month';
 $$;
 
 COMMENT ON FUNCTION public.count_provider_bookings_this_month(uuid) IS
-  'Online bookings created this calendar month, excluding cancelled and refunded. Null booking_source counts as online (column default).';
+  'Online bookings created this calendar month. Excludes cancelled appointments and payment_status refunded. Null booking_source counts as online (column default).';
 
 CREATE OR REPLACE FUNCTION public.can_provider_create_booking(provider_id_param uuid)
 RETURNS TABLE (
