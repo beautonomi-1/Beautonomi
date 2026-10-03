@@ -4,7 +4,7 @@
 
 | Report | Verdict |
 |--------|---------|
-| [GO_LIVE_REPORT_2026-10-03.md](./go-live/GO_LIVE_REPORT_2026-10-03.md) | **Conditional Go** @ `5ea5fec9` (E2E warning: deploy-triggered run skipped for SHA; re-run after next production deploy) |
+| [GO_LIVE_REPORT_2026-10-03.md](./go-live/GO_LIVE_REPORT_2026-10-03.md) | **Go** @ `007eae77` — automated gates green; **manual ops checklist signed off** (2026-10-03); finance drift success |
 
 ## What the check covers
 
@@ -13,11 +13,11 @@
 - **Live HTTP:** production health, public tenant APIs, secret scan, security headers, cron auth, TLS redirect; staging E2E hosts when `VERCEL_AUTOMATION_BYPASS_SECRET` is set.
 - **Mobile:** release check + Expo config (warnings).
 
-Manual items (Vercel env, PITR, Paystack webhook, DNS, bypass rotation, on-call) are listed in each generated report.
+Manual items (Vercel env, PITR, Paystack webhook, DNS, bypass rotation, on-call) are listed in each generated report and marked complete in the 2026-10-03 sign-off.
 
 ## Ops notes
 
-- **Finance drift nightly:** workflow targets production Supabase URL; set GitHub secret `SUPABASE_PRODUCTION_SERVICE_ROLE_KEY` (production service role). Queries are trimmed before `finance_audit_run` RPC (see `scripts/prod/audit-finance-ledger.mjs`).
+- **Finance drift nightly:** **Green** (2026-10-03) — production audit OK after BO-10067 ledger backfill; `SUPABASE_PRODUCTION_SERVICE_ROLE_KEY` on GitHub Actions.
 - **Paystack:** runtime uses Vercel `PAYSTACK_SECRET_KEY`; DB must not contain `sk_test` overrides in production.
 
 ## Commands

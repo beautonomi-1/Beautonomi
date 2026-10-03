@@ -1,26 +1,26 @@
 # Go-live readiness report — 2026-10-03
 
-**Verdict:** Conditional Go
+**Verdict:** No-Go
 
 **Mode:** quick
 
-**Git HEAD:** `5ea5fec`
+**Git HEAD:** `007eae7`
 
 ## Automated checks
 
 | Area | ID | Sev | Status | Evidence |
 |------|-----|-----|--------|----------|
-| repo | git.tracked_clean | blocker | pass | No staged or modified tracked files. |
-| repo | git.head_origin_main | blocker | pass | HEAD 5ea5fec matches origin/main. |
+| repo | git.tracked_clean | blocker | fail | M docs/GO_LIVE_BLOCKERS_STATUS.md;  M docs/STAGING_E2E_READINESS.md;  M docs/STAGING_VERCEL_PREVIEW_ENV.md;  M docs/go-l |
+| repo | git.head_origin_main | blocker | pass | HEAD 007eae7 matches origin/main. |
 | repo | repo.migrations | blocker | pass | Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11 |
 | repo | repo.audit_deps | blocker | pass | audit:deps pass. |
 | repo | repo.typecheck_lint | blocker | pass | web + admin-web typecheck/lint OK. |
 | repo | repo.multi_tenant | blocker | pass | audit:multi-tenant:strict pass. |
 | repo | repo.cron_schedule | blocker | pass | verify:cron-schedule pass. |
 | repo | repo.observability | blocker | pass | verify-observability-gates pass. |
-| ci | ci.main | blocker | pass | CI: success; E2E: skipped; Finance drift (latest on main branch): failure |
-| ci | ci.e2e_warning | warning | warn | E2E skipped for this SHA. |
-| ci | ci.finance_drift | warning | skip | No finance drift runs. |
+| ci | ci.main | blocker | pass | CI: success; E2E: success; Finance drift (latest on main branch): success |
+| ci | ci.e2e_warning | warning | pass | E2E (Preview + Staging) success. |
+| ci | ci.finance_drift | warning | pass | Latest finance drift: success (2026-10-03T14:06:24Z). |
 | supabase | db.readiness | blocker | pass | readiness:supabase:check pass. |
 | supabase | db.compare | warning | pass | compare:supabase gaps empty. |
 | supabase | db.handle_new_user | blocker | pass | handle_new_user proconfig includes search_path=public. |
@@ -48,3 +48,5 @@
 - [ ] On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner
 
 ## Failed blockers — suggested fixes
+
+- **git.tracked_clean**: Commit or stash tracked changes before go-live.

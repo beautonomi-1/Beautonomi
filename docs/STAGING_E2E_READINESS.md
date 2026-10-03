@@ -43,9 +43,13 @@ Set repository secrets (Settings → Secrets and variables → Actions):
 **After DNS / secrets change:** run **Actions → E2E Manual (Staging) → Run workflow** (default base URL `https://staging.beautonomi.com`), or locally:
 
 ```powershell
+pnpm verify:staging:preview
 $env:VERCEL_AUTOMATION_BYPASS_SECRET = "your-bypass-secret"
+pnpm verify:staging:preview
 pnpm run verify:staging:e2e:hosts
 ```
+
+Preview **Vercel env** (staging Supabase + `TENANT_DOMAIN_ENV=preview` + service role): [STAGING_VERCEL_PREVIEW_ENV.md](./STAGING_VERCEL_PREVIEW_ENV.md).
 
 ## Automated checks (local)
 

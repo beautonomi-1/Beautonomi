@@ -695,6 +695,27 @@ function buildChecks() {
         run: () => prodTlsRedirectWarning(),
       },
       {
+        id: "staging.preview",
+        area: "staging",
+        severity: "warning",
+        run: () => {
+          const r = nodeScript("tooling/audit/verify-staging-preview.mjs", "staging-preview");
+          if (r.code === 0) {
+            return {
+              status: "pass",
+              evidence: process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+                ? "Staging DB + live Preview /api/public/home OK."
+                : "Staging DB tenant map OK (live probe skipped — no bypass secret).",
+            };
+          }
+          return {
+            status: "warn",
+            evidence: (r.stderr || r.stdout).slice(0, 350),
+            fix: "Fix Preview Vercel env per docs/STAGING_VERCEL_PREVIEW_ENV.md; run pnpm verify:staging:preview",
+          };
+        },
+      },
+      {
         id: "staging.e2e_hosts",
         area: "staging",
         severity: "warning",
@@ -702,7 +723,7 @@ function buildChecks() {
           if (!process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
             return {
               status: "skip",
-              evidence: "VERCEL_AUTOMATION_BYPASS_SECRET not set — skip staging host verify.",
+              evidence: "VERCEL_AUTOMATION_BYPASS_SECRET not set — skip tenant-isolation host verify.",
             };
           }
           const r = nodeScript("tooling/audit/verify-staging-e2e-hosts.mjs", "staging-hosts");
