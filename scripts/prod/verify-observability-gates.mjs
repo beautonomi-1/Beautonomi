@@ -6,6 +6,34 @@
  * - Prints actionable warnings/errors for missing gates
  */
 
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const webEnvLocal = join(__dirname, "..", "..", "apps", "web", ".env.local");
+
+if (existsSync(webEnvLocal)) {
+  const raw = readFileSync(webEnvLocal, "utf8");
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eq = trimmed.indexOf("=");
+      if (eq > 0) {
+        const key = trimmed.slice(0, eq).trim();
+        let value = trimmed.slice(eq + 1).trim();
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        if (value && !process.env[key]) process.env[key] = value;
+      }
+    }
+  }
+}
+
 const checks = [
   {
     key: "NEXT_PUBLIC_SENTRY_DSN",

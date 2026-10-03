@@ -158,19 +158,37 @@ const INTENTIONALLY_SKIPPED: Record<string, string> = {
  */
 const FINANCE_TABLE_HINT = /finance_transactions|financeTransactions/;
 
+const WEB_SRC = path.resolve(__dirname, "..", "..", "..");
+
 function readAppFiles(root: string): string[] {
   const out: string[] = [];
   function walk(dir: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      if (
+        entry.name === "node_modules" ||
+        entry.name === ".next" ||
+        entry.name === "__tests__" ||
+        entry.name === ".turbo"
+      ) {
+        continue;
+      }
       const p = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(p);
-      else if (p.endsWith(".ts") || p.endsWith(".tsx")) out.push(p);
+      else if (
+        (p.endsWith(".ts") || p.endsWith(".tsx")) &&
+        !p.endsWith(".test.ts") &&
+        !p.endsWith(".test.tsx")
+      ) {
+        out.push(p);
+      }
     }
   }
   walk(root);
   return out;
 }
+
+/** One scan per worker — avoids 45s timeouts when the full suite runs under load. */
+const WEB_APP_FILES = readAppFiles(WEB_SRC);
 
 function findTransactionTypeLiterals(
   files: string[],
@@ -198,9 +216,7 @@ function isFinanceTransactionsInsert(context: string[]): boolean {
   return context.some((l) => FINANCE_TABLE_HINT.test(l));
 }
 
-const WEB_SRC = path.resolve(__dirname, "..", "..", "..");
-
-describe("Reconciliation drift (Wave 5.3)", () => {
+describe("Reconciliation drift (Wave 5.3)", { timeout: 120_000 }, () => {
   it("live shadow function migration includes refund_component-aware refund handler", () => {
     const migrationsDir = path.resolve(
       __dirname,
@@ -281,7 +297,7 @@ describe("Reconciliation drift (Wave 5.3)", () => {
   });
 
   it("every finance_transactions transaction_type used in app code is in the allowlist or intentionally skipped", () => {
-    const files = readAppFiles(WEB_SRC);
+    const files = WEB_APP_FILES;
     const hits = findTransactionTypeLiterals(files);
     const offenders: Array<{ type: string; file: string; line: number }> = [];
 
@@ -312,7 +328,7 @@ describe("Reconciliation drift (Wave 5.3)", () => {
   });
 
   it("every allowlist entry is actually used somewhere in application code", () => {
-    const files = readAppFiles(WEB_SRC);
+    const files = WEB_APP_FILES;
     const hits = findTransactionTypeLiterals(files);
     const used = new Set(hits.map((h) => h.type));
 
@@ -332,7 +348,7 @@ describe("Reconciliation drift (Wave 5.3)", () => {
   });
 
   it("no application code inserts finance_transactions with an unknown string type", () => {
-    const files = readAppFiles(WEB_SRC);
+    const files = WEB_APP_FILES;
     const hits = findTransactionTypeLiterals(files);
     // Sanity: we should see at least 10 finance_transactions literals.
     // If this drops precipitously, someone refactored the inserts out

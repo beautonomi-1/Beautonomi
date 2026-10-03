@@ -1,5 +1,29 @@
 # Staging end-to-end readiness
 
+## Full staging DB prep (before production tenant reset)
+
+Aligns **staging** with **production** platform/tenant settings (not transactional data), then runs catalogue and E2E seeds.
+
+```powershell
+cd C:\Users\NoloSehlolo\Documents\Beautonomi
+
+# Preview what would copy from production
+pnpm sync:staging:config:dry-run
+
+# Migrations + assets + config sync + postal/GRC/AI/E2E seeds (+ Paystack if .env.paystack.sync.local)
+pnpm staging:db:e2e
+
+# Check-only (dry-run config + compare + readiness)
+pnpm staging:db:e2e:check
+```
+
+**Notes:**
+
+- Production **Paystack live** keys are **not** copied; use `pnpm sync:paystack:staging` with **test** keys in `apps/web/.env.paystack.sync.local`.
+- Preview hosts `staging.beautonomi.com` / `.co.za` are **never** overwritten.
+- Tenant/region **UUIDs** stay staging-native; rows match by **slug** / **code**.
+- After a production **tenant reset**, re-run config sync on staging if prod admin settings changed.
+
 ## Automated checks (local)
 
 Requires [Supabase CLI](https://supabase.com/docs/guides/cli) logged in (`supabase login`).

@@ -71,17 +71,28 @@ async function resolveTenantId() {
 }
 
 async function upsertAuthUser() {
-  // Use admin auth API to create the user if absent (idempotent via email lookup)
   const { data: existing } = await supabase.auth.admin.getUserById(SEED_USER_ID);
   if (existing?.user) return;
+
+  const { data: byEmail } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+  const hit = byEmail?.users?.find((u) => u.email === SEED_EMAIL);
+  if (hit?.id) {
+    if (hit.id !== SEED_USER_ID) {
+      console.error(
+        `[seed-staging] ${SEED_EMAIL} exists with id ${hit.id}; expected ${SEED_USER_ID}. Delete or change SEED_USER_ID.`,
+      );
+      process.exit(1);
+    }
+    return;
+  }
 
   const { error } = await supabase.auth.admin.createUser({
     user_id: SEED_USER_ID,
     email: SEED_EMAIL,
-    password: randomUUID(), // non-interactive; never used for login
+    password: randomUUID(),
     email_confirm: true,
   });
-  if (error && !error.message.includes("already been registered")) {
+  if (error && !/already been registered|already exists/i.test(error.message)) {
     console.error("[seed-staging] createUser error:", error.message);
     process.exit(1);
   }

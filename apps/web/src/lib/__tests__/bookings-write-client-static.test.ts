@@ -51,7 +51,14 @@ function walk(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === "__tests__" || entry.name === "node_modules") continue;
+      if (
+        entry.name === "__tests__" ||
+        entry.name === "node_modules" ||
+        entry.name === ".next" ||
+        entry.name === ".turbo"
+      ) {
+        continue;
+      }
       walk(p, acc);
     } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts") && !entry.name.endsWith(".test.tsx")) {
       acc.push(p);
@@ -69,8 +76,14 @@ function hasForbiddenUserJwtBookingUpdate(src: string): boolean {
   return INLINE_USER_UPDATE.test(stripped) || MULTILINE_USER_UPDATE.test(stripped);
 }
 
-describe("bookings write client (Phase 1a static guard)", () => {
-  const files = walk(webSrc);
+/** One scan per worker — full-suite runs were timing out on repeated walks. */
+const WEB_SRC_FILES = walk(webSrc);
+
+describe(
+  "bookings write client (Phase 1a static guard)",
+  { timeout: 120_000 },
+  () => {
+  const files = WEB_SRC_FILES;
 
   it("Phase 1a routes do not UPDATE bookings via user-JWT supabase", () => {
     const phase1aPaths = [
@@ -114,4 +127,5 @@ describe("bookings write client (Phase 1a static guard)", () => {
       `USER-JWT bookings UPDATE (use getBookingsAdminClient after auth):\n${offenders.join("\n")}`,
     ).toEqual([]);
   });
-});
+  },
+);
