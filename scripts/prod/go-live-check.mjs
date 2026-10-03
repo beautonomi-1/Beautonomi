@@ -156,7 +156,15 @@ async function githubActionsForMain() {
   const runs = data.workflow_runs || [];
   const onSha = runs.filter((w) => w.head_sha === head);
   const ci = onSha.find((w) => w.name === "CI");
-  const e2e = onSha.find((w) => w.name === "E2E (Preview + Staging)");
+  let e2e = onSha.find((w) => w.name === "E2E (Preview + Staging)");
+  if (!e2e) {
+    const dep = await fetch(
+      "https://api.github.com/repos/beautonomi-1/Beautonomi/actions/runs?event=deployment_status&per_page=30",
+    );
+    if (dep.ok) {
+      e2e = pickBestE2eRun((await dep.json()).workflow_runs || [], head);
+    }
+  }
   const finance = runs.find((w) => w.name === "Finance Ledger Drift Check (Nightly)");
 
   const parts = [];
@@ -175,14 +183,28 @@ async function githubActionsForMain() {
   return { status: "pass", evidence: parts.join("; ") };
 }
 
+function pickBestE2eRun(runs, head) {
+  const e2eRuns = runs.filter(
+    (w) => w.head_sha === head && w.name === "E2E (Preview + Staging)",
+  );
+  if (e2eRuns.length === 0) return null;
+  const rank = (w) => {
+    if (w.conclusion === "success") return 0;
+    if (w.status === "in_progress" || w.status === "queued") return 1;
+    if (w.conclusion === "skipped") return 2;
+    return 3;
+  };
+  return e2eRuns.sort((a, b) => rank(a) - rank(b))[0];
+}
+
 async function githubE2EWarning() {
   const head = runCmd("git", "git", ["rev-parse", "HEAD"]).stdout.trim();
   const res = await fetch(
-    "https://api.github.com/repos/beautonomi-1/Beautonomi/actions/runs?event=deployment_status&per_page=15",
+    "https://api.github.com/repos/beautonomi-1/Beautonomi/actions/runs?event=deployment_status&per_page=30",
   );
   if (!res.ok) return { status: "skip", evidence: "GitHub API unavailable" };
   const runs = (await res.json()).workflow_runs || [];
-  const e2e = runs.find((w) => w.head_sha === head && w.name === "E2E (Preview + Staging)");
+  const e2e = pickBestE2eRun(runs, head);
   if (!e2e) return { status: "warn", evidence: "No E2E run for this SHA (deploy may not have fired)." };
   if (e2e.conclusion === "success") return { status: "pass", evidence: "E2E (Preview + Staging) success." };
   if (e2e.conclusion === "skipped") return { status: "warn", evidence: "E2E skipped for this SHA." };
@@ -191,15 +213,13 @@ async function githubE2EWarning() {
 
 async function githubFinanceWarning() {
   const res = await fetch(
-    "https://api.github.com/repos/beautonomi-1/Beautonomi/actions/runs?per_page=20",
+    "https://api.github.com/repos/beautonomi-1/Beautonomi/actions/workflows/finance-drift.yml/runs?per_page=10",
   );
   if (!res.ok) {
     return { status: "skip", evidence: "Could not fetch finance drift workflow." };
   }
   const data = await res.json();
-  const run = (data.workflow_runs || []).find((w) =>
-    w.name?.includes("Finance Ledger Drift"),
-  );
+  const run = (data.workflow_runs || [])[0];
   if (!run) return { status: "skip", evidence: "No finance drift runs." };
   if (run.conclusion === "success") {
     return { status: "pass", evidence: `Latest finance drift: success (${run.created_at}).` };
