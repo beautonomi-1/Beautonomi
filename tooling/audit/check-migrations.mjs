@@ -43,6 +43,17 @@ function loadJson(p, fallback) {
   }
 }
 
+/** 4-digit prefix NNN1 is a split migration alongside canonical NNN (e.g. 2401 + 240). */
+function isSplitSubVersion(prefixNum, byPrefix) {
+  if (prefixNum < 1000) return false;
+  const parent = Math.floor(prefixNum / 10);
+  return byPrefix.has(String(parent));
+}
+
+function hasMigrationPrefix(byPrefix, i) {
+  return byPrefix.has(String(i)) || byPrefix.has(String(i).padStart(3, "0"));
+}
+
 const allowedDupes = new Set(loadJson(ALLOWED_DUPES_PATH, []));
 const allowedGaps = new Set(loadJson(ALLOWED_GAPS_PATH, []).map(Number));
 
@@ -71,11 +82,14 @@ for (const [prefix, files] of byPrefix) {
   }
 }
 
-// 2. Sequence gap check (only fail on unexpected gaps).
+// 2. Sequence gap check (only fail on unexpected gaps). Split sub-versions do not widen the range.
 const prefixes = [...byPrefix.keys()].map(Number).sort((a, b) => a - b);
-if (prefixes.length > 0) {
-  for (let i = prefixes[0]; i <= prefixes[prefixes.length - 1]; i++) {
-    if (!byPrefix.has(String(i).padStart(3, "0")) && !byPrefix.has(String(i)) && !allowedGaps.has(i)) {
+const rangePrefixes = prefixes.filter((n) => !isSplitSubVersion(n, byPrefix));
+if (rangePrefixes.length > 0) {
+  const min = rangePrefixes[0];
+  const max = rangePrefixes[rangePrefixes.length - 1];
+  for (let i = min; i <= max; i++) {
+    if (!hasMigrationPrefix(byPrefix, i) && !allowedGaps.has(i)) {
       errors.push(`canonical: missing migration ${i} (add to scripts/migrations-allowed-gaps.json to silence)`);
     }
   }
