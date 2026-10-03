@@ -16,6 +16,9 @@ permissions:
   contents: read
   issues: write
 
+env:
+  PRODUCTION_SUPABASE_URL: https://ifybcfafrwcpptckznpm.supabase.co
+
 jobs:
   finance-audit:
     name: Finance Ledger Audit
@@ -37,8 +40,8 @@ jobs:
       - name: Run finance ledger audit
         id: audit
         env:
-          SUPABASE_URL: ${{ github.event.inputs.supabase_url_override || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ github.event.inputs.supabase_url_override || env.PRODUCTION_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_PRODUCTION_SERVICE_ROLE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/prod/audit-finance-ledger.mjs
 
       - name: Alert on failure

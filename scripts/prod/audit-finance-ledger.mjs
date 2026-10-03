@@ -67,7 +67,8 @@ async function runAuditQuery(query, label) {
     process.exit(2);
   }
 
-  const { data, error } = await client.rpc("finance_audit_run", { p_query: query });
+  const normalized = query.replace(/^\s+|\s+$/g, "");
+  const { data, error } = await client.rpc("finance_audit_run", { p_query: normalized });
   if (error) {
     console.error(`[finance-audit] FATAL: ${label} query failed (${error.message})`);
     process.exit(2);

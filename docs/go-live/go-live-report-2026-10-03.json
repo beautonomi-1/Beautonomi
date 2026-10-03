@@ -1,0 +1,263 @@
+{
+  "date": "2026-10-03",
+  "verdict": "No-Go",
+  "mode": "quick",
+  "skipLive": false,
+  "headSha": "4ced897ae5bf11687926b32d4f1e5899df48f4a6",
+  "results": [
+    {
+      "id": "git.tracked_clean",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 174,
+      "status": "fail",
+      "evidence": "M .github/workflows/finance-drift.yml;  M package.json;  M scripts/prod/audit-finance-ledger.mjs",
+      "fix": "Commit or stash tracked changes before go-live.",
+      "ms": 174
+    },
+    {
+      "id": "git.head_origin_main",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 983,
+      "status": "pass",
+      "evidence": "HEAD 4ced897 matches origin/main.",
+      "ms": 983
+    },
+    {
+      "id": "repo.migrations",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 57,
+      "status": "pass",
+      "evidence": "Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11",
+      "ms": 57
+    },
+    {
+      "id": "repo.audit_deps",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 1753,
+      "status": "pass",
+      "evidence": "audit:deps pass.",
+      "ms": 1753
+    },
+    {
+      "id": "repo.typecheck_lint",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 3403,
+      "status": "fail",
+      "evidence": "spawnSync cmd.exe ENOBUFS\n• turbo 2.9.6",
+      "fix": "Fix typecheck/lint errors.",
+      "ms": 3403
+    },
+    {
+      "id": "repo.multi_tenant",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 2149,
+      "status": "pass",
+      "evidence": "audit:multi-tenant:strict pass.",
+      "ms": 2149
+    },
+    {
+      "id": "repo.cron_schedule",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 605,
+      "status": "pass",
+      "evidence": "verify:cron-schedule pass.",
+      "ms": 605
+    },
+    {
+      "id": "repo.observability",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 571,
+      "status": "pass",
+      "evidence": "verify-observability-gates pass.",
+      "ms": 571
+    },
+    {
+      "id": "ci.main",
+      "area": "ci",
+      "severity": "blocker",
+      "_ms": 1134,
+      "status": "pass",
+      "evidence": "CI: success; Finance drift (latest on main branch): failure",
+      "ms": 1134
+    },
+    {
+      "id": "ci.e2e_warning",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 751,
+      "status": "warn",
+      "evidence": "E2E skipped for this SHA.",
+      "ms": 751
+    },
+    {
+      "id": "ci.finance_drift",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 622,
+      "status": "warn",
+      "evidence": "Latest finance drift: failure (https://github.com/beautonomi-1/Beautonomi/actions/runs/37106592578)",
+      "fix": "Ensure GitHub SUPABASE_URL/SERVICE_ROLE_KEY target production for finance-drift.yml, or run audit-finance-ledger.mjs locally against prod.",
+      "ms": 622
+    },
+    {
+      "id": "db.readiness",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 21570,
+      "status": "pass",
+      "evidence": "readiness:supabase:check pass.",
+      "ms": 21570
+    },
+    {
+      "id": "db.compare",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 9395,
+      "status": "pass",
+      "evidence": "compare:supabase gaps empty.",
+      "ms": 9395
+    },
+    {
+      "id": "db.handle_new_user",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1587,
+      "status": "pass",
+      "evidence": "handle_new_user proconfig includes search_path=public.",
+      "ms": 1587
+    },
+    {
+      "id": "db.za_domains",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1794,
+      "status": "pass",
+      "evidence": "za tenant active; domains: www.beautonomi.com, beautonomi.co.za, admin.beautonomi.com",
+      "ms": 1794
+    },
+    {
+      "id": "db.paystack_no_test",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1822,
+      "status": "pass",
+      "evidence": "No sk_test in platform_secrets/region_secrets (sampled).",
+      "ms": 1822
+    },
+    {
+      "id": "db.staging_signup",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 2084,
+      "status": "pass",
+      "evidence": "Staging auth.admin.createUser + delete succeeded.",
+      "ms": 2084
+    },
+    {
+      "id": "db.staging_seed",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 3268,
+      "status": "pass",
+      "evidence": "Seed stdout slug: e2e-test-provider-beautonomi",
+      "ms": 3268
+    },
+    {
+      "id": "mobile.release_check",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 2345,
+      "status": "pass",
+      "evidence": "release:check:mobile pass.",
+      "ms": 2345
+    },
+    {
+      "id": "mobile.expo_config",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 16712,
+      "status": "pass",
+      "evidence": "customer + provider expo config OK.",
+      "ms": 16712
+    },
+    {
+      "id": "live.health",
+      "area": "production",
+      "severity": "blocker",
+      "_ms": 360,
+      "status": "pass",
+      "evidence": "GET /api/health → 200, status ok, paystack ok.",
+      "ms": 360
+    },
+    {
+      "id": "live.public_tenant",
+      "area": "production",
+      "severity": "blocker",
+      "_ms": 101,
+      "status": "pass",
+      "evidence": "home 200, config-bundle tenant_id=c43f7511-ca1b-4ccd-a0b9-27056531c65b",
+      "ms": 101
+    },
+    {
+      "id": "live.public_secrets",
+      "area": "production",
+      "severity": "blocker",
+      "_ms": 872,
+      "status": "pass",
+      "evidence": "verify-public-endpoints pass on production.",
+      "ms": 872
+    },
+    {
+      "id": "live.security_headers",
+      "area": "production",
+      "severity": "blocker",
+      "_ms": 708,
+      "status": "pass",
+      "evidence": "CSP, XCTO, frame policy present; HSTS=yes.",
+      "ms": 708
+    },
+    {
+      "id": "live.cron_auth",
+      "area": "production",
+      "severity": "blocker",
+      "_ms": 193,
+      "status": "pass",
+      "evidence": "/api/cron/recognize-period-revenue → 401 without auth.",
+      "ms": 193
+    },
+    {
+      "id": "live.tls_redirect",
+      "area": "production",
+      "severity": "warning",
+      "_ms": 46,
+      "status": "pass",
+      "evidence": "beautonomi.com → 308 Location: https://www.beautonomi.com/",
+      "ms": 46
+    },
+    {
+      "id": "staging.e2e_hosts",
+      "area": "staging",
+      "severity": "warning",
+      "_ms": 0,
+      "status": "skip",
+      "evidence": "VERCEL_AUTOMATION_BYPASS_SECRET not set — skip staging host verify.",
+      "ms": 0
+    }
+  ],
+  "manualChecklist": [
+    "Vercel Production: PAYSTACK_SECRET_KEY (sk_live_…), public Paystack key, CRON_SECRET, CSRF_SECRET, NEXT_PUBLIC_SENTRY_DSN",
+    "Supabase Production: Pro plan + point-in-time recovery enabled",
+    "Paystack dashboard: live webhook URL registered and reachable",
+    "DNS/TLS: apex → www, admin host, provider hosts",
+    "Rotate VERCEL_AUTOMATION_BYPASS_SECRET if ever exposed; store only in GitHub Actions",
+    "On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner"
+  ]
+}
