@@ -21,7 +21,7 @@ BEGIN
       COUNT(*)::INTEGER,
       COALESCE(SUM(
         CASE 
-          WHEN payment_status IN ('paid', 'partially_paid') THEN total_amount
+          WHEN payment_status = 'paid' THEN total_amount
           ELSE 0
         END
       ), 0),
@@ -63,16 +63,6 @@ DROP TRIGGER IF EXISTS on_booking_status_change_for_client_stats ON bookings;
 CREATE TRIGGER on_booking_status_change_for_client_stats
     AFTER INSERT OR UPDATE OR DELETE ON bookings
     FOR EACH ROW
-    WHEN (
-        -- Fire on any status change, payment status change, or new booking
-        TG_OP = 'INSERT'
-        OR TG_OP = 'DELETE'
-        OR (TG_OP = 'UPDATE' AND (
-            NEW.status IS DISTINCT FROM OLD.status 
-            OR NEW.payment_status IS DISTINCT FROM OLD.payment_status
-            OR NEW.total_amount IS DISTINCT FROM OLD.total_amount
-        ))
-    )
     EXECUTE FUNCTION update_provider_client_stats();
 
 -- ============================================================================
@@ -96,7 +86,7 @@ BEGIN
       COUNT(*)::INTEGER,
       COALESCE(SUM(
         CASE 
-          WHEN payment_status IN ('paid', 'partially_paid') THEN total_amount
+          WHEN payment_status = 'paid' THEN total_amount
           ELSE 0
         END
       ), 0),
@@ -145,7 +135,7 @@ SELECT
   COUNT(*)::INTEGER as booking_count,
   COALESCE(SUM(
     CASE 
-      WHEN b.payment_status IN ('paid', 'partially_paid') THEN b.total_amount
+      WHEN b.payment_status = 'paid' THEN b.total_amount
       ELSE 0
     END
   ), 0) as total_spent,

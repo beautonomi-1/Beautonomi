@@ -11,9 +11,11 @@ import InlineSignupForm from "@/components/global/inline-signup-form";
 import { fetcher } from "@/lib/http/fetcher";
 import logo from "../../../public/images/logo.svg";
 
-/** Public hero when CMS `background_image_url` is empty (learning-center bucket). */
-const DEFAULT_SIGNUP_HERO_IMAGE =
-  "https://ifybcfafrwcpptckznpm.supabase.co/storage/v1/object/public/learning-center/signup%20image.png";
+function defaultSignupHeroImage(): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+  if (!base) return "";
+  return `${base}/storage/v1/object/public/learning-center/signup%20image.png`;
+}
 
 interface SignupPageContent {
   headline?: string;
@@ -127,7 +129,7 @@ export default function SignupPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `url('${content.background_image_url || DEFAULT_SIGNUP_HERO_IMAGE}')`,
+            backgroundImage: `url('${content.background_image_url || defaultSignupHeroImage()}')`,
             filter: "grayscale(0.3)",
           }}
         >
@@ -436,7 +438,7 @@ export default function SignupPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `url('${content.background_image_url || DEFAULT_SIGNUP_HERO_IMAGE}')`,
+            backgroundImage: `url('${content.background_image_url || defaultSignupHeroImage()}')`,
             filter: "grayscale(0.3)",
           }}
         >

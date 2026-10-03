@@ -1,6 +1,9 @@
 -- Ensure critical payment, messaging, and custom-offer templates exist and stay enabled.
 -- This migration is intentionally idempotent.
 
+CREATE UNIQUE INDEX IF NOT EXISTS notification_templates_key_uidx
+  ON public.notification_templates (key);
+
 INSERT INTO public.notification_templates (
   key,
   title,

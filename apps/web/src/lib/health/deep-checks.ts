@@ -133,18 +133,36 @@ export function upstashProbe(
   };
 }
 
-/** Paystack: key presence + shape (sk_live in production). No network call. */
-export function paystackKeyProbe(env: NodeJS.ProcessEnv = process.env): HealthProbe {
+function assertPaystackSecretKeyShape(key: string, env: NodeJS.ProcessEnv): void {
+  if (!/^sk_(live|test)_/.test(key)) {
+    throw new Error("Paystack secret key has unexpected format");
+  }
+  if (env.VERCEL_ENV === "production" && !key.startsWith("sk_live_")) {
+    throw new Error("production is not using a live Paystack key");
+  }
+}
+
+/**
+ * Paystack: env `PAYSTACK_SECRET_KEY` first, then optional DB resolver (same order as runtime
+ * when region/platform/env chain is used). No Paystack HTTP call.
+ */
+export function paystackKeyProbe(
+  env: NodeJS.ProcessEnv = process.env,
+  resolveDbSecret?: () => Promise<string | null | undefined>,
+): HealthProbe {
   return {
     name: "paystack",
     critical: true,
     run: async () => {
-      const key = env.PAYSTACK_SECRET_KEY;
-      if (!key) throw new Error("PAYSTACK_SECRET_KEY missing");
-      if (!/^sk_(live|test)_/.test(key)) throw new Error("PAYSTACK_SECRET_KEY has unexpected format");
-      if (env.VERCEL_ENV === "production" && !key.startsWith("sk_live_")) {
-        throw new Error("production is not using a live Paystack key");
+      let key = env.PAYSTACK_SECRET_KEY?.trim();
+      if (!key && resolveDbSecret) {
+        const fromDb = await resolveDbSecret();
+        key = fromDb?.trim() || undefined;
       }
+      if (!key) {
+        throw new Error("Paystack secret not configured (PAYSTACK_SECRET_KEY or DB)");
+      }
+      assertPaystackSecretKeyShape(key, env);
     },
   };
 }

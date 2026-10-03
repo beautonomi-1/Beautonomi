@@ -9,15 +9,15 @@ RETURNS TABLE (zone_id UUID, zone_name TEXT)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT pz.id AS zone_id, pz.name AS zone_name
   FROM platform_zones pz
   WHERE pz.status = 'active'
     AND pz.geometry IS NOT NULL
     AND ST_Contains(
-      pz.geometry,
-      ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography
+      pz.geometry::geometry,
+      ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)
     );
 $$;
 

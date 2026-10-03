@@ -256,6 +256,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to update updated_at
+DROP TRIGGER IF EXISTS update_service_zones_updated_at ON service_zones;
 CREATE TRIGGER update_service_zones_updated_at
   BEFORE UPDATE ON service_zones
   FOR EACH ROW

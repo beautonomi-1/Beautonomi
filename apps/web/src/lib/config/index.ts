@@ -356,6 +356,16 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
           : {}),
       };
       regionSettingsPublic = pickPublicRegionSettings(tenantRegionConfig.regionSettings);
+      const envPublic =
+        process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim() ||
+        process.env.PAYSTACK_PUBLIC_KEY?.trim() ||
+        "";
+      if (envPublic && !regionSettingsPublic?.paystack_public_key) {
+        regionSettingsPublic = {
+          ...(regionSettingsPublic ?? {}),
+          paystack_public_key: envPublic,
+        };
+      }
     }
   }
 

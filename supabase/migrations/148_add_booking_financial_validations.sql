@@ -209,11 +209,11 @@ BEGIN
     
     -- Allow small rounding differences (0.01) for floating point precision
     IF ABS(NEW.tax_amount - calculated_tax) > 0.01 THEN
-      RAISE WARNING 'Tax calculation validation warning. Expected: % (taxable base % * rate % / 100), but tax_amount is %. This may be intentional based on tax rules.'
-        USING calculated_tax,
-              taxable_base,
-              NEW.tax_rate,
-              NEW.tax_amount;
+      RAISE WARNING 'Tax calculation validation warning. Expected: % (taxable base % * rate % / 100), but tax_amount is %. This may be intentional based on tax rules.',
+        calculated_tax,
+        taxable_base,
+        NEW.tax_rate,
+        NEW.tax_amount;
       -- Note: Using WARNING instead of EXCEPTION because tax calculations can vary
       -- by jurisdiction and may have special rules (e.g., some items tax-exempt)
     END IF;

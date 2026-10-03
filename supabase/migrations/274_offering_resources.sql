@@ -10,16 +10,9 @@ CREATE TABLE IF NOT EXISTS public.offering_resources (
     required BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(offering_id, resource_id),
-    -- Resource must belong to the same provider as the offering
-    CONSTRAINT offering_resources_same_provider CHECK (
-        EXISTS (
-            SELECT 1 FROM offerings o
-            JOIN resources r ON r.id = resource_id AND r.provider_id = o.provider_id
-            WHERE o.id = offering_id
-        )
-    )
+    UNIQUE(offering_id, resource_id)
 );
+-- Same-provider rule enforced via RLS WITH CHECK (Postgres disallows subqueries in CHECK).
 
 CREATE INDEX IF NOT EXISTS idx_offering_resources_offering ON offering_resources(offering_id);
 CREATE INDEX IF NOT EXISTS idx_offering_resources_resource ON offering_resources(resource_id);

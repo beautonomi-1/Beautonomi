@@ -5,6 +5,19 @@ DO $$
 DECLARE
   max_business_order integer;
 BEGIN
+  -- Collapse duplicate business rows per title (unique key is section+title+href).
+  DELETE FROM footer_links fl
+  WHERE fl.id IN (
+    SELECT id FROM (
+      SELECT id,
+        ROW_NUMBER() OVER (PARTITION BY section, title ORDER BY display_order, created_at) AS rn
+      FROM footer_links
+      WHERE section = 'business'
+        AND title IN ('Pricing', 'For Partners', 'Support')
+    ) ranked
+    WHERE ranked.rn > 1
+  );
+
   -- Get max display_order for business section
   SELECT COALESCE(MAX(display_order), 0) INTO max_business_order
   FROM footer_links
@@ -21,7 +34,10 @@ BEGIN
   -- If Pricing link doesn't exist, create it
   INSERT INTO footer_links (section, title, href, display_order, is_external, is_active, created_at, updated_at)
   SELECT 'business', 'Pricing', '/pricing', max_business_order + 1, false, true, NOW(), NOW()
-  WHERE NOT EXISTS (SELECT 1 FROM footer_links WHERE section = 'business' AND title = 'Pricing');
+  WHERE NOT EXISTS (
+    SELECT 1 FROM footer_links
+    WHERE section = 'business' AND title = 'Pricing' AND href = '/pricing'
+  );
 
   -- Fix "For Partners" link - ensure it points to /become-a-partner
   UPDATE footer_links
@@ -34,7 +50,10 @@ BEGIN
   -- If For Partners link doesn't exist, create it
   INSERT INTO footer_links (section, title, href, display_order, is_external, is_active, created_at, updated_at)
   SELECT 'business', 'For Partners', '/become-a-partner', max_business_order + 2, false, true, NOW(), NOW()
-  WHERE NOT EXISTS (SELECT 1 FROM footer_links WHERE section = 'business' AND title = 'For Partners');
+  WHERE NOT EXISTS (
+    SELECT 1 FROM footer_links
+    WHERE section = 'business' AND title = 'For Partners' AND href = '/become-a-partner'
+  );
 
   -- Fix "Support" link - ensure it points to /help
   UPDATE footer_links
@@ -47,7 +66,10 @@ BEGIN
   -- If Support link doesn't exist, create it
   INSERT INTO footer_links (section, title, href, display_order, is_external, is_active, created_at, updated_at)
   SELECT 'business', 'Support', '/help', max_business_order + 3, false, true, NOW(), NOW()
-  WHERE NOT EXISTS (SELECT 1 FROM footer_links WHERE section = 'business' AND title = 'Support');
+  WHERE NOT EXISTS (
+    SELECT 1 FROM footer_links
+    WHERE section = 'business' AND title = 'Support' AND href = '/help'
+  );
 
   RAISE NOTICE 'Fixed footer business section links';
 END $$;

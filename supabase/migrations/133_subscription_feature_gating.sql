@@ -4,6 +4,10 @@
 
 -- Update subscription_plans to include feature definitions
 -- This migration adds default feature structures to existing plans
+-- Columns formally added in 207; ensure they exist for greenfield Supabase pushes.
+ALTER TABLE subscription_plans
+  ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS is_free BOOLEAN DEFAULT false;
 
 -- Function to safely merge features JSONB
 CREATE OR REPLACE FUNCTION merge_subscription_features(

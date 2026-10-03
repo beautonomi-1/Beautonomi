@@ -65,9 +65,10 @@ REVOKE ALL ON FUNCTION public.provider_finance_summary(uuid, timestamptz, timest
 REVOKE ALL ON FUNCTION public.provider_finance_summary(uuid, timestamptz, timestamptz) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.provider_finance_summary(uuid, timestamptz, timestamptz) TO service_role;
 
-INSERT INTO public.feature_flags (feature_key, enabled, description, tenant_id)
+INSERT INTO public.feature_flags (feature_key, feature_name, enabled, description, tenant_id)
 VALUES (
   'reports.provider_finance_summary_rpc',
+  'Provider finance summary RPC',
   false,
   'Use Postgres provider_finance_summary RPC for finance aggregates (shadow-compare before enable).',
   NULL

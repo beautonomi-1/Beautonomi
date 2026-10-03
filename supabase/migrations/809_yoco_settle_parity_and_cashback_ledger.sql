@@ -1,4 +1,4 @@
-﻿-- 809: Yoco settle parity columns + card-machine cashback as distinct FT type
+-- 809: Yoco settle parity columns + card-machine cashback as distinct FT type
 --
 -- 1) provider_yoco_payments gains tip/entity columns (PayCloud-parity settle metadata)
 -- 2) booking_payments with payment_provider_data.cashback=true post finance_transactions.cashback

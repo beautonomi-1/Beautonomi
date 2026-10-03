@@ -3,9 +3,21 @@
 -- Creates base enums and extensions
 
 -- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- For fuzzy text search
 CREATE EXTENSION IF NOT EXISTS "postgis"; -- For geographic queries (if needed)
+-- Supabase hosted: uuid-ossp may exist under extensions without public.uuid_generate_v4()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DO $$
+BEGIN
+  IF to_regprocedure('public.uuid_generate_v4()') IS NULL THEN
+    CREATE FUNCTION public.uuid_generate_v4()
+    RETURNS uuid
+    LANGUAGE sql
+    PARALLEL SAFE
+    AS $uuid$ SELECT gen_random_uuid() $uuid$;
+  END IF;
+END $$;
 
 -- Create custom enums
 CREATE TYPE user_role AS ENUM ('customer', 'provider_owner', 'provider_staff', 'superadmin');

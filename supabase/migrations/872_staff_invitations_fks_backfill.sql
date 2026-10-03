@@ -80,13 +80,8 @@ CREATE TRIGGER update_staff_invitations_updated_at
 -- revoke endpoint and the accept matrix work for invites sent before 872.
 -- token_hash = sha256 hex of the UUID token (matches hashStaffInviteToken in
 -- apps/web/src/lib/provider/staff-invitations.ts). Needs pgcrypto's digest().
-DO $$
-BEGIN
-  CREATE EXTENSION IF NOT EXISTS pgcrypto;
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE NOTICE 'pgcrypto not created here (%); assuming it is already available', SQLERRM;
-END $$;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+SET search_path = public, extensions;
 
 INSERT INTO public.staff_invitations (
   provider_id, staff_id, email, phone, token_hash, status, channels, expires_at, accepted_at, created_at

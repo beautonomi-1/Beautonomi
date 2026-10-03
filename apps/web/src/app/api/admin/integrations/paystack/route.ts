@@ -14,6 +14,7 @@ import {
   getSkipPayoutAccountVerificationOnScope,
   setSkipPayoutAccountVerificationForScope,
 } from "@/lib/payments/payout-account-verification-settings";
+import { syncPaystackKeysToZaRegion } from "@/lib/payments/sync-paystack-za-region";
 
 const patchSchema = z.object({
   paystack_secret_key: z.string().optional(),
@@ -231,6 +232,15 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (opError) throw opError;
+
+    if (scopeTenantId == null) {
+      const zaSync: Parameters<typeof syncPaystackKeysToZaRegion>[1] = {};
+      if ("paystack_secret_key" in updates) zaSync.secretKey = updates.paystack_secret_key;
+      if ("paystack_public_key" in updates) zaSync.publicKey = updates.paystack_public_key;
+      if (Object.keys(zaSync).length > 0) {
+        await syncPaystackKeysToZaRegion(supabase, zaSync);
+      }
+    }
 
     await writeAuditLog({
       actor_user_id: user.id,

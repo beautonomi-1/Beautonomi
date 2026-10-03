@@ -83,3 +83,25 @@ pnpm verify:db
 ```
 
 Reports missing tables/columns and empty seed tables. Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `apps/web/.env.local`.
+
+### Staging / greenfield `db push`
+
+Use the global Supabase CLI (`supabase`, not `npx`) after `supabase login` and `supabase link --project-ref <ref>`.
+
+Some historical migrations share the same numeric prefix (e.g. two `240_*` files). Renamed siblings use a four-digit prefix (`2401_*`, `3111_*`, …). On a **new** project, out-of-order versions may need:
+
+```powershell
+# From repo root (see scripts/supabase-push-staging.ps1)
+supabase migration repair 240 285 311 312 314 329 381 465 577 806 --status reverted
+supabase db push --yes --include-all
+```
+
+If the CLI reports `Remote migration versions not found in local`, run the `repair … reverted` line it prints, then `--include-all` again. Do **not** run `repair --status applied` for those versions unless you are fixing history without re-running SQL (it can duplicate history rows).
+
+Hosted Supabase: enable `pgcrypto` / `pg_trgm` in the `extensions` schema where migrations expect it (`001`, `825`, `872`).
+
+### Preview hostname (Vercel)
+
+Migration **970_preview_staging_tenant_domains.sql** seeds `staging.beautonomi.com` and `staging.beautonomi.co.za` with `environment = preview`. Migration **971_storage_buckets_production_parity.sql** creates dashboard buckets that migrations only document. Auth redirects for staging: `supabase config push --project-ref byfzhyqvtbasxptxdupf` (see `supabase/config.toml` `[auth]` — **staging ref only**).
+
+End-to-end gate: [docs/STAGING_E2E_READINESS.md](../docs/STAGING_E2E_READINESS.md) (`pnpm readiness:supabase`).

@@ -6,6 +6,7 @@ import {
   supabaseProbe,
   upstashProbe,
 } from "@/lib/health/deep-checks";
+import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 10;
@@ -18,9 +19,24 @@ export const maxDuration = 10;
  * critical check passes, 503 otherwise, always with per-check detail so the
  * post-deploy smoke step and uptime monitors can tell WHICH dependency is down.
  */
+async function resolvePaystackSecretForHealth(): Promise<string | null> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: tenant } = await supabase.from("tenants").select("id").eq("slug", "za").maybeSingle();
+    const tenantId = (tenant as { id?: string } | null)?.id ?? null;
+    return await getPaystackSecretKey({ tenantId });
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const report = await runHealthProbes(
-    [supabaseProbe(() => getSupabaseAdmin() as never), upstashProbe(), paystackKeyProbe()],
+    [
+      supabaseProbe(() => getSupabaseAdmin() as never),
+      upstashProbe(),
+      paystackKeyProbe(process.env, resolvePaystackSecretForHealth),
+    ],
     { release: process.env.VERCEL_GIT_COMMIT_SHA ?? null },
   );
   return NextResponse.json(report, {

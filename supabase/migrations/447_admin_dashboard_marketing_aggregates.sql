@@ -1,5 +1,8 @@
 -- Aggregates for superadmin marketing / growth dashboard (tenant scope).
 
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS signup_source TEXT;
+
 CREATE OR REPLACE FUNCTION public.admin_dashboard_signup_sources_by_tenant(p_tenant_id uuid)
 RETURNS TABLE (signup_source text, user_count bigint)
 LANGUAGE sql

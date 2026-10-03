@@ -63,7 +63,7 @@ describe("/api/health deep checks", () => {
   });
 
   it("paystack probe: presence + sk_ format, live key required in production", async () => {
-    await expect(paystackKeyProbe({} as NodeJS.ProcessEnv).run()).rejects.toThrow("missing");
+    await expect(paystackKeyProbe({} as NodeJS.ProcessEnv).run()).rejects.toThrow("not configured");
     await expect(paystackKeyProbe({ PAYSTACK_SECRET_KEY: "nope" } as NodeJS.ProcessEnv).run()).rejects.toThrow("format");
     await expect(paystackKeyProbe({ PAYSTACK_SECRET_KEY: "sk_test_abc" } as NodeJS.ProcessEnv).run()).resolves.toBeUndefined();
     await expect(
@@ -71,6 +71,12 @@ describe("/api/health deep checks", () => {
     ).rejects.toThrow("live");
     await expect(
       paystackKeyProbe({ PAYSTACK_SECRET_KEY: "sk_live_abc", VERCEL_ENV: "production" } as NodeJS.ProcessEnv).run(),
+    ).resolves.toBeUndefined();
+    await expect(
+      paystackKeyProbe({} as NodeJS.ProcessEnv, async () => "sk_live_from_db").run(),
+    ).resolves.toBeUndefined();
+    await expect(
+      paystackKeyProbe({ PAYSTACK_SECRET_KEY: "sk_live_env" } as NodeJS.ProcessEnv, async () => "sk_test_db").run(),
     ).resolves.toBeUndefined();
   });
 });

@@ -117,7 +117,7 @@ USING (
     SELECT 1 FROM offerings o
     JOIN providers p ON p.id = o.provider_id
     WHERE o.id::text = extract_service_id_from_path(name)
-    AND o.status = 'active'
+    AND o.is_active = true
     AND p.status = 'active'
   )
 );
