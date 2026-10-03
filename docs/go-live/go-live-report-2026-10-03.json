@@ -1,245 +1,243 @@
 {
   "date": "2026-10-03",
-  "verdict": "No-Go",
+  "verdict": "Conditional Go",
   "mode": "quick",
   "skipLive": false,
-  "headSha": "321ce8e3d1a8f2c0e4bc2a4eea24676a20dd5341",
+  "headSha": "5ea5fec931e3cbca10060bc35d1b445a37f4f8b6",
   "results": [
     {
       "id": "git.tracked_clean",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 217,
+      "_ms": 125,
       "status": "pass",
       "evidence": "No staged or modified tracked files.",
-      "ms": 217
+      "ms": 125
     },
     {
       "id": "git.head_origin_main",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 1600,
-      "status": "fail",
-      "evidence": "HEAD 321ce8e != origin/main 9ec65a7",
-      "fix": "Push and merge to main, then re-run from updated main.",
-      "ms": 1600
+      "_ms": 962,
+      "status": "pass",
+      "evidence": "HEAD 5ea5fec matches origin/main.",
+      "ms": 962
     },
     {
       "id": "repo.migrations",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 106,
+      "_ms": 67,
       "status": "pass",
       "evidence": "Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11",
-      "ms": 106
+      "ms": 67
     },
     {
       "id": "repo.audit_deps",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 2866,
+      "_ms": 1993,
       "status": "pass",
       "evidence": "audit:deps pass.",
-      "ms": 2866
+      "ms": 1993
     },
     {
       "id": "repo.typecheck_lint",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 3308,
+      "_ms": 1506,
       "status": "pass",
       "evidence": "web + admin-web typecheck/lint OK.",
-      "ms": 3308
+      "ms": 1506
     },
     {
       "id": "repo.multi_tenant",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 2421,
+      "_ms": 1841,
       "status": "pass",
       "evidence": "audit:multi-tenant:strict pass.",
-      "ms": 2421
+      "ms": 1841
     },
     {
       "id": "repo.cron_schedule",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 812,
+      "_ms": 515,
       "status": "pass",
       "evidence": "verify:cron-schedule pass.",
-      "ms": 812
+      "ms": 515
     },
     {
       "id": "repo.observability",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 724,
+      "_ms": 481,
       "status": "pass",
       "evidence": "verify-observability-gates pass.",
-      "ms": 724
+      "ms": 481
     },
     {
       "id": "ci.main",
       "area": "ci",
       "severity": "blocker",
-      "_ms": 1315,
-      "status": "fail",
-      "evidence": "CI: no run on this SHA; Finance drift (latest on main branch): failure",
-      "fix": "Wait for CI success on main or fix failing jobs.",
-      "ms": 1315
+      "_ms": 1039,
+      "status": "pass",
+      "evidence": "CI: success; E2E: skipped; Finance drift (latest on main branch): failure",
+      "ms": 1039
     },
     {
       "id": "ci.e2e_warning",
       "area": "ci",
       "severity": "warning",
-      "_ms": 872,
+      "_ms": 780,
       "status": "warn",
-      "evidence": "No E2E run for this SHA (deploy may not have fired).",
-      "ms": 872
+      "evidence": "E2E skipped for this SHA.",
+      "ms": 780
     },
     {
       "id": "ci.finance_drift",
       "area": "ci",
       "severity": "warning",
-      "_ms": 671,
+      "_ms": 623,
       "status": "skip",
       "evidence": "No finance drift runs.",
-      "ms": 671
+      "ms": 623
     },
     {
       "id": "db.readiness",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 16393,
+      "_ms": 18277,
       "status": "pass",
       "evidence": "readiness:supabase:check pass.",
-      "ms": 16393
+      "ms": 18277
     },
     {
       "id": "db.compare",
       "area": "supabase",
       "severity": "warning",
-      "_ms": 9105,
+      "_ms": 9112,
       "status": "pass",
       "evidence": "compare:supabase gaps empty.",
-      "ms": 9105
+      "ms": 9112
     },
     {
       "id": "db.handle_new_user",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 1691,
+      "_ms": 1679,
       "status": "pass",
       "evidence": "handle_new_user proconfig includes search_path=public.",
-      "ms": 1691
+      "ms": 1679
     },
     {
       "id": "db.za_domains",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 1724,
+      "_ms": 1711,
       "status": "pass",
       "evidence": "za tenant active; domains: www.beautonomi.com, beautonomi.co.za, admin.beautonomi.com",
-      "ms": 1724
+      "ms": 1711
     },
     {
       "id": "db.paystack_no_test",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 1694,
+      "_ms": 1678,
       "status": "pass",
       "evidence": "No sk_test in platform_secrets/region_secrets (sampled).",
-      "ms": 1694
+      "ms": 1678
     },
     {
       "id": "db.staging_signup",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 2023,
+      "_ms": 2070,
       "status": "pass",
       "evidence": "Staging auth.admin.createUser + delete succeeded.",
-      "ms": 2023
+      "ms": 2070
     },
     {
       "id": "db.staging_seed",
       "area": "supabase",
       "severity": "warning",
-      "_ms": 3064,
+      "_ms": 3092,
       "status": "pass",
       "evidence": "Seed stdout slug: e2e-test-provider-beautonomi",
-      "ms": 3064
+      "ms": 3092
     },
     {
       "id": "mobile.release_check",
       "area": "mobile",
       "severity": "warning",
-      "_ms": 2216,
+      "_ms": 2198,
       "status": "pass",
       "evidence": "release:check:mobile pass.",
-      "ms": 2216
+      "ms": 2198
     },
     {
       "id": "mobile.expo_config",
       "area": "mobile",
       "severity": "warning",
-      "_ms": 2951,
+      "_ms": 2994,
       "status": "pass",
       "evidence": "customer + provider expo config OK.",
-      "ms": 2951
+      "ms": 2994
     },
     {
       "id": "live.health",
       "area": "production",
       "severity": "blocker",
-      "_ms": 290,
+      "_ms": 1352,
       "status": "pass",
       "evidence": "GET /api/health → 200, status ok, paystack ok.",
-      "ms": 290
+      "ms": 1352
     },
     {
       "id": "live.public_tenant",
       "area": "production",
       "severity": "blocker",
-      "_ms": 56,
+      "_ms": 2744,
       "status": "pass",
       "evidence": "home 200, config-bundle tenant_id=c43f7511-ca1b-4ccd-a0b9-27056531c65b",
-      "ms": 56
+      "ms": 2744
     },
     {
       "id": "live.public_secrets",
       "area": "production",
       "severity": "blocker",
-      "_ms": 653,
+      "_ms": 3238,
       "status": "pass",
       "evidence": "verify-public-endpoints pass on production.",
-      "ms": 653
+      "ms": 3238
     },
     {
       "id": "live.security_headers",
       "area": "production",
       "severity": "blocker",
-      "_ms": 529,
+      "_ms": 794,
       "status": "pass",
       "evidence": "CSP, XCTO, frame policy present; HSTS=yes.",
-      "ms": 529
+      "ms": 794
     },
     {
       "id": "live.cron_auth",
       "area": "production",
       "severity": "blocker",
-      "_ms": 214,
+      "_ms": 254,
       "status": "pass",
       "evidence": "/api/cron/recognize-period-revenue → 401 without auth.",
-      "ms": 214
+      "ms": 254
     },
     {
       "id": "live.tls_redirect",
       "area": "production",
       "severity": "warning",
-      "_ms": 71,
+      "_ms": 74,
       "status": "pass",
       "evidence": "beautonomi.com → 308 Location: https://www.beautonomi.com/",
-      "ms": 71
+      "ms": 74
     },
     {
       "id": "staging.e2e_hosts",

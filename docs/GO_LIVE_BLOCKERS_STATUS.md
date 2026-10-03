@@ -4,7 +4,7 @@
 
 | Report | Verdict |
 |--------|---------|
-| [GO_LIVE_REPORT_2026-10-03.md](./go-live/GO_LIVE_REPORT_2026-10-03.md) | See report (re-run after each merge to `main`) |
+| [GO_LIVE_REPORT_2026-10-03.md](./go-live/GO_LIVE_REPORT_2026-10-03.md) | **Conditional Go** @ `5ea5fec9` (E2E warning: deploy-triggered run skipped for SHA; re-run after next production deploy) |
 
 ## What the check covers
 

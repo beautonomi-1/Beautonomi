@@ -1,25 +1,25 @@
 # Go-live readiness report — 2026-10-03
 
-**Verdict:** No-Go
+**Verdict:** Conditional Go
 
 **Mode:** quick
 
-**Git HEAD:** `321ce8e`
+**Git HEAD:** `5ea5fec`
 
 ## Automated checks
 
 | Area | ID | Sev | Status | Evidence |
 |------|-----|-----|--------|----------|
 | repo | git.tracked_clean | blocker | pass | No staged or modified tracked files. |
-| repo | git.head_origin_main | blocker | fail | HEAD 321ce8e != origin/main 9ec65a7 |
+| repo | git.head_origin_main | blocker | pass | HEAD 5ea5fec matches origin/main. |
 | repo | repo.migrations | blocker | pass | Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11 |
 | repo | repo.audit_deps | blocker | pass | audit:deps pass. |
 | repo | repo.typecheck_lint | blocker | pass | web + admin-web typecheck/lint OK. |
 | repo | repo.multi_tenant | blocker | pass | audit:multi-tenant:strict pass. |
 | repo | repo.cron_schedule | blocker | pass | verify:cron-schedule pass. |
 | repo | repo.observability | blocker | pass | verify-observability-gates pass. |
-| ci | ci.main | blocker | fail | CI: no run on this SHA; Finance drift (latest on main branch): failure |
-| ci | ci.e2e_warning | warning | warn | No E2E run for this SHA (deploy may not have fired). |
+| ci | ci.main | blocker | pass | CI: success; E2E: skipped; Finance drift (latest on main branch): failure |
+| ci | ci.e2e_warning | warning | warn | E2E skipped for this SHA. |
 | ci | ci.finance_drift | warning | skip | No finance drift runs. |
 | supabase | db.readiness | blocker | pass | readiness:supabase:check pass. |
 | supabase | db.compare | warning | pass | compare:supabase gaps empty. |
@@ -48,6 +48,3 @@
 - [ ] On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner
 
 ## Failed blockers — suggested fixes
-
-- **git.head_origin_main**: Push and merge to main, then re-run from updated main.
-- **ci.main**: Wait for CI success on main or fix failing jobs.
