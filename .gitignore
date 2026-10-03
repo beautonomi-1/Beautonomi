@@ -72,6 +72,12 @@ android/local.properties
 
 # --- Playwright (admin-web E2E) ---
 apps/admin-web/test-results/
+apps/web/test-results/
+
+# --- Local API smoke dumps (do not commit) ---
+response_*.txt
+response_*.json
+response_*.md
 
 # --- Vercel ---
 .vercel/

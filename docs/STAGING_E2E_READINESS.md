@@ -40,6 +40,13 @@ Set repository secrets (Settings → Secrets and variables → Actions):
 
 **Seed:** `node scripts/e2e/seed-staging.mjs` (idempotent; slug `e2e-test-provider-beautonomi`). Requires migrations **972+973** on staging for Auth signup.
 
+**After DNS / secrets change:** run **Actions → E2E Manual (Staging) → Run workflow** (default base URL `https://staging.beautonomi.com`), or locally:
+
+```powershell
+$env:VERCEL_AUTOMATION_BYPASS_SECRET = "your-bypass-secret"
+pnpm run verify:staging:e2e:hosts
+```
+
 ## Automated checks (local)
 
 Requires [Supabase CLI](https://supabase.com/docs/guides/cli) logged in (`supabase login`).

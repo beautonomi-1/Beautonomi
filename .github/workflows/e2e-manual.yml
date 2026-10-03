@@ -1,0 +1,67 @@
+# Manual staging E2E when you cannot rely on deployment_status (or after secret/DNS changes).
+# GitHub → Actions → "E2E Manual (Staging)" → Run workflow.
+name: E2E Manual (Staging)
+
+on:
+  workflow_dispatch:
+    inputs:
+      playwright_base_url:
+        description: Staging deployment URL (Playwright baseURL)
+        required: true
+        default: https://staging.beautonomi.com
+        type: string
+
+jobs:
+  staging-e2e-manual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Seed staging provider
+        id: seed
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          SLUG=$(node scripts/e2e/seed-staging.mjs)
+          echo "provider_slug=${SLUG}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Playwright Chromium
+        uses: ./.github/actions/setup-playwright-chromium
+        with:
+          package-filter: web
+
+      - name: Run booking + money-path E2E
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ inputs.playwright_base_url }}
+          E2E_PROVIDER_SLUG: ${{ steps.seed.outputs.provider_slug }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          E2E_NON_SKIPPABLE: "true"
+        run: pnpm exec playwright test e2e/booking-happy-path.spec.ts e2e/money-path.spec.ts
+
+      - name: Run tenant isolation E2E
+        working-directory: apps/web
+        env:
+          E2E_TENANT_A_BASE: ${{ secrets.E2E_TENANT_A_BASE || inputs.playwright_base_url }}
+          E2E_TENANT_B_BASE: ${{ secrets.E2E_TENANT_B_BASE }}
+          E2E_TENANT_A_PROVIDER: ${{ steps.seed.outputs.provider_slug }}
+          E2E_NON_SKIPPABLE: "true"
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: pnpm exec playwright test e2e/tenant-isolation.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-manual-${{ github.run_id }}
+          path: apps/web/playwright-report
+          retention-days: 14

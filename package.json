@@ -131,6 +131,7 @@
     "sync:staging:config:dry-run": "node tooling/audit/sync-staging-config-from-production.mjs --dry-run",
     "staging:db:e2e": "node tooling/audit/staging-db-e2e.mjs --apply",
     "staging:db:e2e:check": "node tooling/audit/staging-db-e2e.mjs --check",
+    "verify:staging:e2e:hosts": "node tooling/audit/verify-staging-e2e-hosts.mjs",
     "sync:paystack:production": "node tooling/audit/sync-paystack-region-keys.mjs production",
     "sync:paystack:staging": "node tooling/audit/sync-paystack-region-keys.mjs staging",
     "sync:paystack:production:clear-region": "node tooling/audit/sync-paystack-region-keys.mjs production --clear-region",
