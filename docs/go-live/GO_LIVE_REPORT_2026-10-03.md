@@ -1,17 +1,17 @@
 # Go-live readiness report — 2026-10-03
 
-**Verdict:** No-Go
+**Verdict:** Go
 
 **Mode:** quick
 
-**Git HEAD:** `007eae7`
+**Git HEAD:** `48c9d68`
 
 ## Automated checks
 
 | Area | ID | Sev | Status | Evidence |
 |------|-----|-----|--------|----------|
-| repo | git.tracked_clean | blocker | fail | M docs/GO_LIVE_BLOCKERS_STATUS.md;  M docs/STAGING_E2E_READINESS.md;  M docs/STAGING_VERCEL_PREVIEW_ENV.md;  M docs/go-l |
-| repo | git.head_origin_main | blocker | pass | HEAD 007eae7 matches origin/main. |
+| repo | git.tracked_clean | blocker | pass | No staged or modified tracked files. |
+| repo | git.head_origin_main | blocker | pass | HEAD 48c9d68 matches origin/main. |
 | repo | repo.migrations | blocker | pass | Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11 |
 | repo | repo.audit_deps | blocker | pass | audit:deps pass. |
 | repo | repo.typecheck_lint | blocker | pass | web + admin-web typecheck/lint OK. |
@@ -36,7 +36,8 @@
 | production | live.security_headers | blocker | pass | CSP, XCTO, frame policy present; HSTS=yes. |
 | production | live.cron_auth | blocker | pass | /api/cron/recognize-period-revenue → 401 without auth. |
 | production | live.tls_redirect | warning | pass | beautonomi.com → 308 Location: https://www.beautonomi.com/ |
-| staging | staging.e2e_hosts | warning | skip | VERCEL_AUTOMATION_BYPASS_SECRET not set — skip staging host verify. |
+| staging | staging.preview | warning | pass | Staging DB tenant map OK (live probe skipped — no bypass secret). |
+| staging | staging.e2e_hosts | warning | skip | VERCEL_AUTOMATION_BYPASS_SECRET not set — skip tenant-isolation host verify. |
 
 ## Manual checklist (not automated)
 
@@ -48,5 +49,3 @@
 - [ ] On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner
 
 ## Failed blockers — suggested fixes
-
-- **git.tracked_clean**: Commit or stash tracked changes before go-live.

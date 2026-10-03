@@ -1,244 +1,252 @@
 {
   "date": "2026-10-03",
-  "verdict": "No-Go",
+  "verdict": "Go",
   "mode": "quick",
   "skipLive": false,
-  "headSha": "007eae771abaac9830061007f8eb82337fc83c83",
+  "headSha": "48c9d684a8eaebc5acedcf64a5ea74639e1f9bbe",
   "results": [
     {
       "id": "git.tracked_clean",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 128,
-      "status": "fail",
-      "evidence": "M docs/GO_LIVE_BLOCKERS_STATUS.md;  M docs/STAGING_E2E_READINESS.md;  M docs/STAGING_VERCEL_PREVIEW_ENV.md;  M docs/go-live/GO_LIVE_REPORT_2026-10-03.md;  M docs/go-live/go-live-report-2026-10-03.json;  M package.json",
-      "fix": "Commit or stash tracked changes before go-live.",
-      "ms": 128
+      "_ms": 147,
+      "status": "pass",
+      "evidence": "No staged or modified tracked files.",
+      "ms": 147
     },
     {
       "id": "git.head_origin_main",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 1572,
+      "_ms": 1096,
       "status": "pass",
-      "evidence": "HEAD 007eae7 matches origin/main.",
-      "ms": 1572
+      "evidence": "HEAD 48c9d68 matches origin/main.",
+      "ms": 1096
     },
     {
       "id": "repo.migrations",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 67,
+      "_ms": 71,
       "status": "pass",
       "evidence": "Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11",
-      "ms": 67
+      "ms": 71
     },
     {
       "id": "repo.audit_deps",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 1678,
+      "_ms": 1764,
       "status": "pass",
       "evidence": "audit:deps pass.",
-      "ms": 1678
+      "ms": 1764
     },
     {
       "id": "repo.typecheck_lint",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 3696,
+      "_ms": 2204,
       "status": "pass",
       "evidence": "web + admin-web typecheck/lint OK.",
-      "ms": 3696
+      "ms": 2204
     },
     {
       "id": "repo.multi_tenant",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 2305,
+      "_ms": 2418,
       "status": "pass",
       "evidence": "audit:multi-tenant:strict pass.",
-      "ms": 2305
+      "ms": 2418
     },
     {
       "id": "repo.cron_schedule",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 542,
+      "_ms": 477,
       "status": "pass",
       "evidence": "verify:cron-schedule pass.",
-      "ms": 542
+      "ms": 477
     },
     {
       "id": "repo.observability",
       "area": "repo",
       "severity": "blocker",
-      "_ms": 543,
+      "_ms": 495,
       "status": "pass",
       "evidence": "verify-observability-gates pass.",
-      "ms": 543
+      "ms": 495
     },
     {
       "id": "ci.main",
       "area": "ci",
       "severity": "blocker",
-      "_ms": 1483,
+      "_ms": 2220,
       "status": "pass",
       "evidence": "CI: success; E2E: success; Finance drift (latest on main branch): success",
-      "ms": 1483
+      "ms": 2220
     },
     {
       "id": "ci.e2e_warning",
       "area": "ci",
       "severity": "warning",
-      "_ms": 1358,
+      "_ms": 84,
       "status": "pass",
       "evidence": "E2E (Preview + Staging) success.",
-      "ms": 1358
+      "ms": 84
     },
     {
       "id": "ci.finance_drift",
       "area": "ci",
       "severity": "warning",
-      "_ms": 522,
+      "_ms": 556,
       "status": "pass",
       "evidence": "Latest finance drift: success (2026-10-03T14:06:24Z).",
-      "ms": 522
+      "ms": 556
     },
     {
       "id": "db.readiness",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 18609,
+      "_ms": 20947,
       "status": "pass",
       "evidence": "readiness:supabase:check pass.",
-      "ms": 18609
+      "ms": 20947
     },
     {
       "id": "db.compare",
       "area": "supabase",
       "severity": "warning",
-      "_ms": 10034,
+      "_ms": 11563,
       "status": "pass",
       "evidence": "compare:supabase gaps empty.",
-      "ms": 10034
+      "ms": 11563
     },
     {
       "id": "db.handle_new_user",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 1795,
+      "_ms": 1856,
       "status": "pass",
       "evidence": "handle_new_user proconfig includes search_path=public.",
-      "ms": 1795
+      "ms": 1856
     },
     {
       "id": "db.za_domains",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 2682,
+      "_ms": 2189,
       "status": "pass",
       "evidence": "za tenant active; domains: www.beautonomi.com, beautonomi.co.za, admin.beautonomi.com",
-      "ms": 2682
+      "ms": 2189
     },
     {
       "id": "db.paystack_no_test",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 2347,
+      "_ms": 1841,
       "status": "pass",
       "evidence": "No sk_test in platform_secrets/region_secrets (sampled).",
-      "ms": 2347
+      "ms": 1841
     },
     {
       "id": "db.staging_signup",
       "area": "supabase",
       "severity": "blocker",
-      "_ms": 4228,
+      "_ms": 2651,
       "status": "pass",
       "evidence": "Staging auth.admin.createUser + delete succeeded.",
-      "ms": 4228
+      "ms": 2651
     },
     {
       "id": "db.staging_seed",
       "area": "supabase",
       "severity": "warning",
-      "_ms": 3636,
+      "_ms": 6782,
       "status": "pass",
       "evidence": "Seed stdout slug: e2e-test-provider-beautonomi",
-      "ms": 3636
+      "ms": 6782
     },
     {
       "id": "mobile.release_check",
       "area": "mobile",
       "severity": "warning",
-      "_ms": 2478,
+      "_ms": 2247,
       "status": "pass",
       "evidence": "release:check:mobile pass.",
-      "ms": 2478
+      "ms": 2247
     },
     {
       "id": "mobile.expo_config",
       "area": "mobile",
       "severity": "warning",
-      "_ms": 21371,
+      "_ms": 28333,
       "status": "pass",
       "evidence": "customer + provider expo config OK.",
-      "ms": 21371
+      "ms": 28333
     },
     {
       "id": "live.health",
       "area": "production",
       "severity": "blocker",
-      "_ms": 854,
+      "_ms": 1065,
       "status": "pass",
       "evidence": "GET /api/health → 200, status ok, paystack ok.",
-      "ms": 854
+      "ms": 1065
     },
     {
       "id": "live.public_tenant",
       "area": "production",
       "severity": "blocker",
-      "_ms": 2403,
+      "_ms": 1671,
       "status": "pass",
       "evidence": "home 200, config-bundle tenant_id=c43f7511-ca1b-4ccd-a0b9-27056531c65b",
-      "ms": 2403
+      "ms": 1671
     },
     {
       "id": "live.public_secrets",
       "area": "production",
       "severity": "blocker",
-      "_ms": 1771,
+      "_ms": 3630,
       "status": "pass",
       "evidence": "verify-public-endpoints pass on production.",
-      "ms": 1771
+      "ms": 3630
     },
     {
       "id": "live.security_headers",
       "area": "production",
       "severity": "blocker",
-      "_ms": 1101,
+      "_ms": 726,
       "status": "pass",
       "evidence": "CSP, XCTO, frame policy present; HSTS=yes.",
-      "ms": 1101
+      "ms": 726
     },
     {
       "id": "live.cron_auth",
       "area": "production",
       "severity": "blocker",
-      "_ms": 243,
+      "_ms": 210,
       "status": "pass",
       "evidence": "/api/cron/recognize-period-revenue → 401 without auth.",
-      "ms": 243
+      "ms": 210
     },
     {
       "id": "live.tls_redirect",
       "area": "production",
       "severity": "warning",
-      "_ms": 80,
+      "_ms": 51,
       "status": "pass",
       "evidence": "beautonomi.com → 308 Location: https://www.beautonomi.com/",
-      "ms": 80
+      "ms": 51
+    },
+    {
+      "id": "staging.preview",
+      "area": "staging",
+      "severity": "warning",
+      "_ms": 2521,
+      "status": "pass",
+      "evidence": "Staging DB tenant map OK (live probe skipped — no bypass secret).",
+      "ms": 2521
     },
     {
       "id": "staging.e2e_hosts",
@@ -246,7 +254,7 @@
       "severity": "warning",
       "_ms": 0,
       "status": "skip",
-      "evidence": "VERCEL_AUTOMATION_BYPASS_SECRET not set — skip staging host verify.",
+      "evidence": "VERCEL_AUTOMATION_BYPASS_SECRET not set — skip tenant-isolation host verify.",
       "ms": 0
     }
   ],

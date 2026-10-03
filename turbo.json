@@ -1,5 +1,15 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "CRON_SECRET",
+    "CSRF_SECRET",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "TENANT_DOMAIN_ENV",
+    "STRICT_TENANT_HOST_RESOLUTION",
+    "TENANT_DOMAIN_FALLBACK_TO_PRODUCTION",
+    "PAYSTACK_SECRET_KEY",
+    "PAYSTACK_PUBLIC_KEY"
+  ],
   "globalDependencies": [
     "**/.env.*local",
     "apps/customer/app.config.js",
@@ -9,7 +19,18 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**", "lib/**"],
-      "passThroughEnv": ["SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT"],
+      "passThroughEnv": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_DSN",
+        "CRON_SECRET",
+        "CSRF_SECRET",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "TENANT_DOMAIN_ENV",
+        "STRICT_TENANT_HOST_RESOLUTION",
+        "TENANT_DOMAIN_FALLBACK_TO_PRODUCTION"
+      ],
       "env": [
         "NEXT_PUBLIC_SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
