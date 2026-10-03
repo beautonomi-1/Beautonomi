@@ -1,3 +1,4 @@
+# Weekly / manual scale gates. Not part of the default PR push path (see ci.yml + e2e.yml).
 name: Scale Verification
 
 on:
@@ -5,28 +6,22 @@ on:
   schedule:
     - cron: "0 3 * * 1"
 
+permissions:
+  contents: read
+
 concurrency:
   group: scale-verification
   cancel-in-progress: true
 
 env:
   STAGING_BASE_URL: https://staging.beautonomi.com
+  STAGING_SUPABASE_URL: https://byfzhyqvtbasxptxdupf.supabase.co
 
 jobs:
   release-verify:
     name: Release Verification (Quick)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
-      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
-      NEXT_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
-      EXPO_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
-      NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN || '' }}
-      EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN || '' }}
-      SLACK_ALERT_WEBHOOK_URL: ${{ secrets.SLACK_ALERT_WEBHOOK_URL || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +39,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run release verification (quick)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.STAGING_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ env.STAGING_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
+          EXPO_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
         run: pnpm run prod:verify:release
 
   load-gates:
@@ -55,7 +59,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Skip load gates when auth token unset
+        id: gate
+        env:
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          if [ -z "$AUTH_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::LOAD_TEST_AUTH_TOKEN not set — skipping k6 load gates."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install k6
+        if: steps.gate.outputs.skip != 'true'
         run: |
           sudo gpg -k
           sudo gpg --no-default-keyring \
@@ -67,36 +84,49 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y k6
 
       - name: Validate staging reachable
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${STAGING_BASE_URL}/api/public/home" || true)
+          CURL_OPTS=(-s -o /dev/null -w "%{http_code}")
+          if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            CURL_OPTS+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -H "x-vercel-set-bypass-cookie: true")
+          fi
+          STATUS=$(curl "${CURL_OPTS[@]}" "${STAGING_BASE_URL}/api/public/home" || echo "000")
           if [ "$STATUS" = "000" ]; then
-            echo "::error::Staging URL ${STAGING_BASE_URL} is not reachable. Aborting load gates."
+            echo "::error::Staging URL ${STAGING_BASE_URL} is not reachable."
             exit 1
           fi
           echo "Staging returned HTTP $STATUS — proceeding."
 
       - name: Run k6 auth-burst
+        if: steps.gate.outputs.skip != 'true'
         env:
           BASE_URL: ${{ env.STAGING_BASE_URL }}
           AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           k6 run \
             -e BASE_URL="$BASE_URL" \
             -e AUTH_TOKEN="$AUTH_TOKEN" \
+            -e VERCEL_AUTOMATION_BYPASS_SECRET="$VERCEL_AUTOMATION_BYPASS_SECRET" \
             tooling/load-test/k6-auth-burst.js
 
       - name: Run k6 booking-flow
+        if: steps.gate.outputs.skip != 'true'
         env:
           BASE_URL: ${{ env.STAGING_BASE_URL }}
           AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           k6 run \
             -e BASE_URL="$BASE_URL" \
             -e AUTH_TOKEN="$AUTH_TOKEN" \
+            -e VERCEL_AUTOMATION_BYPASS_SECRET="$VERCEL_AUTOMATION_BYPASS_SECRET" \
             tooling/load-test/k6-booking-flow.js
 
       - name: Upload k6 summary
-        if: always()
+        if: always() && steps.gate.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: k6-scale-gates-${{ github.run_id }}

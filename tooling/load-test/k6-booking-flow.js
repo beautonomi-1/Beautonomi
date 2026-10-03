@@ -19,6 +19,7 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend } from "k6/metrics";
+import { mergeHeaders } from "./k6-vercel-bypass.js";
 
 // ── Custom metrics ──────────────────────────────────────────────────────────
 const failRate = new Rate("failed_requests");
@@ -54,7 +55,7 @@ function headers() {
   if (AUTH_TOKEN) {
     h["Authorization"] = `Bearer ${AUTH_TOKEN}`;
   }
-  return h;
+  return mergeHeaders(h);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

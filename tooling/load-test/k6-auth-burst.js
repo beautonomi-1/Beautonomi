@@ -11,6 +11,7 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend } from "k6/metrics";
+import { mergeHeaders } from "./k6-vercel-bypass.js";
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
 const AUTH_TOKEN = __ENV.AUTH_TOKEN || "";
@@ -34,7 +35,7 @@ export const options = {
 function buildHeaders() {
   const headers = { "Content-Type": "application/json" };
   if (AUTH_TOKEN) headers.Authorization = `Bearer ${AUTH_TOKEN}`;
-  return headers;
+  return mergeHeaders(headers);
 }
 
 export default function () {
