@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { vercelProtectionBypassHeaders } from "./e2e/_bypass";
 
 /**
  * F16 — Playwright config for booking happy-path E2E.
@@ -23,6 +24,7 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    extraHTTPHeaders: vercelProtectionBypassHeaders(),
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

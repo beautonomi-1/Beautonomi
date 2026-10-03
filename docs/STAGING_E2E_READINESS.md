@@ -24,6 +24,22 @@ pnpm staging:db:e2e:check
 - Tenant/region **UUIDs** stay staging-native; rows match by **slug** / **code**.
 - After a production **tenant reset**, re-run config sync on staging if prod admin settings changed.
 
+## GitHub Actions (staging E2E)
+
+Set repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|--------|--------|
+| `SUPABASE_URL` | Staging project URL (`byfzhyqvtbasxptxdupf`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Staging service role (not production) |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel **Deployment Protection** automation bypass (Option B header) |
+| `E2E_TENANT_A_BASE` | `https://staging.beautonomi.com` |
+| `E2E_TENANT_B_BASE` | `https://staging-uk.beautonomi.com` |
+
+**Multi-market isolation:** staging DB must include **`uk`** tenant and `tenant_domains` row **`staging-uk.beautonomi.com`** → `uk` (applied by `pnpm sync:staging:config`). Add the hostname in **Vercel** (Preview / `develop`) and DNS **CNAME** → `cname.vercel-dns.com`.
+
+**Seed:** `node scripts/e2e/seed-staging.mjs` (idempotent; slug `e2e-test-provider-beautonomi`). Requires migrations **972+973** on staging for Auth signup.
+
 ## Automated checks (local)
 
 Requires [Supabase CLI](https://supabase.com/docs/guides/cli) logged in (`supabase login`).

@@ -14,7 +14,8 @@
  *   SUPABASE_SERVICE_ROLE_KEY — Service-role key (bypasses RLS)
  *
  * Optional:
- *   E2E_TENANT_ID             — Tenant UUID (defaults to the first tenant)
+ *   E2E_TENANT_ID             — Tenant UUID (defaults to slug za)
+ *   E2E_TENANT_SLUG           — Tenant slug when E2E_TENANT_ID unset (default: za)
  *   E2E_SEED_CURRENCY         — Currency code (default: ZAR)
  *
  * What it seeds (all upserted by deterministic UUID / slug — safe to re-run):
@@ -62,9 +63,10 @@ const WORKING_HOURS = Object.fromEntries(
 
 async function resolveTenantId() {
   if (process.env.E2E_TENANT_ID) return process.env.E2E_TENANT_ID;
-  const { data, error } = await supabase.from("tenants").select("id").limit(1).single();
+  const slug = process.env.E2E_TENANT_SLUG ?? "za";
+  const { data, error } = await supabase.from("tenants").select("id").eq("slug", slug).maybeSingle();
   if (error || !data) {
-    console.error("[seed-staging] Could not resolve tenant_id:", error?.message);
+    console.error("[seed-staging] Could not resolve tenant_id for slug", slug, error?.message);
     process.exit(1);
   }
   return data.id;
@@ -87,10 +89,11 @@ async function upsertAuthUser() {
   }
 
   const { error } = await supabase.auth.admin.createUser({
-    user_id: SEED_USER_ID,
+    id: SEED_USER_ID,
     email: SEED_EMAIL,
     password: randomUUID(),
     email_confirm: true,
+    user_metadata: { role: "provider_owner", full_name: "E2E Test Provider" },
   });
   if (error && !/already been registered|already exists/i.test(error.message)) {
     console.error("[seed-staging] createUser error:", error.message);
@@ -105,7 +108,7 @@ async function upsertUsersRow(tenantId) {
       email: SEED_EMAIL,
       role: "provider_owner",
       full_name: "E2E Test Provider",
-      tenant_id: tenantId,
+      preferred_home_tenant_id: tenantId,
     },
     { onConflict: "id" }
   );
@@ -139,7 +142,7 @@ async function upsertProvider(tenantId) {
   }
 }
 
-async function upsertLocation(tenantId) {
+async function upsertLocation() {
   const { error } = await supabase.from("provider_locations").upsert(
     {
       id: SEED_LOCATION_ID,
@@ -152,32 +155,10 @@ async function upsertLocation(tenantId) {
       is_active: true,
       is_primary: true,
       working_hours: WORKING_HOURS,
-      tenant_id: tenantId,
     },
     { onConflict: "id" }
   );
-  if (error && !error.message.includes("column \"tenant_id\" of relation")) {
-    // tenant_id is optional on provider_locations in some versions
-    const { error: e2 } = await supabase.from("provider_locations").upsert(
-      {
-        id: SEED_LOCATION_ID,
-        provider_id: SEED_PROVIDER_ID,
-        name: "E2E Studio",
-        address_line1: "1 Test Street",
-        city: "Johannesburg",
-        state: "Gauteng",
-        country: "ZA",
-        is_active: true,
-        is_primary: true,
-        working_hours: WORKING_HOURS,
-      },
-      { onConflict: "id" }
-    );
-    if (e2) {
-      console.error("[seed-staging] provider_locations upsert error:", e2.message);
-      process.exit(1);
-    }
-  } else if (error) {
+  if (error) {
     console.error("[seed-staging] provider_locations upsert error:", error.message);
     process.exit(1);
   }
@@ -193,8 +174,10 @@ async function upsertOffering() {
       duration_minutes: 60,
       buffer_minutes: 0,
       price: 100.0,
+      currency: CURRENCY,
       is_active: true,
-      location_type: "at_salon",
+      supports_at_salon: true,
+      supports_at_home: false,
     },
     { onConflict: "id" }
   );
@@ -248,7 +231,7 @@ const tenantId = await resolveTenantId();
 await upsertAuthUser();
 await upsertUsersRow(tenantId);
 await upsertProvider(tenantId);
-await upsertLocation(tenantId);
+await upsertLocation();
 await upsertOffering();
 await upsertOnlineBookingSettings();
 await upsertStaff();

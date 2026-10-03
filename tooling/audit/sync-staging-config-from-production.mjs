@@ -239,23 +239,65 @@ async function syncRegionsByCode(prod, stage, report) {
 }
 
 async function syncTenantsBySlug(prod, stage, report) {
-  const { prodTenants, stageBySlug } = await buildTenantIdMap(prod, stage);
+  const prodTenants = await fetchAll(prod, "tenants");
+  const stageTenants = await fetchAll(stage, "tenants");
+  const stageBySlug = new Map(stageTenants.map((t) => [t.slug, t]));
   let updated = 0;
-  let missingOnStaging = 0;
+  let inserted = 0;
   for (const pt of prodTenants) {
     const st = stageBySlug.get(pt.slug);
+    const { id: _id, created_at: _ca, ...patch } = pt;
     if (!st) {
-      missingOnStaging++;
+      if (!dryRun) {
+        const { data: insertedRow, error } = await stage
+          .from("tenants")
+          .insert(patch)
+          .select("id,slug")
+          .single();
+        if (error) throw new Error(`tenants insert ${pt.slug}: ${error.message}`);
+        stageBySlug.set(pt.slug, insertedRow);
+      }
+      inserted++;
       continue;
     }
-    const { id: _id, created_at: _ca, ...patch } = pt;
     if (!dryRun) {
       const { error } = await stage.from("tenants").update(patch).eq("id", st.id);
       if (error) throw new Error(`tenants update ${pt.slug}: ${error.message}`);
     }
     updated++;
   }
-  report.tenants = { updated_by_slug: updated, missing_on_staging: missingOnStaging };
+  report.tenants = { updated_by_slug: updated, inserted_on_staging: inserted };
+}
+
+/** Staging-only preview hosts for multi-tenant E2E (not copied from production). */
+async function ensureStagingE2ePreviewDomains(stage, report) {
+  const stageTenants = await fetchAll(stage, "tenants");
+  const uk = stageTenants.find((t) => t.slug === "uk");
+  if (!uk) {
+    report.staging_e2e_domains = { skipped: "uk tenant missing on staging" };
+    return;
+  }
+  const host = "staging-uk.beautonomi.com";
+  const payload = {
+    hostname: host,
+    environment: "preview",
+    tenant_id: uk.id,
+    is_active: true,
+  };
+  report.staging_e2e_domains = { hostname: host, tenant_slug: "uk" };
+  if (dryRun) return;
+  const { data: existing } = await stage
+    .from("tenant_domains")
+    .select("id")
+    .eq("hostname", host)
+    .maybeSingle();
+  if (existing?.id) {
+    const { error } = await stage.from("tenant_domains").update(payload).eq("id", existing.id);
+    if (error) throw new Error(`tenant_domains update ${host}: ${error.message}`);
+  } else {
+    const { error } = await stage.from("tenant_domains").insert(payload);
+    if (error) throw new Error(`tenant_domains insert ${host}: ${error.message}`);
+  }
 }
 
 /** Rows keyed by (tenant_id, key) — staging UUIDs differ from production. */
@@ -544,10 +586,10 @@ async function main() {
   const prod = client(PROJECTS.production.ref, PROJECTS.production.url);
   const stage = client(PROJECTS.staging.ref, PROJECTS.staging.url);
   const report = { dryRun };
-  const { idMap: tenantIdMap } = await buildTenantIdMap(prod, stage);
-  const regionIdMap = await buildRegionIdMap(prod, stage);
 
   await syncTenantsBySlug(prod, stage, report);
+  const { idMap: tenantIdMap } = await buildTenantIdMap(prod, stage);
+  const regionIdMap = await buildRegionIdMap(prod, stage);
   await syncRegionsByCode(prod, stage, report);
   await syncTenantScopedTable(prod, stage, "tenant_settings", "tenant_id", tenantIdMap, report);
   await syncPlatformSettings(prod, stage, tenantIdMap, report);
@@ -598,6 +640,7 @@ async function main() {
   }
 
   await syncTenantDomains(prod, stage, tenantIdMap, report);
+  await ensureStagingE2ePreviewDomains(stage, report);
   await syncPlatformSecrets(prod, stage, tenantIdMap, PLATFORM_SECRET_STRIP, report);
 
   const tenantSecretRows = await fetchAll(prod, "tenant_secrets").catch(() => []);

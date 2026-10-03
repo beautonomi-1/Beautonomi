@@ -1,6 +1,6 @@
 # Go-live proposed fixes — implementation status (facts)
 
-Last verified: **2026-10-03** (local checks + live HTTP where noted).
+Last verified: **2026-10-03** (final QA — live prod green; staging API behind Vercel Auth).
 
 | Proposed fix | Status | Facts |
 |--------------|--------|--------|
@@ -8,10 +8,12 @@ Last verified: **2026-10-03** (local checks + live HTTP where noted).
 | **Paystack (Preview / staging DB)** | **Open** | Staging DB had no Paystack rows; Preview **Vercel test env** is enough for server secret until `pnpm sync:paystack:staging`. |
 | **Paystack tooling & admin sync** | **Done in repo** | [`sync-paystack-za-region.ts`](../apps/web/src/lib/payments/sync-paystack-za-region.ts), [`sync-paystack-region-keys.mjs`](../tooling/audit/sync-paystack-region-keys.mjs), Admin Paystack PATCH syncs ZA region, config bundle **env public fallback**, [PAYSTACK_VERCEL_AND_REGION.md](./PAYSTACK_VERCEL_AND_REGION.md). |
 | **Health probe (env + DB)** | **Done in repo (needs deploy)** | [`/api/health`](../apps/web/src/app/api/health/route.ts) uses `PAYSTACK_SECRET_KEY` then **`getPaystackSecretKey` for tenant `za`**. **Not live until next Vercel production deploy.** |
-| **Commit** | **Open** | ~46 paths still uncommitted (migrations 970/971, signup, staging docs, audit tooling, Paystack changes). |
-| **Deploy production** | **Open** | Production health **2026-10-03**: still **`paystack: PAYSTACK_SECRET_KEY missing`** on **currently deployed** build (no redeploy after env change). |
-| **Staging domain** | **Open — SSO, not public app** | `https://staging.beautonomi.com` → **302** to **Vercel SSO** (`vercel.com/sso-api`), not the app. Remove/disable Vercel Deployment Protection for Preview or allowlist monitors; assign domain to Preview; set Preview env per [STAGING_VERCEL_PREVIEW_ENV.md](./STAGING_VERCEL_PREVIEW_ENV.md). |
-| **Supabase staging schema** | **Done on remote** | Migrations through **971** applied on staging ref `byfzhyqvtbasxptxdupf`; `pnpm readiness:supabase:check` passes. |
+| **Commit / push** | **Done (2026-10-03)** | `develop` + **`main`** at **`0a4efdea`** pushed to `origin` (go-live bundle + test/sync tooling). |
+| **Deploy production** | **Done (2026-10-03)** | `main`/`develop` @ **`0a4efdea`** on GitHub. Live **`GET /api/health`** → **200**, `status: ok`, Paystack **ok** (`.com` + `.co.za`). |
+| **Staging domain** | **Partial — Deployment Protection** | Option **B** wired in Playwright (`VERCEL_AUTOMATION_BYPASS_SECRET` header). Set GitHub secret + rotate if exposed in chat. DNS/Vercel for **`staging-uk.beautonomi.com`** still required for tenant-isolation E2E. |
+| **Staging E2E provider seed** | **Done on remote (2026-10-03)** | Migrations **972/973** + fixed `seed-staging.mjs`; provider slug **`e2e-test-provider-beautonomi`** seeded on staging. |
+| **CI migration / deps audit** | **Done in repo** | `check-migrations.mjs` split-prefix fix; `audit:deps` overrides + expiring allowlist for `braces` / `http-cache-semantics`. |
+| **Supabase staging schema** | **Done on remote** | Migrations through **973** on staging ref `byfzhyqvtbasxptxdupf`; `uk` tenant + `staging-uk.beautonomi.com` domain row. |
 
 ## Your ordered checklist
 

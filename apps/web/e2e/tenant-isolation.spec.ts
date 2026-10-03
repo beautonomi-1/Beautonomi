@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from "@playwright/test";
+import { vercelProtectionBypassHeaders } from "./_bypass";
 
 /**
  * FND-P0-003 (REM-007) — Multi-market tenant isolation E2E (staging).
@@ -32,8 +33,9 @@ test.describe("multi-market tenant isolation", () => {
   });
 
   test("each market host resolves to a distinct tenant", async () => {
-    const ctxA = await pwRequest.newContext({ baseURL: A_BASE });
-    const ctxB = await pwRequest.newContext({ baseURL: B_BASE });
+    const bypass = vercelProtectionBypassHeaders();
+    const ctxA = await pwRequest.newContext({ baseURL: A_BASE, extraHTTPHeaders: bypass });
+    const ctxB = await pwRequest.newContext({ baseURL: B_BASE, extraHTTPHeaders: bypass });
     try {
       const [resA, resB] = await Promise.all([
         ctxA.get("/api/public/config-bundle?platform=web&environment=production"),
@@ -56,8 +58,9 @@ test.describe("multi-market tenant isolation", () => {
 
   test("a tenant-A provider is not resolvable from the tenant-B host", async () => {
     test.skip(!A_PROVIDER, "E2E_TENANT_A_PROVIDER not set");
-    const ctxA = await pwRequest.newContext({ baseURL: A_BASE });
-    const ctxB = await pwRequest.newContext({ baseURL: B_BASE });
+    const bypass = vercelProtectionBypassHeaders();
+    const ctxA = await pwRequest.newContext({ baseURL: A_BASE, extraHTTPHeaders: bypass });
+    const ctxB = await pwRequest.newContext({ baseURL: B_BASE, extraHTTPHeaders: bypass });
     try {
       const path = `/api/public/providers/${encodeURIComponent(A_PROVIDER!)}`;
       const resA = await ctxA.get(path);
