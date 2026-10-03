@@ -4,22 +4,22 @@
 
 **Mode:** quick
 
-**Git HEAD:** `4ced897`
+**Git HEAD:** `7d9cc6a`
 
 ## Automated checks
 
 | Area | ID | Sev | Status | Evidence |
 |------|-----|-----|--------|----------|
-| repo | git.tracked_clean | blocker | fail | M .github/workflows/finance-drift.yml;  M package.json;  M scripts/prod/audit-finance-ledger.mjs |
-| repo | git.head_origin_main | blocker | pass | HEAD 4ced897 matches origin/main. |
+| repo | git.tracked_clean | blocker | pass | No staged or modified tracked files. |
+| repo | git.head_origin_main | blocker | fail | HEAD 7d9cc6a != origin/main 4ced897 |
 | repo | repo.migrations | blocker | pass | Migration hygiene OK — canonical=974, allowedDuplicates=0, allowedGaps=11 |
 | repo | repo.audit_deps | blocker | pass | audit:deps pass. |
-| repo | repo.typecheck_lint | blocker | fail | spawnSync cmd.exe ENOBUFS • turbo 2.9.6 |
+| repo | repo.typecheck_lint | blocker | pass | web + admin-web typecheck/lint OK. |
 | repo | repo.multi_tenant | blocker | pass | audit:multi-tenant:strict pass. |
 | repo | repo.cron_schedule | blocker | pass | verify:cron-schedule pass. |
 | repo | repo.observability | blocker | pass | verify-observability-gates pass. |
-| ci | ci.main | blocker | pass | CI: success; Finance drift (latest on main branch): failure |
-| ci | ci.e2e_warning | warning | warn | E2E skipped for this SHA. |
+| ci | ci.main | blocker | fail | CI: no run on this SHA; Finance drift (latest on main branch): failure |
+| ci | ci.e2e_warning | warning | warn | No E2E run for this SHA (deploy may not have fired). |
 | ci | ci.finance_drift | warning | warn | Latest finance drift: failure (https://github.com/beautonomi-1/Beautonomi/actions/runs/37106592578) |
 | supabase | db.readiness | blocker | pass | readiness:supabase:check pass. |
 | supabase | db.compare | warning | pass | compare:supabase gaps empty. |
@@ -49,5 +49,5 @@
 
 ## Failed blockers — suggested fixes
 
-- **git.tracked_clean**: Commit or stash tracked changes before go-live.
-- **repo.typecheck_lint**: Fix typecheck/lint errors.
+- **git.head_origin_main**: Push and merge to main, then re-run from updated main.
+- **ci.main**: Wait for CI success on main or fix failing jobs.
