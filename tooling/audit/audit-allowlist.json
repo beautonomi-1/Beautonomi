@@ -1,0 +1,14 @@
+[
+  {
+    "package": "braces",
+    "reason": "No upstream fix (latest 3.0.3 still advisory); transitive dev/build via chokidar, micromatch, jest, tailwind, metro.",
+    "paths": ["chokidar", "micromatch", "jest", "tailwindcss", "fast-glob", "@swc/cli"],
+    "expires": "2026-12-03"
+  },
+  {
+    "package": "http-cache-semantics",
+    "reason": "No upstream fix (latest 4.2.0 still advisory); transitive dev via got/cacheable-request only.",
+    "paths": ["got", "cacheable-request"],
+    "expires": "2026-12-03"
+  }
+]

@@ -14,6 +14,11 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  findExpiredAllowlistEntries,
+  isPackageAllowlisted,
+  loadAllowlist,
+} from "./audit-allowlist.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "../..");
@@ -24,6 +29,16 @@ const level = (process.argv[2] || "high").toLowerCase();
 const thresholdIdx = LEVEL_ORDER.indexOf(level);
 if (thresholdIdx === -1) {
   console.error(`Unknown level "${level}". Use: ${LEVEL_ORDER.join(", ")}`);
+  process.exit(1);
+}
+
+const allowlist = loadAllowlist();
+const expiredAllowlist = findExpiredAllowlistEntries(allowlist);
+if (expiredAllowlist.length > 0) {
+  console.error(
+    "Dependency audit allowlist has expired entries (renew or remove after fixing deps):\n" +
+      expiredAllowlist.map((e) => `  - ${e.package} (expired ${e.expires})`).join("\n"),
+  );
   process.exit(1);
 }
 
@@ -104,6 +119,7 @@ if (names.length === 0) {
 }
 
 let failCount = 0;
+let allowlistedCount = 0;
 for (const pkg of names) {
   const list = advisories[pkg];
   if (!Array.isArray(list)) continue;
@@ -112,6 +128,12 @@ for (const pkg of names) {
     const idx = LEVEL_ORDER.indexOf(sev);
     if (idx === -1) continue;
     if (idx >= thresholdIdx) {
+      if (isPackageAllowlisted(allowlist, pkg)) {
+        allowlistedCount++;
+        const title = adv.title || "(no title)";
+        console.log(`ALLOWLIST  ${pkg} — ${title} (see tooling/audit/audit-allowlist.json)`);
+        continue;
+      }
       failCount++;
       const title = adv.title || "(no title)";
       const vv = adv.vulnerable_versions || "";
@@ -125,5 +147,9 @@ if (failCount > 0) {
   process.exit(1);
 }
 
-console.log(`\nNo advisories at or above "${level}" severity (${names.length} package(s) had lower-severity findings only, or findings below threshold).`);
+const suffix =
+  allowlistedCount > 0 ? ` (${allowlistedCount} allowlisted at or above threshold).` : ".";
+console.log(
+  `\nNo unallowlisted advisories at or above "${level}" severity${suffix}`,
+);
 process.exit(0);
