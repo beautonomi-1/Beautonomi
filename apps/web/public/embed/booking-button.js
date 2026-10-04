@@ -48,8 +48,8 @@
   if (mode === "iframe") params.set("embed", "1");
   if (utmSource) params.set("utm_source", utmSource);
   if (returnUrl) params.set("return_url", returnUrl);
-  var url = baseUrl + "/book/" + encodeURIComponent(provider);
-  if (params.toString()) url += "?" + params.toString();
+  params.set("slug", provider);
+  var url = baseUrl + "/booking?" + params.toString();
 
   var iframe = null;
   var allowedOrigin = "";

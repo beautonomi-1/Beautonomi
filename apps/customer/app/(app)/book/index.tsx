@@ -3425,7 +3425,7 @@ export default function BookScreen() {
                   {bf("staffRequiredWebHint")}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(`${APP_URL}/book/${slug}`)}
+                  onPress={() => Linking.openURL(`${APP_URL}/booking?slug=${encodeURIComponent(slug)}`)}
                   style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 14 }}
                   accessibilityRole="button" accessibilityLabel={t("booking.bookInBrowser")}
                 >

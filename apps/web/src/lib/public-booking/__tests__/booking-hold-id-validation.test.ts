@@ -57,10 +57,31 @@ describe("booking-flow step query sync", () => {
     );
     const start = src.indexOf("const syncStepQueryParam = useCallback(");
     expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("useEffect(", start));
+    const body = src.slice(start, src.indexOf("useLayoutEffect(", start) + 400);
     expect(body).toMatch(/if \(p\.get\("step"\) === stepParam\) return;/);
-    expect(body).toContain("window.history.replaceState");
+    expect(body).toContain("window.history.replaceState(null,");
     expect(body).not.toContain("router.replace(");
+    expect(body).toContain("bookingState.selectedDate");
+    expect(body).toContain("useLayoutEffect");
+  });
+
+  it("never passes Next's own history state to replaceState (Next would skip syncing its router URL)", () => {
+    const src = readFileSync(
+      join(repoRoot, "apps/web/src/app/booking/components/booking-flow.tsx"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/replaceState\(\s*window\.history\.state/);
+  });
+});
+
+describe("GET /api/me/membership auth", () => {
+  it("allows any signed-in user (no role allow-list 403)", () => {
+    const src = readFileSync(
+      join(repoRoot, "apps/web/src/app/api/me/membership/route.ts"),
+      "utf8",
+    );
+    expect(src).toContain("requireAuthInApi");
+    expect(src).not.toMatch(/requireRoleInApi\s*\(/);
   });
 });
 

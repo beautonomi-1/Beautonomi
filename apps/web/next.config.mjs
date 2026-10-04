@@ -346,6 +346,15 @@ const nextConfig = {
         headers: EMBEDDABLE_BOOKING_HEADERS,
       },
       {
+        source: '/booking',
+        has: [{ type: 'query', key: 'embed', value: '1' }],
+        headers: EMBEDDABLE_BOOKING_HEADERS,
+      },
+      {
+        source: '/booking/on-demand/:path*',
+        headers: EMBEDDABLE_BOOKING_HEADERS,
+      },
+      {
         source: '/checkout/success',
         headers: EMBEDDABLE_BOOKING_HEADERS,
       },

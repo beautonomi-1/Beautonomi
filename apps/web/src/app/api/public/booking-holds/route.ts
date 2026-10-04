@@ -54,7 +54,10 @@ const createHoldSchema = z.object({
   start_at: z.string().datetime("Invalid start datetime"),
   end_at: z.string().datetime("Invalid end datetime"),
   location_type: z.enum(["at_home", "at_salon"]),
-  location_id: z.guid().optional().nullable(),
+  location_id: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? null : val),
+    z.guid().optional().nullable(),
+  ),
   address: z
     .object({
       line1: z.string().min(1),
@@ -105,6 +108,20 @@ type HoldOverlapScopeArgs = {
   endAtIso: string;
   nowIso: string;
 };
+
+async function resolveDefaultSalonLocationId(
+  supabase: SupabaseClient,
+  providerId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("provider_locations")
+    .select("id, is_primary")
+    .eq("provider_id", providerId)
+    .eq("is_active", true)
+    .or("location_type.eq.at_salon,location_type.is.null")
+    .order("is_primary", { ascending: false });
+  return (data?.[0] as { id?: string } | undefined)?.id ?? null;
+}
 
 async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): Promise<void> {
   // Expire ALL past-due holds for this provider in the overlapping time range,
@@ -234,7 +251,7 @@ async function handlePost(request: NextRequest) {
           start_at,
           end_at,
           location_type,
-          location_id,
+          location_id: bodyLocationId,
           address,
           guest_fingerprint_hash,
           previous_hold_id,
@@ -272,6 +289,12 @@ async function handlePost(request: NextRequest) {
           tenantId,
         );
         if (marketGuard) return marketGuard;
+
+        const location_id =
+          bodyLocationId ||
+          (location_type === "at_salon"
+            ? await resolveDefaultSalonLocationId(supabase, provider_id)
+            : null);
 
         const nowIso = new Date().toISOString();
 

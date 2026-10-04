@@ -11,6 +11,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatInTimeZone } from "date-fns-tz";
 import { SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
 import { loadAvailabilityConstraints } from "./load-constraints";
@@ -146,6 +147,13 @@ export async function computePublicSlugAvailabilitySlots(args: {
     date,
   };
 
+  let constraintsClient: SupabaseClient | undefined;
+  try {
+    constraintsClient = getSupabaseAdmin();
+  } catch {
+    constraintsClient = undefined;
+  }
+
   const runForStaff = async (staffColumnId: string, staffIdsForTimeOff: string[]) => {
     const constraints = await loadAvailabilityConstraints(
       supabase,
@@ -153,6 +161,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
       date,
       providerId,
       {
+        constraintsClient,
         excludeHoldId,
         excludeBookingId,
         excludeGroupBookingId,

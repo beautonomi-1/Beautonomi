@@ -18206,6 +18206,7 @@
         "addons": "Add-ons",
         "products": "Products",
         "travelFee": "Travel Fee",
+        "packageDiscount": "Package discount",
         "coupon": "Coupon",
         "giftCardTender": "Gift card tender",
         "appliesAtPayment": "Applies at payment",
@@ -18526,6 +18527,10 @@
         "holdInFlight": "This booking is already being processed. Please wait a moment, then try again.",
         "slotNoLongerAvailable": "This slot is no longer available. Please choose another time.",
         "slotJustTaken": "That time slot was just taken. Please choose another time.",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time",
+        "backToCalendar": "Choose another time",
         "createBookingFailed": "Failed to create booking. Please try again.",
         "cashConfirmedHome": "Booking confirmed! You'll pay when your provider arrives.",
         "cashConfirmedSalon": "Booking confirmed! You'll pay at the salon.",
@@ -18785,7 +18790,19 @@
         "selectedProducts": "Selected Products",
         "qtyLine": "{{name}} × {{quantity}}"
       },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
+      },
       "resources": {
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment.",
         "loading": "Loading resources...",
         "selectRequired": "Select required resources",
         "selectOptional": "Select resources (optional)",

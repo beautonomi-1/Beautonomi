@@ -23,6 +23,8 @@ import {
   availabilityRouteDurationMinutes,
   slicesFromBookingCart,
 } from "@/lib/booking-slot-math/blocked-window-minutes";
+import { findNextAvailableDate, type AvailabilitySlot } from "@/lib/booking/find-next-available-date";
+import { Button } from "@/components/ui/button";
 
 const STRIP_DAYS = 21;
 
@@ -103,9 +105,9 @@ interface StepCalendarProps {
   updateBookingState: (updates: Partial<BookingState>) => void;
   onNext: () => void;
   providerSlug: string;
+  maxAdvanceDays?: number;
+  allowOnlineWaitlist?: boolean;
 }
-
-const PUBLIC_BOOKING_MAX_ADVANCE_DAYS = 365;
 
 interface TimeSlot {
   time: string;
@@ -163,10 +165,13 @@ export default function StepCalendar({
   updateBookingState,
   onNext: _onNext,
   providerSlug,
+  maxAdvanceDays: maxAdvanceDaysProp = 365,
+  allowOnlineWaitlist = true,
 }: StepCalendarProps) {
   const searchParams = useSearchParams();
   const excludeHoldId = searchParams.get("hold_id")?.trim() || undefined;
-  const maxAdvanceDays = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
+  const maxAdvanceDays = maxAdvanceDaysProp;
+  const [findingNext, setFindingNext] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(() =>
     coerceSelectedDate(bookingState.selectedDate)
@@ -386,6 +391,80 @@ export default function StepCalendar({
     }
   }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, maxAdvanceDays, bookingState.providerTimezone, t]);
 
+  const calendarStaffId = useMemo(() => {
+    const ids = [
+      ...new Set(
+        bookingState.selectedServices
+          .map((s) => s.staffId)
+          .filter((id): id is string => !!id && id !== "any"),
+      ),
+    ];
+    if (ids.length <= 1) return ids[0] ?? "any";
+    return ids[0];
+  }, [bookingState.selectedServices]);
+
+  const handleNextAvailable = useCallback(async () => {
+    const serviceId = bookingState.selectedServices[0]?.id;
+    if (!serviceId || !providerSlug) return;
+
+    const today = startOfLocalDay(new Date());
+    const fromDay = selectedDay ?? today;
+    const startDayOffset =
+      fromDay.getTime() <= today.getTime()
+        ? 0
+        : Math.min(
+            maxAdvanceDays - 1,
+            Math.floor((startOfLocalDay(fromDay).getTime() - today.getTime()) / 86400000),
+          );
+
+    setFindingNext(true);
+    try {
+      const result = await findNextAvailableDate({
+        providerSlug,
+        providerTimezone: bookingState.providerTimezone ?? null,
+        serviceId,
+        staffId: calendarStaffId,
+        durationMinutes: totalDuration,
+        bufferMinutes: travelBuffer,
+        locationId: bookingState.selectedLocationId ?? null,
+        maxAdvanceDays,
+        startDayOffset,
+        fetchAvailability: async (url) => {
+          const response = await fetcher.get<{ data: { slots?: AvailabilitySlot[] } }>(url, {
+            staleTimeMs: 0,
+          });
+          return { slots: response.data?.slots ?? [] };
+        },
+      });
+      if (!result) {
+        toast.error(t("web.book.flow.noSlotsTwoWeeks"));
+        return;
+      }
+      setSelectedDate(result.date);
+      updateBookingState({
+        selectedDate: result.date,
+        selectedTimeSlot: null,
+        selectedSlotStart: null,
+        selectedSlotEnd: null,
+        selectedSlotAvailableStaffIds: null,
+      });
+    } finally {
+      setFindingNext(false);
+    }
+  }, [
+    bookingState.selectedServices,
+    bookingState.providerTimezone,
+    bookingState.selectedLocationId,
+    calendarStaffId,
+    maxAdvanceDays,
+    providerSlug,
+    selectedDay,
+    totalDuration,
+    travelBuffer,
+    t,
+    updateBookingState,
+  ]);
+
   useEffect(() => {
     if (selectedDate) loadAvailability();
   }, [selectedDate, loadAvailability, bookingState.availabilityRefreshToken]);
@@ -572,6 +651,8 @@ export default function StepCalendar({
             return (
               <motion.button
                 key={date.toISOString()}
+                type="button"
+                data-testid="calendar-day"
                 data-selected-date={isSelected ? "true" : undefined}
                 onClick={() => !disabled && handleDateSelect(date)}
                 disabled={disabled}
@@ -808,6 +889,8 @@ export default function StepCalendar({
                           return (
                             <motion.button
                               key={slot.time}
+                              type="button"
+                              data-testid={isUnavailable ? undefined : "time-slot"}
                               onClick={() => !isUnavailable && handleTimeSelect(slot.time)}
                               disabled={isUnavailable}
                               whileTap={!isUnavailable ? { scale: 0.92 } : undefined}
@@ -853,7 +936,19 @@ export default function StepCalendar({
                 <p className="text-sm text-gray-400 mt-1 max-w-[200px]">
                   {t("web.booking.stepCalendar.noSlotsHint")}
                 </p>
-                {bookingState.providerId && bookingState.selectedServices.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2 w-full max-w-xs">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={findingNext || bookingState.selectedServices.length === 0}
+                    onClick={() => void handleNextAvailable()}
+                  >
+                    {findingNext ? t("common.loading") : t("web.book.engine.nextAvailableSlot")}
+                  </Button>
+                </div>
+                {allowOnlineWaitlist &&
+                  bookingState.providerId &&
+                  bookingState.selectedServices.length > 0 && (
                   <div className="mt-5">
                     <AddToWaitlistButton
                       providerId={bookingState.providerId}

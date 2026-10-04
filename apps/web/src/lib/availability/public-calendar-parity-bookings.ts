@@ -5,8 +5,19 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { BookingService } from "./types";
 import { combineDateAndTime } from "./time-utils";
+
+/** Prefer service-role: RLS on `availability_blocks` calls `is_provider_staff()`, which anon cannot EXECUTE. */
+function privilegedCalendarClient(passed: SupabaseClient): SupabaseClient {
+  if (process.env.VITEST) return passed;
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    return passed;
+  }
+}
 
 const SYNTHETIC_OFFERING = "00000000-0000-0000-0000-000000000000";
 
@@ -68,7 +79,7 @@ function blockAppliesToLocation(
  * blocks the same windows as the legacy public slug loop.
  */
 export async function loadPublicCalendarParityBookings(
-  db: SupabaseClient,
+  _db: SupabaseClient,
   admin: SupabaseClient,
   args: {
     providerId: string;
@@ -82,11 +93,13 @@ export async function loadPublicCalendarParityBookings(
 ): Promise<BookingService[]> {
   const { providerId, date, locationId, slotStaffId, staffIdsForTimeOff, providerTimeZone } = args;
   const out: BookingService[] = [];
+  const client = privilegedCalendarClient(admin);
 
   const startOfDayIso = isoAtLocalDateMinutes(date, 0, providerTimeZone);
   const endOfDayIso = isoAtLocalDateMinutes(addDays(date, 1), 0, providerTimeZone);
 
-  const { data: blocks, error: blocksError } = await db
+  // RLS on availability_blocks only admits the provider owner, so anon/customer clients see nothing.
+  const { data: blocks, error: blocksError } = await client
     .from("availability_blocks")
     .select("id, start_at, end_at, staff_id, location_id")
     .eq("provider_id", providerId)
@@ -114,7 +127,7 @@ export async function loadPublicCalendarParityBookings(
     return out;
   }
 
-  const { data: timeOffRows, error: timeOffError } = await admin
+  const { data: timeOffRows, error: timeOffError } = await client
     .from("staff_time_off")
     .select("staff_id, status")
     .eq("provider_id", providerId)
@@ -141,7 +154,7 @@ export async function loadPublicCalendarParityBookings(
     }
   }
 
-  const { data: daysOffRows, error: daysOffError } = await admin
+  const { data: daysOffRows, error: daysOffError } = await client
     .from("staff_days_off")
     .select("staff_id, is_approved")
     .eq("provider_id", providerId)

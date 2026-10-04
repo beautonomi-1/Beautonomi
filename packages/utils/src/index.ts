@@ -206,6 +206,7 @@ export {
   type RebookContext,
   type RebookServiceLine,
 } from "./booking/rebook-from-booking";
+export { buildWebBookingHref } from "./booking/web-booking-href";
 export {
   BOOKING_EMBED_DEFAULT_HEIGHT,
   BOOKING_EMBED_MAX_HEIGHT,

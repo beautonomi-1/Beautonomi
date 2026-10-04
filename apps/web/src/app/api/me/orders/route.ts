@@ -678,6 +678,12 @@ export async function POST(request: NextRequest) {
           source: "wallet_checkout",
           provider: settledByWallet ? "wallet" : "gift_card",
         });
+        if (paymentRecordResult.ledgerIncomplete) {
+          console.error("[me/orders] Wallet checkout paid but finance ledger incomplete", {
+            productOrderId: order.id,
+            orderNumber: orderNum,
+          });
+        }
         paymentSettled = true;
       }
 

@@ -27,9 +27,9 @@ export async function notifyWaitlistMatch(
     .eq('id', entry.id);
 
   // Create notification record
-  const bookingUrl = providerSlug 
-    ? `/booking?slug=${providerSlug}&serviceId=${entry.service_id || ''}`
-    : `/booking`;
+  const bookingUrl = providerSlug
+    ? `/booking?slug=${encodeURIComponent(providerSlug)}${entry.service_id ? `&service=${encodeURIComponent(String(entry.service_id))}` : ""}`
+    : `/account-settings/bookings`;
 
   // Format available slots for display
   const safeSlots = Array.isArray(availableSlots) ? availableSlots : [];

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { NextRequest } from "next/server";
 import {
   APP_REVIEW_CUSTOMER_DEMO_EMAIL,
@@ -25,6 +25,12 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 describe("POST /api/auth/app-review/verify-otp", () => {
+  let POST: (req: NextRequest) => Promise<Response>;
+
+  beforeAll(async () => {
+    ({ POST } = await import("../route"));
+  }, 120_000);
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockCheckSignInRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 60 });
@@ -50,7 +56,6 @@ describe("POST /api/auth/app-review/verify-otp", () => {
   });
 
   async function post(body: Record<string, string>) {
-    const { POST } = await import("../route");
     const req = new NextRequest("https://app.example.com/api/auth/app-review/verify-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

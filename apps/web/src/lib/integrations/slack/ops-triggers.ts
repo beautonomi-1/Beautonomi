@@ -281,6 +281,37 @@ export function slackNotifyCustomOfferFinalizeFailed(params: {
  * verify ran). The customer's card was charged; the order will not show as
  * paid until ops manually reconciles (refund or force-settle).
  */
+/** Order marked paid (or payment tx recorded) but finance_transactions legs are missing. */
+export function slackNotifyProductOrderLedgerIncomplete(params: {
+  tenantId?: string | null;
+  productOrderId: string;
+  reference?: string | null;
+  source?: string | null;
+  provider?: string | null;
+  reason?: "payment_tx" | "finance_insert" | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? null,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.PRODUCT_ORDER_LEDGER_INCOMPLETE,
+    dedupeKey: `product_order:${params.productOrderId}:ledger_incomplete:${params.reference ?? "unknown"}`,
+    entityType: "product_order",
+    entityId: params.productOrderId,
+    title: "Product order paid but finance ledger incomplete",
+    detailLines: [
+      `Order: ${params.productOrderId.slice(0, 8)}…`,
+      params.reference ? `Payment ref: ${params.reference}` : null,
+      params.provider ? `Provider: ${params.provider}` : null,
+      params.source ? `Source: ${params.source}` : null,
+      params.reason ? `Failed at: ${params.reason}` : null,
+      "Action: reconcile cron should repair; verify in Admin → Product orders / finance ledger.",
+    ].filter(Boolean) as string[],
+    actionUrl: `/product-orders/${params.productOrderId}`,
+  }).catch((err) => {
+    console.error("[slack] product_order ledger_incomplete notify error", err);
+  });
+}
+
 export function slackNotifyProductOrderPaymentNotRecorded(params: {
   tenantId?: string | null;
   productOrderId: string;

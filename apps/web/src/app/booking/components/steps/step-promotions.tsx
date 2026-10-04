@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Ticket, Gift, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,8 @@ export default function StepPromotions({
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const deepLinkPromoRan = useRef(false);
   const [couponCode, setCouponCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
   type SavedGc = { id: string; code: string; balance: number; currency: string; is_active?: boolean; expires_at?: string | null };
@@ -213,6 +216,13 @@ export default function StepPromotions({
     }
   };
 
+  useEffect(() => {
+    const promo = bookingState.promotions.couponCode?.trim();
+    const gift = bookingState.promotions.giftCardCode?.trim();
+    if (promo) setCouponCode(promo);
+    if (gift) setGiftCardCode(gift);
+  }, [bookingState.promotions.couponCode, bookingState.promotions.giftCardCode]);
+
   const handleGiftCardApply = async (codeOverride?: string) => {
     const raw = (codeOverride ?? giftCardCode).trim();
     if (!raw) return;
@@ -251,6 +261,48 @@ export default function StepPromotions({
       setIsValidating(false);
     }
   };
+
+  useEffect(() => {
+    if (deepLinkPromoRan.current) return;
+    if (cartTotal <= 0) return;
+    const urlPromo = searchParams.get("promo")?.trim();
+    const urlGift = searchParams.get("gift_card")?.trim();
+    if (!urlPromo && !urlGift) return;
+    deepLinkPromoRan.current = true;
+    if (urlPromo && !bookingState.promotions.couponDiscount) {
+      setCouponCode(urlPromo);
+      void (async () => {
+        setIsValidating(true);
+        try {
+          const response = await fetcher.post<{
+            data: { valid: boolean; discount: number; message?: string };
+          }>("/api/promotions/validate", {
+            code: urlPromo,
+            cartTotal,
+            clientId: user?.id,
+            type: "coupon",
+          });
+          if (response.data.valid) {
+            updateBookingState({
+              promotions: {
+                ...bookingState.promotions,
+                couponCode: urlPromo,
+                couponDiscount: response.data.discount,
+              },
+            });
+          }
+        } catch {
+          // Deep-link promo is best-effort; user can re-enter on this step.
+        } finally {
+          setIsValidating(false);
+        }
+      })();
+    }
+    if (urlGift && !bookingState.promotions.giftCardAmount) {
+      void handleGiftCardApply(urlGift);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartTotal, searchParams, user?.id]);
 
   const handleLoyaltyApply = async () => {
     if (loyaltyPoints <= 0) return;

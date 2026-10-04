@@ -469,22 +469,21 @@ export default function BookingFlow() {
   );
   useEffect(() => {
     if (searchParams.get("reset") !== "1") return;
+    const u = new URLSearchParams(window.location.search);
+    // `searchParams` can lag the live URL; only reset once per actual ?reset=1.
+    if (u.get("reset") !== "1") return;
     // First paint: `useLayoutEffect` already applied fresh state from ?reset=1.
     if (!initialResetFromUrlRef.current) {
       applyFreshBookingStart();
     }
     initialResetFromUrlRef.current = false;
 
-    const u = new URLSearchParams(window.location.search);
     u.delete("reset");
     const q = u.toString();
-    const target = q ? `${pathname}?${q}` : pathname;
-    // Defer until App Router is ready (avoids "Router action dispatched before initialization").
-    const id = window.setTimeout(() => {
-      router.replace(target, { scroll: false });
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [pathname, router, searchParams, applyFreshBookingStart]);
+    // Shallow + synchronous so the step-sync effect cannot be overwritten by a deferred navigation.
+    // State must be `null`: passing Next's own history state makes it skip syncing its router URL.
+    window.history.replaceState(null, "", q ? `${pathname}?${q}` : pathname);
+  }, [pathname, searchParams, applyFreshBookingStart]);
 
   const handleStartOver = useCallback(() => {
     if (
@@ -663,8 +662,9 @@ export default function BookingFlow() {
   const [membershipPlanId, setMembershipPlanId] = useState<string | null>(null);
   const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
 
+  const membershipUserId = user?.id ?? null;
   useEffect(() => {
-    if (!bookingState.providerId) {
+    if (!bookingState.providerId || !membershipUserId) {
       setMembershipDiscountPercent(0);
       setMembershipPlanId(null);
       setMembershipPlanName(null);
@@ -704,7 +704,8 @@ export default function BookingFlow() {
     return () => {
       cancelled = true;
     };
-  }, [bookingState.providerId]);
+    // Re-runs when a guest signs in at the slot gate so the member discount reaches checkout.
+  }, [bookingState.providerId, membershipUserId]);
 
   // Calculate membership discount, tax, and Platform Fee whenever relevant values change
   useEffect(() => {
@@ -1163,14 +1164,21 @@ export default function BookingFlow() {
       p.set("step", stepParam);
       const q = p.toString();
       // Shallow update: `router.replace` would refetch the RSC payload on every step change.
-      window.history.replaceState(window.history.state, "", q ? `${pathname}?${q}` : pathname);
+      // Next.js may rewrite the address bar on later client state updates — callers re-apply this.
+      window.history.replaceState(null, "", q ? `${pathname}?${q}` : pathname);
     },
     [pathname],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncStepQueryParam(currentStep);
-  }, [currentStep, syncStepQueryParam]);
+  }, [
+    currentStep,
+    bookingState.selectedDate,
+    bookingState.selectedTimeSlot,
+    bookingState.holdId,
+    syncStepQueryParam,
+  ]);
 
   useEffect(() => {
     if (!isReady || !bookingState.providerId || bookingStartTrackedRef.current) return;
@@ -2024,7 +2032,9 @@ export default function BookingFlow() {
           open={gateOpen}
           onClose={() => setGateOpen(false)}
           redirectUrl={(() => {
-            const p = new URLSearchParams(searchParams.toString());
+            const p = new URLSearchParams(
+              typeof window !== "undefined" ? window.location.search : searchParams.toString(),
+            );
             p.delete("auth_return");
             if (!p.get("step")) p.set("step", "yourInfo");
             const q = p.toString();

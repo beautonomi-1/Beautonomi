@@ -53,14 +53,16 @@ export function clampBookingEmbedHeight(height: number | undefined): number {
 }
 
 export function buildBookingEmbedUrl(origin: string, slug: string, extra?: Record<string, string>): string {
-  const base = `${normalizePublicOrigin(origin)}/book/${encodeURIComponent(slug)}`;
-  const params = new URLSearchParams({ [BOOKING_EMBED_QUERY_KEY]: BOOKING_EMBED_QUERY_VALUE });
+  const params = new URLSearchParams({
+    slug,
+    [BOOKING_EMBED_QUERY_KEY]: BOOKING_EMBED_QUERY_VALUE,
+  });
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
       if (value) params.set(key, value);
     }
   }
-  return `${base}?${params.toString()}`;
+  return `${normalizePublicOrigin(origin)}/booking?${params.toString()}`;
 }
 
 /** Express short-link path: `/book/l/{code}?embed=1` */
@@ -101,9 +103,9 @@ export function buildExpressBookingIframeSnippet(input: {
 }
 
 export function buildBookContinuePath(holdId: string, embed: boolean): string {
-  const params = new URLSearchParams({ hold_id: holdId });
+  const params = new URLSearchParams({ hold_id: holdId, step: "pay" });
   if (embed) params.set(BOOKING_EMBED_QUERY_KEY, BOOKING_EMBED_QUERY_VALUE);
-  return `/book/continue?${params.toString()}`;
+  return `/booking?${params.toString()}`;
 }
 
 export function appendBookingEmbedQuery(pathWithQuery: string, embed: boolean): string {

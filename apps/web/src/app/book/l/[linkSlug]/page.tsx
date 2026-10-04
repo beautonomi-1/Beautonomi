@@ -9,9 +9,8 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { ExpressPrefill } from "@/lib/express-booking/prefill";
-import { productCartToQueryParam } from "@/lib/express-booking/prefill";
+import { buildExpressLinkBookingSearchParams } from "@/lib/express-booking/build-express-link-booking-query";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
-import { useAuth } from "@/providers/AuthProvider";
 import { isBookingEmbedEnabled } from "@beautonomi/utils";
 
 interface ExpressLinkResponse {
@@ -116,7 +115,6 @@ export default function ExpressBookLinkPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoading: authLoading } = useAuth();
   const linkSlug = params?.linkSlug as string;
   const embed = isBookingEmbedEnabled(searchParams);
   const [error, setError] = useState<string | null>(null);
@@ -145,9 +143,6 @@ export default function ExpressBookLinkPage() {
 
   useEffect(() => {
     if (!linkSlug) return;
-    // Wait for auth to resolve so we can pick the right destination
-    // (logged-in customer → `/booking?slug=…`, guest/embed → `/book/[slug]?…`).
-    if (authLoading) return;
     const resolve = async () => {
       try {
         const res = await fetcher.get<{ data: ExpressLinkResponse }>(
@@ -161,63 +156,12 @@ export default function ExpressBookLinkPage() {
 
         if (data.provider_name) setProviderName(data.provider_name);
 
-        const isEmbed = searchParams?.get("embed") === "1";
-
-        const q = new URLSearchParams();
-        if (data.service_ids?.length) {
-          if (data.service_ids.length === 1) {
-            q.set("service", data.service_ids[0]);
-          } else {
-            q.set("services", data.service_ids.join(","));
-          }
-        }
-        if (data.staff_ids?.[0]) q.set("staff", data.staff_ids[0]);
-        if (data.location_type === "at_home") {
-          q.set("location_type", "at_home");
-        } else if (data.location_type === "at_salon" || data.location_id) {
-          q.set("location_type", "at_salon");
-          if (data.location_id) q.set("location", data.location_id);
-        }
-        if (isEmbed) q.set("embed", "1");
-        const refParam = searchParams?.get("ref")?.trim();
-        if (refParam) q.set("ref", refParam);
-
-        const pf = data.prefill;
-        if (pf?.addon_ids?.length) q.set("addons", pf.addon_ids.join(","));
-        if (pf?.promotion_code?.trim()) q.set("promo", pf.promotion_code.trim());
-        if (pf?.gift_card_code?.trim()) q.set("gift_card", pf.gift_card_code.trim());
-        if (pf?.product_cart?.length) q.set("products", productCartToQueryParam(pf.product_cart));
-
-        // The legacy `/booking` flow only honors a single pre-selected `service`;
-        // it ignores staff, venue/location, multi-service, promo, gift card,
-        // addons and product cart. If a custom link carries any of that "rich"
-        // prefill we must keep the user on the express `/book/[slug]` surface
-        // (which honors all of it) — otherwise their selections silently vanish.
-        const hasRichPrefill =
-          q.has("staff") ||
-          q.has("services") ||
-          q.has("location") ||
-          q.get("location_type") === "at_home" ||
-          q.has("addons") ||
-          q.has("promo") ||
-          q.has("gift_card") ||
-          q.has("products");
-
-        // Logged-in customers (non-embed) with only a simple link get the richer
-        // `/booking` flow: auto-hydrated profile, saved addresses, saved cards,
-        // loyalty + saved gift cards, recurring subscribe. Guests, embeds, and
-        // logged-in users with rich prefill stay on express for deep-link parity.
-        if (user && !isEmbed && !hasRichPrefill) {
-          q.set("slug", data.provider_slug);
-          const query = q.toString();
-          router.replace(`/booking${query ? `?${query}` : ""}`);
-        } else {
-          // Signed-in users need `express=1` so the server doesn't bounce them
-          // back to /booking and drop the rich prefill.
-          if (user && !isEmbed) q.set("express", "1");
-          const query = q.toString();
-          router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
-        }
+        const q = buildExpressLinkBookingSearchParams(data, {
+          embed: searchParams?.get("embed") === "1",
+          ref: searchParams?.get("ref"),
+        });
+        const query = q.toString();
+        router.replace(`/booking${query ? `?${query}` : ""}`);
       } catch (err) {
         const message =
           err instanceof FetchError
@@ -227,7 +171,7 @@ export default function ExpressBookLinkPage() {
       }
     };
     resolve();
-  }, [linkSlug, router, searchParams, user, authLoading]);
+  }, [linkSlug, router, searchParams, t]);
 
   const showBanner = platform !== "other" && !bannerDismissed;
 

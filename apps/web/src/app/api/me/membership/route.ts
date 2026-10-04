@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAuthInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -21,10 +21,9 @@ function isNotExpired(expiresAt: string | null | undefined): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["customer", "provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    // Any signed-in user may read their own memberships. A role allow-list
+    // 403'd admin / onboarding / support accounts mid-booking (checkout preview).
+    const { user } = await requireAuthInApi(request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);

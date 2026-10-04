@@ -26,13 +26,10 @@ describe("booking iframe framing policy", () => {
     expect(bookEmbed).toBeGreaterThan(catchAll);
   });
 
-  it("keeps embed=1 when joining waitlist from the express schedule step", () => {
-    const stepSchedule = readFileSync(
-      join(__dirname, "../../../app/book/components/booking-engine/StepSchedule.tsx"),
-      "utf8",
-    );
-    expect(stepSchedule).toContain("appendBookingEmbedQuery");
-    expect(stepSchedule).toContain("/checkout/success?waitlist=1");
+  it("allows framing /booking when embed=1 query is present", () => {
+    expect(nextConfig).toContain("source: '/booking'");
+    expect(nextConfig).toContain("key: 'embed'");
+    expect(nextConfig).toContain("value: '1'");
   });
 
   it("ships an iframe-mode host script that origin-checks postMessage", () => {
@@ -68,12 +65,18 @@ describe("booking iframe framing policy", () => {
     expect(proxy).toContain("pathname === '/checkout/cancelled'");
   });
 
-  it("keeps embed=1 on continue login next when the hold id is missing", () => {
+  it("redirects legacy /book/continue to /booking pay step", () => {
     const continuePage = readFileSync(
       join(__dirname, "../../../app/book/continue/page.tsx"),
       "utf8",
     );
-    expect(continuePage).toContain('appendBookingEmbedQuery("/book/continue", embed)');
+    expect(continuePage).toContain("bookContinueRedirectPath");
+    expect(continuePage).toContain("getPublicHoldRedirectInfo");
+    const redirects = readFileSync(
+      join(__dirname, "../legacy-book-redirects.ts"),
+      "utf8",
+    );
+    expect(redirects).toContain('target.set("step", "pay")');
   });
 
   it("breaks the success app deep link out of the iframe and hides custom-link download chrome", () => {

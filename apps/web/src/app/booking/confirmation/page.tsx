@@ -116,6 +116,7 @@ interface BookingDetails {
 }
 
 export default function BookingConfirmationPage() {
+  // Legacy path — unified success lives on /checkout/success.
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -135,6 +136,14 @@ export default function BookingConfirmationPage() {
   useEffect(() => {
     clearBookingFlowStorage();
   }, []);
+
+  useEffect(() => {
+    if (bookingId) {
+      router.replace(
+        `/checkout/success?booking_id=${encodeURIComponent(bookingId)}`,
+      );
+    }
+  }, [bookingId, router]);
 
   useEffect(() => {
     if (!bookingId) {

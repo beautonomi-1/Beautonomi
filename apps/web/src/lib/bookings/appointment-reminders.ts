@@ -282,7 +282,7 @@ export async function sendRebookReminders() {
       const serviceTitle = (off.title as string) || "Service";
       const bookingUrlPath = providerSlug
         ? `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(off.id)}`
-        : `/booking`;
+        : `/account-settings/bookings`;
 
       const { insertNotification: insertRebookNotification } = await import("@/lib/notifications/insert-notification");
       await insertRebookNotification({

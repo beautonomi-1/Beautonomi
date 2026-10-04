@@ -5,6 +5,7 @@ import {
   getCachedDefaultPhoneDial,
   inferIsoFromNavigatorLocale,
   inferIsoFromTimeZone,
+  pickDefaultPhoneIso,
   resolveDialFromIso,
   setCachedDefaultPhoneDial,
 } from "@/lib/user-default-phone-dial";
@@ -38,7 +39,10 @@ export function useDefaultPhoneDialCode(overrideDial?: string): string {
         const res = await fetch("/api/public/geo-country", { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
         const body = await res.json();
-        const iso = body?.data?.countryCode as string | null | undefined;
+        const iso = pickDefaultPhoneIso({
+          visitorCountryCode: body?.data?.countryCode as string | null | undefined,
+          tenantCountryCode: body?.data?.tenantCountryCode as string | null | undefined,
+        });
         const dial = resolveDialFromIso(iso || undefined);
         if (!cancelled && dial) {
           setResolved(dial);

@@ -1232,7 +1232,7 @@ export async function loadAvailabilityConstraints(
   if (options?.publicCalendarParity && resolvedProviderId) {
     const pc = options.publicCalendarParity;
     try {
-      parityBookings = await loadPublicCalendarParityBookings(supabase, db, {
+      parityBookings = await loadPublicCalendarParityBookings(db, db, {
         providerId: pc.providerId,
         date: pc.date,
         locationId: pc.locationId,

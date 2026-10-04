@@ -80,6 +80,23 @@ export function inferIsoFromTimeZone(): string | undefined {
   return undefined;
 }
 
+/**
+ * Marketplace phone default: tenant market wins over visitor geo/locale.
+ * A US browser on the ZA tenant should still open +27; the user can change it.
+ */
+export function pickDefaultPhoneIso(opts: {
+  visitorCountryCode?: string | null;
+  tenantCountryCode?: string | null;
+}): string | undefined {
+  const tenant = opts.tenantCountryCode?.trim().toUpperCase();
+  if (tenant && /^[A-Z]{2}$/.test(tenant) && tenant !== "XX") return tenant;
+  const visitor = opts.visitorCountryCode?.trim().toUpperCase();
+  if (visitor && /^[A-Z]{2}$/.test(visitor) && visitor !== "XX" && visitor !== "T1") {
+    return visitor;
+  }
+  return undefined;
+}
+
 export function resolveDialFromIso(iso: string | null | undefined): string | undefined {
   if (!iso) return undefined;
   return dialCodeForIso3166Alpha2(iso);

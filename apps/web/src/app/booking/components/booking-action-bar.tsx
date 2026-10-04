@@ -1,13 +1,16 @@
 "use client";
 
-import { forwardRef, useMemo } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { BookingState, BookingStep } from "./booking-flow";
 import { formatCurrency } from "@/lib/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingTotals } from "@/lib/booking/compute-booking-totals";
 import { useTranslation } from "@beautonomi/i18n";
+import { getHoldTimeRemaining } from "@beautonomi/utils";
+import { Clock } from "lucide-react";
 
 interface BookingActionBarProps {
   bookingState: BookingState;
@@ -28,60 +31,50 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const totals = useMemo(() => {
-    // For group bookings, calculate from participants
-    const servicesTotal = bookingState.isGroupBooking && bookingState.groupParticipants
-      ? bookingState.groupParticipants.reduce((total, participant) => {
-          const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-            const service = bookingState.selectedServices.find(s => s.id === serviceId);
-            return sum + (service?.price || 0);
-          }, 0);
-          return total + participantTotal;
-        }, 0)
-      : bookingState.selectedServices.reduce(
-          (sum, service) => sum + service.price,
-          0
-        );
-    const addonsTotal = bookingState.selectedAddons.reduce(
-      (sum, addon) => sum + addon.price,
-      0
-    );
-    const productsTotal = bookingState.selectedProducts.reduce(
-      (sum, product) => sum + (product.price * product.quantity),
-      0
-    );
-    const travelFee = bookingState.address?.travelFee || 0;
-    const subtotal = servicesTotal + addonsTotal + productsTotal + travelFee;
-    
-    const discounts =
-      (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.loyaltyDiscount || 0) +
-      (bookingState.promotions.membershipDiscount || 0);
-    
-    const subtotalAfterDiscounts = Math.max(0, subtotal - discounts);
-    const taxAmount = bookingState.taxAmount || 0;
-    const serviceFeeAmount = bookingState.serviceFeeAmount || 0;
-    const serviceFeePercentage = bookingState.serviceFeePercentage || 0;
-    const tipAmount = bookingState.tipAmount || 0;
-    const total = subtotalAfterDiscounts + taxAmount + serviceFeeAmount + tipAmount;
-    const currency = bookingState.selectedServices[0]?.currency || tenantCurrency;
-    
-    return {
-      servicesTotal,
-      addonsTotal,
-      productsTotal,
-      travelFee,
-      subtotal,
-      discounts,
-      subtotalAfterDiscounts,
+    const computed = computeBookingTotals({
+      selectedServices: bookingState.selectedServices,
+      selectedAddons: bookingState.selectedAddons,
+      selectedProducts: bookingState.selectedProducts,
+      travelFee: bookingState.address?.travelFee || 0,
+      isGroupBooking: bookingState.isGroupBooking,
+      groupParticipants: bookingState.groupParticipants,
+      selectedPackage: bookingState.selectedPackage ?? null,
+      couponDiscount: bookingState.promotions.couponDiscount || 0,
+      membershipDiscount: bookingState.promotions.membershipDiscount || 0,
+      loyaltyDiscount: bookingState.promotions.loyaltyDiscount || 0,
       taxAmount: bookingState.taxAmount || 0,
-      taxRate: bookingState.taxRate || 0,
-      serviceFeeAmount,
-      serviceFeePercentage,
+      serviceFeeAmount: bookingState.serviceFeeAmount || 0,
       tipAmount: bookingState.tipAmount || 0,
-      total,
-      currency,
+      defaultCurrency: tenantCurrency,
+    });
+    return {
+      ...computed,
+      subtotal:
+        computed.servicesTotal +
+        computed.addonsTotal +
+        computed.productsTotal +
+        computed.travelFee,
+      taxRate: bookingState.taxRate || 0,
+      serviceFeePercentage: bookingState.serviceFeePercentage || 0,
     };
   }, [bookingState, tenantCurrency]);
+
+  const holdExpiresAt = bookingState.holdExpiresAt ?? null;
+  const [holdTick, setHoldTick] = useState(() =>
+    holdExpiresAt ? getHoldTimeRemaining(holdExpiresAt, 0) : null,
+  );
+
+  useEffect(() => {
+    if (!holdExpiresAt) {
+      setHoldTick(null);
+      return;
+    }
+    setHoldTick(getHoldTimeRemaining(holdExpiresAt, 0));
+    const id = setInterval(() => {
+      setHoldTick(getHoldTimeRemaining(holdExpiresAt, 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [holdExpiresAt]);
 
   if (currentStep === "payment") {
     return null; // Payment step handles its own action bar
@@ -96,6 +89,21 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
       style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="px-4 py-3 max-w-[100vw]">
+        {bookingState.holdId && holdTick && !holdTick.expired && (
+          <div
+            role="status"
+            className="mb-3 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900"
+          >
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>
+              {t("web.booking.stepPayment.slotHeldBefore")}
+              <span className="tabular-nums">
+                {holdTick.minutes}:{String(holdTick.seconds).padStart(2, "0")}
+              </span>
+              {t("web.booking.stepPayment.slotHeldAfter")}
+            </span>
+          </div>
+        )}
         {/* Totals Summary */}
         <div className="mb-3 space-y-1 text-sm">
           <div className="flex justify-between text-gray-600">
@@ -118,6 +126,12 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
             <div className="flex justify-between text-gray-600">
               <span>{t("web.booking.actionBar.travelFee")}</span>
               <span>{formatCurrency(totals.travelFee, totals.currency)}</span>
+            </div>
+          )}
+          {totals.packageDiscount > 0 && (
+            <div className="flex justify-between text-sm text-green-600">
+              <span>{t("web.booking.actionBar.packageDiscount")}</span>
+              <span>-{formatCurrency(totals.packageDiscount, totals.currency)}</span>
             </div>
           )}
           {bookingState.promotions.couponDiscount > 0 && (
@@ -178,6 +192,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
         <Button
           onClick={onNext}
           disabled={!canProceed}
+          data-testid="booking-continue"
           className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed touch-target"
           aria-label={t("web.booking.actionBar.continueAriaLabel")}
         >

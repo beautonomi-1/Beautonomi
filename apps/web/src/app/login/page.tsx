@@ -141,6 +141,14 @@ export default function LoginPage() {
   const inOtpStep = (method === "phone" && otpSent) || (method === "email" && emailMode === "otp" && emailOtpSent);
 
   React.useEffect(() => {
+    if (selectedMethod === "email" && !emailEnabled && phoneEnabled) {
+      setMethod("phone");
+    } else if (selectedMethod === "phone" && !phoneEnabled && emailEnabled) {
+      setMethod("email");
+    }
+  }, [selectedMethod, emailEnabled, phoneEnabled]);
+
+  React.useEffect(() => {
     let cancelled = false;
     const env = process.env.NODE_ENV === "development" ? "development" : "production";
     void fetch(`/api/public/config-bundle?platform=web&environment=${env}`)
@@ -555,7 +563,7 @@ export default function LoginPage() {
   }
 
   const switchMethod = (target: LoginMethod) => {
-    if (target === method) return;
+    if (target === selectedMethod) return;
     resetPhoneOtpFlow();
     resetEmailOtpFlow();
     setMethod(target);
@@ -653,7 +661,8 @@ export default function LoginPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={method === "phone"}
+              data-testid="login-tab-phone"
+              aria-selected={selectedMethod === "phone"}
               onClick={() => switchMethod("phone")}
               className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
                 method === "phone"
@@ -667,7 +676,8 @@ export default function LoginPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={method === "email"}
+              data-testid="login-tab-email"
+              aria-selected={selectedMethod === "email"}
               onClick={() => switchMethod("email")}
               className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
                 method === "email"
@@ -868,6 +878,7 @@ export default function LoginPage() {
             </Button>
             <button
               type="button"
+              data-testid="login-use-password"
               className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
               onClick={() => {
                 setEmailMode("password");

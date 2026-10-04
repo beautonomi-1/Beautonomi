@@ -45,6 +45,10 @@ const brWindowClause = startDate
   ? `br.created_at >= '${startDate}T00:00:00.000Z' AND br.created_at <= '${endDate}T23:59:59.999Z'`
   : null;
 
+const poWindowClause = startDate
+  ? `AND po.created_at >= '${startDate}T00:00:00.000Z' AND po.created_at <= '${endDate}T23:59:59.999Z'`
+  : "";
+
 let rpcAvailable = false;
 
 async function ensureFinanceAuditRpc() {
@@ -82,52 +86,6 @@ async function runAuditQuery(query, label) {
   return rows.length;
 }
 
-async function checkPaidProductOrdersMissingLedger() {
-  let query = client
-    .from("product_orders")
-    .select("id, order_number, payment_method, created_at")
-    .eq("payment_status", "paid")
-    .in("payment_method", ["paystack", "wallet"])
-    .limit(500);
-
-  if (startDate) {
-    query = query
-      .gte("created_at", `${startDate}T00:00:00.000Z`)
-      .lte("created_at", `${endDate}T23:59:59.999Z`);
-  }
-
-  const { data: paidOrders, error: poErr } = await query;
-  if (poErr) {
-    console.error(`[finance-audit] FATAL: paid_product_orders query failed (${poErr.message})`);
-    process.exit(2);
-  }
-
-  const orders = paidOrders ?? [];
-  if (orders.length === 0) return 0;
-
-  const ids = orders.map((o) => o.id);
-  const { data: ledgerRows, error: ftErr } = await client
-    .from("finance_transactions")
-    .select("product_order_id")
-    .in("product_order_id", ids)
-    .eq("transaction_type", "provider_earnings");
-
-  if (ftErr) {
-    console.error(`[finance-audit] FATAL: paid_product_orders ledger query failed (${ftErr.message})`);
-    process.exit(2);
-  }
-
-  const withLedger = new Set((ledgerRows ?? []).map((r) => r.product_order_id));
-  const missing = orders.filter((o) => !withLedger.has(o.id));
-  if (missing.length > 0) {
-    console.error(
-      `[finance-audit] paid_product_orders_missing_ledger: ${missing.length} violation(s)`,
-    );
-    console.error(JSON.stringify(missing.slice(0, 10), null, 2));
-  }
-  return missing.length;
-}
-
 await ensureFinanceAuditRpc();
 
 let violations = 0;
@@ -151,7 +109,26 @@ const refundsQuery = `
 
 violations += await runAuditQuery(refundsQuery, "completed_refunds_without_ledger");
 
-violations += await checkPaidProductOrdersMissingLedger();
+const productOrdersQuery = `
+  SELECT po.id, po.order_number, po.payment_method, po.created_at
+    FROM public.product_orders po
+   WHERE po.payment_status = 'paid'
+     AND po.payment_method IN ('paystack', 'wallet', 'gift_card')
+     AND NOT EXISTS (
+       SELECT 1 FROM public.finance_transactions ft
+        WHERE ft.transaction_type = 'provider_earnings'
+          AND (
+            ft.product_order_id = po.id
+            OR (
+              ft.product_order_id IS NULL
+              AND ft.provider_id = po.provider_id
+              AND ft.description ILIKE '%' || po.order_number || '%'
+            )
+          )
+     )
+     ${poWindowClause}`;
+
+violations += await runAuditQuery(productOrdersQuery, "paid_product_orders_missing_ledger");
 
 if (violations > 0) {
   console.error(`[finance-audit] FAILED — ${violations} total violations.`);
