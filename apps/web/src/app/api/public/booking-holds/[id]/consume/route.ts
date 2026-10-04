@@ -38,7 +38,7 @@ const consumeBodySchema = z.object({
   guest_fingerprint_hash: z.string().optional(),
   payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
   payment_option: z.enum(["deposit", "full"]).optional(),
-  payment_method_id: z.string().uuid().optional().nullable(),
+  payment_method_id: z.guid().optional().nullable(),
   use_wallet: z.boolean().optional(),
   save_card: z.boolean().optional(),
   set_as_default: z.boolean().optional(),
@@ -48,7 +48,7 @@ const consumeBodySchema = z.object({
     z.string(),
     z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
   ).optional(),
-  addons: z.array(z.string().uuid()).optional(),
+  addons: z.array(z.guid()).optional(),
   special_requests: z.string().optional().nullable(),
   house_call_instructions: z.string().optional().nullable(),
   tip_amount: z.number().min(0).optional(),
@@ -60,23 +60,23 @@ const consumeBodySchema = z.object({
         name: z.string(),
         email: z.string().optional().nullable(),
         phone: z.string().optional().nullable(),
-        service_ids: z.array(z.string().uuid()),
+        service_ids: z.array(z.guid()),
         notes: z.string().optional().nullable(),
       })
     )
     .optional()
     .nullable(),
-  resource_ids: z.array(z.string().uuid()).optional(),
-  reschedule_booking_id: z.string().uuid().optional(),
+  resource_ids: z.array(z.guid()).optional(),
+  reschedule_booking_id: z.guid().optional(),
   products: z.array(bookingProductLineSchema).optional(),
-  package_id: z.string().uuid().optional().nullable(),
+  package_id: z.guid().optional().nullable(),
   /** Alias for `package_id` (e.g. mobile / analytics naming) — same `service_packages.id` on the booking */
-  primary_package_id: z.string().uuid().optional().nullable(),
-  customer_package_entitlement_id: z.string().uuid().optional().nullable(),
+  primary_package_id: z.guid().optional().nullable(),
+  customer_package_entitlement_id: z.guid().optional().nullable(),
   loyalty_points_used: z.number().min(0).optional(),
-  membership_plan_id: z.string().uuid().optional().nullable(),
-  campaign_id: z.string().uuid().optional().nullable(),
-  idempotency_key: z.string().uuid().optional().nullable(),
+  membership_plan_id: z.guid().optional().nullable(),
+  campaign_id: z.guid().optional().nullable(),
+  idempotency_key: z.guid().optional().nullable(),
   /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
   subscribe_recurring: z
     .object({

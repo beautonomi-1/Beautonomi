@@ -7,10 +7,10 @@ import { z } from "zod";
 
 const validateBodySchema = z.object({
   code: z.string().min(1, "Promo code is required"),
-  provider_id: z.string().uuid("Invalid provider ID"),
+  provider_id: z.guid("Invalid provider ID"),
   booking_amount: z.number().min(0, "Booking amount must be non-negative"),
   location_type: z.string().optional(),
-  location_id: z.string().uuid().optional().nullable(),
+  location_id: z.guid().optional().nullable(),
 });
 
 /**

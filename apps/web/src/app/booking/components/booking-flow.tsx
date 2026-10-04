@@ -28,6 +28,7 @@ import { ChevronLeft, X } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
+import { getBookingHoldFailureMessage } from "@/lib/public-booking/booking-hold-slot-messages";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
@@ -474,7 +475,7 @@ export default function BookingFlow() {
     }
     initialResetFromUrlRef.current = false;
 
-    const u = new URLSearchParams(searchParams.toString());
+    const u = new URLSearchParams(window.location.search);
     u.delete("reset");
     const q = u.toString();
     const target = q ? `${pathname}?${q}` : pathname;
@@ -1137,7 +1138,7 @@ export default function BookingFlow() {
       return { holdId, expiresAt: res?.data?.expires_at ?? res?.expires_at ?? null };
     } catch (err) {
       console.warn("[booking] hold creation failed:", err);
-      toast.warning("Could not reserve your time slot. Please choose another available time.");
+      toast.warning(getBookingHoldFailureMessage(err));
       return null;
     }
   };
@@ -1155,13 +1156,16 @@ export default function BookingFlow() {
         payment: "pay",
       };
       const stepParam = map[step];
-      if (!stepParam) return;
-      const p = new URLSearchParams(searchParams.toString());
+      if (!stepParam || typeof window === "undefined") return;
+      const p = new URLSearchParams(window.location.search);
+      // Each URL update yields a new `searchParams`; without this guard the effect re-fires forever.
+      if (p.get("step") === stepParam) return;
       p.set("step", stepParam);
       const q = p.toString();
-      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+      // Shallow update: `router.replace` would refetch the RSC payload on every step change.
+      window.history.replaceState(window.history.state, "", q ? `${pathname}?${q}` : pathname);
     },
-    [pathname, router, searchParams],
+    [pathname],
   );
 
   useEffect(() => {

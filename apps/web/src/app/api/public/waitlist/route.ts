@@ -7,11 +7,11 @@ import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 
 const createWaitlistSchema = z.object({
-  provider_id: z.string().uuid(),
+  provider_id: z.guid(),
   customer_name: z.string().min(1),
   customer_email: z.string().email().optional(),
   customer_phone: z.string().optional(),
-  service_id: z.string().uuid().optional(),
+  service_id: z.guid().optional(),
   staff_id: z.preprocess((v) => (v === "" ? undefined : v), zPublicBookingStaffIdOptional),
   preferred_date: z.string().date().optional(),
   preferred_time_start: z.string().regex(/^\d{2}:\d{2}$/).optional(), // HH:MM format
