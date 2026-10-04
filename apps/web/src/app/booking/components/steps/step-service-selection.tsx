@@ -3,8 +3,13 @@
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Check, Clock, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
-import { BookingState } from "../booking-flow";
-import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { BookingState, BookingStateUpdate } from "../booking-flow";
+import {
+  fetcher,
+  FetchError,
+  isTransientNetworkFetchError,
+  DEFAULT_FETCH_TIMEOUT_MS,
+} from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -35,7 +40,7 @@ const MANY_CATEGORIES = 10;
 
 interface StepServiceSelectionProps {
   bookingState: BookingState;
-  updateBookingState: (updates: Partial<BookingState>) => void;
+  updateBookingState: (updates: BookingStateUpdate) => void;
   onNext: () => void;
   providerSlug: string;
 }
@@ -76,6 +81,36 @@ function buildLegacyCartLine(
   );
 }
 
+function getUrlOfferingId(): string | null {
+  if (typeof window === "undefined") return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const fromList = urlParams
+    .get("services")
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
+  const id = (
+    urlParams.get("serviceId") ||
+    urlParams.get("service") ||
+    fromList ||
+    ""
+  ).trim();
+  return id || null;
+}
+
+function cartContainsOffering(
+  selected: LegacySelectedServiceLine[],
+  offeringId: string
+): boolean {
+  return selected.some(
+    (s) => s.id === offeringId || s.baseServiceId === offeringId
+  );
+}
+
+function servicesCatalogType(mode: BookingState["mode"]): "salon" | "mobile" {
+  return mode === "mobile" ? "mobile" : "salon";
+}
+
 interface Staff {
   id: string;
   name: string;
@@ -96,7 +131,7 @@ export default function StepServiceSelection({
   const [categories, setCategories] = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedService, setExpandedService] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [serviceVariants, setServiceVariants] = useState<Record<string, any[]>>({});
   const [loadingVariants, setLoadingVariants] = useState<Record<string, boolean>>({});
   const [groupBookingSettings, setGroupBookingSettings] = useState<{
@@ -113,7 +148,18 @@ export default function StepServiceSelection({
   const { language } = useLocale();
   const hasLoadedRef = useRef(false);
   const lastProviderSlugRef = useRef<string | null>(null);
-  const lastModeRef = useRef<string | null>(null);
+  const lastModeRef = useRef<BookingState["mode"] | null>(null);
+  /** User cleared the deep-link offering; do not re-apply ?service= preselect. */
+  const urlPreselectDismissedRef = useRef(false);
+  const lastUrlOfferingIdRef = useRef<string | null>(null);
+
+  const filteredStaff = useMemo(
+    () =>
+      bookingState.mode === "mobile"
+        ? staff.filter((s) => s.mobileReady)
+        : staff,
+    [staff, bookingState.mode]
+  );
 
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
@@ -129,24 +175,26 @@ export default function StepServiceSelection({
   }, []);
 
   useEffect(() => {
-    // Only load if providerSlug changed or mode actually changed (not just initialized)
+    // Only load if providerSlug changed or salon↔mobile catalog type changed (not null→salon bootstrap).
     const providerChanged = providerSlug !== lastProviderSlugRef.current;
-    const modeChanged = bookingState.mode !== lastModeRef.current;
-    
-    if (providerSlug && (providerChanged || (modeChanged && hasLoadedRef.current))) {
+    const catalogModeChanged =
+      servicesCatalogType(bookingState.mode) !==
+      servicesCatalogType(lastModeRef.current);
+
+    if (!providerSlug?.trim()) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (
+      providerChanged ||
+      (catalogModeChanged && hasLoadedRef.current) ||
+      !hasLoadedRef.current
+    ) {
       hasLoadedRef.current = true;
       lastProviderSlugRef.current = providerSlug;
       lastModeRef.current = bookingState.mode;
-      
-      loadServices();
-      loadStaff();
-      loadGroupBookingSettings();
-    } else if (providerSlug && !hasLoadedRef.current) {
-      // Initial load
-      hasLoadedRef.current = true;
-      lastProviderSlugRef.current = providerSlug;
-      lastModeRef.current = bookingState.mode;
-      
+
       loadServices();
       loadStaff();
       loadGroupBookingSettings();
@@ -179,14 +227,15 @@ export default function StepServiceSelection({
       // Auto-assign first available staff; fall back to "any" when provider has no staff
       const defaultStaff = filteredStaff.length > 0 ? filteredStaff[0] : null;
       const defaultStaffId = defaultStaff?.id ?? "any";
-      updateBookingState({
-        selectedServices: bookingState.selectedServices.map((service) => {
+      const mode = bookingState.mode;
+      updateBookingState((prev) => ({
+        selectedServices: prev.selectedServices.map((service) => {
           const needsStaff = !service.staffId || service.staffId.trim() === "";
           const assignedStaff = staff.find((s) => s.id === service.staffId);
           const isInvalidStaff =
             service.staffId !== "any" &&
             (!assignedStaff ||
-              (bookingState.mode === "mobile" && assignedStaff && !assignedStaff.mobileReady));
+              (mode === "mobile" && assignedStaff && !assignedStaff.mobileReady));
 
           if (needsStaff || isInvalidStaff) {
             return {
@@ -197,7 +246,7 @@ export default function StepServiceSelection({
           }
           return service;
         }),
-      });
+      }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staff.length, bookingState.selectedServices.length, bookingState.mode]);
@@ -224,36 +273,51 @@ export default function StepServiceSelection({
   useEffect(() => {
     if (typeof window === "undefined" || services.length === 0) return;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const offeringId = (urlParams.get("serviceId") || urlParams.get("service") || "").trim();
-    if (!offeringId || bookingState.selectedServices.some((s) => s.id === offeringId)) return;
+    const offeringId = getUrlOfferingId();
+    if (!offeringId) {
+      lastUrlOfferingIdRef.current = null;
+      return;
+    }
+    if (offeringId !== lastUrlOfferingIdRef.current) {
+      lastUrlOfferingIdRef.current = offeringId;
+      urlPreselectDismissedRef.current = false;
+    }
+    if (urlPreselectDismissedRef.current) return;
 
     const defaultStaff = filteredStaff.length > 0 ? filteredStaff[0] : null;
     const defaultStaffId = defaultStaff?.id ?? "any";
+    const isAtHome = legacyIsAtHome(bookingState.mode);
 
     const baseRow = services.find((s) => s.id === offeringId);
     if (baseRow) {
-      setActiveCategory(baseRow.category);
-      requestScrollToBaseService(baseRow.id);
-      updateBookingState({
-        selectedServices: [
-          ...bookingState.selectedServices,
-          buildLegacyCartLine({
-            id: baseRow.id,
-            title: baseRow.title,
-            duration: baseRow.duration,
-            bufferMinutes: baseRow.bufferMinutes ?? 0,
-            currency: baseRow.currency,
-            staffId: defaultStaffId,
-            staffName: defaultStaff?.name,
-            catalogBasePrice: baseRow.price,
-            atHomeAdjustment: Number(baseRow.at_home_price_adjustment ?? 0),
-            isAtHome: legacyIsAtHome(bookingState.mode),
-          }),
-        ],
+      const line = buildLegacyCartLine({
+        id: baseRow.id,
+        title: baseRow.title,
+        duration: baseRow.duration,
+        bufferMinutes: baseRow.bufferMinutes ?? 0,
+        currency: baseRow.currency,
+        staffId: defaultStaffId,
+        staffName: defaultStaff?.name,
+        catalogBasePrice: baseRow.price,
+        atHomeAdjustment: Number(baseRow.at_home_price_adjustment ?? 0),
+        isAtHome,
       });
-      if (baseRow.hasAddons || defaultStaff) setExpandedService(baseRow.id);
-      if (baseRow.hasVariants) loadVariants(baseRow.id);
+      const alreadyInCart = cartContainsOffering(
+        bookingState.selectedServices,
+        offeringId
+      );
+      let applied = false;
+      updateBookingState((prev) => {
+        if (cartContainsOffering(prev.selectedServices, offeringId)) return {};
+        applied = true;
+        return { selectedServices: [...prev.selectedServices, line] };
+      });
+      if (applied || alreadyInCart) {
+        setActiveCategory(baseRow.category);
+        requestScrollToBaseService(baseRow.id);
+        if (baseRow.hasAddons || defaultStaff) setExpandedService(baseRow.id);
+        if (baseRow.hasVariants) loadVariants(baseRow.id);
+      }
       return;
     }
 
@@ -279,31 +343,45 @@ export default function StepServiceSelection({
     const v = vars.find((x: { id?: string }) => x.id === offeringId);
     if (!v) return;
 
-    setActiveCategory(parentWithVariant.category);
-    requestScrollToBaseService(parentWithVariant.id);
     const variantBase = Number(v.price ?? parentWithVariant.price);
-    updateBookingState({
-      selectedServices: [
-        ...bookingState.selectedServices,
-        buildLegacyCartLine({
-          id: v.id,
-          title: v.title || v.variant_name || parentWithVariant.title,
-          duration: v.duration ?? v.duration_minutes ?? parentWithVariant.duration,
-          bufferMinutes:
-            v.bufferMinutes ?? v.buffer_minutes ?? parentWithVariant.bufferMinutes ?? 0,
-          currency: v.currency ?? parentWithVariant.currency,
-          staffId: defaultStaffId,
-          staffName: defaultStaff?.name,
-          baseServiceId: parentWithVariant.id,
-          catalogBasePrice: variantBase,
-          atHomeAdjustment: Number(parentWithVariant.at_home_price_adjustment ?? 0),
-          isAtHome: legacyIsAtHome(bookingState.mode),
-        }),
-      ],
+    const line = buildLegacyCartLine({
+      id: v.id,
+      title: v.title || v.variant_name || parentWithVariant.title,
+      duration: v.duration ?? v.duration_minutes ?? parentWithVariant.duration,
+      bufferMinutes:
+        v.bufferMinutes ?? v.buffer_minutes ?? parentWithVariant.bufferMinutes ?? 0,
+      currency: v.currency ?? parentWithVariant.currency,
+      staffId: defaultStaffId,
+      staffName: defaultStaff?.name,
+      baseServiceId: parentWithVariant.id,
+      catalogBasePrice: variantBase,
+      atHomeAdjustment: Number(parentWithVariant.at_home_price_adjustment ?? 0),
+      isAtHome,
     });
-    setExpandedService(parentWithVariant.id);
+    const alreadyInCart = cartContainsOffering(
+      bookingState.selectedServices,
+      offeringId
+    );
+    let applied = false;
+    updateBookingState((prev) => {
+      if (cartContainsOffering(prev.selectedServices, offeringId)) return {};
+      applied = true;
+      return { selectedServices: [...prev.selectedServices, line] };
+    });
+    if (applied || alreadyInCart) {
+      setActiveCategory(parentWithVariant.category);
+      requestScrollToBaseService(parentWithVariant.id);
+      setExpandedService(parentWithVariant.id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services, serviceVariants, staff.length, bookingState.selectedServices, requestScrollToBaseService]);
+  }, [
+    services,
+    serviceVariants,
+    staff.length,
+    bookingState.mode,
+    bookingState.selectedServices,
+    requestScrollToBaseService,
+  ]);
 
   const loadServices = async () => {
     if (!providerSlug) {
@@ -319,35 +397,45 @@ export default function StepServiceSelection({
       setVisibleServiceCount(SERVICE_PAGE_SIZE);
       // Since services is now first step, load all services (type=salon shows all services)
       // Default to "salon" which will load all services regardless of venue type
-      const mode = bookingState.mode === "mobile" ? "mobile" : "salon";
-      
+      const mode = servicesCatalogType(bookingState.mode);
+
       // Get offering id from URL (same param names as /book/[slug]?service=)
       const urlParams = new URLSearchParams(window.location.search);
       const urlOfferingId = (urlParams.get("serviceId") || urlParams.get("service") || urlParams.get("services") || "").trim();
       const firstOfferingId = urlOfferingId ? urlOfferingId.split(',')[0].trim() : "";
 
-      console.log(`[Service Selection] Loading services for providerSlug: ${providerSlug}, mode: ${mode}, serviceId: ${urlOfferingId || "none"}`);
-
       let apiUrl = `/api/services?type=${mode}&providerSlug=${encodeURIComponent(providerSlug)}`;
       if (urlOfferingId) {
         apiUrl += `&serviceId=${encodeURIComponent(urlOfferingId)}`;
       }
-      
-      const response = await fetcher.get<{ data: Service[] }>(apiUrl, {
-        timeoutMs: 20000 // 20 seconds timeout for services loading
-      });
-      
-      console.log(`[Service Selection] API Response:`, response);
-      const servicesData = response.data || [];
-      console.log(`[Service Selection] Loaded ${servicesData.length} services`);
-      
-      if (servicesData.length === 0) {
-        console.error(`[Service Selection] Empty services array for provider: ${providerSlug}`);
-        console.error(`[Service Selection] Full API response:`, JSON.stringify(response, null, 2));
+
+      let response: { data: Service[] } | null = null;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetcher.get<{ data: Service[] }>(apiUrl, {
+            timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+          });
+          break;
+        } catch (error) {
+          lastError = error;
+          const aborted =
+            error instanceof DOMException && error.name === "AbortError";
+          if (
+            attempt < 2 &&
+            (isTransientNetworkFetchError(error) || aborted)
+          ) {
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+            continue;
+          }
+          throw error;
+        }
       }
+      if (!response) throw lastError;
       
+      const servicesData = response.data || [];
+
       if (servicesData.length === 0) {
-        console.warn(`[Service Selection] No services found for provider: ${providerSlug}`);
         toast.error(t("booking.serviceSelection.noServicesAvailable"));
       }
       
@@ -386,6 +474,11 @@ export default function StepServiceSelection({
       }
     } catch (error) {
       console.error("[Service Selection] Error loading services:", error);
+      const aborted =
+        error instanceof DOMException && error.name === "AbortError";
+      if (isTransientNetworkFetchError(error) || aborted) {
+        return;
+      }
       toast.error(
         error instanceof FetchError
           ? error.message
@@ -423,10 +516,6 @@ export default function StepServiceSelection({
       return true;
     });
   }, [services, activeCategory, bookingState.isGroupBooking, groupBookingSettings]);
-
-  const filteredStaff = bookingState.mode === "mobile"
-    ? staff.filter((s) => s.mobileReady)
-    : staff;
 
   const isAtHomeVenue = legacyIsAtHome(bookingState.mode);
 
@@ -531,11 +620,36 @@ export default function StepServiceSelection({
     );
 
     if (isSelected) {
-      updateBookingState({
-        selectedServices: bookingState.selectedServices.filter(
+      const urlId = getUrlOfferingId();
+      const matchesUrlPreselect =
+        urlId &&
+        !urlPreselectDismissedRef.current &&
+        (service.id === urlId ||
+          bookingState.selectedServices.some(
+            (s) =>
+              (s.id === service.id || s.baseServiceId === service.id) &&
+              (s.id === urlId || s.baseServiceId === urlId)
+          ));
+      if (matchesUrlPreselect) {
+        setExpandedService((prev) =>
+          prev === service.id ? null : service.id
+        );
+        if (service.hasVariants) loadVariants(service.id);
+        return;
+      }
+      if (urlId) {
+        const willRemove = bookingState.selectedServices.filter(
+          (s) => s.id === service.id || s.baseServiceId === service.id
+        );
+        if (willRemove.some((s) => s.id === urlId || s.baseServiceId === urlId)) {
+          urlPreselectDismissedRef.current = true;
+        }
+      }
+      updateBookingState((prev) => ({
+        selectedServices: prev.selectedServices.filter(
           (s) => s.id !== service.id && s.baseServiceId !== service.id
         ),
-      });
+      }));
       setExpandedService(null);
     } else {
       // Auto-select first available staff member; fall back to "any" so canProceed() passes
@@ -543,9 +657,9 @@ export default function StepServiceSelection({
       const staffId = defaultStaff?.id ?? "any";
       const staffName = defaultStaff?.name;
 
-      updateBookingState({
+      updateBookingState((prev) => ({
         selectedServices: [
-          ...bookingState.selectedServices,
+          ...prev.selectedServices,
           buildLegacyCartLine({
             id: service.id,
             title: service.title,
@@ -559,7 +673,7 @@ export default function StepServiceSelection({
             isAtHome: legacyIsAtHome(bookingState.mode),
           }),
         ],
-      });
+      }));
       setExpandedService(service.id);
 
       // Load variants if service has them
@@ -612,8 +726,8 @@ export default function StepServiceSelection({
       staffId: currentService?.staffId,
       staffName: currentService?.staffName,
     };
-    updateBookingState({
-      selectedServices: bookingState.selectedServices.map((s) =>
+    updateBookingState((prev) => ({
+      selectedServices: prev.selectedServices.map((s) =>
         s.id === serviceId || s.baseServiceId === serviceId
           ? buildLegacyCartLine({
               ...partial,
@@ -623,13 +737,13 @@ export default function StepServiceSelection({
             })
           : s
       ),
-    });
+    }));
   };
 
   const handleStaffSelect = (serviceId: string, staffMember: Staff | null) => {
     // Entry may be base (id === serviceId) or variant (baseServiceId === serviceId)
-    updateBookingState({
-      selectedServices: bookingState.selectedServices.map((s) =>
+    updateBookingState((prev) => ({
+      selectedServices: prev.selectedServices.map((s) =>
         s.id === serviceId || s.baseServiceId === serviceId
           ? {
               ...s,
@@ -638,7 +752,7 @@ export default function StepServiceSelection({
             }
           : s
       ),
-    });
+    }));
   };
 
   const scrollStaff = (direction: "left" | "right") => {
@@ -804,6 +918,8 @@ export default function StepServiceSelection({
             >
               {/* Service Card */}
               <button
+                type="button"
+                data-testid="service-card"
                 onClick={() => handleServiceToggle(service)}
                 className="w-full p-4 text-start touch-target"
                 aria-label={isSelected ? t("booking.serviceSelection.deselectAria", { title: service.title }) : t("booking.serviceSelection.selectAria", { title: service.title })}
@@ -982,7 +1098,34 @@ export default function StepServiceSelection({
                             className="flex gap-3 overflow-x-auto scrollbar-hide pb-2"
                             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                           >
-                            {/* Staff Members */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateBookingState({
+                                  selectedServices: bookingState.selectedServices.map((s) =>
+                                    s.id === service.id || s.baseServiceId === service.id
+                                      ? {
+                                          ...s,
+                                          staffId: "any",
+                                          staffName: t("web.book.flow.anyProfessional"),
+                                        }
+                                      : s,
+                                  ),
+                                })
+                              }
+                              className={`flex-shrink-0 w-20 flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-colors touch-target ${
+                                selectedService?.staffId === "any"
+                                  ? "border-primary bg-pink-50"
+                                  : "border-gray-200 bg-white"
+                              }`}
+                            >
+                              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600">
+                                {t("web.book.flow.noPreference").slice(0, 2)}
+                              </div>
+                              <span className="text-xs font-medium text-center line-clamp-2">
+                                {t("web.book.flow.anyProfessional")}
+                              </span>
+                            </button>
                             {filteredStaff.map((staffMember) => (
                               <button
                                 key={staffMember.id}

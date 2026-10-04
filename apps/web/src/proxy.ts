@@ -62,6 +62,22 @@ function isAdminHost(host: string | null): boolean {
   return adminHostRoutingEnabled() && host !== null && configuredAdminHosts().has(host);
 }
 
+/** `/book/{slug}` → `/booking?slug={slug}` (308). Resolver routes stay under `/book/*`. */
+function legacyBookProviderSlugRedirect(request: NextRequest): NextResponse | null {
+  const { pathname } = request.nextUrl;
+  if (pathname === '/book/continue') return null;
+  if (pathname.startsWith('/book/l/')) return null;
+  if (pathname.startsWith('/book/on-demand/')) return null;
+
+  const match = pathname.match(/^\/book\/([^/]+)\/?$/);
+  if (!match?.[1]) return null;
+
+  const url = request.nextUrl.clone();
+  url.pathname = '/booking';
+  url.searchParams.set('slug', decodeURIComponent(match[1]));
+  return NextResponse.redirect(url, 308);
+}
+
 function isFrameworkOrStaticPath(pathname: string): boolean {
   return (
     pathname.startsWith('/_next') ||
@@ -168,6 +184,9 @@ function finalizePageResponse(request: NextRequest, response: NextResponse): Nex
 export async function proxy(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
+    const bookSlugRedirect = legacyBookProviderSlugRedirect(request);
+    if (bookSlugRedirect) return bookSlugRedirect;
+
     const origin = request.headers.get('origin');
     const isProviderSubscriptionCallback =
       pathname === '/provider/subscription' &&
@@ -200,6 +219,11 @@ export async function proxy(request: NextRequest) {
       pathname === '/api/paystack/verify' ||
       pathname === '/api/paystack/verify-reference'
     ) {
+      return NextResponse.next();
+    }
+
+    // OAuth / magic-link exchange must run without an existing session cookie.
+    if (pathname === '/auth/callback') {
       return NextResponse.next();
     }
 
@@ -579,7 +603,7 @@ export async function proxy(request: NextRequest) {
     // NOTE: `/booking` is intentionally public for guest checkout entry.
     if (
       pathname.startsWith('/account-settings') ||
-      pathname.startsWith('/checkout') ||
+      (pathname.startsWith('/checkout') && pathname !== '/checkout') ||
       pathname.startsWith('/profile')
     ) {
       if (!user) {

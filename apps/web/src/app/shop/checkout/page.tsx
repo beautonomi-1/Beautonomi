@@ -101,6 +101,7 @@ export default function ProductCheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [requiresProviderSelection, setRequiresProviderSelection] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
   const [selectedAddress, setSelectedAddress] = useState<string>("");
@@ -325,7 +326,11 @@ export default function ProductCheckoutPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setPageError(err instanceof Error ? err.message : "Failed to load checkout");
+          if (err instanceof FetchError && err.status === 401) {
+            setNeedsSignIn(true);
+          } else {
+            setPageError(err instanceof Error ? err.message : "Failed to load checkout");
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -720,6 +725,31 @@ export default function ProductCheckoutPage() {
     );
   }
 
+  const guestMustSignIn =
+    !user && (needsSignIn || (Boolean(providerId) && items.length === 0 && !requiresProviderSelection));
+
+  if (guestMustSignIn) {
+    const loginHref = `/login?next=${encodeURIComponent(checkoutRedirect)}`;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="max-w-md text-center rounded-xl border border-pink-200 bg-pink-50 p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {t("customer.mobile.screens.productCheckout.signInBannerTitle")}
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            {t("customer.mobile.screens.productCheckout.signInBannerBody")}
+          </p>
+          <Link
+            href={loginHref}
+            className="inline-flex rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-700"
+          >
+            {t("customer.mobile.screens.productCheckout.signInCta")}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!providerId || items.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -775,7 +805,7 @@ export default function ProductCheckoutPage() {
                 {t("customer.mobile.screens.productCheckout.signInBannerBody")}
               </p>
               <Link
-                href={`/account-settings?redirect=${encodeURIComponent(checkoutRedirect)}`}
+                href={`/login?next=${encodeURIComponent(checkoutRedirect)}`}
                 className="mt-3 inline-flex rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-700"
               >
                 {t("customer.mobile.screens.productCheckout.signInCta")}

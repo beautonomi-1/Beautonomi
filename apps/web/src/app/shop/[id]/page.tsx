@@ -193,7 +193,7 @@ function ProductDetailContent() {
     if (!productId || isWishlistLoading) return;
     if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
-      router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${productId}${q}`)}`);
+      router.push(`/login?next=${encodeURIComponent(`/shop/${productId}${q}`)}`);
       return;
     }
     setIsWishlistLoading(true);
@@ -231,7 +231,7 @@ function ProductDetailContent() {
     }
     if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
-      router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
+      router.push(`/login?next=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
       return false;
     }
     setAddingToCart(true);
@@ -260,7 +260,7 @@ function ProductDetailContent() {
           type: "error",
         });
         const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
-        router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
+        router.push(`/login?next=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
       } else {
         setCartMessage({ text: json.error?.message || json.error || "Failed to add to cart", type: "error" });
       }
@@ -655,7 +655,7 @@ function ProductDetailContent() {
                     </button>
                   ) : (
                     <Link
-                      href={`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : ""}`)}`}
+                      href={`/login?next=${encodeURIComponent(`/shop/${product.id}${providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : ""}`)}`}
                       className="flex-1 rounded-xl bg-pink-600 px-6 py-4 text-center text-base font-bold text-white transition hover:bg-pink-700"
                     >
                       Sign in to add to cart

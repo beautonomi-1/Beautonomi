@@ -19,6 +19,7 @@ const ACCOUNT_STATUS_BLOCKING_PREFIXES = [
   "/bookings",
   "/cart",
   "/checkout",
+  "/shop/checkout",
   "/inbox",
   "/orders",
   "/profile",
