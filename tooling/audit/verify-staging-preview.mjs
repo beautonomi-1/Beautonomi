@@ -16,16 +16,23 @@ const requireLive = process.argv.includes("--require-live");
 let failures = 0;
 let liveProbeIncomplete = false;
 
-function jwtProjectRef(apiKey) {
+function jwtPayload(apiKey) {
   try {
     const segment = apiKey.split(".")[1];
-    if (!segment) return null;
+    if (!segment) return { ref: null, role: null };
     const json = Buffer.from(segment.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
     const payload = JSON.parse(json);
-    return payload.ref ?? payload.project_ref ?? null;
+    return {
+      ref: payload.ref ?? payload.project_ref ?? null,
+      role: typeof payload.role === "string" ? payload.role : null,
+    };
   } catch {
-    return null;
+    return { ref: null, role: null };
   }
+}
+
+function jwtProjectRef(apiKey) {
+  return jwtPayload(apiKey).ref;
 }
 
 function printVercelPreviewEnvChecklist() {
@@ -51,16 +58,17 @@ function validateLocalSupabaseEnv() {
     const urlOk = url.replace(/\/$/, "") === PROJECTS.staging.url;
     console.log(urlOk ? "OK" : "WARN", `NEXT_PUBLIC_SUPABASE_URL ${urlOk ? "is staging" : `expected ${PROJECTS.staging.url}, got ${url}`}`);
   }
-  for (const [label, key] of [
-    ["SUPABASE_SERVICE_ROLE_KEY", service],
-    ["NEXT_PUBLIC_SUPABASE_ANON_KEY", anon],
+  for (const [label, key, wantRole] of [
+    ["SUPABASE_SERVICE_ROLE_KEY", service, "service_role"],
+    ["NEXT_PUBLIC_SUPABASE_ANON_KEY", anon, "anon"],
   ]) {
     if (!key) continue;
-    const ref = jwtProjectRef(key);
+    const { ref, role } = jwtPayload(key);
     const okRef = ref === PROJECTS.staging.ref;
+    const okRole = !wantRole || role === wantRole;
     console.log(
-      okRef ? "OK" : "WARN",
-      `${label} JWT ref=${ref ?? "?"} (want ${PROJECTS.staging.ref}) — unset or fix in PowerShell if confusing local runs`,
+      okRef && okRole ? "OK" : "WARN",
+      `${label} JWT ref=${ref ?? "?"} role=${role ?? "?"} (want ref ${PROJECTS.staging.ref}, role ${wantRole}) — unset or fix in PowerShell if confusing local runs`,
     );
   }
 }
@@ -226,7 +234,11 @@ function evaluateLiveProbe(path, result) {
   if (result.res.status !== 200) {
     if (result.res.status === 302 || result.res.status === 401) {
       liveProbeIncomplete = true;
-      console.log(`\nINCOMPLETE: ${path} → HTTP ${result.res.status} (Deployment Protection).`);
+      const protectedJson =
+        result.json?.message === "Protected by Vercel Authentication" ||
+        result.json?.error?.message === "Protected deployment";
+      const note = protectedJson ? " (Vercel Authentication — use bypass secret or browser SSO)" : "";
+      console.log(`\nINCOMPLETE: ${path} → HTTP ${result.res.status} (Deployment Protection${note}).`);
       return;
     }
     fail(`${path} → HTTP ${result.res.status}`);
@@ -238,13 +250,30 @@ function evaluateLiveProbe(path, result) {
     printVercelPreviewEnvChecklist();
     return;
   }
+  if (path.includes("staging-deploy-meta") && result.json) {
+    const m = result.json;
+    if (m.supabase_service_role_jwt_role && m.supabase_service_role_jwt_role !== "service_role") {
+      fail(
+        `deploy-meta: SUPABASE_SERVICE_ROLE_KEY role=${m.supabase_service_role_jwt_role} (need service_role)`,
+      );
+    }
+    if (m.tenant_resolution !== "ok") {
+      fail(`deploy-meta: tenant_resolution=${m.tenant_resolution} tenant_slug=${m.tenant_slug ?? "null"}`);
+      if (Array.isArray(m.hints) && m.hints.length) console.error(`  hints: ${m.hints.join(" | ")}`);
+      printVercelPreviewEnvChecklist();
+    } else {
+      ok(
+        `deploy-meta: tenant_slug=${m.tenant_slug} vercel_env=${m.vercel_env} keys_aligned=${m.supabase_keys_aligned}`,
+      );
+    }
+  }
   const via = result.mode === "bypass" ? "via bypass" : "direct";
   ok(`${path} → 200 (${via})`);
 }
 
 async function checkLivePreview() {
   const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  for (const path of ["/api/health", "/api/public/home"]) {
+  for (const path of ["/api/public/staging-deploy-meta", "/api/health", "/api/public/home"]) {
     const result = await probePreviewPath(path, { secret });
     evaluateLiveProbe(path, result);
   }
