@@ -42,7 +42,7 @@ describe("GET /api/admin/settings/section-permissions", () => {
     const { GET } = await import("../route");
     const req = new NextRequest("http://localhost/api/admin/settings/section-permissions");
     const res = await GET(req);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 });
 

@@ -5,8 +5,10 @@ import {
   aggregateProductCartByPackageLineKey,
   bookedProductCounts,
   cartMatchesPublicCatalogPackage,
+  checkoutCatalogPackageMatchesCart,
   computeCatalogPackageServiceDiscount,
   entitlementMismatch,
+  resolveBookedOfferingCountsForPackageGate,
   exceedsEntitlement,
   productPackageLineKey,
 } from "./packageCartMatch";
@@ -112,6 +114,53 @@ describe("aggregatePackageProductRequirementsFromPublicPackage", () => {
       items: [{ type: "product", id: "p1", quantity: 1, product_variant_id: "v1" }],
     });
     expect(m.get("p1:v1")).toBe(1);
+  });
+});
+
+describe("checkoutCatalogPackageMatchesCart", () => {
+  it("requires qty 2 of the same offering (stricter than cartMatches set equality)", () => {
+    const pkg = {
+      price: 100,
+      items: [{ type: "service" as const, id: "s1", quantity: 2 }],
+    };
+    expect(
+      checkoutCatalogPackageMatchesCart({
+        services: [{ offering_id: "s1" }],
+        pkg,
+        servicesSubtotal: 200,
+      }).matches
+    ).toBe(false);
+    const ok = checkoutCatalogPackageMatchesCart({
+      services: [{ offering_id: "s1" }, { offering_id: "s1" }],
+      pkg,
+      servicesSubtotal: 200,
+    });
+    expect(ok.matches).toBe(true);
+    expect(ok.packageDiscount).toBe(100);
+  });
+
+  it("matches product lines by variant key", () => {
+    const pkg = {
+      items: [
+        { type: "service" as const, id: "s1", quantity: 1 },
+        { type: "product" as const, id: "p1", quantity: 1, product_variant_id: "v1" },
+      ],
+    };
+    expect(
+      checkoutCatalogPackageMatchesCart({
+        services: [{ offering_id: "s1" }],
+        products: [{ id: "p1:v1", quantity: 1 }],
+        pkg,
+      }).matches
+    ).toBe(true);
+  });
+
+  it("uses participants-only counts when group multiset equals primary snapshot", () => {
+    const servicesOnly = resolveBookedOfferingCountsForPackageGate(
+      [{ offering_id: "s1" }],
+      [{ service_ids: ["s1"] }]
+    );
+    expect(servicesOnly.get("s1")).toBe(1);
   });
 });
 

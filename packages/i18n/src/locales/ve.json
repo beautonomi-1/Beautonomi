@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (u katshe mali ya pulatifomo {{amount}})",
     "securePaymentTitle": "Secure mbadedzo",
     "paymentCancelledTitle": "mbadedzo yo khanselwa",
-    "paymentCancelledBody": "Vho khansela mbadelo. U buka havho a hu athu khwaṱhisedzwa."
+    "paymentCancelledBody": "Vho khansela mbadelo. U buka havho a hu athu khwaṱhisedzwa.",
+    "packageDiscount": "tshiphuthelwa theolelo",
+    "packageApplied": "tshiphuthelwa applied",
+    "redeemPackage": "Redeem a preyo badelwa tshiphuthelwa (zwo khethea)",
+    "packageCredit": "tshiphuthelwa crlulamisisa",
+    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining"
   },
   "payments": {
     "pay": "Badela",

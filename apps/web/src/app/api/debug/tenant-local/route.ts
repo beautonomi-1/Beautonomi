@@ -3,8 +3,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-/** Localhost-only tenant/env diagnostics (non-secret). Remove or gate if undesired in shared dev. */
+/** Localhost-only tenant/env diagnostics (non-secret). Not available in production. */
+// eslint-disable-next-line perf/require-auth-on-route -- localhost + non-production gate; no secrets in response
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const host = (request.headers.get("host") || "").split(":")[0]?.toLowerCase();
   if (host !== "localhost" && host !== "127.0.0.1") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

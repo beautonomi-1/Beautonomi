@@ -34,10 +34,33 @@ export type ComputeBookingTotalsInput = {
   membershipDiscount?: number;
   loyaltyDiscount?: number;
   taxAmount?: number;
+  /** When true, tax is extracted from prices — do not add `taxAmount` to payable total (matches validate-booking). */
+  taxIncluded?: boolean;
   serviceFeeAmount?: number;
   tipAmount?: number;
   defaultCurrency: string;
 };
+
+/** Payable total after discounts — mirrors `validate-booking.ts` sumMoney composition. */
+export function computeBookingPayableTotal(params: {
+  subtotalAfterDiscounts: number;
+  taxAmount?: number;
+  taxIncluded?: boolean;
+  serviceFeeAmount?: number;
+  tipAmount?: number;
+}): number {
+  const {
+    subtotalAfterDiscounts,
+    taxAmount = 0,
+    taxIncluded = false,
+    serviceFeeAmount = 0,
+    tipAmount = 0,
+  } = params;
+  if (taxIncluded) {
+    return subtotalAfterDiscounts + serviceFeeAmount + tipAmount;
+  }
+  return subtotalAfterDiscounts + taxAmount + serviceFeeAmount + tipAmount;
+}
 
 export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingTotalsLineItem {
   const {
@@ -52,6 +75,7 @@ export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingT
     membershipDiscount = 0,
     loyaltyDiscount = 0,
     taxAmount = 0,
+    taxIncluded = false,
     serviceFeeAmount = 0,
     tipAmount = 0,
     defaultCurrency,
@@ -91,7 +115,13 @@ export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingT
 
   const discounts = couponDiscount + membershipDiscount + loyaltyDiscount;
   const subtotalAfterDiscounts = Math.max(0, subtotalBeforeDiscounts - discounts);
-  const total = subtotalAfterDiscounts + taxAmount + serviceFeeAmount + tipAmount;
+  const total = computeBookingPayableTotal({
+    subtotalAfterDiscounts,
+    taxAmount,
+    taxIncluded,
+    serviceFeeAmount,
+    tipAmount,
+  });
   const currency = selectedServices[0]?.currency || defaultCurrency;
 
   return {

@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (ku katsa mali ya pulatifomo {{amount}})",
     "securePaymentTitle": "Secure xihakelo",
     "paymentCancelledTitle": "xihakelo yi khanseriwile",
-    "paymentCancelledBody": "U khansele ku hakela. Ku bukuta ka wena a ku tiyisisiwanga."
+    "paymentCancelledBody": "U khansele ku hakela. Ku bukuta ka wena a ku tiyisisiwanga.",
+    "packageDiscount": "xipaketi ntsengo wo hunguta",
+    "packageApplied": "xipaketi applied",
+    "redeemPackage": "Redeem a preyi hakeleriwile xipaketi (swo tihlawulela)",
+    "packageCredit": "xipaketi crhlela",
+    "prepaidSessionsRemaining": "{{count}} Xitshuri(s) remaining"
   },
   "payments": {
     "pay": "Hakela",

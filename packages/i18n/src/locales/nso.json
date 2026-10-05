@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (go akaretša tšhelete ya sethala {{amount}})",
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e khansetšwe",
-    "paymentCancelledBody": "O hlakola tefo. Peeletšo ya gago ga se ya tiišetšwa."
+    "paymentCancelledBody": "O hlakola tefo. Peeletšo ya gago ga se ya tiišetšwa.",
+    "packageDiscount": "sephuthelwana theolelo",
+    "packageApplied": "sephuthelwana applied",
+    "redeemPackage": "Redeem a pree lefilwe sephuthelwana (boikgethelo)",
+    "packageCredit": "sephuthelwana crlokiša",
+    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining"
   },
   "payments": {
     "pay": "Lefa",

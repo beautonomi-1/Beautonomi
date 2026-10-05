@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (insl. platformfooi {{amount}})",
     "securePaymentTitle": "Secure betaling",
     "paymentCancelledTitle": "betaling gekanselleer",
-    "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie."
+    "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "packageDiscount": "pakket afslag",
+    "packageApplied": "pakket applied",
+    "redeemPackage": "Redeem a prebetaal pakket (opsioneel)",
+    "packageCredit": "pakket crwysig",
+    "prepaidSessionsRemaining": "{{count}} Sessie(s) remaining"
   },
   "payments": {
     "pay": "Betaal",

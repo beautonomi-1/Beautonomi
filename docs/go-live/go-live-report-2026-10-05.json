@@ -1,0 +1,200 @@
+{
+  "date": "2026-10-05",
+  "verdict": "No-Go",
+  "mode": "quick",
+  "skipLive": true,
+  "headSha": "d2bcfc615edcb446487157ca22f441e815434407",
+  "results": [
+    {
+      "id": "git.tracked_clean",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 183,
+      "status": "fail",
+      "evidence": "M apps/customer/app/(app)/book-checkout.tsx;  M apps/customer/app/(app)/book/index.tsx;  M apps/web/src/app/api/admin/settings/section-permissions/__tests__/route.test.ts;  M apps/web/src/app/api/debug/tenant-local/route.ts;  M apps/web/src/app/api/me/membership/route.ts;  M apps/web/src/app/api/public/booking-holds/[id]/consume/route.ts;  M apps/web/src/app/api/public/booking-holds/[id]/route.ts;  M apps/web/src/app/api/public/bookings/__tests__/route.test.ts",
+      "fix": "Commit or stash tracked changes before go-live.",
+      "ms": 183
+    },
+    {
+      "id": "git.head_origin_main",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 1223,
+      "status": "fail",
+      "evidence": "HEAD d2bcfc6 != origin/main bd44aa1",
+      "fix": "Push and merge to main, then re-run from updated main.",
+      "ms": 1223
+    },
+    {
+      "id": "repo.migrations",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 93,
+      "status": "pass",
+      "evidence": "Migration hygiene OK — canonical=975, allowedDuplicates=0, allowedGaps=11",
+      "ms": 93
+    },
+    {
+      "id": "repo.audit_deps",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 2698,
+      "status": "pass",
+      "evidence": "audit:deps pass.",
+      "ms": 2698
+    },
+    {
+      "id": "repo.typecheck_lint",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 209177,
+      "status": "pass",
+      "evidence": "web + admin-web typecheck/lint OK.",
+      "ms": 209177
+    },
+    {
+      "id": "repo.multi_tenant",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 4404,
+      "status": "pass",
+      "evidence": "audit:multi-tenant:strict pass.",
+      "ms": 4404
+    },
+    {
+      "id": "repo.cron_schedule",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 773,
+      "status": "pass",
+      "evidence": "verify:cron-schedule pass.",
+      "ms": 773
+    },
+    {
+      "id": "repo.observability",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 724,
+      "status": "pass",
+      "evidence": "verify-observability-gates pass.",
+      "ms": 724
+    },
+    {
+      "id": "ci.main",
+      "area": "ci",
+      "severity": "blocker",
+      "_ms": 2234,
+      "status": "fail",
+      "evidence": "CI: no run on this SHA; E2E: success; Finance drift (latest on main branch): success",
+      "fix": "Wait for CI success on main or fix failing jobs.",
+      "ms": 2234
+    },
+    {
+      "id": "ci.e2e_warning",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 90,
+      "status": "pass",
+      "evidence": "E2E (Preview + Staging) success.",
+      "ms": 90
+    },
+    {
+      "id": "ci.finance_drift",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 635,
+      "status": "pass",
+      "evidence": "Latest finance drift: success (2026-10-05T08:12:07Z).",
+      "ms": 635
+    },
+    {
+      "id": "db.readiness",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 22514,
+      "status": "pass",
+      "evidence": "readiness:supabase:check pass.",
+      "ms": 22514
+    },
+    {
+      "id": "db.compare",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 8831,
+      "status": "pass",
+      "evidence": "compare:supabase gaps empty.",
+      "ms": 8831
+    },
+    {
+      "id": "db.handle_new_user",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1615,
+      "status": "pass",
+      "evidence": "handle_new_user proconfig includes search_path=public.",
+      "ms": 1615
+    },
+    {
+      "id": "db.za_domains",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1876,
+      "status": "pass",
+      "evidence": "za tenant active; domains: www.beautonomi.com, beautonomi.co.za, admin.beautonomi.com",
+      "ms": 1876
+    },
+    {
+      "id": "db.paystack_no_test",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 3355,
+      "status": "pass",
+      "evidence": "No sk_test in platform_secrets/region_secrets (sampled).",
+      "ms": 3355
+    },
+    {
+      "id": "db.staging_signup",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 2220,
+      "status": "pass",
+      "evidence": "Staging auth.admin.createUser + delete succeeded.",
+      "ms": 2220
+    },
+    {
+      "id": "db.staging_seed",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 3293,
+      "status": "pass",
+      "evidence": "Seed stdout slug: e2e-test-provider-beautonomi",
+      "ms": 3293
+    },
+    {
+      "id": "mobile.release_check",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 2864,
+      "status": "pass",
+      "evidence": "release:check:mobile pass.",
+      "ms": 2864
+    },
+    {
+      "id": "mobile.expo_config",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 15876,
+      "status": "pass",
+      "evidence": "customer + provider expo config OK.",
+      "ms": 15876
+    }
+  ],
+  "manualChecklist": [
+    "Vercel Production: PAYSTACK_SECRET_KEY (sk_live_…), public Paystack key, CRON_SECRET, CSRF_SECRET, NEXT_PUBLIC_SENTRY_DSN",
+    "Supabase Production: Pro plan + point-in-time recovery enabled",
+    "Paystack dashboard: live webhook URL registered and reachable",
+    "DNS/TLS: apex → www, admin host, provider hosts",
+    "Rotate VERCEL_AUTOMATION_BYPASS_SECRET if ever exposed; store only in GitHub Actions",
+    "On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner"
+  ]
+}

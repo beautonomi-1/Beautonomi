@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
         scheduled_plan_id,
         scheduled_change_at,
         metadata,
-        plan:membership_plans(id, name, description, price_monthly, currency, discount_percent),
+        plan:membership_plans(id, name, description, price_monthly, currency, discount_percent, is_active),
         provider:providers(id, business_name, slug, tenant_id)
       `
       )
@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
       plan_name: string;
       plan_description: string | null;
       discount_percent: number;
+      plan_is_active: boolean;
       price_monthly: number;
       currency: string;
       status: string;
@@ -209,6 +210,7 @@ export async function GET(request: NextRequest) {
             plan_name: (plan.name || "Plan").trim(),
             plan_description: plan.description ?? null,
             discount_percent: Number(plan.discount_percent ?? 0),
+            plan_is_active: plan.is_active !== false,
             price_monthly: Number(plan.price_monthly ?? 0),
             currency: plan.currency || lastResortCurrency,
             status: rowStatus,

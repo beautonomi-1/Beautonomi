@@ -273,6 +273,124 @@ export function buildRetailCartRowsFromPublicPackage(
   return out;
 }
 
+/** Map public packages API `items[]` to rows for `aggregatePackageEntitlements`. */
+export function publicPackageItemsToPackageItemRows(
+  items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }>
+): PackageItemRow[] {
+  const rows: PackageItemRow[] = [];
+  for (const it of items ?? []) {
+    const id = it.id?.trim();
+    if (!id) continue;
+    if (it.type === "product") {
+      rows.push({
+        product_id: id,
+        product_variant_id: it.product_variant_id ?? null,
+        quantity: it.quantity,
+      });
+    } else if (it.type === "service" || !it.type) {
+      rows.push({ offering_id: id, quantity: it.quantity });
+    }
+  }
+  return rows;
+}
+
+function offeringCountMapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, count] of Array.from(a.entries())) {
+    if (b.get(id) !== count) return false;
+  }
+  return true;
+}
+
+/** Same participant-only multiset rule as public `validate-booking` package gate. */
+export function resolveBookedOfferingCountsForPackageGate(
+  services: Array<{ offering_id: string }>,
+  groupParticipants?: Array<{ service_ids?: string[]; serviceIds?: string[] }> | null
+): Map<string, number> {
+  let bookedCounts = bookedOfferingCounts(services, groupParticipants);
+  if (groupParticipants?.length) {
+    const servicesOnly = bookedOfferingCounts(services, null);
+    const participantsOnly = bookedOfferingCounts([], groupParticipants);
+    if (offeringCountMapsEqual(servicesOnly, participantsOnly)) {
+      bookedCounts = participantsOnly;
+    }
+  }
+  return bookedCounts;
+}
+
+export type CheckoutCatalogPackageProductLine =
+  | { id: string; quantity: number }
+  | {
+      productId?: string;
+      product_id?: string;
+      quantity?: unknown;
+      productVariantId?: string | null;
+      product_variant_id?: string | null;
+    };
+
+export type CheckoutCatalogPackageMatchInput = {
+  services: Array<{ offering_id: string }>;
+  products?: CheckoutCatalogPackageProductLine[];
+  groupParticipants?: Array<{ service_ids?: string[]; serviceIds?: string[] }> | null;
+  pkg: {
+    price?: number | null;
+    discount_percentage?: number | null;
+    items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }>;
+  };
+  /** Sum of snapshot/selected service line prices — required to compute catalog discount when gate passes. */
+  servicesSubtotal?: number;
+};
+
+export type CheckoutCatalogPackageMatchResult = {
+  matches: boolean;
+  packageDiscount: number;
+  mismatch: string | null;
+};
+
+/**
+ * Exact catalog package ↔ cart match (validate-booking parity): offering + product entitlements,
+ * optional group multiset normalization, then catalog service discount when matched.
+ */
+export function checkoutCatalogPackageMatchesCart(
+  input: CheckoutCatalogPackageMatchInput
+): CheckoutCatalogPackageMatchResult {
+  const rows = publicPackageItemsToPackageItemRows(input.pkg.items);
+  const { entitlementByOffering, entitlementByProduct } = aggregatePackageEntitlements(rows);
+  const hasPkgOfferingLines = entitlementByOffering.size > 0;
+  const hasPkgProductLines = entitlementByProduct.size > 0;
+
+  if (rows.length > 0 && !hasPkgOfferingLines && input.services.length > 0) {
+    return { matches: false, packageDiscount: 0, mismatch: "package_no_service_entitlements" };
+  }
+
+  if (hasPkgOfferingLines) {
+    const bookedOffering = resolveBookedOfferingCountsForPackageGate(
+      input.services,
+      input.groupParticipants
+    );
+    const badOffering = entitlementMismatch(bookedOffering, entitlementByOffering);
+    if (badOffering) {
+      return { matches: false, packageDiscount: 0, mismatch: badOffering };
+    }
+  }
+
+  if (hasPkgProductLines) {
+    const prods = input.products ?? [];
+    const bookedProduct =
+      prods.length > 0 && prods[0] != null && "id" in prods[0]
+        ? aggregateProductCartByPackageLineKey(prods as Array<{ id: string; quantity: number }>)
+        : bookedProductCounts(prods as Array<{ productId?: string; product_id?: string; quantity?: unknown; productVariantId?: string | null; product_variant_id?: string | null }>);
+    const badProduct = entitlementMismatch(bookedProduct, entitlementByProduct);
+    if (badProduct) {
+      return { matches: false, packageDiscount: 0, mismatch: badProduct };
+    }
+  }
+
+  const servicesSubtotal = input.servicesSubtotal ?? 0;
+  const packageDiscount = computeCatalogPackageServiceDiscount(input.pkg, servicesSubtotal);
+  return { matches: true, packageDiscount, mismatch: null };
+}
+
 export function cartMatchesPublicCatalogPackage(
   serviceOfferingIds: string[],
   selectedProducts: Array<{ id: string; quantity: number }>,

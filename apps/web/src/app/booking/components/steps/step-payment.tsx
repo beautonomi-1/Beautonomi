@@ -696,27 +696,27 @@ export default function StepPayment({
     }
   }, [bookingState.selectedPackage?.id, packagesRelevantToBooking, updateBookingState]);
 
-  // Fetch provider online booking settings: tip suggestions, deposit requirements
+  // Deposit mirrors `providers.requires_deposit` / `deposit_percentage` (loaded in booking-flow).
+  useEffect(() => {
+    const requires = Boolean(bookingState.requiresDeposit);
+    setProviderRequiresDeposit(requires);
+    if (requires) {
+      setDepositPercentage(Number(bookingState.depositPercentage ?? 30));
+    }
+  }, [bookingState.requiresDeposit, bookingState.depositPercentage]);
+
+  // Tip preset amounts from online booking settings only (deposit is not sourced here).
   useEffect(() => {
     if (!bookingState.providerId) return;
     let cancelled = false;
     fetcher
       .get<{
-        data?: {
-          tip_suggestions?: number[];
-          deposit_required?: boolean;
-          deposit_percent?: number | null;
-        };
+        data?: { tip_suggestions?: number[] };
       }>(`/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`)
       .then((res) => {
         if (cancelled) return;
-        const d = res?.data;
-        const tips = d?.tip_suggestions;
+        const tips = res?.data?.tip_suggestions;
         setTipSuggestions(Array.isArray(tips) && tips.length > 0 ? tips : [0, 50, 100, 150, 200]);
-        if (d?.deposit_required) {
-          setProviderRequiresDeposit(true);
-          setDepositPercentage(Number(d.deposit_percent ?? 30));
-        }
       })
       .catch(() => {
         if (!cancelled) setTipSuggestions([0, 50, 100, 150, 200]);
@@ -737,15 +737,23 @@ export default function StepPayment({
     [bookingState, tenantCurrency],
   );
 
+  useEffect(() => {
+    if (bookingState.tipsEnabled === false) {
+      setTipAmount(0);
+      setTipPercentSelection(null);
+    }
+  }, [bookingState.tipsEnabled]);
+
   // Keep tip amount in sync when user chose a % and the subtotal changes (e.g. promo applied earlier)
   useEffect(() => {
+    if (bookingState.tipsEnabled === false) return;
     if (tipPercentSelection === null) return;
     if (tipPercentageBase <= 0) {
       setTipAmount(0);
       return;
     }
     setTipAmount(roundTipAmount((tipPercentageBase * tipPercentSelection) / 100));
-  }, [tipPercentSelection, tipPercentageBase]);
+  }, [tipPercentSelection, tipPercentageBase, bookingState.tipsEnabled]);
 
   // Fetch saved payment methods
   useEffect(() => {
@@ -825,6 +833,7 @@ export default function StepPayment({
     membershipDiscount: bookingState.promotions.membershipDiscount || 0,
     loyaltyDiscount: bookingState.promotions.loyaltyDiscount || 0,
     taxAmount: bookingState.taxAmount || 0,
+    taxIncluded: Boolean(bookingState.taxIncluded),
     serviceFeeAmount: bookingState.serviceFeeAmount || 0,
     tipAmount,
     defaultCurrency: tenantCurrency,
@@ -2053,7 +2062,7 @@ export default function StepPayment({
       </div>
 
       {/* Tip — % presets (of subtotal after discounts) + optional fixed amounts from provider */}
-      {bookingState.providerId && (
+      {bookingState.providerId && bookingState.tipsEnabled !== false && (
         <div className="p-4 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-white to-pink-50/40 shadow-sm space-y-5">
           <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <Heart className="w-5 h-5 text-primary shrink-0" />

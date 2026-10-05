@@ -43,6 +43,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
       membershipDiscount: bookingState.promotions.membershipDiscount || 0,
       loyaltyDiscount: bookingState.promotions.loyaltyDiscount || 0,
       taxAmount: bookingState.taxAmount || 0,
+      taxIncluded: Boolean(bookingState.taxIncluded),
       serviceFeeAmount: bookingState.serviceFeeAmount || 0,
       tipAmount: bookingState.tipAmount || 0,
       defaultCurrency: tenantCurrency,

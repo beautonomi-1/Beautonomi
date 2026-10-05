@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (kuquka imali yepulatifomu {{amount}})",
     "securePaymentTitle": "Secure intlawulo",
     "paymentCancelledTitle": "intlawulo kurhoxisiwe",
-    "paymentCancelledBody": "Urhoxise intlawulo. Ukubhukisha kwakho akukaqinisekiswa."
+    "paymentCancelledBody": "Urhoxise intlawulo. Ukubhukisha kwakho akukaqinisekiswa.",
+    "packageDiscount": "ipakethi isaphulelo",
+    "packageApplied": "ipakethi applied",
+    "redeemPackage": "Redeem a prekuhlawulwe ipakethi (okukhethiweyo)",
+    "packageCredit": "ipakethi crhlela",
+    "prepaidSessionsRemaining": "{{count}} Iseshoni(s) remaining"
   },
   "payments": {
     "pay": "Hlawula",

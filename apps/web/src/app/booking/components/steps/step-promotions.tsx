@@ -14,11 +14,51 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTranslation } from "@beautonomi/i18n";
+import { computeBookingTotals } from "@/lib/booking/compute-booking-totals";
 
 interface StepPromotionsProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
   onNext: () => void;
+}
+
+type PublicPromoValidateResponse = {
+  valid?: boolean;
+  discount?: { amount: number };
+  message?: string;
+};
+
+/** Same contract as customer `book-checkout.tsx` → POST /api/public/promotions/validate */
+async function validateBookingPromoCode(params: {
+  code: string;
+  providerId: string;
+  bookingAmount: number;
+  locationType: "at_home" | "at_salon";
+  locationId: string | null;
+}): Promise<{ valid: boolean; discountAmount: number; message?: string }> {
+  const res = await fetcher.post<{ data: PublicPromoValidateResponse }>(
+    "/api/public/promotions/validate",
+    {
+      code: params.code.trim(),
+      provider_id: params.providerId,
+      booking_amount: params.bookingAmount,
+      location_type: params.locationType,
+      location_id: params.locationId,
+    },
+  );
+  const payload = res.data;
+  const amount = Number(payload?.discount?.amount ?? 0);
+  if (payload?.valid && Number.isFinite(amount) && amount > 0) {
+    return {
+      valid: true,
+      discountAmount: Math.min(amount, params.bookingAmount),
+    };
+  }
+  return {
+    valid: false,
+    discountAmount: 0,
+    message: payload?.message,
+  };
 }
 
 export default function StepPromotions({
@@ -33,6 +73,7 @@ export default function StepPromotions({
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const deepLinkPromoRan = useRef(false);
+  const prevCartTotalRef = useRef<number | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
   type SavedGc = { id: string; code: string; balance: number; currency: string; is_active?: boolean; expires_at?: string | null };
@@ -53,23 +94,50 @@ export default function StepPromotions({
     bookingState.selectedProducts[0]?.currency?.trim() ||
     tenantCurrency;
 
-  /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & Platform Fee). */
-  const servicesTotal =
-    bookingState.isGroupBooking && bookingState.groupParticipants?.length
-      ? bookingState.groupParticipants.reduce((total, participant) => {
-          const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-            const service = bookingState.selectedServices.find((s) => s.id === serviceId);
-            return sum + (service?.price || 0);
-          }, 0);
-          return total + participantTotal;
-        }, 0)
-      : bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+  /** Pre-tax subtotal — includes catalog package discount (matches payment / validate-booking). */
+  const cartSubtotals = useMemo(
+    () =>
+      computeBookingTotals({
+        selectedServices: bookingState.selectedServices,
+        selectedAddons: bookingState.selectedAddons,
+        selectedProducts: bookingState.selectedProducts,
+        travelFee: bookingState.address?.travelFee || 0,
+        isGroupBooking: bookingState.isGroupBooking,
+        groupParticipants: bookingState.groupParticipants,
+        selectedPackage: bookingState.selectedPackage ?? null,
+        defaultCurrency: tenantCurrency,
+      }),
+    [bookingState, tenantCurrency],
+  );
 
-  const cartTotal =
-    servicesTotal +
-    bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
-    bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) +
-    (bookingState.address?.travelFee || 0);
+  const cartTotal = cartSubtotals.subtotalBeforeDiscounts;
+
+  const promoLocationType: "at_home" | "at_salon" =
+    bookingState.mode === "mobile" ? "at_home" : "at_salon";
+
+  useEffect(() => {
+    if (prevCartTotalRef.current === null) {
+      prevCartTotalRef.current = cartTotal;
+      return;
+    }
+    if (prevCartTotalRef.current === cartTotal) return;
+    prevCartTotalRef.current = cartTotal;
+    if (
+      !bookingState.promotions.couponCode?.trim() &&
+      !(bookingState.promotions.couponDiscount && bookingState.promotions.couponDiscount > 0)
+    ) {
+      return;
+    }
+    setCouponCode("");
+    updateBookingState({
+      promotions: {
+        ...bookingState.promotions,
+        couponCode: undefined,
+        couponDiscount: undefined,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartTotal]);
 
   const subtotalAfterPromotions = Math.max(
     0,
@@ -181,29 +249,32 @@ export default function StepPromotions({
 
   const handleCouponApply = async () => {
     if (!couponCode.trim()) return;
+    if (!bookingState.providerId) {
+      toast.error(t(`${promo}.invalidCoupon`));
+      return;
+    }
 
     setIsValidating(true);
     try {
-      const response = await fetcher.post<{
-        data: { valid: boolean; discount: number; message?: string };
-      }>("/api/promotions/validate", {
+      const result = await validateBookingPromoCode({
         code: couponCode,
-        cartTotal: cartTotal,
-        clientId: user?.id,
-        type: "coupon",
+        providerId: bookingState.providerId,
+        bookingAmount: cartTotal,
+        locationType: promoLocationType,
+        locationId: bookingState.selectedLocationId ?? null,
       });
 
-      if (response.data.valid) {
+      if (result.valid) {
         updateBookingState({
           promotions: {
             ...bookingState.promotions,
-            couponCode: couponCode,
-            couponDiscount: response.data.discount,
+            couponCode: couponCode.trim(),
+            couponDiscount: result.discountAmount,
           },
         });
-        toast.success(response.data.message || t(`${promo}.couponApplied`));
+        toast.success(t(`${promo}.couponApplied`));
       } else {
-        toast.error(response.data.message || t(`${promo}.invalidCoupon`));
+        toast.error(result.message || t(`${promo}.invalidCoupon`));
       }
     } catch (error) {
       toast.error(
@@ -269,25 +340,24 @@ export default function StepPromotions({
     const urlGift = searchParams.get("gift_card")?.trim();
     if (!urlPromo && !urlGift) return;
     deepLinkPromoRan.current = true;
-    if (urlPromo && !bookingState.promotions.couponDiscount) {
+    if (urlPromo && !bookingState.promotions.couponDiscount && bookingState.providerId) {
       setCouponCode(urlPromo);
       void (async () => {
         setIsValidating(true);
         try {
-          const response = await fetcher.post<{
-            data: { valid: boolean; discount: number; message?: string };
-          }>("/api/promotions/validate", {
+          const result = await validateBookingPromoCode({
             code: urlPromo,
-            cartTotal,
-            clientId: user?.id,
-            type: "coupon",
+            providerId: bookingState.providerId,
+            bookingAmount: cartTotal,
+            locationType: promoLocationType,
+            locationId: bookingState.selectedLocationId ?? null,
           });
-          if (response.data.valid) {
+          if (result.valid) {
             updateBookingState({
               promotions: {
                 ...bookingState.promotions,
                 couponCode: urlPromo,
-                couponDiscount: response.data.discount,
+                couponDiscount: result.discountAmount,
               },
             });
           }

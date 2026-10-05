@@ -53,8 +53,7 @@ export async function GET(_request: NextRequest) {
 
         if (feeConfig) {
           const isPercentage = feeConfig.fee_type === 'percentage';
-          // applies_to 'customer' or 'both' → show to customer
-          const showToCustomer = feeConfig.applies_to === 'customer' || feeConfig.applies_to === 'both';
+          // Provider `customer_fee_config_id` → always show/charge (validate-booking parity).
           return NextResponse.json({
             data: {
               platform_service_fee_type: isPercentage ? 'percentage' : 'fixed',
@@ -62,7 +61,8 @@ export async function GET(_request: NextRequest) {
               platform_service_fee_fixed: isPercentage ? 0 : Number(feeConfig.fee_fixed_amount || 0),
               min_booking_amount: Number(feeConfig.min_booking_amount || 0),
               max_fee_amount: feeConfig.max_fee_amount == null ? null : Number(feeConfig.max_fee_amount || 0),
-              show_service_fee_to_customer: showToCustomer,
+              show_service_fee_to_customer: true,
+              from_provider_fee_config: true,
               cash_enabled_on_platform: paymentTypes.cash === true,
             },
           });

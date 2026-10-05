@@ -29,6 +29,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { getBookingHoldFailureMessage } from "@/lib/public-booking/booking-hold-slot-messages";
+import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
@@ -192,6 +193,10 @@ export interface BookingState {
   taxAmount?: number;
   taxRate?: number;
   taxIncluded?: boolean;
+  /** From `providers` row — matches validate-booking deposit (not online-booking-settings). */
+  requiresDeposit?: boolean;
+  depositPercentage?: number | null;
+  tipsEnabled?: boolean;
   tipAmount?: number;
   /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
   tipPercentSelection?: number | null;
@@ -684,10 +689,22 @@ export default function BookingFlow() {
           plan_name?: string;
           provider_id?: string;
           discount_percent?: number;
+          status?: string;
+          expires_at?: string | null;
+          past_due_since?: string | null;
+          plan_is_active?: boolean;
         }>;
         const match = list.find((m) => m?.provider_id === bookingState.providerId);
         if (cancelled) return;
-        const pct = match ? Number(match.discount_percent) : 0;
+        const entitled =
+          match &&
+          isSalonMembershipEntitledForDiscount({
+            status: match.status ?? "",
+            expires_at: match.expires_at ?? null,
+            past_due_since: match.past_due_since ?? null,
+            planIsActive: match.plan_is_active,
+          });
+        const pct = entitled ? Number(match.discount_percent) : 0;
         if (Number.isFinite(pct) && pct > 0 && pct <= 100) {
           setMembershipDiscountPercent(pct);
           setMembershipPlanId(match?.plan_id ?? null);
@@ -827,8 +844,14 @@ export default function BookingFlow() {
           }
           updateBookingState({
             providerId: data.data.id,
-            taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
+            taxRate: Number(data.data.tax_rate_percent ?? 0),
             taxIncluded: Boolean(data.data.tax_inclusive),
+            requiresDeposit: Boolean(data.data.policies?.requires_deposit),
+            depositPercentage:
+              data.data.policies?.deposit_percentage != null
+                ? Number(data.data.policies.deposit_percentage)
+                : null,
+            tipsEnabled: data.data.tips_enabled !== false,
             providerTimezone: data.data.timezone ?? null,
           });
           try {

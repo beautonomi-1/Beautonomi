@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (kufaka imali yepulatifomu {{amount}})",
     "securePaymentTitle": "Secure inkokhelo",
     "paymentCancelledTitle": "inkokhelo kukhanseliwe",
-    "paymentCancelledBody": "Ukhansele inkokhelo. Ukubhukha kwakho akuqinisekisiwe."
+    "paymentCancelledBody": "Ukhansele inkokhelo. Ukubhukha kwakho akuqinisekisiwe.",
+    "packageDiscount": "iphakethe isaphulelo",
+    "packageApplied": "iphakethe applied",
+    "redeemPackage": "Redeem a prekukhokhelwe iphakethe (okukhethekayo)",
+    "packageCredit": "iphakethe crhlela",
+    "prepaidSessionsRemaining": "{{count}} Iseshini(s) remaining"
   },
   "payments": {
     "pay": "Khokha",

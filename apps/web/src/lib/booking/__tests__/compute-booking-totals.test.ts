@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeBookingTotals } from "../compute-booking-totals";
+import { computeBookingPayableTotal, computeBookingTotals } from "../compute-booking-totals";
 
 describe("computeBookingTotals", () => {
   it("sums services, addons, products, travel and subtracts discounts", () => {
@@ -35,5 +35,31 @@ describe("computeBookingTotals", () => {
     expect(totals.subtotalBeforeDiscounts).toBe(150);
     expect(totals.subtotalAfterDiscounts).toBe(125);
     expect(totals.total).toBe(125);
+  });
+
+  it("does not add extracted tax to total when prices are tax-inclusive", () => {
+    const totals = computeBookingTotals({
+      selectedServices: [{ id: "s1", price: 115, currency: "ZAR" }],
+      selectedAddons: [],
+      selectedProducts: [],
+      taxAmount: 15,
+      taxIncluded: true,
+      serviceFeeAmount: 5,
+      tipAmount: 10,
+      defaultCurrency: "ZAR",
+    });
+    expect(totals.total).toBe(130);
+  });
+
+  it("computeBookingPayableTotal matches validate-booking exclusive path", () => {
+    expect(
+      computeBookingPayableTotal({
+        subtotalAfterDiscounts: 100,
+        taxAmount: 15,
+        taxIncluded: false,
+        serviceFeeAmount: 5,
+        tipAmount: 10,
+      }),
+    ).toBe(130);
   });
 });

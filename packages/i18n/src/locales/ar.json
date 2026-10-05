@@ -17510,7 +17510,12 @@
     "platformFeeInclusive": " (incl. منصة رسوم {{amount}})",
     "securePaymentTitle": "Secure دفع",
     "paymentCancelledTitle": "دفع ملغى",
-    "paymentCancelledBody": "You ملغى the دفع. Your حجز has not been مؤكد."
+    "paymentCancelledBody": "You ملغى the دفع. Your حجز has not been مؤكد.",
+    "packageDiscount": "Package خصم",
+    "packageApplied": "تم تطبيق الباقة",
+    "redeemPackage": "استخدام باقة مدفوعة مسبقًا (اختياري)",
+    "packageCredit": "رصيد الباقة",
+    "prepaidSessionsRemaining": "تبقّى {{count}} جلسة"
   },
   "payments": {
     "pay": "دفع",
