@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 import { signInWithOAuth } from "@/lib/supabase/auth";
 import { MarketingConsentCheckbox } from "@/components/auth/MarketingConsentCheckbox";
-import { sendAuthOtp, verifyAuthOtp } from "@/lib/auth/auth-otp-client";
+import { AuthTurnstile } from "@/components/auth/AuthTurnstile";
+import { sendAuthOtp, verifyAuthOtp, AuthOtpError } from "@/lib/auth/auth-otp-client";
 import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
 import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
 import {
@@ -53,41 +55,61 @@ function currentBookingEmbedFlag(): boolean {
   return new URLSearchParams(window.location.search).get("embed") === "1";
 }
 
-function resolveGatePostLoginNext(customRedirectUrl: string): string {
+/** Appends auth_return=1 so booking-flow re-checks hold after OAuth/OTP reload. */
+export function appendAuthReturnToBookingNext(pathWithQuery: string): string {
+  const trimmed = pathWithQuery.trim();
+  if (!trimmed.startsWith("/")) return trimmed;
+  try {
+    const u = new URL(trimmed, "https://placeholder.local");
+    u.searchParams.set("auth_return", "1");
+    const q = u.searchParams.toString();
+    return q ? `${u.pathname}?${q}` : u.pathname;
+  } catch {
+    return trimmed.includes("?") ? `${trimmed}&auth_return=1` : `${trimmed}?auth_return=1`;
+  }
+}
+
+export function resolveGatePostLoginNext(customRedirectUrl: string): string {
   const embed = currentBookingEmbedFlag();
+  let resolved: string;
   const raw = customRedirectUrl.trim();
   if (!raw) {
     if (typeof window !== "undefined") {
-      return appendBookingEmbedQuery(
+      resolved = appendBookingEmbedQuery(
         `${window.location.pathname}${window.location.search}`,
         embed,
       );
+    } else {
+      resolved = "/booking";
     }
-    return "/booking";
-  }
-  if (isSafeRelativeRedirect(raw)) return appendBookingEmbedQuery(raw.trim(), embed);
-  if (typeof window !== "undefined") {
+  } else if (isSafeRelativeRedirect(raw)) {
+    resolved = appendBookingEmbedQuery(raw.trim(), embed);
+  } else if (typeof window !== "undefined") {
     try {
       const u = new URL(raw, window.location.origin);
       if (u.origin === window.location.origin) {
         const pathWithQuery = `${u.pathname}${u.search}`;
-        return appendBookingEmbedQuery(
+        resolved = appendBookingEmbedQuery(
           sanitizeRelativeRedirect(pathWithQuery) ??
             `${window.location.pathname}${window.location.search}`,
           embed,
         );
+      } else {
+        resolved = appendBookingEmbedQuery(
+          `${window.location.pathname}${window.location.search}`,
+          embed,
+        );
       }
     } catch {
-      /* use fallback */
+      resolved = appendBookingEmbedQuery(
+        `${window.location.pathname}${window.location.search}`,
+        embed,
+      );
     }
+  } else {
+    resolved = "/booking";
   }
-  if (typeof window !== "undefined") {
-    return appendBookingEmbedQuery(
-      `${window.location.pathname}${window.location.search}`,
-      embed,
-    );
-  }
-  return "/booking";
+  return appendAuthReturnToBookingNext(resolved);
 }
 
 function holdSecondsRemaining(iso: string): number {
@@ -97,7 +119,7 @@ function holdSecondsRemaining(iso: string): number {
 }
 
 interface BeautonomiGateModalProps {
-  holdId: string;
+  holdId?: string | null;
   /** From `POST /api/public/booking-holds` — shows the same countdown as checkout while the user signs in. */
   holdExpiresAt?: string | null;
   open: boolean;
@@ -128,6 +150,8 @@ export function BeautonomiGateModal({
     apple: true,
   });
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
 
   const { bundle: configBundle } = useConfigBundle();
   const tenantPhoneDial = (() => {
@@ -194,7 +218,11 @@ export function BeautonomiGateModal({
         navigateForEmbedBreakout(data.url, "auth_required");
         return;
       }
-      onAuthComplete();
+      // Full-window OAuth: browser navigates away; do not run onAuthComplete (would advance flow without session).
+      if (data?.url) {
+        window.location.assign(data.url);
+        return;
+      }
     } catch (err) {
       console.error("OAuth error:", err);
       toast.error(err instanceof Error ? err.message : t("web.book.gate.signInFailed"));
@@ -215,13 +243,15 @@ export function BeautonomiGateModal({
     }
     setLoading("email");
     try {
-      await sendAuthOtp({ email: email.trim() });
+      await sendAuthOtp({ email: email.trim(), captchaToken });
+      setCaptchaRequired(false);
       setOtpCode("");
       setOtpSent("email");
       toast.success(
         t("web.book.gate.emailOtpSentToast", { digits: emailOtpLen, minutes: emailOtpExpiryMin }),
       );
     } catch (err) {
+      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
       toast.error(err instanceof Error ? err.message : t("web.book.gate.emailSendFailed"));
     } finally {
       setLoading(null);
@@ -244,7 +274,8 @@ export function BeautonomiGateModal({
     }
     setLoading("phone");
     try {
-      await sendAuthOtp({ phone: normalizeSupabaseAuthPhone(e164) });
+      await sendAuthOtp({ phone: normalizeSupabaseAuthPhone(e164), captchaToken });
+      setCaptchaRequired(false);
       setOtpCode("");
       setSentPhoneE164(normalizeSupabaseAuthPhone(e164));
       setOtpSent("phone");
@@ -256,11 +287,15 @@ export function BeautonomiGateModal({
         }),
       );
     } catch (err) {
+      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
       toast.error(err instanceof Error ? err.message : t("web.book.gate.smsSendFailed"));
     } finally {
       setLoading(null);
     }
   };
+
+  const loginNextPath = postLoginNext.startsWith("/") ? postLoginNext : `/${postLoginNext}`;
+  const encodedLoginNext = encodeURIComponent(loginNextPath);
 
   const handleVerifyOtp = async (codeOverride?: string) => {
     if (!otpSent) return;
@@ -623,6 +658,33 @@ export function BeautonomiGateModal({
               </Button>
             </div>
           )}
+          {captchaRequired ? (
+            <div className="pt-2">
+              <AuthTurnstile onToken={setCaptchaToken} />
+            </div>
+          ) : null}
+          <div className="pt-4 mt-2 border-t text-center text-sm space-y-2" style={{ borderColor: BOOKING_BORDER }}>
+            <p style={{ color: BOOKING_TEXT_SECONDARY }}>
+              {t("web.book.gate.passwordSignInPrompt")}{" "}
+              <Link
+                href={`/login?next=${encodedLoginNext}`}
+                className="font-medium underline underline-offset-2"
+                style={{ color: BOOKING_ACCENT }}
+              >
+                {t("web.book.gate.passwordSignInLink")}
+              </Link>
+            </p>
+            <p style={{ color: BOOKING_TEXT_SECONDARY }}>
+              {t("web.book.gate.noAccountPrompt")}{" "}
+              <Link
+                href={`/signup?next=${encodedLoginNext}`}
+                className="font-medium underline underline-offset-2"
+                style={{ color: BOOKING_ACCENT }}
+              >
+                {t("web.book.gate.createAccountLink")}
+              </Link>
+            </p>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

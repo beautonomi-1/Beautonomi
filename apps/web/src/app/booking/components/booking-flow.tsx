@@ -65,6 +65,7 @@ import {
   journeyBucketLabelKey,
 } from "@/lib/booking/booking-journey-buckets";
 import { BeautonomiGateModal } from "@/components/booking/BeautonomiGateModal";
+import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
 import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
 import { isBookingEmbedEnabled } from "@beautonomi/utils";
 import { isCompleteE164 } from "@/lib/phone";
@@ -1212,6 +1213,13 @@ export default function BookingFlow() {
     });
   }, [isReady, bookingState.providerId, searchParams, track]);
 
+  const bookingOnboardingSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!user || authLoading || bookingOnboardingSyncedRef.current) return;
+    bookingOnboardingSyncedRef.current = true;
+    void completeCustomerOnboardingQuietly();
+  }, [user, authLoading]);
+
   useEffect(() => {
     if (searchParams.get("auth_return") !== "1" || !user) return;
     const id = bookingState.holdId;
@@ -1712,8 +1720,12 @@ export default function BookingFlow() {
           // The actual validation happens in payment step
           return true;
         }
-        // For mobile, address is required
-        return bookingState.address !== null;
+        // For mobile, require validated address (coordinates + structured line from /api/location/validate)
+        if (bookingState.address === null) return false;
+        return (
+          bookingState.address.coordinates != null &&
+          Boolean(bookingState.address.structuredAddress?.line1?.trim())
+        );
       case "calendar":
         return bookingState.selectedDate !== null && bookingState.selectedTimeSlot !== null;
       case "resources":
@@ -2048,7 +2060,7 @@ export default function BookingFlow() {
         <BookingEmbedBridge active />
       ) : null}
 
-      {bookingState.holdId ? (
+      {gateOpen ? (
         <BeautonomiGateModal
           holdId={bookingState.holdId}
           holdExpiresAt={bookingState.holdExpiresAt}

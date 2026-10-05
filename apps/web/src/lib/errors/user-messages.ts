@@ -100,6 +100,10 @@ export function getUserFacingMessage(
   fallback?: string | null,
   genericFallback = "Something went wrong. Please try again.",
 ): string {
+  if (code === "VALIDATION_ERROR") {
+    if (fallback && fallback.trim() && !looksLikeTechnical(fallback)) return fallback.trim();
+    return ERROR_MESSAGES.VALIDATION_ERROR;
+  }
   if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
   if (fallback && fallback.trim() && !looksLikeTechnical(fallback)) return fallback.trim();
   return genericFallback;

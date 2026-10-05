@@ -36,6 +36,7 @@ import {
   isCustomerSkewedPostLoginPath,
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
+import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
 import { isCompleteE164 } from "@/lib/phone";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
@@ -83,7 +84,11 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const { refreshUser, role: contextRole, signIn: signInWithSession } = useAuth();
   const { track, isReady: analyticsReady } = useAmplitude();
-  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "";
+  const rawNext =
+    searchParams.get("next") ||
+    searchParams.get("redirect") ||
+    searchParams.get("return_to") ||
+    "";
   const nextUrl = sanitizeRelativeRedirect(rawNext) ?? "";
   const initialAuthError = searchParams.get("error")?.trim() || null;
 
@@ -246,6 +251,9 @@ export default function LoginPage() {
           return;
         }
       } else {
+        if (nextPathname?.startsWith("/booking")) {
+          await completeCustomerOnboardingQuietly();
+        }
         router.replace(next);
         return;
       }
