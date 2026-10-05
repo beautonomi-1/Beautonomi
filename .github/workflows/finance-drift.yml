@@ -60,9 +60,10 @@ jobs:
               '',
               '**Immediate actions:**',
               '1. Review the audit output in the failed job logs above.',
-              '2. Identify the affected `finance_transactions` / `booking_refunds` rows.',
-              '3. Follow the runbook in `docs/MANUAL_FINANCE_VALIDATION.md`.',
-              '4. Assign a Payments lead to remediate and sign off.',
+              '2. Identify the affected `finance_transactions`, `booking_refunds`, or `product_orders` rows.',
+              '3. For product orders: trigger `/api/cron/reconcile-product-order-ledger` or see `docs/MANUAL_FINANCE_VALIDATION.md`.',
+              '4. Follow the runbook in `docs/MANUAL_FINANCE_VALIDATION.md`.',
+              '5. Assign a Payments lead to remediate and sign off.',
             ].join('\n');
 
             await core.summary.addHeading(title, 2).addRaw(body).write();

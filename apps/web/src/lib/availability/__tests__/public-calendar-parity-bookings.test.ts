@@ -40,8 +40,40 @@ function makeSupabaseStub(rowsByTable: Record<string, unknown[]>) {
 }
 
 describe("loadPublicCalendarParityBookings", () => {
+  it("reads availability blocks with the admin client (RLS hides them from anon/customers)", async () => {
+    const userDb = makeSupabaseStub({
+      availability_blocks: [],
+    });
+    const admin = makeSupabaseStub({
+      staff_time_off: [],
+      staff_days_off: [],
+      availability_blocks: [
+        {
+          id: "blk",
+          staff_id: null,
+          location_id: null,
+          start_at: "2026-06-10T08:00:00.000Z",
+          end_at: "2026-06-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const rows = await loadPublicCalendarParityBookings(userDb as never, admin as never, {
+      providerId: "provider-a",
+      date: "2026-06-10",
+      slotStaffId: "staff-a",
+      staffIdsForTimeOff: [],
+      providerTimeZone: "Africa/Johannesburg",
+    });
+
+    expect(rows).toHaveLength(1);
+  });
+
   it("queries provider-local day boundaries for availability blocks", async () => {
-    const db = makeSupabaseStub({
+    const db = makeSupabaseStub({});
+    const admin = makeSupabaseStub({
+      staff_time_off: [],
+      staff_days_off: [],
       availability_blocks: [
         {
           id: "overnight-block",
@@ -52,10 +84,6 @@ describe("loadPublicCalendarParityBookings", () => {
           end_at: "2026-06-09T23:30:00.000Z",
         },
       ],
-    });
-    const admin = makeSupabaseStub({
-      staff_time_off: [],
-      staff_days_off: [],
     });
 
     const rows = await loadPublicCalendarParityBookings(db as never, admin as never, {

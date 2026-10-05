@@ -48,10 +48,9 @@ export async function GET(request: NextRequest) {
 
     const rawSlug = String(provider.slug || provider.id);
     const slug = encodeURIComponent(rawSlug);
-    // Canonical booking URL (F23): /booking?slug=...
-    // `/book/[slug]` is kept only for `?embed=1` and multi-service deep links.
+    // Canonical booking URL: /booking?slug=… (`/book/[slug]` 308-redirects here).
     const bookingUrl = `${baseUrl}/booking?slug=${slug}`;
-    const embedUrl = `${baseUrl}/book/${slug}?embed=1`;
+    const embedUrl = `${baseUrl}/booking?slug=${slug}&embed=1`;
     const iframe_snippet = buildBookingIframeSnippet({
       origin: baseUrl,
       slug: rawSlug,
@@ -167,7 +166,7 @@ export async function PATCH(request: NextRequest) {
 
     const slug = encodeURIComponent(provider.slug || provider.id);
     const bookingUrl = `${baseUrl}/booking?slug=${slug}`;
-    const embedUrl = `${baseUrl}/book/${slug}?embed=1`;
+    const embedUrl = `${baseUrl}/booking?slug=${slug}&embed=1`;
 
     return successResponse({
       id: provider.id,

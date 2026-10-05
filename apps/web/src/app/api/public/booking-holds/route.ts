@@ -41,12 +41,12 @@ import { withNoStore } from "@/lib/http/no-store";
 const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
 
 const createHoldSchema = z.object({
-  provider_id: z.string().uuid("Invalid provider ID"),
+  provider_id: z.guid("Invalid provider ID"),
   staff_id: zPublicBookingStaffIdOptional,
   services: z
     .array(
       z.object({
-        offering_id: z.string().uuid("Invalid offering ID"),
+        offering_id: z.guid("Invalid offering ID"),
         staff_id: zPublicBookingStaffIdOptional,
       })
     )
@@ -54,7 +54,10 @@ const createHoldSchema = z.object({
   start_at: z.string().datetime("Invalid start datetime"),
   end_at: z.string().datetime("Invalid end datetime"),
   location_type: z.enum(["at_home", "at_salon"]),
-  location_id: z.string().uuid().optional().nullable(),
+  location_id: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? null : val),
+    z.guid().optional().nullable(),
+  ),
   address: z
     .object({
       line1: z.string().min(1),
@@ -75,14 +78,14 @@ const createHoldSchema = z.object({
     .optional()
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
-  previous_hold_id: z.string().uuid().optional().nullable(),
-  exclude_booking_id: z.string().uuid().optional().nullable(),
-  resource_ids: z.array(z.string().uuid()).optional(),
+  previous_hold_id: z.guid().optional().nullable(),
+  exclude_booking_id: z.guid().optional().nullable(),
+  resource_ids: z.array(z.guid()).optional(),
   /** Must match the travel buffer used by availability for at-home slots. */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
   /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
-  package_id: z.string().uuid().optional().nullable(),
-  primary_package_id: z.string().uuid().optional().nullable(),
+  package_id: z.guid().optional().nullable(),
+  primary_package_id: z.guid().optional().nullable(),
   /**
    * §Release-audit 2026-04: when the slot came from an any-staff union,
    * the availability engine emitted the list of staff who were free at
@@ -90,7 +93,7 @@ const createHoldSchema = z.object({
    * choice through the hold resolver so concurrent bookings against the
    * same "anyone" timeslot deterministically pick different staff.
    */
-  preferred_staff_ids: z.array(z.string().uuid()).optional().nullable(),
+  preferred_staff_ids: z.array(z.guid()).optional().nullable(),
 });
 
 const HOLD_EXPIRY_MINUTES = 20;
@@ -105,6 +108,20 @@ type HoldOverlapScopeArgs = {
   endAtIso: string;
   nowIso: string;
 };
+
+async function resolveDefaultSalonLocationId(
+  supabase: SupabaseClient,
+  providerId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("provider_locations")
+    .select("id, is_primary")
+    .eq("provider_id", providerId)
+    .eq("is_active", true)
+    .or("location_type.eq.at_salon,location_type.is.null")
+    .order("is_primary", { ascending: false });
+  return (data?.[0] as { id?: string } | undefined)?.id ?? null;
+}
 
 async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): Promise<void> {
   // Expire ALL past-due holds for this provider in the overlapping time range,
@@ -234,7 +251,7 @@ async function handlePost(request: NextRequest) {
           start_at,
           end_at,
           location_type,
-          location_id,
+          location_id: bodyLocationId,
           address,
           guest_fingerprint_hash,
           previous_hold_id,
@@ -272,6 +289,12 @@ async function handlePost(request: NextRequest) {
           tenantId,
         );
         if (marketGuard) return marketGuard;
+
+        const location_id =
+          bodyLocationId ||
+          (location_type === "at_salon"
+            ? await resolveDefaultSalonLocationId(supabase, provider_id)
+            : null);
 
         const nowIso = new Date().toISOString();
 

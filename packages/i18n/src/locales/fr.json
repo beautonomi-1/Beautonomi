@@ -17510,7 +17510,12 @@
     "platformFeeInclusive": " (incl. plateforme frais {{amount}})",
     "securePaymentTitle": "Secure paiement",
     "paymentCancelledTitle": "Paiement annulé",
-    "paymentCancelledBody": "You annulé the paiement. Your réservation has not been confirmé."
+    "paymentCancelledBody": "You annulé the paiement. Your réservation has not been confirmé.",
+    "packageDiscount": "Package réduction",
+    "packageApplied": "Forfait appliqué",
+    "redeemPackage": "Utiliser un forfait prépayé (facultatif)",
+    "packageCredit": "Crédit forfait",
+    "prepaidSessionsRemaining": "{{count}} séance(s) restante(s)"
   },
   "payments": {
     "pay": "Payer",

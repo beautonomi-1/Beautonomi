@@ -216,10 +216,12 @@ export function handleApiError(
       );
     }
 
-    // Check for authentication/permission errors
-    if (
+    // No session → 401; signed in but not allowed → 403.
+    if (errorMessage.includes("authentication required")) {
+      status = 401;
+      code = "UNAUTHORIZED";
+    } else if (
       errorMessage.includes("insufficient permissions") ||
-      errorMessage.includes("authentication required") ||
       errorMessage.includes("unauthorized") ||
       errorMessage.includes("not assigned to this tenant") ||
       errorMessage.includes("no active tenant assignment") ||
@@ -229,7 +231,10 @@ export function handleApiError(
       code = "FORBIDDEN";
     }
 
-    Sentry.captureException(error, { extra: { code, status, originalMessage: error.message } });
+    // Expected auth outcomes (guests hitting /api/me/*) are not incidents.
+    if (status !== 401 && status !== 403) {
+      Sentry.captureException(error, { extra: { code, status, originalMessage: error.message } });
+    }
     // In production, never surface raw DB/internal error messages to clients on 5xx responses.
     // 4xx errors use error.message since they are intentionally user-facing (validation, auth, etc.).
     const clientMessage =

@@ -29,7 +29,7 @@ import { getShopCountryIsoForForms } from "@/lib/market-country";
 import { trackBookingStarted, trackBookingHoldCreated } from "@/lib/analytics";
 import {
   buildRetailCartRowsFromPublicPackage,
-  cartMatchesPublicCatalogPackage,
+  checkoutCatalogPackageMatchesCart,
   coerceSelectedDate,
   flattenProviderServicesToMenu,
   formatBusinessDayYYYYMMDD,
@@ -808,7 +808,7 @@ export default function BookScreen() {
   const appliedPrefillAddonsRef = useRef(false);
   /** Set after a successful `POST /api/me/referrals/attach` during this booking session. */
   const referralAttachSucceededRef = useRef(false);
-  /** Public package shape from API — used with {@link cartMatchesPublicCatalogPackage} when `packageIdForCheckout` is set. */
+  /** Public package shape from API — used with checkout catalog package gate when `packageIdForCheckout` is set. */
   const resolvedPackageShapeRef = useRef<{
     items?: { type?: string; id?: string; quantity?: number }[];
     services?: { id: string }[];
@@ -1261,11 +1261,17 @@ export default function BookScreen() {
               const shape = { items: pkg.items, services: pkg.services };
               resolvedPackageShapeRef.current = shape;
               setSelectedPackageProducts(retail);
-              const bundleOk = cartMatchesPublicCatalogPackage(
-                applied.map((s) => s.offeringId),
-                retail.map((r) => ({ id: r.id, quantity: r.quantity })),
-                shape
-              );
+              const bundleOk = checkoutCatalogPackageMatchesCart({
+                services: applied.map((s) => ({ offering_id: s.offeringId })),
+                products: retail.map((r) => ({ id: r.id, quantity: r.quantity })),
+                pkg: {
+                  items: pkg.items,
+                  price: typeof pkg.price === "number" ? pkg.price : Number(pkg.price) || undefined,
+                  discount_percentage:
+                    pkg.discount_percentage != null ? Number(pkg.discount_percentage) : null,
+                },
+                servicesSubtotal: applied.reduce((sum, s) => sum + (s.price ?? 0), 0),
+              }).matches;
               if (bundleOk) {
                 setPackageIdForCheckout(pkgId);
                 if (usedSkipFallback) {
@@ -1397,18 +1403,23 @@ export default function BookScreen() {
     if (!packageIdForCheckout) return;
     const shape = resolvedPackageShapeRef.current;
     if (!shape) return;
-    const ok = cartMatchesPublicCatalogPackage(
-      selectedServices.map((s) => s.offeringId),
-      selectedPackageProducts.map((p) => ({ id: p.id, quantity: p.quantity })),
-      shape
-    );
+    const ok = checkoutCatalogPackageMatchesCart({
+      services: selectedServices.map((s) => ({ offering_id: s.offeringId })),
+      products: selectedPackageProducts.map((p) => ({ id: p.id, quantity: p.quantity })),
+      pkg: {
+        items: shape.items,
+        price: activePackage?.price,
+        discount_percentage: activePackage?.discount_percentage ?? null,
+      },
+      servicesSubtotal: selectedServices.reduce((sum, s) => sum + (s.price ?? 0), 0),
+    }).matches;
     if (!ok) {
       resolvedPackageShapeRef.current = null;
       setPackageIdForCheckout(null);
       setActivePackage(null);
       setSelectedPackageProducts([]);
     }
-  }, [selectedServices, selectedPackageProducts, packageIdForCheckout]);
+  }, [selectedServices, selectedPackageProducts, packageIdForCheckout, activePackage]);
 
   // Package deep-link: once services are preloaded, move from venue to the package summary step.
   useEffect(() => {
@@ -3425,7 +3436,7 @@ export default function BookScreen() {
                   {bf("staffRequiredWebHint")}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(`${APP_URL}/book/${slug}`)}
+                  onPress={() => Linking.openURL(`${APP_URL}/booking?slug=${encodeURIComponent(slug)}`)}
                   style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 14 }}
                   accessibilityRole="button" accessibilityLabel={t("booking.bookInBrowser")}
                 >

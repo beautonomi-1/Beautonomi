@@ -357,6 +357,20 @@ export async function GET(
       console.warn(`Provider ${providerData.id} (slug: ${slug}) has no business_name`);
     }
 
+    let taxRatePercent: number;
+    let taxInclusive: boolean;
+    if (providerData.tax_rate_percent == null) {
+      const { getPlatformDefaultTaxRateAndInclusive } = await import(
+        "@/lib/pricing/checkout-tax-defaults"
+      );
+      const defaults = await getPlatformDefaultTaxRateAndInclusive(supabase);
+      taxRatePercent = defaults.taxRate;
+      taxInclusive = defaults.taxIncluded;
+    } else {
+      taxRatePercent = Math.max(0, Number(providerData.tax_rate_percent));
+      taxInclusive = Boolean((providerData as { tax_inclusive?: boolean | null }).tax_inclusive);
+    }
+
     const result = {
       id: providerData.id,
       slug: providerData.slug,
@@ -422,8 +436,8 @@ export async function GET(
       distance_km: distance_km ?? undefined,
       /** Expose to clients so booking pages can add noindex when provider opted out */
       seo_indexable: includeInSearchEngines,
-      tax_rate_percent: providerData.tax_rate_percent ?? 0,
-      tax_inclusive: Boolean((providerData as { tax_inclusive?: boolean | null }).tax_inclusive),
+      tax_rate_percent: taxRatePercent,
+      tax_inclusive: taxInclusive,
       tips_enabled: providerData.tips_enabled ?? true,
       timezone: providerData.timezone ?? "Africa/Johannesburg",
       profile_promotions,

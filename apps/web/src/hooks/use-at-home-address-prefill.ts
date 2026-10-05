@@ -4,7 +4,17 @@ import { useCallback, useRef, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { mapGeocodeFeatureToAddressParts, type MapboxGeocodeFeatureLike } from "@beautonomi/utils";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
-import type { AtHomeAddress } from "@/app/book/types/booking-engine";
+/** Minimal at-home address shape (formerly in express booking-engine types). */
+export type AtHomeAddress = {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postal_code?: string;
+  latitude?: number;
+  longitude?: number;
+};
 
 export type AtHomePrefillState =
   | { status: "idle" }

@@ -98,7 +98,6 @@ export default function StepVenueChoice({
     travelTimeMinutes?: number;
     coverage: string;
   }>>([]);
-  const [showZonesInfo, setShowZonesInfo] = useState(false);
   const { state: prefillState, prefillFromCurrentLocation } = useAtHomeAddressPrefill();
   const isGettingCurrentLocation = prefillState.status === "locating";
 
@@ -619,44 +618,6 @@ export default function StepVenueChoice({
           animate={{ opacity: 1, height: "auto" }}
           className="space-y-4"
         >
-          {/* Service Zones Info */}
-          {serviceZones.length > 0 && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <button
-                onClick={() => setShowZonesInfo(!showZonesInfo)}
-                className="w-full flex items-center justify-between text-start"
-              >
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">
-                    {t("web.booking.stepVenueChoice.serviceAreas", { count: serviceZones.length })}
-                  </span>
-                </div>
-                <span className="text-xs text-blue-600">
-                  {showZonesInfo ? t("web.booking.stepVenueChoice.hide") : t("web.booking.stepVenueChoice.show")}
-                </span>
-              </button>
-              {showZonesInfo && (
-                <div className="mt-3 space-y-2 pt-3 border-t border-blue-200">
-                  {serviceZones.map((zone) => (
-                    <div key={zone.id} className="text-xs text-blue-800">
-                      <div className="font-medium">{zone.name}</div>
-                      <div className="text-blue-600">{zone.coverage}</div>
-                      {zone.travelFee > 0 && (
-                        <div className="text-blue-600">
-                          {t("web.booking.stepVenueChoice.travelFeeAmount", {
-                            amount: zone.travelFee.toFixed(2),
-                            currency: bookingState.selectedServices[0]?.currency || tenantCurrency,
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {zoneError && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />

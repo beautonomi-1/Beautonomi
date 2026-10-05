@@ -12,6 +12,7 @@
   "crons": [
     { "path": "/api/cron/sync-paystack-terminal-payments", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/reconcile-online-charge-ledger", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/reconcile-product-order-ledger", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/identity-verification-reconcile", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/sync-paycloud-payments", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/send-reminders", "schedule": "0 * * * *" },

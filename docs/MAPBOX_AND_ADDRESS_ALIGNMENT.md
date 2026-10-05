@@ -11,6 +11,7 @@ All address and location features (maps, directions, geocoding, service-zone che
 
 - **Public API (web + mobile):** `GET /api/public/third-party-config?service=mapbox` returns `public_token` and optional `style_url` (prefers `mapbox_config`).
 - **Web map preview / static images:** `GET /api/public/directions-config` returns `mapboxPublicToken` and `mapboxStyleUrl` from `mapbox_config`.
+- **Staging parity:** `tooling/audit/sync-staging-config-from-production.mjs` upserts non-secret **`mapbox_config`** rows from production (server token still via `platform_secrets` / Vercel env).
 
 ## What uses it
 

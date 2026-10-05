@@ -22,7 +22,7 @@ function CancelledContent() {
     backHref = `/offers/${encodeURIComponent(offerId)}`;
     backLabel = "Back to offer";
   } else if (bookingId) {
-    backHref = `/book/continue?booking_id=${encodeURIComponent(bookingId)}`;
+    backHref = `/account-settings/bookings/${encodeURIComponent(bookingId)}/pay`;
     backLabel = "Return to booking";
   }
 

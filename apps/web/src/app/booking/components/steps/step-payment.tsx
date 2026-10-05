@@ -20,6 +20,7 @@ import {
   Repeat,
   Clock,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -37,15 +38,27 @@ import { fetcher } from "@/lib/http/fetcher";
 import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
 import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck } from "@beautonomi/i18n";
 import type { CancellationPolicyView } from "@beautonomi/i18n";
-import LoginModal from "@/components/global/login-modal";
 import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
-import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingTotals } from "@/lib/booking/compute-booking-totals";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
-import { getHoldTimeRemaining, lineHasHouseCallAdjustment, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import {
+  getHoldTimeRemaining,
+  isBookingEmbedEnabled,
+  lineHasHouseCallAdjustment,
+  percentOf,
+  serverNowToClockOffsetMs,
+  appendBookingEmbedQuery,
+} from "@beautonomi/utils";
 import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
+import { findNextAvailableDate, type AvailabilitySlot } from "@/lib/booking/find-next-available-date";
+import {
+  availabilityRouteDurationMinutes,
+  slicesFromBookingCart,
+} from "@/lib/booking-slot-math/blocked-window-minutes";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -57,14 +70,25 @@ type PublicBookingCreateResult = {
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 };
 
-type HoldVerificationResponse = {
-  data?: {
-    expires_at?: string | null;
-    server_now?: string | null;
-  };
+type PublicHoldCheckoutSnapshot = {
+  provider_id?: string;
+  staff_id?: string | null;
+  booking_services_snapshot?: Array<{ offering_id?: string; id?: string }>;
+  start_at?: string;
+  location_type?: string;
+  location_id?: string | null;
+  address_snapshot?: unknown;
+  travel_fee?: number;
+  provider_on_demand_accept_enabled?: boolean;
   expires_at?: string | null;
   server_now?: string | null;
 };
+
+type HoldVerificationResponse = {
+  data?: PublicHoldCheckoutSnapshot;
+  expires_at?: string | null;
+  server_now?: string | null;
+} & PublicHoldCheckoutSnapshot;
 
 interface SavedCard {
   id: string;
@@ -85,6 +109,8 @@ interface StepPaymentProps {
   updateBookingState: (updates: Partial<BookingState>) => void;
   /** Navigate by step id (works when `?package=` reorders steps). */
   onNavigateToStep: (step: BookingStep) => void | Promise<void>;
+  /** Opens unified Beautonomi gate (sign-in) when payment requires auth. */
+  onRequireAuth?: () => void;
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
@@ -104,28 +130,20 @@ function generateUuidV4(): string {
   });
 }
 
-function getSubtotalAfterDiscounts(state: BookingState): number {
-  let services = 0;
-  if (state.isGroupBooking && state.groupParticipants) {
-    services = state.groupParticipants.reduce((total, participant) => {
-      const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-        const service = state.selectedServices.find((s) => s.id === serviceId);
-        return sum + (service?.price || 0);
-      }, 0);
-      return total + participantTotal;
-    }, 0);
-  } else {
-    services = state.selectedServices.reduce((sum, s) => sum + s.price, 0);
-  }
-  const addons = state.selectedAddons.reduce((sum, a) => sum + a.price, 0);
-  const products = state.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
-  const travelFee = state.address?.travelFee || 0;
-  const subtotal = services + addons + products + travelFee;
-  const discounts =
-    (state.promotions.couponDiscount || 0) +
-    (state.promotions.loyaltyDiscount || 0) +
-    (state.promotions.membershipDiscount || 0);
-  return Math.max(0, subtotal - discounts);
+function getSubtotalAfterDiscounts(state: BookingState, defaultCurrency: string): number {
+  return computeBookingTotals({
+    selectedServices: state.selectedServices,
+    selectedAddons: state.selectedAddons,
+    selectedProducts: state.selectedProducts,
+    travelFee: state.address?.travelFee || 0,
+    isGroupBooking: state.isGroupBooking,
+    groupParticipants: state.groupParticipants,
+    selectedPackage: state.selectedPackage ?? null,
+    couponDiscount: state.promotions.couponDiscount || 0,
+    membershipDiscount: state.promotions.membershipDiscount || 0,
+    loyaltyDiscount: state.promotions.loyaltyDiscount || 0,
+    defaultCurrency,
+  }).subtotalAfterDiscounts;
 }
 
 function roundTipAmount(amount: number): number {
@@ -209,6 +227,7 @@ export default function StepPayment({
   bookingState,
   updateBookingState,
   onNavigateToStep,
+  onRequireAuth,
 }: StepPaymentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -222,11 +241,18 @@ export default function StepPayment({
   const [isHoldLoading, setIsHoldLoading] = useState(false);
   const [isHoldExpired, setIsHoldExpired] = useState(false);
   const [holdLoadError, setHoldLoadError] = useState<string | null>(null);
+  const [holdSnapshot, setHoldSnapshot] = useState<PublicHoldCheckoutSnapshot | null>(null);
+  const [requestingNow, setRequestingNow] = useState(false);
+  const [slotConflictOffer, setSlotConflictOffer] = useState(false);
+  const [findingNextSlot, setFindingNextSlot] = useState(false);
   const adCampaignId = searchParams.get("campaign_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
+  const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
+  const onDemandModule = useModuleConfig("on_demand");
+  const onDemandEnabled = Boolean(onDemandAcceptEnabled && onDemandModule?.enabled);
+  const embed = isBookingEmbedEnabled(searchParams);
   const [isProcessing, setIsProcessing] = useState(false);
   const paymentInFlightRef = useRef(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [tipAmount, setTipAmount] = useState(bookingState.tipAmount || 0);
   const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(
     bookingState.tipPercentSelection ?? null
@@ -377,7 +403,8 @@ export default function StepPayment({
       .get<HoldVerificationResponse>(`/api/public/booking-holds/${holdId}`, { staleTimeMs: 0 })
       .then((res) => {
         if (cancelled) return;
-        const data = res?.data ?? res;
+        const data = (res?.data ?? res) as PublicHoldCheckoutSnapshot;
+        setHoldSnapshot(data);
         const expiresAt =
           typeof data?.expires_at === "string"
             ? data.expires_at
@@ -669,27 +696,27 @@ export default function StepPayment({
     }
   }, [bookingState.selectedPackage?.id, packagesRelevantToBooking, updateBookingState]);
 
-  // Fetch provider online booking settings: tip suggestions, deposit requirements
+  // Deposit mirrors `providers.requires_deposit` / `deposit_percentage` (loaded in booking-flow).
+  useEffect(() => {
+    const requires = Boolean(bookingState.requiresDeposit);
+    setProviderRequiresDeposit(requires);
+    if (requires) {
+      setDepositPercentage(Number(bookingState.depositPercentage ?? 30));
+    }
+  }, [bookingState.requiresDeposit, bookingState.depositPercentage]);
+
+  // Tip preset amounts from online booking settings only (deposit is not sourced here).
   useEffect(() => {
     if (!bookingState.providerId) return;
     let cancelled = false;
     fetcher
       .get<{
-        data?: {
-          tip_suggestions?: number[];
-          deposit_required?: boolean;
-          deposit_percent?: number | null;
-        };
+        data?: { tip_suggestions?: number[] };
       }>(`/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`)
       .then((res) => {
         if (cancelled) return;
-        const d = res?.data;
-        const tips = d?.tip_suggestions;
+        const tips = res?.data?.tip_suggestions;
         setTipSuggestions(Array.isArray(tips) && tips.length > 0 ? tips : [0, 50, 100, 150, 200]);
-        if (d?.deposit_required) {
-          setProviderRequiresDeposit(true);
-          setDepositPercentage(Number(d.deposit_percent ?? 30));
-        }
       })
       .catch(() => {
         if (!cancelled) setTipSuggestions([0, 50, 100, 150, 200]);
@@ -705,17 +732,28 @@ export default function StepPayment({
   const usingSavedCard =
     paymentMethod === "card" && Boolean(selectedCardId) && !useNewCard && savedCards.length > 0;
 
-  const tipPercentageBase = useMemo(() => getSubtotalAfterDiscounts(bookingState), [bookingState]);
+  const tipPercentageBase = useMemo(
+    () => getSubtotalAfterDiscounts(bookingState, tenantCurrency),
+    [bookingState, tenantCurrency],
+  );
+
+  useEffect(() => {
+    if (bookingState.tipsEnabled === false) {
+      setTipAmount(0);
+      setTipPercentSelection(null);
+    }
+  }, [bookingState.tipsEnabled]);
 
   // Keep tip amount in sync when user chose a % and the subtotal changes (e.g. promo applied earlier)
   useEffect(() => {
+    if (bookingState.tipsEnabled === false) return;
     if (tipPercentSelection === null) return;
     if (tipPercentageBase <= 0) {
       setTipAmount(0);
       return;
     }
     setTipAmount(roundTipAmount((tipPercentageBase * tipPercentSelection) / 100));
-  }, [tipPercentSelection, tipPercentageBase]);
+  }, [tipPercentSelection, tipPercentageBase, bookingState.tipsEnabled]);
 
   // Fetch saved payment methods
   useEffect(() => {
@@ -783,50 +821,46 @@ export default function StepPayment({
     setAsDefault,
   ]);
 
-  // Calculate totals - for group bookings, sum all participant services
-  const calculateServicesTotal = () => {
-    if (bookingState.isGroupBooking && bookingState.groupParticipants) {
-      // For group bookings, calculate from participants
-      return bookingState.groupParticipants.reduce((total, participant) => {
-        const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-          const service = bookingState.selectedServices.find((s) => s.id === serviceId);
-          return sum + (service?.price || 0);
-        }, 0);
-        return total + participantTotal;
-      }, 0);
-    }
-    // Regular booking - sum selected services
-    return bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
-  };
+  const computedTotals = computeBookingTotals({
+    selectedServices: bookingState.selectedServices,
+    selectedAddons: bookingState.selectedAddons,
+    selectedProducts: bookingState.selectedProducts,
+    travelFee: bookingState.address?.travelFee || 0,
+    isGroupBooking: bookingState.isGroupBooking,
+    groupParticipants: bookingState.groupParticipants,
+    selectedPackage: bookingState.selectedPackage ?? null,
+    couponDiscount: bookingState.promotions.couponDiscount || 0,
+    membershipDiscount: bookingState.promotions.membershipDiscount || 0,
+    loyaltyDiscount: bookingState.promotions.loyaltyDiscount || 0,
+    taxAmount: bookingState.taxAmount || 0,
+    taxIncluded: Boolean(bookingState.taxIncluded),
+    serviceFeeAmount: bookingState.serviceFeeAmount || 0,
+    tipAmount,
+    defaultCurrency: tenantCurrency,
+  });
 
   const totals = {
-    services: calculateServicesTotal(),
-    addons: bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0),
-    products: bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0),
-    travelFee: bookingState.address?.travelFee || 0,
+    services: computedTotals.servicesTotal,
+    addons: computedTotals.addonsTotal,
+    products: computedTotals.productsTotal,
+    travelFee: computedTotals.travelFee,
+    packageDiscount: computedTotals.packageDiscount,
     travelFeeBreakdown: bookingState.address?.breakdown || [],
-    subtotal: 0,
-    discounts:
-      (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.loyaltyDiscount || 0) +
-      (bookingState.promotions.membershipDiscount || 0),
-    subtotalAfterDiscounts: 0,
-    taxAmount: bookingState.taxAmount || 0,
+    subtotal:
+      computedTotals.servicesTotal +
+      computedTotals.addonsTotal +
+      computedTotals.productsTotal +
+      computedTotals.travelFee,
+    discounts: computedTotals.discounts + computedTotals.packageDiscount,
+    subtotalAfterDiscounts: computedTotals.subtotalAfterDiscounts,
+    taxAmount: computedTotals.taxAmount,
     taxRate: bookingState.taxRate || 0,
-    serviceFeeAmount: bookingState.serviceFeeAmount || 0,
+    serviceFeeAmount: computedTotals.serviceFeeAmount,
     serviceFeePercentage: bookingState.serviceFeePercentage || 0,
-    tipAmount,
-    total: 0,
-    currency: bookingState.selectedServices[0]?.currency || tenantCurrency,
+    tipAmount: computedTotals.tipAmount,
+    total: computedTotals.total,
+    currency: computedTotals.currency,
   };
-
-  totals.subtotal = totals.services + totals.addons + totals.products + totals.travelFee;
-  totals.subtotalAfterDiscounts = getSubtotalAfterDiscounts(bookingState);
-  // Fee amounts come from bookingState (set by booking-flow.tsx on mount from /api/public/platform-fees).
-  // Do NOT re-estimate here — that would cause fees to appear/change between steps if platform-fees
-  // API responds at slightly different times. bookingState is the single source of truth.
-  totals.total =
-    totals.subtotalAfterDiscounts + totals.taxAmount + totals.serviceFeeAmount + totals.tipAmount;
 
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
@@ -948,6 +982,18 @@ export default function StepPayment({
         : {}),
       use_wallet: bookingState.useWallet ?? false,
       hold_id: holdId || null,
+      ...(bookingState.selectedResourceIds?.length
+        ? { resource_ids: bookingState.selectedResourceIds }
+        : {}),
+      ...(bookingState.rescheduleBookingId
+        ? { reschedule_booking_id: bookingState.rescheduleBookingId }
+        : {}),
+      ...(isBookingEmbedEnabled(searchParams)
+        ? {
+            embed: true,
+            embed_return_url: searchParams.get("return_url") || searchParams.get("return") || null,
+          }
+        : {}),
       // B11: forward provider form responses and booking custom field values
       // collected on the new "forms" step. API validates these against the
       // active provider_forms / custom_field_definitions the same way
@@ -988,7 +1034,7 @@ export default function StepPayment({
       bookingState.subscribeRecurring === true &&
       subscribeRecurringEligible({
         subscribe_recurring: { enabled: true, frequency: freq },
-        reschedule_booking_id: null,
+        reschedule_booking_id: bookingState.rescheduleBookingId ?? null,
         is_group_booking: bookingState.isGroupBooking,
         has_group_participants: Boolean(
           bookingState.groupParticipants && bookingState.groupParticipants.length > 0
@@ -1020,6 +1066,142 @@ export default function StepPayment({
     return response.data;
   };
 
+  const handlePickNextAvailableAfterConflict = async () => {
+    const providerSlug =
+      searchParams.get("slug") ||
+      searchParams.get("partnerId") ||
+      searchParams.get("provider_id") ||
+      "";
+    const serviceId = bookingState.selectedServices[0]?.id;
+    if (!providerSlug || !serviceId) {
+      onNavigateToStep("calendar");
+      return;
+    }
+    const staffIds = bookingState.selectedServices
+      .map((s) => s.staffId)
+      .filter((id): id is string => !!id && id !== "any");
+    const staffId = staffIds.length === 1 ? staffIds[0] : "any";
+    const slices = slicesFromBookingCart(
+      bookingState.selectedServices,
+      bookingState.selectedAddons,
+    );
+    const durationMinutes = availabilityRouteDurationMinutes(slices);
+    const bufferMinutes = getTravelBuffer(
+      bookingState.mode,
+      bookingState.address?.travelTimeMinutes,
+    );
+    setFindingNextSlot(true);
+    try {
+      const result = await findNextAvailableDate({
+        providerSlug,
+        providerTimezone: bookingState.providerTimezone ?? null,
+        serviceId,
+        staffId,
+        durationMinutes,
+        bufferMinutes,
+        locationId: bookingState.selectedLocationId ?? null,
+        maxAdvanceDays: 365,
+        fetchAvailability: async (url) => {
+          const response = await fetcher.get<{ data: { slots?: AvailabilitySlot[] } }>(url, {
+            staleTimeMs: 0,
+          });
+          return { slots: response.data?.slots ?? [] };
+        },
+      });
+      if (!result) {
+        toast.error(t("web.book.flow.noSlotsTwoWeeks"));
+        onNavigateToStep("calendar");
+        return;
+      }
+      setSlotConflictOffer(false);
+      updateBookingState({
+        selectedDate: result.date,
+        selectedTimeSlot: null,
+        availabilityRefreshToken: Date.now(),
+      });
+      onNavigateToStep("calendar");
+    } finally {
+      setFindingNextSlot(false);
+    }
+  };
+
+  const handleRequestNow = async () => {
+    if (!holdId || !holdSnapshot?.provider_id) return;
+    if (!user) {
+      onRequireAuth?.();
+      toast.info(t("web.booking.stepPayment.signInToComplete"));
+      return;
+    }
+    if (!onDemandEnabled || !holdSnapshot.provider_on_demand_accept_enabled) return;
+    if (
+      holdExpiresAt &&
+      getHoldTimeRemaining(holdExpiresAt, serverClockOffsetMs).expired
+    ) {
+      toast.error(t("web.booking.stepPayment.holdExpiredSelectAgain"));
+      await returnToCalendarForHold();
+      return;
+    }
+    if (cancellationRequiresAckForPolicy && !acceptedCancellationPolicy) {
+      toast.error(t("checkout.acceptCancellationPolicyRequired"));
+      return;
+    }
+
+    const services = holdSnapshot.booking_services_snapshot ?? [];
+    const requestPayload: Record<string, unknown> = {
+      provider_id: holdSnapshot.provider_id,
+      services: services.map((s) => ({
+        offering_id: s.offering_id ?? s.id ?? "",
+        staff_id: holdSnapshot.staff_id ?? undefined,
+      })),
+      selected_datetime: holdSnapshot.start_at,
+      location_type: holdSnapshot.location_type === "at_home" ? "at_home" : "at_salon",
+      location_id: holdSnapshot.location_id ?? null,
+      address: holdSnapshot.address_snapshot ?? null,
+      addons: [],
+      tip_amount: 0,
+      travel_fee: holdSnapshot.travel_fee ?? 0,
+    };
+    const meta = (user as { user_metadata?: { full_name?: string } }).user_metadata;
+    if (meta?.full_name || user.email) {
+      const parts = (meta?.full_name ?? "").trim().split(/\s+/);
+      requestPayload.client_info = {
+        firstName: parts[0] || "Guest",
+        lastName: parts.slice(1).join(" ") || "User",
+        email: user.email ?? undefined,
+        phone: user.phone ?? undefined,
+      };
+    }
+
+    setRequestingNow(true);
+    try {
+      const res = await fetcher.post<{ data: { id: string } }>(
+        "/api/me/on-demand/requests",
+        {
+          provider_id: holdSnapshot.provider_id,
+          request_payload: requestPayload,
+          idempotency_key: `on-demand:${holdId}`,
+        },
+        { timeoutMs: 120_000 },
+      );
+      const requestId = res.data?.id;
+      if (!requestId) {
+        toast.error(t("checkout.invalidServerResponse"));
+        return;
+      }
+      const waitingPath = appendBookingEmbedQuery(
+        `/booking/on-demand/waiting?requestId=${encodeURIComponent(requestId)}`,
+        embed,
+      );
+      router.push(waitingPath);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : t("checkout.requestSubmitFailed");
+      toast.error(message);
+    } finally {
+      setRequestingNow(false);
+    }
+  };
+
   const handlePayment = async () => {
     if (paymentInFlightRef.current) {
       return;
@@ -1027,7 +1209,7 @@ export default function StepPayment({
 
     // Check authentication before proceeding
     if (!user && !authLoading) {
-      setIsLoginModalOpen(true);
+      onRequireAuth?.();
       toast.info(t("web.booking.stepPayment.signInToComplete"));
       return;
     }
@@ -1118,6 +1300,12 @@ export default function StepPayment({
         const errCode = error?.code as string | undefined;
         const errStatus = error?.status as number | undefined;
 
+        if (errStatus === 401 || errCode === "UNAUTHORIZED") {
+          onRequireAuth?.();
+          toast.info(t("web.booking.stepPayment.signInToComplete"));
+          return;
+        }
+
         if (errCode === "HOLD_IN_FLIGHT" || (errStatus === 409 && errCode === "HOLD_IN_FLIGHT")) {
           toast.error(
             t("web.booking.stepPayment.holdInFlight"),
@@ -1163,11 +1351,16 @@ export default function StepPayment({
             (error.status === 409 && messageLooksLikeSlotConflict)) &&
           error.code !== "VALIDATION_ERROR";
         if (isAvailabilityConflict) {
-          updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
+          updateBookingState({
+            holdId: null,
+            holdExpiresAt: null,
+            selectedTimeSlot: null,
+            availabilityRefreshToken: Date.now(),
+          });
+          setSlotConflictOffer(true);
           toast.error(t("web.booking.stepPayment.slotJustTaken"), {
             duration: 6000,
           });
-          onNavigateToStep("calendar");
           return;
         }
 
@@ -1201,7 +1394,9 @@ export default function StepPayment({
           : t("web.booking.stepPayment.cashConfirmedSalon");
         toast.success(cashLocationMsg);
         notifyRecurringFromResult(bookingResult.recurring_subscription);
-        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
+        router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
         return;
       }
 
@@ -1209,7 +1404,9 @@ export default function StepPayment({
         // Gift card payment - booking already created, payment processed in backend
         toast.success(t("web.booking.stepPayment.giftCardPaid"));
         notifyRecurringFromResult(bookingResult.recurring_subscription);
-        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
+        router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
         return;
       }
 
@@ -1224,7 +1421,9 @@ export default function StepPayment({
       if ((bookingState.useWallet ?? false) && noCardLeg) {
         toast.success(t("web.booking.stepPayment.walletGiftPaid"));
         notifyRecurringFromResult(bookingResult.recurring_subscription);
-        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
+        router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
         return;
       }
 
@@ -1233,7 +1432,9 @@ export default function StepPayment({
         if (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "") {
           toast.success(t("web.booking.stepPayment.paymentSuccessful"));
           notifyRecurringFromResult(bookingResult.recurring_subscription);
-          router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
+          router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
         } else {
           // Server returned a URL despite saved card — unexpected; fall back to redirect
           toast.info(t("web.booking.stepPayment.redirectingPayment"));
@@ -1265,7 +1466,7 @@ export default function StepPayment({
         bookingState.subscribeRecurring === true &&
         subscribeRecurringEligible({
           subscribe_recurring: { enabled: true, frequency: freqFallback },
-          reschedule_booking_id: null,
+          reschedule_booking_id: bookingState.rescheduleBookingId ?? null,
           is_group_booking: bookingState.isGroupBooking,
           has_group_participants: Boolean(
             bookingState.groupParticipants && bookingState.groupParticipants.length > 0
@@ -1309,7 +1510,9 @@ export default function StepPayment({
           action: {
             label: t("web.booking.stepPayment.viewBooking"),
             onClick: () =>
-              router.push(`/booking/confirmation?bookingId=${bookingResult!.booking_id}`),
+              router.push(
+                `/checkout/success?booking_id=${encodeURIComponent(bookingResult!.booking_id)}`,
+              ),
           },
         });
       }
@@ -1338,6 +1541,43 @@ export default function StepPayment({
               <p className="mt-1">
                 {t("web.booking.stepPayment.goBackToCalendar")}
               </p>
+            </div>
+          </div>
+        )}
+
+        {slotConflictOffer && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3"
+          >
+            <p className="font-semibold text-amber-950">
+              {t("web.booking.stepPayment.slotConflictTitle")}
+            </p>
+            <p className="text-sm text-amber-900">
+              {t("web.booking.stepPayment.slotConflictBody")}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setSlotConflictOffer(false);
+                  void onNavigateToStep("calendar");
+                }}
+              >
+                {t("web.booking.stepPayment.backToCalendar")}
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={findingNextSlot}
+                onClick={() => void handlePickNextAvailableAfterConflict()}
+              >
+                {findingNextSlot
+                  ? t("common.loading")
+                  : t("web.booking.stepPayment.pickNextAvailable")}
+              </Button>
             </div>
           </div>
         )}
@@ -1692,6 +1932,12 @@ export default function StepPayment({
             <span>{t("web.booking.stepPayment.bookingSubtotalBeforeDiscounts")}</span>
             <span>{formatCurrency(totals.subtotal, totals.currency)}</span>
           </div>
+          {totals.packageDiscount > 0 && (
+            <div className="flex justify-between text-sm text-green-600">
+              <span>{t("web.booking.actionBar.packageDiscount")}</span>
+              <span>-{formatCurrency(totals.packageDiscount, totals.currency)}</span>
+            </div>
+          )}
           {bookingState.promotions.couponDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>{t("booking.discount")}</span>
@@ -1816,7 +2062,7 @@ export default function StepPayment({
       </div>
 
       {/* Tip — % presets (of subtotal after discounts) + optional fixed amounts from provider */}
-      {bookingState.providerId && (
+      {bookingState.providerId && bookingState.tipsEnabled !== false && (
         <div className="p-4 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-white to-pink-50/40 shadow-sm space-y-5">
           <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <Heart className="w-5 h-5 text-primary shrink-0" />
@@ -2421,7 +2667,41 @@ export default function StepPayment({
             paymentMethod === "giftcard" &&
             (bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow;
 
+          const showRequestNow =
+            onDemandEnabled &&
+            Boolean(user) &&
+            Boolean(holdSnapshot?.provider_on_demand_accept_enabled);
+
           return (
+            <>
+            {showRequestNow && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleRequestNow()}
+                disabled={
+                  requestingNow ||
+                  isHoldLoading ||
+                  isHoldExpired ||
+                  !holdId ||
+                  !holdExpiresAt ||
+                  (cancellationRequiresAckForPolicy && !acceptedCancellationPolicy)
+                }
+                className="w-full h-12 mb-3 font-semibold touch-target flex items-center justify-center gap-2"
+              >
+                {requestingNow ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    {t("checkout.submitting")}
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5" />
+                    {t("checkout.requestNow")}
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               onClick={handlePayment}
               disabled={
@@ -2471,28 +2751,11 @@ export default function StepPayment({
                 </>
               )}
             </Button>
+            </>
           );
         })()}
       </div>
 
-      {/* Login Modal - shown when guest tries to complete booking */}
-      <LoginModal
-        open={isLoginModalOpen}
-        setOpen={(open) => {
-          setIsLoginModalOpen(open);
-        }}
-        // Keep booking checkout auth friction low: phone OTP first.
-        redirectContext="customer"
-        onAuthSuccess={async () => {
-          // After successful auth, automatically retry booking
-          setIsLoginModalOpen(false);
-          // Small delay to ensure auth state is updated
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          // Retry the payment/booking
-          handlePayment();
-        }}
-        redirectUrl={typeof window !== "undefined" ? window.location.href : undefined}
-      />
     </div>
   );
 }

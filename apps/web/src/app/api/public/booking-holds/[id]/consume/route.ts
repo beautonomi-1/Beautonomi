@@ -24,6 +24,7 @@ import {
 } from "@/lib/verification/verification-policy";
 import { z } from "zod";
 import { withNoStore } from "@/lib/http/no-store";
+import { resolveConsumePackageId } from "@/lib/public-booking/consume-package-id";
 
 const consumeBodySchema = z.object({
   client_info: z
@@ -38,7 +39,7 @@ const consumeBodySchema = z.object({
   guest_fingerprint_hash: z.string().optional(),
   payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
   payment_option: z.enum(["deposit", "full"]).optional(),
-  payment_method_id: z.string().uuid().optional().nullable(),
+  payment_method_id: z.guid().optional().nullable(),
   use_wallet: z.boolean().optional(),
   save_card: z.boolean().optional(),
   set_as_default: z.boolean().optional(),
@@ -48,7 +49,7 @@ const consumeBodySchema = z.object({
     z.string(),
     z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
   ).optional(),
-  addons: z.array(z.string().uuid()).optional(),
+  addons: z.array(z.guid()).optional(),
   special_requests: z.string().optional().nullable(),
   house_call_instructions: z.string().optional().nullable(),
   tip_amount: z.number().min(0).optional(),
@@ -60,23 +61,23 @@ const consumeBodySchema = z.object({
         name: z.string(),
         email: z.string().optional().nullable(),
         phone: z.string().optional().nullable(),
-        service_ids: z.array(z.string().uuid()),
+        service_ids: z.array(z.guid()),
         notes: z.string().optional().nullable(),
       })
     )
     .optional()
     .nullable(),
-  resource_ids: z.array(z.string().uuid()).optional(),
-  reschedule_booking_id: z.string().uuid().optional(),
+  resource_ids: z.array(z.guid()).optional(),
+  reschedule_booking_id: z.guid().optional(),
   products: z.array(bookingProductLineSchema).optional(),
-  package_id: z.string().uuid().optional().nullable(),
+  package_id: z.guid().optional().nullable(),
   /** Alias for `package_id` (e.g. mobile / analytics naming) — same `service_packages.id` on the booking */
-  primary_package_id: z.string().uuid().optional().nullable(),
-  customer_package_entitlement_id: z.string().uuid().optional().nullable(),
+  primary_package_id: z.guid().optional().nullable(),
+  customer_package_entitlement_id: z.guid().optional().nullable(),
   loyalty_points_used: z.number().min(0).optional(),
-  membership_plan_id: z.string().uuid().optional().nullable(),
-  campaign_id: z.string().uuid().optional().nullable(),
-  idempotency_key: z.string().uuid().optional().nullable(),
+  membership_plan_id: z.guid().optional().nullable(),
+  campaign_id: z.guid().optional().nullable(),
+  idempotency_key: z.guid().optional().nullable(),
   /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
   subscribe_recurring: z
     .object({
@@ -230,7 +231,7 @@ async function handlePost(
     const setAsDefault = parsed.data.set_as_default;
     const rescheduleBookingId = parsed.data.reschedule_booking_id;
     const products = parsed.data.products;
-    const requestedPackageId = (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined;
+    const bodyRecord = body as Record<string, unknown>;
     const customerPackageEntitlementId = parsed.data.customer_package_entitlement_id;
     const loyaltyPointsUsed = parsed.data.loyalty_points_used;
     const membershipPlanId = parsed.data.membership_plan_id;
@@ -510,13 +511,15 @@ async function handlePost(
     const resourceIdsFromHold = Array.isArray(holdMeta.resource_ids)
       ? (holdMeta.resource_ids as string[]).filter((id) => typeof id === "string")
       : undefined;
-    const packageId =
-      requestedPackageId ??
-      (typeof holdMeta.package_id === "string" && holdMeta.package_id.trim()
-        ? holdMeta.package_id.trim()
-        : typeof holdMeta.primary_package_id === "string" && holdMeta.primary_package_id.trim()
-          ? holdMeta.primary_package_id.trim()
-          : undefined);
+    const packageId = resolveConsumePackageId({
+      body: bodyRecord,
+      packageId: parsed.data.package_id,
+      primaryPackageId: parsed.data.primary_package_id,
+      holdMetaPackageId:
+        typeof holdMeta.package_id === "string" ? holdMeta.package_id : null,
+      holdMetaPrimaryPackageId:
+        typeof holdMeta.primary_package_id === "string" ? holdMeta.primary_package_id : null,
+    });
 
     const cc = clientInfo?.phoneCountryCode || "27";
     const normalizedClientInfo = clientInfo

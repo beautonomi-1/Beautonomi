@@ -80,8 +80,8 @@ export function buildWebRebookHref(
   if (offering.staff) search.set("staff", offering.staff);
   if (extras.location_id) search.set("location", extras.location_id);
   if (extras.location_type) search.set("location_type", extras.location_type);
-  const query = search.toString();
-  return query ? `/book/${providerSlug}?${query}` : `/book/${providerSlug}`;
+  search.set("slug", providerSlug);
+  return `/booking?${search.toString()}`;
 }
 
 export function buildCustomerRebookParams(

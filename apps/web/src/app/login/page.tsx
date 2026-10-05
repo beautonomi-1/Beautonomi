@@ -36,6 +36,7 @@ import {
   isCustomerSkewedPostLoginPath,
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
+import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
 import { isCompleteE164 } from "@/lib/phone";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
@@ -83,7 +84,11 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const { refreshUser, role: contextRole, signIn: signInWithSession } = useAuth();
   const { track, isReady: analyticsReady } = useAmplitude();
-  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "";
+  const rawNext =
+    searchParams.get("next") ||
+    searchParams.get("redirect") ||
+    searchParams.get("return_to") ||
+    "";
   const nextUrl = sanitizeRelativeRedirect(rawNext) ?? "";
   const initialAuthError = searchParams.get("error")?.trim() || null;
 
@@ -139,6 +144,14 @@ export default function LoginPage() {
         ? "phone"
         : selectedMethod;
   const inOtpStep = (method === "phone" && otpSent) || (method === "email" && emailMode === "otp" && emailOtpSent);
+
+  React.useEffect(() => {
+    if (selectedMethod === "email" && !emailEnabled && phoneEnabled) {
+      setMethod("phone");
+    } else if (selectedMethod === "phone" && !phoneEnabled && emailEnabled) {
+      setMethod("email");
+    }
+  }, [selectedMethod, emailEnabled, phoneEnabled]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -238,6 +251,9 @@ export default function LoginPage() {
           return;
         }
       } else {
+        if (nextPathname?.startsWith("/booking")) {
+          await completeCustomerOnboardingQuietly();
+        }
         router.replace(next);
         return;
       }
@@ -555,7 +571,7 @@ export default function LoginPage() {
   }
 
   const switchMethod = (target: LoginMethod) => {
-    if (target === method) return;
+    if (target === selectedMethod) return;
     resetPhoneOtpFlow();
     resetEmailOtpFlow();
     setMethod(target);
@@ -653,7 +669,8 @@ export default function LoginPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={method === "phone"}
+              data-testid="login-tab-phone"
+              aria-selected={selectedMethod === "phone"}
               onClick={() => switchMethod("phone")}
               className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
                 method === "phone"
@@ -667,7 +684,8 @@ export default function LoginPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={method === "email"}
+              data-testid="login-tab-email"
+              aria-selected={selectedMethod === "email"}
               onClick={() => switchMethod("email")}
               className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
                 method === "email"
@@ -868,6 +886,7 @@ export default function LoginPage() {
             </Button>
             <button
               type="button"
+              data-testid="login-use-password"
               className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
               onClick={() => {
                 setEmailMode("password");

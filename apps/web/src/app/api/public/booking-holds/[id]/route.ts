@@ -16,6 +16,7 @@ import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlement
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { withNoStore } from "@/lib/http/no-store";
+import { getPlatformDefaultTaxRateAndInclusive } from "@/lib/pricing/checkout-tax-defaults";
 
 /** Hold state is per-session; responses are `Cache-Control: no-store` (never edge-cached). */
 export const GET = withNoStore(handleGet);
@@ -187,11 +188,17 @@ async function handleGet(
           : undefined,
     };
 
-    // Resolve tax rate from provider (optional - 0 when provider hasn't set one)
-    const providerTaxRate = (providerRow as any)?.tax_rate_percent != null
-      ? Math.max(0, Number((providerRow as any).tax_rate_percent))
-      : 0;
-    const taxInclusive = Boolean((providerRow as any)?.tax_inclusive ?? false);
+    const rawProviderTaxRate = (providerRow as { tax_rate_percent?: number | null })?.tax_rate_percent;
+    let providerTaxRate: number;
+    let taxInclusive: boolean;
+    if (rawProviderTaxRate == null) {
+      const defaults = await getPlatformDefaultTaxRateAndInclusive(supabase);
+      providerTaxRate = defaults.taxRate;
+      taxInclusive = defaults.taxIncluded;
+    } else {
+      providerTaxRate = Math.max(0, Number(rawProviderTaxRate));
+      taxInclusive = Boolean((providerRow as { tax_inclusive?: boolean })?.tax_inclusive ?? false);
+    }
 
     // Resolve customer-paid Platform Fee config (same priority as validate-booking / platform-fees API)
     let serviceFeeConfig = {
@@ -199,13 +206,17 @@ async function handleGet(
       percentage: 0,
       fixed: 0,
       show: false,
+      min_booking_amount: 0,
+      max_fee_amount: null as number | null,
     };
     try {
       const customerFeeConfigId = (providerRow as any)?.customer_fee_config_id;
       if (customerFeeConfigId) {
         const { data: feeConfig } = await supabase
           .from("platform_fee_config")
-          .select("fee_type, fee_percentage, fee_fixed_amount, applies_to, is_active")
+          .select(
+            "fee_type, fee_percentage, fee_fixed_amount, min_booking_amount, max_fee_amount, applies_to, is_active"
+          )
           .eq("id", customerFeeConfigId)
           .eq("is_active", true)
           .maybeSingle();
@@ -215,7 +226,12 @@ async function handleGet(
             type: isPercentage ? "percentage" : "fixed",
             percentage: isPercentage ? Number(feeConfig.fee_percentage || 0) : 0,
             fixed: isPercentage ? 0 : Number(feeConfig.fee_fixed_amount || 0),
-            show: feeConfig.applies_to === "customer" || feeConfig.applies_to === "both",
+            show: true,
+            min_booking_amount: Number(feeConfig.min_booking_amount || 0),
+            max_fee_amount:
+              feeConfig.max_fee_amount == null
+                ? null
+                : Number(feeConfig.max_fee_amount || 0),
           };
         }
       }
@@ -236,6 +252,11 @@ async function handleGet(
             percentage: (payoutSettings.platform_service_fee_percentage as number) ?? 0,
             fixed: (payoutSettings.platform_service_fee_fixed as number) ?? 0,
             show: (payoutSettings.show_service_fee_to_customer as boolean) !== false,
+            min_booking_amount: Number(payoutSettings.platform_service_fee_min_booking_amount ?? 0),
+            max_fee_amount:
+              payoutSettings.platform_service_fee_max_amount == null
+                ? null
+                : Number(payoutSettings.platform_service_fee_max_amount ?? 0),
           };
         }
       }

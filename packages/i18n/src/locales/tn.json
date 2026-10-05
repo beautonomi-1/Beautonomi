@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (go akaretse tšhelete ya sethala {{amount}})",
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e khansetswe",
-    "paymentCancelledBody": "O khansetse tuelo. Peeletso ya gago ga e ise e netefadiwe."
+    "paymentCancelledBody": "O khansetse tuelo. Peeletso ya gago ga e ise e netefadiwe.",
+    "packageDiscount": "sephuthelwana theolelo",
+    "packageApplied": "sephuthelwana applied",
+    "redeemPackage": "Redeem a pree duetswe sephuthelwana (boikgethelo)",
+    "packageCredit": "sephuthelwana crlokisa",
+    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining"
   },
   "payments": {
     "pay": "Duela",

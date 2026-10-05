@@ -148,7 +148,7 @@ export const PARITY_CONTRACT: Record<ParityScreenId, Omit<ScreenContract, "scree
     auth_required: false,
   },
   book: {
-    web_route: "/book/[slug]",
+    web_route: "/booking",
     mobile_route: "/(app)/book",
     required_queries: [
       "/api/public/providers/[slug]",
@@ -175,7 +175,7 @@ export const PARITY_CONTRACT: Record<ParityScreenId, Omit<ScreenContract, "scree
     auth_required: true,
   },
   book_continue: {
-    web_route: "/book/continue",
+    web_route: "/booking",
     mobile_route: "/(app)/book-checkout",
     required_queries: ["/api/public/booking-holds/[id]", "/api/public/booking-holds/[id]/consume"],
     actions: ["consume_hold", "create_booking"],

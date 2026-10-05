@@ -205,7 +205,7 @@ describe("POST /api/public/bookings", () => {
     expect(mockGetSupabaseServer).not.toHaveBeenCalled();
   });
 
-  it("returns 403 when the caller is not authenticated", async () => {
+  it("returns 401 when the caller is not authenticated", async () => {
     mockGetSupabaseServer.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
@@ -216,8 +216,8 @@ describe("POST /api/public/bookings", () => {
     const res = await POST(makeRequest(validBookingBody()));
     const body = await res.json();
 
-    expect(res.status).toBe(403);
-    expect(body.error?.code).toBe("FORBIDDEN");
+    expect(res.status).toBe(401);
+    expect(body.error?.code).toBe("UNAUTHORIZED");
     expect(mockValidateBooking).not.toHaveBeenCalled();
   });
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
 import { motion } from "framer-motion";
 import { Users, Briefcase, ArrowRight, CreditCard, Globe } from "lucide-react";
 import LoginModal from "@/components/global/login-modal";
@@ -43,6 +44,7 @@ export default function SignupPage() {
   const [content, setContent] = useState<SignupPageContent>({});
   const [_isLoadingContent, setIsLoadingContent] = useState(true);
   const [highlightedCard, setHighlightedCard] = useState<"customer" | "provider" | null>(null);
+  const signupReturnUrl = sanitizeRelativeRedirect(searchParams.get("next") ?? searchParams.get("redirect"));
 
   // Determine which card to highlight and auto-select based on referrer or query parameter
   useEffect(() => {
@@ -380,6 +382,7 @@ export default function SignupPage() {
                 <InlineSignupForm
                   redirectContext={selectedPersona === "provider" ? "provider" : "customer"}
                   referralCode={searchParams.get("ref") ?? undefined}
+                  redirectUrl={selectedPersona === "customer" ? signupReturnUrl ?? undefined : undefined}
                 />
               </motion.div>
             )}

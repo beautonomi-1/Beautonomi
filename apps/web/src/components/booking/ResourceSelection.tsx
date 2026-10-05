@@ -38,6 +38,8 @@ interface ResourceSelectionProps {
    * Use to auto-advance past this step when resources aren't configured.
    */
   onNoResources?: () => void;
+  /** Fired after the resource list loads (including empty). */
+  onResourcesLoaded?: (resources: Resource[]) => void;
 }
 
 export default function ResourceSelection({
@@ -50,6 +52,7 @@ export default function ResourceSelection({
   durationMinutes = 60,
   className,
   onNoResources,
+  onResourcesLoaded,
 }: ResourceSelectionProps) {
   const { t } = useTranslation();
   const [resources, setResources] = useState<Resource[]>([]);
@@ -77,11 +80,13 @@ export default function ResourceSelection({
       const list = response.resources ?? response.data ?? [];
       const loaded = Array.isArray(list) ? list : [];
       setResources(loaded);
+      onResourcesLoaded?.(loaded);
       if (loaded.length === 0) {
         onNoResources?.();
       }
     } catch {
       setResources([]);
+      onResourcesLoaded?.([]);
       onNoResources?.();
     } finally {
       setIsLoading(false);

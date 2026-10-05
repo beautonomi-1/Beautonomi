@@ -3,7 +3,9 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone, XCircle } from "lucide-react";
+import { AlertCircle, Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone, XCircle, Share2 } from "lucide-react";
+import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -80,6 +82,7 @@ function postProviderCheckoutMessage(branch: ProviderPaymentBranch | null) {
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const { track } = useAmplitude();
   const paymentSuccessTracked = useRef(false);
   const bookingId = searchParams?.get("booking_id");
@@ -1192,6 +1195,42 @@ function CheckoutSuccessContent() {
           >
             {webPrimaryLabel}
           </Link>
+          {resolvedBookingId && !isWaitlist && !verifyFailed && (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Link
+                href={`/account-settings/bookings/${resolvedBookingId}/receipt`}
+                target={embed ? "_top" : undefined}
+                className="flex items-center justify-center gap-2 min-h-[44px] rounded-2xl font-medium border text-sm transition-all active:scale-[0.98] hover:bg-[#F9FAFB]"
+                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                {t("web.booking.confirmation.downloadReceipt")}
+              </Link>
+              <button
+                type="button"
+                className="flex items-center justify-center gap-2 min-h-[44px] rounded-2xl font-medium border text-sm transition-all active:scale-[0.98] hover:bg-[#F9FAFB]"
+                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
+                onClick={async () => {
+                  try {
+                    const { shareCustomerBookingReceiptWeb } = await import(
+                      "@/lib/receipts/share-receipt-client"
+                    );
+                    const result = await shareCustomerBookingReceiptWeb(resolvedBookingId);
+                    if (result === "copied") {
+                      toast.success(t("web.booking.confirmation.receiptCopied"));
+                    }
+                  } catch (e) {
+                    toast.error(
+                      e instanceof Error ? e.message : t("web.booking.confirmation.couldNotShare"),
+                    );
+                  }
+                }}
+              >
+                <Share2 className="w-4 h-4 shrink-0" />
+                {t("web.booking.confirmation.share")}
+              </button>
+            </div>
+          )}
           {isCustomOffer && resolvedBookingId ? (
             <Link
               href="/account-settings/custom-requests"

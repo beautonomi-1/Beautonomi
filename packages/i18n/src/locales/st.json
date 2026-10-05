@@ -17511,7 +17511,12 @@
     "platformFeeInclusive": " (ho kenyeletsa chelete ea sethala {{amount}})",
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e hlakotsoe",
-    "paymentCancelledBody": "U hlakotse tefo. Pehelo ea hau ha e so netefatsoe."
+    "paymentCancelledBody": "U hlakotse tefo. Pehelo ea hau ha e so netefatsoe.",
+    "packageDiscount": "sephuthelo theolelo",
+    "packageApplied": "sephuthelo applied",
+    "redeemPackage": "Redeem a pree lefuoe sephuthelo (boikhethelo)",
+    "packageCredit": "sephuthelo crlokisa",
+    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining"
   },
   "payments": {
     "pay": "Lefa",

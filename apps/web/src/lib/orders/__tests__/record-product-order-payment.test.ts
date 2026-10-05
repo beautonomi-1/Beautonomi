@@ -27,16 +27,31 @@ vi.mock("@/lib/analytics/amplitude/track-product-order-paid-server", () => ({
   trackProductOrderPaidServer: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/integrations/slack/ops-triggers", () => ({
+  slackNotifyProductOrderLedgerIncomplete: vi.fn(),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  startSpan: (_opts: unknown, fn: () => unknown) => fn(),
+  captureMessage: vi.fn(),
+}));
+
 type Row = Record<string, unknown>;
 
 function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts: Record<string, Row[][]>; updates: Record<string, Row[]> }) {
-  const filters: Array<{ key: string; value: unknown; op: "eq" | "ilike" }> = [];
+  const filters: Array<{ key: string; value: unknown; op: "eq" | "ilike" | "is" | "in" }> = [];
   const applyFilters = (rows: Row[]) =>
     rows.filter((row) =>
       filters.every((filter) => {
         if (filter.op === "ilike") {
           const needle = String(filter.value).replaceAll("%", "").toLowerCase();
           return String(row[filter.key] ?? "").toLowerCase().includes(needle);
+        }
+        if (filter.op === "is") {
+          return filter.value === null ? row[filter.key] == null : row[filter.key] === filter.value;
+        }
+        if (filter.op === "in") {
+          return (filter.value as unknown[]).includes(row[filter.key]);
         }
         return row[filter.key] === filter.value;
       }),
@@ -48,10 +63,19 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
       filters.push({ key, value, op: "eq" });
       return query;
     },
+    in(key: string, value: unknown[]) {
+      filters.push({ key, value, op: "in" });
+      return query;
+    },
+    is(key: string, value: unknown) {
+      filters.push({ key, value, op: "is" });
+      return query;
+    },
     ilike(key: string, value: unknown) {
       filters.push({ key, value, op: "ilike" });
       return query;
     },
+    limit: vi.fn(() => query),
     maybeSingle: vi.fn(async () => ({
       data: applyFilters(state.rows[table] ?? [])[0] ?? null,
       error: null,
@@ -205,15 +229,38 @@ describe("recordProductOrderPayment", () => {
 
     const supabase = {
       from: vi.fn((table: string) => {
-        const filters: Array<{ key: string; value: unknown }> = [];
+        const filters: Array<{ key: string; value: unknown; op?: string }> = [];
         const applyFilters = (rows: Row[]) =>
-          rows.filter((row) => filters.every((f) => row[f.key] === f.value));
+          rows.filter((row) =>
+            filters.every((f) => {
+              if (f.op === "is") return f.value === null ? row[f.key] == null : row[f.key] === f.value;
+              if (f.op === "in") return (f.value as unknown[]).includes(row[f.key]);
+              if (f.op === "ilike") {
+                const needle = String(f.value).replaceAll("%", "").toLowerCase();
+                return String(row[f.key] ?? "").toLowerCase().includes(needle);
+              }
+              return row[f.key] === f.value;
+            }),
+          );
         const query = {
           select: vi.fn(() => query),
           eq(key: string, value: unknown) {
-            filters.push({ key, value });
+            filters.push({ key, value, op: "eq" });
             return query;
           },
+          in(key: string, value: unknown[]) {
+            filters.push({ key, value, op: "in" });
+            return query;
+          },
+          is(key: string, value: unknown) {
+            filters.push({ key, value, op: "is" });
+            return query;
+          },
+          ilike(key: string, value: unknown) {
+            filters.push({ key, value, op: "ilike" });
+            return query;
+          },
+          limit: vi.fn(() => query),
           maybeSingle: vi.fn(async () => ({
             data: applyFilters(state.rows[table] ?? [])[0] ?? null,
             error: null,
@@ -298,6 +345,43 @@ describe("recordProductOrderPayment", () => {
     });
     expect(state.updates.product_orders?.[0]).not.toHaveProperty("payment_provider");
     expect(state.inserts.finance_transactions).toBeUndefined();
+  });
+
+  it("inserts only missing platform-held legs on backfill", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [
+        {
+          ...orderRow,
+          payment_status: "paid",
+          payment_reference: "wallet_product_order_order-1",
+          paid_at: "2026-07-22T12:00:00.000Z",
+        },
+      ],
+      payment_transactions: [{ id: "tx-1", provider: "wallet", reference: "wallet_product_order_order-1" }],
+      finance_transactions: [
+        {
+          id: "leg-pay",
+          provider_id: "provider-1",
+          product_order_id: "order-1",
+          transaction_type: "payment",
+        },
+      ],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "wallet_product_order_order-1",
+      amountMajor: 100,
+      source: "wallet_checkout",
+      provider: "wallet",
+      skipSideEffects: true,
+    });
+
+    expect(result.ok).toBe(true);
+    const inserted = state.inserts.finance_transactions?.[0] ?? [];
+    expect(inserted.map((r) => r.transaction_type)).toEqual(["provider_earnings", "platform_fee"]);
+    expect(inserted.every((r) => r.created_at === "2026-07-22T12:00:00.000Z")).toBe(true);
   });
 
   it("does not revive cancelled product orders when payment_status is not pending", async () => {

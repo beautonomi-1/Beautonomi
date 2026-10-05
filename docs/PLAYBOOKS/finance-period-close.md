@@ -17,6 +17,8 @@
   - `/api/cron/provider-stall-check` — no stuck provider payouts.
 - Nightly finance audit (`scripts/prod/audit-finance-ledger.mjs`) exited
   clean for the period (script **requires** migration `724` RPC; exits non-zero if missing).
+  Includes paid platform-held **product orders** (`paid_product_orders_missing_ledger`).
+- Product-order ledger auto-repair cron (`/api/cron/reconcile-product-order-ledger`, every 15m) has no open `needsReview` items for the tenant.
 - Ledger Health (`/admin/ledger-health`) or `ledger_reconciliation_summary` RPC
   shows no open drift for the tenant. Do **not** rely on raw `v_ledger_reconciliation`
   alone — `provider_earnings` rows intentionally have no journal entry.

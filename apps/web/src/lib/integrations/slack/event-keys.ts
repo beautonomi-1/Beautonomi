@@ -30,6 +30,7 @@ export const SLACK_EVENT_KEYS = {
   TERMINAL_MERCHANT_APPLICATION_APPROVED: "commercial.terminal_onboarding.approved",
   CUSTOM_OFFER_FINALIZE_FAILED: "finance.custom_offer.finalize_failed",
   PRODUCT_ORDER_PAYMENT_NOT_RECORDED: "finance.product_order.payment_not_recorded",
+  PRODUCT_ORDER_LEDGER_INCOMPLETE: "finance.product_order.ledger_incomplete",
   DISPUTE_NEW: "dispute.new",
   DISPUTE_OVERDUE: "dispute.overdue",
   SAFETY_USER_REPORT: "safety.user_report.pending",

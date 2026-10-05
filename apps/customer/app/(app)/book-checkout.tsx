@@ -40,6 +40,7 @@ import {
   percentOf,
   serverNowToClockOffsetMs,
   lineHasHouseCallAdjustment,
+  checkoutCatalogPackageMatchesCart,
 } from "@beautonomi/utils";
 import { HouseCallLineFootnote, toHouseCallTranslate } from "@/components/booking/HouseCallPricingNotes";
 import { ContextualHint } from "@/components/hints/ContextualHint";
@@ -148,7 +149,7 @@ interface HoldData {
   payment_wallet?: boolean;
   gift_cards?: boolean;
   cash_enabled_on_platform?: boolean;
-  /** Provider tax rate (0 when provider hasn't enabled tax). */
+  /** Effective tax rate from GET hold (provider or platform default). */
   tax_rate_percent?: number;
   /** Whether tax is inclusive in the service prices. */
   tax_inclusive?: boolean;
@@ -158,6 +159,8 @@ interface HoldData {
     percentage: number;
     fixed: number;
     show: boolean;
+    min_booking_amount?: number;
+    max_fee_amount?: number | null;
   };
 }
 
@@ -1029,10 +1032,22 @@ export default function BookCheckoutScreen() {
       name: string;
       description?: string;
       price: number;
+      discount_percentage?: number | null;
       currency: string;
       service_ids: string[];
+      items?: Array<{
+        type?: string;
+        id?: string;
+        quantity?: number;
+        product_variant_id?: string | null;
+      }>;
     }[]
   >([]);
+  const [packageEntitlements, setPackageEntitlements] = useState<
+    { id: string; sessions_remaining: number }[]
+  >([]);
+  const [packageEntitlementsLoading, setPackageEntitlementsLoading] = useState(false);
+  const [selectedEntitlementId, setSelectedEntitlementId] = useState<string | null>(null);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(() =>
     initialPackageIdFromRoute?.trim() ? initialPackageIdFromRoute.trim() : null
   );
@@ -1180,9 +1195,7 @@ export default function BookCheckoutScreen() {
         holdLoadedRef.current = true;
         setHoldServerReady(true);
         setLoading(false);
-        if (packageIdFromHold) {
-          setSelectedPackageId((prev) => prev ?? packageIdFromHold);
-        }
+        // Package selection from hold meta is applied after packages load + entitlement gate (see effect below).
         void (async () => {
           try {
             const feeRes = await api.get<{ cash_enabled_on_platform?: boolean }>(
@@ -1585,17 +1598,35 @@ export default function BookCheckoutScreen() {
           Array.isArray(arr)
             ? arr.map((p: any) => {
                 const servicesRaw = Array.isArray(p.services) ? p.services : [];
+                const itemsRaw = Array.isArray(p.items) ? p.items : [];
                 const service_ids = servicesRaw
                   .filter((row: { type?: string }) => !row.type || row.type === "service")
                   .map((row: { id?: string }) => String(row?.id ?? "").trim())
                   .filter(Boolean);
+                const serviceIdsFromItems = itemsRaw
+                  .filter((row: { type?: string }) => !row.type || row.type === "service")
+                  .map((row: { id?: string }) => String(row?.id ?? "").trim())
+                  .filter(Boolean);
+                const resolvedServiceIds =
+                  service_ids.length > 0 ? service_ids : serviceIdsFromItems;
+                const itemsForGate =
+                  itemsRaw.length > 0
+                    ? itemsRaw
+                    : resolvedServiceIds.map((id: string) => ({
+                        type: "service" as const,
+                        id,
+                        quantity: 1,
+                      }));
                 return {
                   id: p.id,
                   name: p.name || "Package",
                   description: p.description,
                   price: Number(p.price) || 0,
+                  discount_percentage:
+                    p.discount_percentage != null ? Number(p.discount_percentage) : null,
                   currency: p.currency || getTenantDefaultCurrency(),
-                  service_ids,
+                  service_ids: resolvedServiceIds,
+                  items: itemsForGate,
                 };
               })
             : []
@@ -1613,14 +1644,56 @@ export default function BookCheckoutScreen() {
       ?.map((s) => s.offering_id ?? (s as { id?: string }).id)
       .filter(Boolean) as string[]) ?? [];
 
-  /** Only prepaid packages that include at least one service on this booking */
+  const snapshotServiceLines = useMemo(
+    () =>
+      (hold?.booking_services_snapshot ?? [])
+        .map((s) => {
+          const offering_id = (s.offering_id ?? (s as { id?: string }).id)?.trim();
+          if (!offering_id) return null;
+          return { offering_id, price: Number(s.price) || 0 };
+        })
+        .filter(Boolean) as Array<{ offering_id: string; price: number }>,
+    [hold?.booking_services_snapshot]
+  );
+
+  const groupParticipantsForPackageGate = useMemo(
+    () =>
+      isGroupBooking && groupParticipants.length > 0
+        ? groupParticipants.map((p) => ({
+            service_ids: p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds,
+          }))
+        : null,
+    [isGroupBooking, groupParticipants, snapshotOfferingIds]
+  );
+
+  const catalogPackageGateInput = useCallback(
+    (pkg: (typeof packagesList)[number]) => ({
+      services: snapshotServiceLines.map((s) => ({ offering_id: s.offering_id })),
+      products: selectedProducts.map((p) => ({
+        productId: p.productId,
+        productVariantId: p.productVariantId ?? null,
+        quantity: p.quantity,
+      })),
+      groupParticipants: groupParticipantsForPackageGate,
+      pkg: {
+        items: pkg.items,
+        price: pkg.price,
+        discount_percentage: pkg.discount_percentage ?? null,
+      },
+      servicesSubtotal: snapshotServiceLines.reduce((sum, s) => sum + s.price, 0),
+    }),
+    [snapshotServiceLines, selectedProducts, groupParticipantsForPackageGate]
+  );
+
+  /** Catalog packages that exactly match hold snapshot + checkout products (validate-booking parity). */
   const packagesMatchingSelection = useMemo(() => {
-    const sel = new Set(snapshotOfferingIds);
     return packagesList.filter((p) => {
-      if (!p.service_ids.length) return false;
-      return p.service_ids.some((id) => sel.has(id));
+      const hasServiceEntitlements =
+        (p.items ?? []).some((i) => i.type === "service" || !i.type) || p.service_ids.length > 0;
+      if (!hasServiceEntitlements) return false;
+      return checkoutCatalogPackageMatchesCart(catalogPackageGateInput(p)).matches;
     });
-  }, [packagesList, snapshotOfferingIds]);
+  }, [packagesList, catalogPackageGateInput]);
 
   /** After packages load, keep route `package_id` only if that package is available and matches selected services. */
   useEffect(() => {
@@ -1633,6 +1706,27 @@ export default function BookCheckoutScreen() {
       setSelectedPackageId(null);
     }
   }, [packagesMatchingSelection, initialPackageIdFromRoute]);
+
+  useEffect(() => {
+    const fromHold = hold?.package_id?.trim();
+    if (!fromHold || packagesList.length === 0) return;
+    const pkg = packagesList.find((p) => p.id === fromHold);
+    if (pkg && checkoutCatalogPackageMatchesCart(catalogPackageGateInput(pkg)).matches) {
+      setSelectedPackageId((prev) => prev ?? fromHold);
+    }
+  }, [hold?.package_id, packagesList, catalogPackageGateInput]);
+
+  useEffect(() => {
+    if (!selectedPackageId) return;
+    const pkg = packagesList.find((p) => p.id === selectedPackageId);
+    if (!pkg) {
+      setSelectedPackageId(null);
+      return;
+    }
+    if (!checkoutCatalogPackageMatchesCart(catalogPackageGateInput(pkg)).matches) {
+      setSelectedPackageId(null);
+    }
+  }, [selectedPackageId, packagesList, catalogPackageGateInput]);
 
   const filteredCheckoutPackages = useMemo(() => {
     const q = checkoutPackageSearch.trim().toLowerCase();
@@ -1664,9 +1758,7 @@ export default function BookCheckoutScreen() {
     return m;
   }, [hold?.booking_services_snapshot]);
 
-  const primarySubtotal = hold
-    ? hold.booking_services_snapshot.reduce((s, svc) => s + svc.price, 0)
-    : 0;
+  const primarySubtotal = snapshotServiceLines.reduce((s, line) => s + line.price, 0);
   const groupParticipantsSubtotal =
     isGroupBooking && groupParticipants.length > 0
       ? groupParticipants.reduce((sum, p) => {
@@ -1674,7 +1766,7 @@ export default function BookCheckoutScreen() {
           return sum + ids.reduce((s, id) => s + (offeringPriceMap.get(id) ?? 0), 0);
         }, 0)
       : 0;
-  const subtotal = hold ? primarySubtotal + groupParticipantsSubtotal : 0;
+  const subtotal = primarySubtotal;
   const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
   const houseCallFeeTotal =
@@ -1685,15 +1777,83 @@ export default function BookCheckoutScreen() {
     .filter((a) => selectedAddonIds.includes(a.id))
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
-  const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
+  const packageCheckoutResult = useMemo(() => {
+    if (!selectedPackageId) {
+      return { effectivePackageId: null as string | null, packageDiscount: 0 };
+    }
+    const pkg = packagesList.find((p) => p.id === selectedPackageId);
+    if (!pkg) {
+      return { effectivePackageId: null as string | null, packageDiscount: 0 };
+    }
+    const gate = checkoutCatalogPackageMatchesCart(catalogPackageGateInput(pkg));
+    if (!gate.matches) {
+      return { effectivePackageId: null as string | null, packageDiscount: 0 };
+    }
+    return {
+      effectivePackageId: selectedPackageId,
+      packageDiscount: gate.packageDiscount,
+    };
+  }, [selectedPackageId, packagesList, catalogPackageGateInput]);
+
+  const { effectivePackageId, packageDiscount } = packageCheckoutResult;
+
+  useEffect(() => {
+    if (!effectivePackageId || !hold?.provider_id || !user?.id) {
+      setPackageEntitlements([]);
+      setSelectedEntitlementId(null);
+      return;
+    }
+    let cancelled = false;
+    setPackageEntitlementsLoading(true);
+    const q = new URLSearchParams({
+      provider_id: hold.provider_id,
+      package_id: effectivePackageId,
+    });
+    void api
+      .get<{ entitlements?: { id: string; sessions_remaining: number }[] }>(
+        `/api/me/package-entitlements?${q.toString()}`
+      )
+      .then((res) => {
+        if (cancelled || res.error) return;
+        const raw = res.data as
+          | { data?: { entitlements?: { id: string; sessions_remaining: number }[] } }
+          | { entitlements?: { id: string; sessions_remaining: number }[] };
+        const d = (raw as { data?: { entitlements?: { id: string; sessions_remaining: number }[] } })
+          .data ?? raw;
+        const list = (d as { entitlements?: { id: string; sessions_remaining: number }[] })
+          .entitlements;
+        setPackageEntitlements(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPackageEntitlements([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPackageEntitlementsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectivePackageId, hold?.provider_id, user?.id]);
+
+  useEffect(() => {
+    if (!effectivePackageId) setSelectedEntitlementId(null);
+  }, [effectivePackageId]);
+
+  const prePromoTotal =
+    Math.max(0, primarySubtotal - packageDiscount) +
+    addonsSubtotal +
+    travelFee +
+    productsSubtotal;
 
   const checkoutCartFingerprint = useMemo(
     () =>
       [
-        subtotal.toFixed(4),
+        primarySubtotal.toFixed(4),
+        packageDiscount.toFixed(4),
         addonsSubtotal.toFixed(4),
         String(travelFee),
         productsSubtotal.toFixed(4),
+        selectedPackageId ?? "",
         [...selectedAddonIds].sort().join(","),
         selectedProducts
           .map((p) => `${p.productId}:${p.productVariantId ?? ""}:${p.quantity}:${p.price}`)
@@ -1702,10 +1862,12 @@ export default function BookCheckoutScreen() {
         isGroupBooking ? String(groupParticipants.length) : "0",
       ].join("~"),
     [
-      subtotal,
+      primarySubtotal,
+      packageDiscount,
       addonsSubtotal,
       travelFee,
       productsSubtotal,
+      selectedPackageId,
       selectedAddonIds,
       selectedProducts,
       isGroupBooking,
@@ -1747,7 +1909,7 @@ export default function BookCheckoutScreen() {
   const subtotalAfterMembership = Math.max(0, subtotalAfterPromo - membershipDiscountAmount);
   const subtotalAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
 
-  // Tax: only when provider has set a non-zero tax rate (applied after promo + loyalty discount)
+  // Tax from hold.tax_rate_percent (provider override or platform default from GET hold), after promo + loyalty
   const taxRatePercent = hold?.tax_rate_percent ?? 0;
   const isTaxInclusive = hold?.tax_inclusive ?? false;
   const taxAmount =
@@ -1759,12 +1921,19 @@ export default function BookCheckoutScreen() {
 
   // Platform Fee: only when configured and visible to customer
   const sfConfig = hold?.service_fee_config;
-  const serviceFeeAmount =
-    sfConfig && sfConfig.show
-      ? sfConfig.type === "percentage"
-        ? Math.round(((subtotalAfterLoyalty * sfConfig.percentage) / 100) * 100) / 100
-        : sfConfig.fixed
-      : 0;
+  const minBookingForFee = Number(sfConfig?.min_booking_amount ?? 0);
+  let serviceFeeAmount = 0;
+  if (sfConfig && sfConfig.show && subtotalAfterLoyalty >= minBookingForFee) {
+    if (sfConfig.type === "percentage") {
+      serviceFeeAmount =
+        Math.round(((subtotalAfterLoyalty * sfConfig.percentage) / 100) * 100) / 100;
+      if (sfConfig.max_fee_amount != null) {
+        serviceFeeAmount = Math.min(serviceFeeAmount, Number(sfConfig.max_fee_amount));
+      }
+    } else {
+      serviceFeeAmount = sfConfig.fixed;
+    }
+  }
 
   const total = isTaxInclusive
     ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
@@ -2534,9 +2703,10 @@ export default function BookCheckoutScreen() {
           totalPrice: p.price * p.quantity,
         }));
       }
-      if (selectedPackageId) {
-        payload.package_id = selectedPackageId;
-        payload.primary_package_id = selectedPackageId;
+      payload.package_id = effectivePackageId;
+      payload.primary_package_id = effectivePackageId;
+      if (selectedEntitlementId && effectivePackageId) {
+        payload.customer_package_entitlement_id = selectedEntitlementId;
       }
       if (user?.user_metadata?.full_name || user?.email) {
         const parts = (user.user_metadata?.full_name ?? "").trim().split(/\s+/);
@@ -2914,6 +3084,8 @@ export default function BookCheckoutScreen() {
     selectedProducts,
     snapshotOfferingIds,
     selectedPackageId,
+    effectivePackageId,
+    selectedEntitlementId,
     paystackEnabled,
     walletEnabled,
     subscribeRecurring,
@@ -3926,7 +4098,7 @@ export default function BookCheckoutScreen() {
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 4 }}
                 >
-                  {selectedPackageId ? "Package applied" : "Redeem a prepaid package (optional)"}
+                  {selectedPackageId ? t("checkout.packageApplied") : t("checkout.redeemPackage")}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
                   {t("booking.redeemPackageHint")}
@@ -3964,6 +4136,43 @@ export default function BookCheckoutScreen() {
                         })}
                       </Text>
                     )}
+                    {effectivePackageId && packageEntitlementsLoading ? (
+                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 8 }} />
+                    ) : null}
+                    {effectivePackageId && packageEntitlements.length > 0 ? (
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
+                          {t("checkout.packageCredit")}
+                        </Text>
+                        {packageEntitlements.map((ent) => {
+                          const picked = selectedEntitlementId === ent.id;
+                          return (
+                            <Pressable
+                              key={ent.id}
+                              onPress={() => {
+                                haptic.selection();
+                                setSelectedEntitlementId(picked ? null : ent.id);
+                              }}
+                              style={{
+                                paddingVertical: 10,
+                                paddingHorizontal: 12,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: picked ? Colors.primary : "#E5E7EB",
+                                backgroundColor: picked ? "#F5F3FF" : "#FFF",
+                                marginBottom: 6,
+                              }}
+                            >
+                              <Text style={{ fontSize: 13, color: "#111827" }}>
+                                {t("checkout.prepaidSessionsRemaining", {
+                                  count: ent.sessions_remaining,
+                                })}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
                     {visibleCheckoutPackages.map((pkg) => {
                       const selected = selectedPackageId === pkg.id;
                       return (
@@ -3972,6 +4181,7 @@ export default function BookCheckoutScreen() {
                           onPress={() => {
                             haptic.selection();
                             setSelectedPackageId(selected ? null : pkg.id);
+                            if (selected) setSelectedEntitlementId(null);
                           }}
                           style={{
                             flexDirection: "row",
@@ -4205,6 +4415,16 @@ export default function BookCheckoutScreen() {
                   {formatCurrency(prePromoTotal, currency)}
                 </Text>
               </View>
+              {packageDiscount > 0 && (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.packageDiscount")}</Text>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>
+                    -{formatCurrency(packageDiscount, currency)}
+                  </Text>
+                </View>
+              )}
               {effectivePromoDiscount > 0 && (
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}

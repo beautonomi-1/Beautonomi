@@ -445,6 +445,31 @@ async function prodTlsRedirectWarning() {
   return { status: "warn", evidence: `beautonomi.com → ${res.status}, location=${loc || "(none)"}` };
 }
 
+/** Canonical booking URL: legacy /book/{slug} must 308 to /booking?slug=… on production hosts. */
+async function prodBookSlugRedirect() {
+  const slug = "e2e-test-provider-beautonomi";
+  const hosts = [PROD_HOSTS.za, PROD_HOSTS.primary];
+  const lines = [];
+  for (const origin of hosts) {
+    const legacy = `${origin}/book/${slug}`;
+    const res = await fetch(legacy, { redirect: "manual" });
+    const loc = res.headers.get("location") || "";
+    const ok =
+      [301, 302, 307, 308].includes(res.status) &&
+      /\/booking\?slug=/i.test(loc) &&
+      loc.includes(slug);
+    lines.push(`${origin}/book/${slug} → ${res.status} ${loc.slice(0, 120)}`);
+    if (!ok) {
+      return {
+        status: "fail",
+        evidence: lines.join("; "),
+        fix: "Ensure apps/web proxy + /book/[providerSlug] permanent redirect to /booking?slug=…",
+      };
+    }
+  }
+  return { status: "pass", evidence: lines.join("; ") };
+}
+
 async function compareSupabaseGaps() {
   const r = pnpm(["compare:supabase"], "compare");
   if (r.code !== 0) {
@@ -693,6 +718,12 @@ function buildChecks() {
         area: "production",
         severity: "warning",
         run: () => prodTlsRedirectWarning(),
+      },
+      {
+        id: "live.book_slug_redirect",
+        area: "production",
+        severity: "blocker",
+        run: () => prodBookSlugRedirect(),
       },
       {
         id: "staging.preview",

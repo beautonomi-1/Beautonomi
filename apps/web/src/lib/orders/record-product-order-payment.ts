@@ -7,7 +7,10 @@ import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-p
 import { bookShippingForOrder } from "@/lib/orders/shipping";
 import { logger } from "@/lib/utils/logger";
 
-type RecordProductOrderPaymentInput = {
+const PLATFORM_HELD_LEG_TYPES = ["payment", "provider_earnings", "platform_fee"] as const;
+const FINANCE_INSERT_MAX_ATTEMPTS = 3;
+
+export type RecordProductOrderPaymentInput = {
   supabase: SupabaseClient;
   productOrderId: string;
   reference: string;
@@ -25,7 +28,110 @@ type RecordProductOrderPaymentInput = {
   provider: "paystack" | "wallet" | "gift_card" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
   /** True when Beautonomi/gateway holds money that can become provider payout balance. */
   platformHeld?: boolean;
+  /** Backdate ledger rows for already-paid repairs (defaults to now on fresh settlement). */
+  ledgerCreatedAt?: string;
+  /** Skip cart, shipping, entitlements, promotion, gift capture (cron backfill). */
+  skipSideEffects?: boolean;
 };
+
+async function notifyLedgerIncomplete(params: {
+  tenantId?: string | null;
+  productOrderId: string;
+  reference: string;
+  source: RecordProductOrderPaymentInput["source"];
+  provider: RecordProductOrderPaymentInput["provider"];
+  reason: "payment_tx" | "finance_insert";
+}) {
+  Sentry.captureMessage("recordProductOrderPayment.ledgerIncomplete", {
+    level: "error",
+    extra: params,
+  });
+  const { slackNotifyProductOrderLedgerIncomplete } = await import(
+    "@/lib/integrations/slack/ops-triggers"
+  );
+  slackNotifyProductOrderLedgerIncomplete({
+    tenantId: params.tenantId,
+    productOrderId: params.productOrderId,
+    reference: params.reference,
+    source: params.source,
+    provider: params.provider,
+    reason: params.reason,
+  });
+}
+
+async function loadExistingPlatformLegTypes(
+  supabase: SupabaseClient,
+  productOrderId: string,
+  providerId: string | null,
+  orderNumber: string,
+): Promise<Set<string>> {
+  const types = new Set<string>();
+  const { data: linked } = await (supabase.from("finance_transactions") as any)
+    .select("transaction_type")
+    .eq("product_order_id", productOrderId)
+    .in("transaction_type", [...PLATFORM_HELD_LEG_TYPES]);
+  for (const row of linked ?? []) {
+    types.add(String((row as { transaction_type?: string }).transaction_type ?? ""));
+  }
+
+  if (!providerId || !orderNumber.trim()) return types;
+
+  const { data: legacy } = await (supabase.from("finance_transactions") as any)
+    .select("transaction_type")
+    .eq("provider_id", providerId)
+    .is("product_order_id", null)
+    .ilike("description", `%${orderNumber}%`)
+    .in("transaction_type", [...PLATFORM_HELD_LEG_TYPES]);
+  for (const row of legacy ?? []) {
+    types.add(String((row as { transaction_type?: string }).transaction_type ?? ""));
+  }
+  return types;
+}
+
+async function hasProviderEarningsLedger(
+  supabase: SupabaseClient,
+  productOrderId: string,
+  providerId: string | null,
+  orderNumber: string,
+): Promise<boolean> {
+  const { data: linked } = await (supabase.from("finance_transactions") as any)
+    .select("id")
+    .eq("product_order_id", productOrderId)
+    .eq("transaction_type", "provider_earnings")
+    .limit(1);
+  if ((linked?.length ?? 0) > 0) return true;
+
+  if (!providerId || !orderNumber.trim()) return false;
+
+  const { data: legacy } = await (supabase.from("finance_transactions") as any)
+    .select("id")
+    .eq("provider_id", providerId)
+    .is("product_order_id", null)
+    .eq("transaction_type", "provider_earnings")
+    .ilike("description", `%${orderNumber}%`)
+    .limit(1);
+  return (legacy?.length ?? 0) > 0;
+}
+
+function resolveLedgerCreatedAt(
+  input: RecordProductOrderPaymentInput,
+  order: {
+    paid_at?: string | null;
+    confirmed_at?: string | null;
+    created_at?: string | null;
+  },
+  transitionedToPaid: boolean,
+): string {
+  if (input.ledgerCreatedAt?.trim()) return input.ledgerCreatedAt.trim();
+  if (transitionedToPaid) return new Date().toISOString();
+  const paidAt = typeof order.paid_at === "string" ? order.paid_at.trim() : "";
+  if (paidAt) return paidAt;
+  const confirmedAt = typeof order.confirmed_at === "string" ? order.confirmed_at.trim() : "";
+  if (confirmedAt) return confirmedAt;
+  const createdAt = typeof order.created_at === "string" ? order.created_at.trim() : "";
+  if (createdAt) return createdAt;
+  return new Date().toISOString();
+}
 
 export async function recordProductOrderPayment(
   input: RecordProductOrderPaymentInput,
@@ -48,11 +154,20 @@ export async function recordProductOrderPayment(
 async function recordProductOrderPaymentInner(
   input: RecordProductOrderPaymentInput,
 ): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean; ledgerIncomplete?: boolean }> {
-  const { supabase, productOrderId, reference, amountMajor, feesMajor = 0, source, provider } = input;
+  const {
+    supabase,
+    productOrderId,
+    reference,
+    amountMajor,
+    feesMajor = 0,
+    source,
+    provider,
+    skipSideEffects = false,
+  } = input;
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
     .select(
-      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status, currency, promotion_id, promotion_discount_amount, gift_card_amount",
+      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status, currency, promotion_id, promotion_discount_amount, gift_card_amount, paid_at, confirmed_at, created_at, wallet_amount",
     )
     .eq("id", productOrderId)
     .maybeSingle();
@@ -61,11 +176,13 @@ async function recordProductOrderPaymentInner(
     throw orderErr || new Error("Product order not found");
   }
 
-  const wasAlreadyPaid = String((order as any).payment_status ?? "") === "paid";
+  const orderNumber = String((order as any).order_number ?? productOrderId);
+  const providerId = (order as any).provider_id ?? null;
+  let wasAlreadyPaid = String((order as any).payment_status ?? "") === "paid";
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: (order as any).tenant_id ?? null,
-    provider_id: (order as any).provider_id ?? null,
+    provider_id: providerId,
   });
 
   const existingTx = await (supabase.from("payment_transactions") as any)
@@ -79,26 +196,18 @@ async function recordProductOrderPaymentInner(
   const orderTotal = Number((order as any).total_amount || amountMajor);
   const grossForProvider = Math.max(0, subtractMoney(orderTotal, platformFee));
   const providerEarnings = grossForProvider;
-  // Gift-card tender is platform liability (2400) being consumed — platform-held like wallet.
   const isPlatformHeld =
     input.platformHeld ?? (provider === "paystack" || provider === "wallet" || provider === "gift_card");
   const giftCardAmount = Math.max(0, Number((order as any).gift_card_amount ?? 0));
   const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
-  const orderReferenceForLedger = (order as any).order_number ?? productOrderId;
-  const { data: existingLedgerRows } = await (supabase.from("finance_transactions") as any)
-    .select("id")
-    .eq("provider_id", (order as any).provider_id ?? null)
-    .eq("transaction_type", "provider_earnings")
-    .eq("product_order_id", productOrderId);
+  const orderReferenceForLedger = orderNumber;
 
-  // If the order was already marked paid and both the gateway audit row and
-  // platform-held provider ledger are present, this is an idempotent retry.
-  if ((order as any).payment_status === "paid" && alreadyRecorded && (!isPlatformHeld || (existingLedgerRows?.length ?? 0) > 0)) {
+  const hasLedger = await hasProviderEarningsLedger(supabase, productOrderId, providerId, orderNumber);
+
+  if ((order as any).payment_status === "paid" && alreadyRecorded && (!isPlatformHeld || hasLedger)) {
     return { ok: true, duplicate: true, transitionedToPaid: false };
   }
 
-  // product_orders stores tender on payment_method (cash/yoco/paycloud/paystack/…);
-  // there is no payment_provider column — payment_provider_id is the gateway reference.
   const paymentMethodForOrder =
     provider === "card_on_delivery" ? "card_on_delivery" : provider;
 
@@ -119,52 +228,69 @@ async function recordProductOrderPaymentInner(
       .select("id");
     if (orderUpdateError) throw orderUpdateError;
     if ((updatedRows?.length ?? 0) === 0) {
-      const currentStatus = String((order as any).payment_status ?? "");
-      if (currentStatus === "paid" || alreadyRecorded) {
-        return { ok: true, duplicate: true, transitionedToPaid: false };
-      }
-      return { ok: false, duplicate: false, transitionedToPaid: false };
-    }
-    transitionedToPaid = true;
-
-    void import("@/lib/analytics/amplitude/track-product-order-paid-server")
-      .then(({ trackProductOrderPaidServer }) =>
-        trackProductOrderPaidServer({
-          reference,
-          orderId: productOrderId,
-          amount: amountMajor,
-          currency: (order as any).currency ?? null,
-          customerId: (order as any).customer_id ?? null,
-          providerId: (order as any).provider_id ?? null,
-          paymentMethod: paymentMethodForOrder,
-          paymentProvider: provider,
-        }),
-      )
-      .catch(() => undefined);
-
-    const customerId = (order as any).customer_id as string | undefined;
-    const providerId = (order as any).provider_id as string | undefined;
-    if (customerId && providerId) {
-      await clearCustomerCartForProvider(supabase, customerId, providerId);
-    }
-
-    const promotionId = (order as any).promotion_id as string | null | undefined;
-    if (promotionId && customerId && promotionDiscount > 0) {
-      const { recordProductOrderPromotionUsage } = await import(
-        "@/lib/ecommerce/product-order-promotion"
-      );
-      await recordProductOrderPromotionUsage(supabase, {
-        promotionId,
-        userId: customerId,
+      const { data: freshOrder } = await (supabase.from("product_orders") as any)
+        .select("payment_status")
+        .eq("id", productOrderId)
+        .maybeSingle();
+      const currentStatus = String((freshOrder as { payment_status?: string } | null)?.payment_status ?? "");
+      const ledgerAfterRace = await hasProviderEarningsLedger(
+        supabase,
         productOrderId,
-        discountAmount: promotionDiscount,
-      });
+        providerId,
+        orderNumber,
+      );
+      if (currentStatus === "paid") {
+        wasAlreadyPaid = true;
+        if (alreadyRecorded && (!isPlatformHeld || ledgerAfterRace)) {
+          return { ok: true, duplicate: true, transitionedToPaid: false };
+        }
+      } else if (alreadyRecorded && (!isPlatformHeld || ledgerAfterRace)) {
+        return { ok: true, duplicate: true, transitionedToPaid: false };
+      } else if (currentStatus !== "paid" && !alreadyRecorded) {
+        return { ok: false, duplicate: false, transitionedToPaid: false };
+      }
+    } else {
+      transitionedToPaid = true;
+      wasAlreadyPaid = true;
+
+      if (!skipSideEffects) {
+        void import("@/lib/analytics/amplitude/track-product-order-paid-server")
+          .then(({ trackProductOrderPaidServer }) =>
+            trackProductOrderPaidServer({
+              reference,
+              orderId: productOrderId,
+              amount: amountMajor,
+              currency: (order as any).currency ?? null,
+              customerId: (order as any).customer_id ?? null,
+              providerId: providerId ?? null,
+              paymentMethod: paymentMethodForOrder,
+              paymentProvider: provider,
+            }),
+          )
+          .catch(() => undefined);
+
+        const customerId = (order as any).customer_id as string | undefined;
+        if (customerId && providerId) {
+          await clearCustomerCartForProvider(supabase, customerId, providerId);
+        }
+
+        const promotionId = (order as any).promotion_id as string | null | undefined;
+        if (promotionId && customerId && promotionDiscount > 0) {
+          const { recordProductOrderPromotionUsage } = await import(
+            "@/lib/ecommerce/product-order-promotion"
+          );
+          await recordProductOrderPromotionUsage(supabase, {
+            promotionId,
+            userId: customerId,
+            productOrderId,
+            discountAmount: promotionDiscount,
+          });
+        }
+      }
     }
   }
 
-  // Gift card reserved at checkout becomes a real redemption once the order is paid
-  // (idempotent RPC; safe on verify + webhook double-fire).
-  if (giftCardAmount > 0 && (transitionedToPaid || !alreadyRecorded)) {
+  if (giftCardAmount > 0 && !skipSideEffects && (transitionedToPaid || !alreadyRecorded)) {
     const { captureProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
     await captureProductOrderGiftCard(supabase, productOrderId);
   }
@@ -195,6 +321,14 @@ async function recordProductOrderPaymentInner(
         paymentTxError,
         { productOrderId, reference },
       );
+      await notifyLedgerIncomplete({
+        tenantId: financeTenantId,
+        productOrderId,
+        reference,
+        source,
+        provider,
+        reason: "payment_tx",
+      });
       return {
         ok: true,
         duplicate: alreadyRecorded,
@@ -204,86 +338,120 @@ async function recordProductOrderPaymentInner(
     }
   }
 
-  try {
-    await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
-  } catch (e) {
-    logger.error(
-      "recordProductOrderPayment.ensurePackageEntitlements.failed",
-      e,
-      { productOrderId },
-    );
-  }
-
-  try {
-    const shippingResult = await bookShippingForOrder(supabase, productOrderId);
-    if (!shippingResult.ok) {
-      logger.error("recordProductOrderPayment.bookShipping.failed", shippingResult.error, { productOrderId });
+  if (!skipSideEffects) {
+    try {
+      await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
+    } catch (e) {
+      logger.error(
+        "recordProductOrderPayment.ensurePackageEntitlements.failed",
+        e,
+        { productOrderId },
+      );
     }
-  } catch (e) {
-    logger.error("recordProductOrderPayment.bookShipping.unhandled", e, { productOrderId });
+
+    try {
+      const shippingResult = await bookShippingForOrder(supabase, productOrderId);
+      if (!shippingResult.ok) {
+        logger.error("recordProductOrderPayment.bookShipping.failed", shippingResult.error, { productOrderId });
+      }
+    } catch (e) {
+      logger.error("recordProductOrderPayment.bookShipping.unhandled", e, { productOrderId });
+    }
   }
 
-  // Provider-collected product/COD/POS money is tracked on product_orders and
-  // payment_transactions only. It is intentionally excluded from
-  // finance_transactions because that ledger drives platform-held payouts and
-  // shadow GL; adding provider-collected cash here would overstate payable cash.
   if (!isPlatformHeld) {
     return { ok: true, duplicate: alreadyRecorded, transitionedToPaid };
   }
 
-  const financeRows = [
-    {
-      booking_id: null,
-      product_order_id: productOrderId,
-      provider_id: (order as any).provider_id ?? null,
-      tenant_id: financeTenantId,
-      transaction_type: "payment",
-      amount: isPlatformHeld ? grossForProvider : orderTotal,
-      fees: feesMajor,
-      commission: isPlatformHeld ? platformFee : 0,
-      net: isPlatformHeld ? platformFee : 0,
-      description: `${isPlatformHeld ? "Product order payment" : "Provider-collected product order payment"} ${(order as any).order_number ?? productOrderId}`,
-      created_at: new Date().toISOString(),
-    },
-  ];
+  const ledgerCreatedAt = resolveLedgerCreatedAt(input, order as any, transitionedToPaid);
+  const existingLegTypes = await loadExistingPlatformLegTypes(
+    supabase,
+    productOrderId,
+    providerId,
+    orderNumber,
+  );
 
-  if (isPlatformHeld) {
+  const financeRows: Array<Record<string, unknown>> = [];
+
+  if (!existingLegTypes.has("payment")) {
     financeRows.push({
       booking_id: null,
       product_order_id: productOrderId,
-      provider_id: (order as any).provider_id ?? null,
+      provider_id: providerId,
+      tenant_id: financeTenantId,
+      transaction_type: "payment",
+      amount: grossForProvider,
+      fees: feesMajor,
+      commission: platformFee,
+      net: platformFee,
+      description: `Product order payment ${orderNumber}`,
+      created_at: ledgerCreatedAt,
+    });
+  }
+
+  if (!existingLegTypes.has("provider_earnings")) {
+    financeRows.push({
+      booking_id: null,
+      product_order_id: productOrderId,
+      provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "provider_earnings",
       amount: providerEarnings,
       fees: 0,
       commission: 0,
       net: providerEarnings,
-      description: `Provider earnings from product order ${(order as any).order_number ?? productOrderId}`,
-      created_at: new Date().toISOString(),
+      description: `Provider earnings from product order ${orderNumber}`,
+      created_at: ledgerCreatedAt,
     });
+  }
 
+  if (!existingLegTypes.has("platform_fee")) {
     financeRows.push({
       booking_id: null,
       product_order_id: productOrderId,
-      provider_id: (order as any).provider_id ?? null,
+      provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "platform_fee",
       amount: platformFee,
       fees: 0,
       commission: 0,
       net: platformFee,
-      description: `Platform fee from product order ${(order as any).order_number ?? productOrderId}`,
-      created_at: new Date().toISOString(),
+      description: `Platform fee from product order ${orderNumber}`,
+      created_at: ledgerCreatedAt,
     });
   }
 
-  const { error: financeInsertError } = await (supabase.from("finance_transactions") as any).insert(financeRows);
+  if (financeRows.length === 0) {
+    return { ok: true, duplicate: true, transitionedToPaid };
+  }
+
+  let financeInsertError: { message?: string; code?: string } | null = null;
+  for (let attempt = 0; attempt < FINANCE_INSERT_MAX_ATTEMPTS; attempt++) {
+    const { error } = await (supabase.from("finance_transactions") as any).insert(financeRows);
+    if (!error) {
+      financeInsertError = null;
+      break;
+    }
+    financeInsertError = error;
+    if (attempt < FINANCE_INSERT_MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+
   if (financeInsertError) {
     logger.error(
       "recordProductOrderPayment.financeInsert.failed",
       financeInsertError,
       { productOrderId, reference },
     );
+    await notifyLedgerIncomplete({
+      tenantId: financeTenantId,
+      productOrderId,
+      reference,
+      source,
+      provider,
+      reason: "finance_insert",
+    });
     return {
       ok: true,
       duplicate: false,
@@ -292,22 +460,21 @@ async function recordProductOrderPaymentInner(
     };
   }
 
-  // Promotion / gift-card audit legs (parity with booking ledger; idempotent per type).
   if (promotionDiscount > 0 || giftCardAmount > 0) {
     const { postProductOrderTenderLegsIfMissing } = await import(
       "@/lib/ecommerce/product-order-tender-legs"
     );
     await postProductOrderTenderLegsIfMissing(supabase, {
       productOrderId,
-      providerId: (order as any).provider_id ?? null,
+      providerId,
       tenantId: financeTenantId,
       orderNumber: String(orderReferenceForLedger),
       currency: (order as any).currency ?? null,
       promotionDiscount,
       giftCardAmount,
+      createdAt: ledgerCreatedAt,
     });
   }
 
   return { ok: true, duplicate: false, transitionedToPaid };
 }
-

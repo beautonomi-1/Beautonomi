@@ -42,7 +42,7 @@ describe("rebook-from-booking", () => {
       { locationId: "loc-1", locationType: "at_salon" },
     );
     expect(href).toBe(
-      "/book/salon-a?service=off-1&staff=staff-1&location=loc-1&location_type=at_salon",
+      "/booking?service=off-1&staff=staff-1&location=loc-1&location_type=at_salon&slug=salon-a",
     );
     expect(href).not.toMatch(/date=/);
   });

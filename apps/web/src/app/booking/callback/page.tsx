@@ -12,7 +12,7 @@ export default function PaymentCallback() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error" | "pending">("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -54,18 +54,15 @@ export default function PaymentCallback() {
             router.replace("/account-settings/bookings");
           }, 5000);
         } else {
-          setStatus("success");
+          setStatus("pending");
           setMessage(t("web.booking.callback.paymentReceivedFinalizing"));
           setTimeout(() => {
             router.push(`/checkout/success?reference=${encodeURIComponent(reference)}`);
           }, 2500);
         }
       } catch (error: any) {
-        setStatus("success");
-        setMessage(error.message || t("web.booking.callback.paymentReceivedFinalizing"));
-        setTimeout(() => {
-          router.push(`/checkout/success?reference=${encodeURIComponent(reference)}`);
-        }, 2500);
+        setStatus("error");
+        setMessage(error.message || t("web.booking.callback.verificationFailed"));
       }
     };
 
@@ -86,6 +83,19 @@ export default function PaymentCallback() {
               {t("web.booking.callback.verifyingPayment")}
             </h2>
             <p className="text-gray-600">{t("web.booking.callback.pleaseWait")}</p>
+          </>
+        )}
+
+        {status === "pending" && (
+          <>
+            <Loader2 className="w-16 h-16 text-primary mx-auto mb-4 animate-spin" />
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+              {t("web.booking.callback.verifyingPayment")}
+            </h2>
+            <p className="text-gray-600 mb-6">{message}</p>
+            <p className="text-sm text-gray-500">
+              {t("web.booking.callback.redirectingToConfirmation")}
+            </p>
           </>
         )}
 
@@ -116,7 +126,7 @@ export default function PaymentCallback() {
             </h2>
             <p className="text-gray-600 mb-6">{message}</p>
             <Button
-              onClick={() => router.push("/booking")}
+              onClick={() => router.push("/account-settings/bookings")}
               className="bg-primary hover:bg-primary-hover"
             >
               {t("web.booking.callback.tryAgain")}

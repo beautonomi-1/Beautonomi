@@ -562,6 +562,30 @@ async function syncTenantScopedTable(prod, stage, table, onConflict, idMap, repo
   }
 }
 
+/** Non-secret Mapbox UI rows (server token stays in platform_secrets via syncPlatformSecrets). */
+async function syncMapboxConfig(prod, stage, report, tenantIdMap) {
+  const table = "mapbox_config";
+  let rows;
+  try {
+    rows = await fetchAll(prod, table);
+  } catch (e) {
+    report[table] = { skipped: e.message };
+    return;
+  }
+  const remapped = rows
+    .map((row) => {
+      const mapped = remapEnvIds(row, tenantIdMap, new Map());
+      if (!mapped) return null;
+      const { access_token: _strip, ...rest } = mapped;
+      return rest;
+    })
+    .filter(Boolean);
+  report[table] = { prod_rows: rows.length, staging_upsert: remapped.length };
+  if (!dryRun && remapped.length) {
+    await upsertRows(stage, table, "id", remapped);
+  }
+}
+
 async function syncTable(prod, stage, cfg, report, tenantIdMap, regionIdMap) {
   const { table, onConflict, optional } = cfg;
   let rows;
@@ -634,6 +658,7 @@ async function main() {
   await syncPreferenceOptions(prod, stage, tenantIdMap, regionIdMap, report);
   await syncAiRuntimeConfig(prod, stage, tenantIdMap, report);
   await syncAiModelCatalog(prod, stage, tenantIdMap, report);
+  await syncMapboxConfig(prod, stage, report, tenantIdMap);
 
   for (const cfg of CONFIG_TABLES) {
     await syncTable(prod, stage, cfg, report, tenantIdMap, regionIdMap);

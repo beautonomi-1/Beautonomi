@@ -153,7 +153,9 @@ export async function GET(request: NextRequest) {
       const productOrderId = metadata.product_order_id ? String(metadata.product_order_id) : "";
       if (productOrderId) {
         const { data: poBefore } = await (admin.from("product_orders") as any)
-          .select("tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
+          .select(
+            "tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference",
+          )
           .eq("id", productOrderId)
           .maybeSingle();
 
@@ -180,6 +182,7 @@ export async function GET(request: NextRequest) {
           customer_id?: string | null;
           total_amount?: number | string | null;
           wallet_amount?: number | string | null;
+          gift_card_amount?: number | string | null;
           payment_status?: string | null;
           payment_reference?: string | null;
         };
@@ -205,7 +208,9 @@ export async function GET(request: NextRequest) {
         const amountMajor = Number(data.data.amount || 0) / 100;
         const expectedMajor = Math.max(
           0,
-          Number(poBeforeRow.total_amount ?? 0) - Number(poBeforeRow.wallet_amount ?? 0),
+          Number(poBeforeRow.total_amount ?? 0) -
+            Number(poBeforeRow.wallet_amount ?? 0) -
+            Number(poBeforeRow.gift_card_amount ?? 0),
         );
         if (Math.abs(amountMajor - expectedMajor) > 0.01 && existingReference !== reference) {
           return errorResponse(
@@ -224,6 +229,16 @@ export async function GET(request: NextRequest) {
           source: "paystack_verify",
           provider: "paystack",
         });
+
+        if (!payRecord.ok || payRecord.ledgerIncomplete) {
+          return errorResponse(
+            payRecord.ledgerIncomplete
+              ? "Payment received but order ledger is incomplete. Please retry or contact support."
+              : "Payment could not be applied to this order. Please retry or contact support.",
+            payRecord.ledgerIncomplete ? "LEDGER_INCOMPLETE" : "PAYMENT_NOT_RECORDED",
+            409,
+          );
+        }
 
         await notifyProductOrderPaidIfTransitioned(admin as any, productOrderId, {
           transitionedToPaid: payRecord.transitionedToPaid,

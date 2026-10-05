@@ -30,6 +30,7 @@ const PREFIXES = [
   "/cart",
   "/checkout",
   "/book",
+  "/booking",
   "/profile",
   "/account-settings",
   "/orders",

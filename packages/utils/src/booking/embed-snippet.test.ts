@@ -18,7 +18,7 @@ import {
 describe("embed-snippet", () => {
   it("builds a third-party iframe URL with embed=1", () => {
     expect(buildBookingEmbedUrl("https://app.beautonomi.com/", "luxe-salon")).toBe(
-      "https://app.beautonomi.com/book/luxe-salon?embed=1",
+      "https://app.beautonomi.com/booking?slug=luxe-salon&embed=1",
     );
   });
 
@@ -28,7 +28,7 @@ describe("embed-snippet", () => {
       slug: 'salon"><script>',
       height: 800,
     });
-    expect(html).toContain('src="https://app.beautonomi.com/book/salon%22%3E%3Cscript%3E?embed=1"');
+    expect(html).toContain('src="https://app.beautonomi.com/booking?slug=salon%22%3E%3Cscript%3E&amp;embed=1"');
     expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"');
     expect(html).toContain('allow="payment *; clipboard-write"');
     expect(html).toContain('loading="lazy"');
@@ -47,14 +47,14 @@ describe("embed-snippet", () => {
   });
 
   it("preserves embed=1 on continue and success paths", () => {
-    expect(buildBookContinuePath("hold-1", true)).toBe("/book/continue?hold_id=hold-1&embed=1");
-    expect(buildBookContinuePath("hold-1", false)).toBe("/book/continue?hold_id=hold-1");
+    expect(buildBookContinuePath("hold-1", true)).toBe("/booking?hold_id=hold-1&step=pay&embed=1");
+    expect(buildBookContinuePath("hold-1", false)).toBe("/booking?hold_id=hold-1&step=pay");
     expect(appendBookingEmbedQuery("/checkout/success?booking_id=abc", true)).toBe(
       "/checkout/success?booking_id=abc&embed=1",
     );
     expect(
-      appendBookingEmbedQuery("/book/on-demand/waiting?requestId=req-1", true),
-    ).toBe("/book/on-demand/waiting?requestId=req-1&embed=1");
+      appendBookingEmbedQuery("/booking/on-demand/waiting?requestId=req-1", true),
+    ).toBe("/booking/on-demand/waiting?requestId=req-1&embed=1");
     expect(appendBookingEmbedQuery("/checkout/success?waitlist=1", true)).toBe(
       "/checkout/success?waitlist=1&embed=1",
     );

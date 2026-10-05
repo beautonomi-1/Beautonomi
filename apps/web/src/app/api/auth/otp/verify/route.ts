@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-  const token = typeof body.token === "string" ? body.token.trim() : "";
+  const tokenRaw = typeof body.token === "string" ? body.token.trim() : "";
+  const token = tokenRaw.replace(/\D/g, "") || tokenRaw;
   const typeRaw = typeof body.type === "string" ? body.type : "";
   const type: OtpType | null =
     typeRaw === "email" || typeRaw === "sms" || typeRaw === "signup" ? typeRaw : null;

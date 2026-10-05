@@ -245,6 +245,16 @@ The nightly CI workflow `.github/workflows/finance-drift.yml` runs `scripts/prod
 **What it checks (via `finance_audit_run` RPC — migration `724`):**
 1. `duplicate_source_payment_rows` — duplicate `source_payment_id` per `transaction_type` in `finance_transactions`.
 2. `completed_refunds_without_ledger` — `booking_refunds` with `status = 'completed'` but no matching `finance_transactions` row.
+3. `paid_product_orders_missing_ledger` — paid platform-held `product_orders` (`paystack`, `wallet`, `gift_card`) without a matching `provider_earnings` row (by `product_order_id` or legacy order-number description).
+
+**Product-order drift remediation:** run `GET /api/cron/reconcile-product-order-ledger` (with `CRON_SECRET`) or wait for the 15-minute schedule after deploy.
+
+**Post-deploy checklist (production):**
+
+```bash
+curl -sS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/reconcile-product-order-ledger"
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/prod/audit-finance-ledger.mjs
+```
 
 **On failure:** The workflow automatically opens a GitHub issue labelled `finance / alert / p1` with a link to the failing run. Assign to the Payments lead for same-day remediation.
 

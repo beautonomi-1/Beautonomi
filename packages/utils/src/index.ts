@@ -164,12 +164,17 @@ export {
   bookedProductCounts,
   buildRetailCartRowsFromPublicPackage,
   cartMatchesPublicCatalogPackage,
+  checkoutCatalogPackageMatchesCart,
   computeCatalogPackageServiceDiscount,
+  publicPackageItemsToPackageItemRows,
+  resolveBookedOfferingCountsForPackageGate,
   entitlementMismatch,
   exceedsEntitlement,
   mergeExpressProductCartLines,
   productPackageLineKey,
   type ExpressProductCartLine,
+  type CheckoutCatalogPackageMatchInput,
+  type CheckoutCatalogPackageMatchResult,
   type PackageItemRow,
   type PublicProductCatalogRow,
 } from "./booking/packageCartMatch";
@@ -206,6 +211,7 @@ export {
   type RebookContext,
   type RebookServiceLine,
 } from "./booking/rebook-from-booking";
+export { buildWebBookingHref } from "./booking/web-booking-href";
 export {
   BOOKING_EMBED_DEFAULT_HEIGHT,
   BOOKING_EMBED_MAX_HEIGHT,

@@ -4,17 +4,7 @@ import { coerceSelectedDate } from "@beautonomi/utils";
 
 export const BOOKING_STATE_STORAGE_KEY = "booking_state";
 
-/** Stable fingerprint for “same booking entry” from the URL (slug/provider id, service, product, package, mode). */
-export function computeBookingFlowKey(
-  searchParams: ReadonlyURLSearchParams | URLSearchParams
-): string {
-  const slug = (searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || "").trim();
-  const serviceId = (searchParams.get("serviceId") || searchParams.get("service") || "").trim();
-  const productId = (searchParams.get("product_id") || searchParams.get("product") || "").trim();
-  const packageId = (searchParams.get("package") || searchParams.get("package_id") || "").trim();
-  const mode = (searchParams.get("mode") || "").trim();
-  return `${slug}|${serviceId}|${productId}|${packageId}|${mode}`;
-}
+export { computeBookingFlowKey } from "@/lib/booking/parse-booking-deep-link";
 
 export type PersistedBookingEnvelope = {
   state: BookingState;
@@ -76,8 +66,11 @@ export function restoreBookingFlowFromStorage(
     }
   }
 
+  const maxStepIndex = 7;
   let stepIndex =
-    typeof env.stepIndex === "number" && env.stepIndex >= 0 && env.stepIndex <= 8
+    typeof env.stepIndex === "number" &&
+    env.stepIndex >= 0 &&
+    env.stepIndex <= maxStepIndex
       ? env.stepIndex
       : 0;
   // Step index 1 is the group-participants step in the canonical order. For a

@@ -36,6 +36,7 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
         id,
         provider_id,
         scheduled_at,
+        providers!inner(slug),
         booking_services(
           id,
           offering_id,
@@ -62,6 +63,13 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
     const scheduledDate = new Date(booking.scheduled_at);
     const dateStr = scheduledDate.toISOString().split("T")[0];
     const timeStr = scheduledDate.toTimeString().substring(0, 5);
+    const providerRow = booking.providers as { slug?: string } | { slug?: string }[] | null;
+    const providerSlug = Array.isArray(providerRow)
+      ? providerRow[0]?.slug
+      : providerRow?.slug;
+    const bookingActionQuery = providerSlug
+      ? `/booking?slug=${encodeURIComponent(providerSlug)}${serviceId ? `&service=${encodeURIComponent(serviceId)}` : ""}&date=${encodeURIComponent(dateStr)}`
+      : "/account-settings/bookings";
 
     // Find matching waitlist entries
     const { data: waitlistEntries, error: waitlistError } = await supabaseAdmin
@@ -106,7 +114,7 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
             available_date: dateStr,
             available_time: timeStr,
           },
-          action_url: `/booking?provider=${booking.provider_id}&date=${dateStr}&time=${timeStr}`,
+          action_url: bookingActionQuery,
         });
 
         // Send push/email notification
@@ -178,6 +186,16 @@ export async function checkWaitlistForAvailability(
   const supabaseAdmin = getSupabaseAdmin();
 
   try {
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("slug")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerSlug = providerRow?.slug as string | undefined;
+    const bookingActionQuery = providerSlug
+      ? `/booking?slug=${encodeURIComponent(providerSlug)}${serviceId ? `&service=${encodeURIComponent(serviceId)}` : ""}&date=${encodeURIComponent(date)}`
+      : "/account-settings/bookings";
+
     // Find matching waitlist entries
     const { data: waitlistEntries } = await supabaseAdmin
       .from("waitlist_entries")
@@ -220,7 +238,7 @@ export async function checkWaitlistForAvailability(
             available_date: date,
             available_time: time,
           },
-          action_url: `/booking?provider=${providerId}&date=${date}&time=${time}`,
+          action_url: bookingActionQuery,
         });
 
         await sendTemplateNotification(

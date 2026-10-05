@@ -63,6 +63,7 @@ const EVENT_LABELS: Record<string, string> = {
   "commercial.terminal_onboarding.approved": "Commercial: terminal onboarding approved",
   "finance.custom_offer.finalize_failed": "Finance: custom offer finalize failed",
   "finance.product_order.payment_not_recorded": "Finance: product order payment not recorded",
+  "finance.product_order.ledger_incomplete": "Finance: product order ledger incomplete",
   "dispute.new": "Disputes: new dispute",
   "dispute.overdue": "Disputes: overdue dispute",
   "safety.user_report.pending": "Safety: user report pending",
