@@ -55,6 +55,18 @@ function analyzeDoctorOutput(output) {
     return { ok: true, evidence: `${passed}/${total} checks passed.` };
   }
 
+  const sdkVersionFalseFail =
+    /Check that packages match versions required by installed Expo SDK/i.test(output) &&
+    /"upToDate"\s*:\s*true/i.test(output) &&
+    /"dependencies"\s*:\s*\[\]/i.test(output);
+
+  if (sdkVersionFalseFail && failedCount === 1) {
+    return {
+      ok: true,
+      evidence: `${passed}/${total} checks passed; SDK version check reported upToDate with no mismatches (EAS/expo-iap noise).`,
+    };
+  }
+
   const otherFailures = [...output.matchAll(/✖ Check ([^\n]+)/g)]
     .map((m) => m[1].trim())
     .filter((name) => !/duplicate dependencies are installed/i.test(name));

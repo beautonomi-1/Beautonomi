@@ -39,6 +39,7 @@
       "channel": "preview"
     },
     "production": {
+      "installCommand": "node ../../tooling/eas-monorepo-install.mjs",
       "ios": {
         "image": "latest"
       },

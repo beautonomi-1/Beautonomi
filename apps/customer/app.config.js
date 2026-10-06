@@ -57,8 +57,9 @@ if (
   );
 }
 if (process.env.EAS_BUILD === "true" || easBuildProfile) {
+  // stderr only: expo-doctor parses `expo install --check --json` from stdout; object logs break JSON extraction.
   // eslint-disable-next-line no-console
-  console.log("[Beautonomi customer push-env]", {
+  console.error("[Beautonomi customer push-env]", {
     appEnv,
     easBuildProfile: easBuildProfile ?? "(local)",
     oneSignalMode,

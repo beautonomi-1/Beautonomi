@@ -23,6 +23,7 @@
     "screenshots:android:public": "node ../../tooling/screenshots/scripts/capture.mjs customer public",
     "screenshots:android:auth": "node ../../tooling/screenshots/scripts/capture.mjs customer auth",
     "clean": "npx rimraf node_modules",
+    "eas-build-pre-install": "node ../../tooling/eas-build-pre-install.mjs",
     "eas-build-post-install": "node ../../tooling/eas-prefetch-gradle.mjs"
   },
   "dependencies": {
