@@ -67,7 +67,7 @@
       "js-yaml@4": "4.3.2",
       "nanoid@3": "3.3.18",
       "nanoid@5": "5.1.16",
-      "sharp": "0.35.4",
+      "sharp": "0.35.5",
       "@opentelemetry/propagator-jaeger": "2.10.0",
       "next": "16.3.8",
       "@tiptap/core": "3.31.3",
