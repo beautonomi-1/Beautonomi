@@ -14,11 +14,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import {
-  extractPaystackReferenceFromUrl,
-  isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
-} from "@/lib/paystack-webview-utils";
+  getCustomerPaystackAuthReturnUrl,
+  getShopProductPaystackAuthPrefix,
+  matchesPaystackAuthSessionReturn,
+  matchesShopPaymentCallbackReturnUrl,
+  SHOP_PAYMENT_CALLBACK_PATH,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
@@ -315,13 +318,17 @@ export default function ProductOrderDetailScreen() {
     setPaying(true);
     try {
       const paystackReturnPath =
-        Platform.OS === "web" ? undefined : ExpoLinking.createURL("shop/paystack");
+        Platform.OS === "web" ? undefined : getShopProductPaystackAuthPrefix();
+      const paystackCallbackUrl =
+        Platform.OS === "web"
+          ? getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH)
+          : ExpoLinking.createURL("shop/paystack");
       const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
         "/api/paystack/initialize",
         {
           email,
           amount: Math.round(onlineAmountDue * 100),
-          ...(paystackReturnPath ? { callback_url: paystackReturnPath } : {}),
+          callback_url: paystackCallbackUrl,
           metadata: {
             product_order_id: order.id,
             order_number: order.order_number,
@@ -342,7 +349,7 @@ export default function ProductOrderDetailScreen() {
 
       const url = paystackRes.data.authorization_url;
       if (Platform.OS === "web") {
-        window.location.href = url;
+        window.location.assign(url);
         return;
       }
 
@@ -350,7 +357,10 @@ export default function ProductOrderDetailScreen() {
         title: pod("securePaymentTitle"),
         returnUrl: paystackReturnPath ?? undefined,
         matchSuccess: (u) =>
-          !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+          !!paystackReturnPath &&
+          (matchesPaystackAuthSessionReturn(u, paystackReturnPath) ||
+            matchesShopPaymentCallbackReturnUrl(u)) &&
+          !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
 

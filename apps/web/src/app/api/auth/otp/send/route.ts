@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { noteAuthAttemptAndShouldChallenge, authCaptchaConfigured } from "@/lib/auth/auth-risk";
 import { verifyAuthCaptcha } from "@/lib/auth/verify-auth-captcha";
+import { checkOtpSendRateLimit } from "@/lib/rate-limit/otp-send";
+import { jsonRateLimited } from "@/lib/rate-limit/rate-limit-response";
+import { hashIpForLog, logAuthMetric } from "@/lib/auth/auth-metrics";
+import { getClientIp } from "@/lib/rate-limit/otp-send";
 
 const GENERIC_SEND_ERROR = "Unable to send a verification code. Please try again.";
 
@@ -24,10 +28,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: GENERIC_SEND_ERROR }, { status: 400 });
   }
 
+  const identity = email || phone;
+  const sendLimit = await checkOtpSendRateLimit(request, identity);
+  if (sendLimit.allowed === false) {
+    return jsonRateLimited(GENERIC_SEND_ERROR, sendLimit.retryAfterSeconds ?? 60, "otp-send");
+  }
+
   const { requireCaptcha } = await noteAuthAttemptAndShouldChallenge(request);
   if (requireCaptcha && authCaptchaConfigured()) {
     const captcha = await verifyAuthCaptcha(request, body);
     if (captcha.ok === false) {
+      logAuthMetric("auth_captcha_required", {
+        route: "otp-send",
+        ip_hash: hashIpForLog(getClientIp(request)),
+      });
       return NextResponse.json(
         { error: captcha.reason, captcha_required: true },
         { status: captcha.status },

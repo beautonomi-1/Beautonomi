@@ -484,6 +484,7 @@ export async function POST(request: NextRequest) {
     }
 
     let productOrderFulfillmentFailed = false;
+    let walletTopupFulfillmentFailed = false;
     if (
       productOrderIdFromMeta &&
       chargeResult.data?.reference &&
@@ -700,17 +701,28 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (wtRow && (wtRow as { user_id?: string }).user_id === user.id) {
         try {
-          const chargeData = chargeResult.data as { reference?: string; amount?: number };
+          const chargeData = chargeResult.data as { reference?: string; amount?: number; fees?: number };
           await applyWalletTopupFromSuccessfulPaystackCharge(
             {
               reference: String(chargeData.reference ?? chargeReference),
               metadata: { ...meta, wallet_topup_id: walletTopupIdFromMeta, user_id: user.id },
               amount:
                 typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+              fees: typeof chargeData.fees === "number" ? chargeData.fees : 0,
             },
             supabaseAdmin,
           );
+          const { data: creditedRow } = await (supabaseAdmin.from("wallet_transactions") as any)
+            .select("id")
+            .eq("reference_id", walletTopupIdFromMeta)
+            .eq("reference_type", "wallet_topup")
+            .limit(1)
+            .maybeSingle();
+          if (!creditedRow) {
+            walletTopupFulfillmentFailed = true;
+          }
         } catch (walletErr) {
+          walletTopupFulfillmentFailed = true;
           console.error("[charge-saved-card] Failed to credit wallet top-up after charge:", walletErr);
         }
       }
@@ -736,6 +748,20 @@ export async function POST(request: NextRequest) {
         });
       }
       return errorResponse(failMessage, "ORDER_PAYMENT_NOT_RECORDED", 409);
+    }
+    if (walletTopupFulfillmentFailed) {
+      const failMessage =
+        "Payment was received but your wallet balance was not updated. Pull to refresh or contact support.";
+      if (idempotencyKey) {
+        await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+          status: 409,
+          body: {
+            data: null,
+            error: { message: failMessage, code: "WALLET_TOPUP_NOT_CREDITED" },
+          },
+        });
+      }
+      return errorResponse(failMessage, "WALLET_TOPUP_NOT_CREDITED", 409);
     }
     if (idempotencyKey) {
       await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {

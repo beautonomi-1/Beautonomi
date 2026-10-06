@@ -18,7 +18,7 @@ Run on `https://staging.beautonomi.com` after `seed-staging.mjs` and Mapbox ops 
 - **A4** Google OAuth — lands `/auth/callback?next=` with `auth_return=1`, hold still valid.
 - **A5** Apple OAuth — same as A4.
 - **C*** Embed `embed=1` — OTP in iframe uses SPA `onAuthComplete` without broken session.
-- **D1–D3** `/login?next=` and `/signup?next=` from gate footer.
+- **D1–D3** `/login?next=` and `/signup?next=` from gate footer — expect **booking return banner** + logo links back to booking; password sign-in returns to `next`.
 - **E2** At-home address inside zone → validate OK → pay.
 - **F1–F5** New user onboarding flags — after gate OAuth/login, `POST /api/public/bookings` succeeds without `/onboarding` redirect.
 

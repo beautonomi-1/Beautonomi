@@ -9,8 +9,8 @@ import {
   TextInput,
   Switch,
 } from "react-native";
-import type { Router } from "expo-router";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApiMutation } from "@/hooks/useApi";
@@ -31,7 +31,7 @@ import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
-function alertApiError(title: string, message: string, errorCode: string | null, router: Router | null) {
+function alertApiError(title: string, message: string, errorCode: string | null, router: ExpoRouter | null) {
   if (isPlanGateErrorCode(errorCode)) {
     showPlanGateAlert({ title, message, errorCode, router: router ?? undefined });
     return;

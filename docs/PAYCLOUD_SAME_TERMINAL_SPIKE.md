@@ -16,7 +16,7 @@ Run on **every Wiseasy model you ship** (P5, P5 PRO, P5K, P5SE, P5L, P5L SSK, N6
 - Sandbox merchant + terminal assigned (see [PAYCLOUD_SANDBOX_QA.md](./PAYCLOUD_SANDBOX_QA.md))
 - Beautonomi provider APK on device (EAS `terminal` profile or dev client)
 - `payment_paycloud` enabled; `payment_paycloud_same_terminal` **disabled** until spike sign-off
-- Native module: `@beautonomi/paycloud-same-terminal` (`apps/provider/modules/paycloud-same-terminal`)
+- Native module: `@beautonomi/paycloud-same-terminal` (`packages/paycloud-same-terminal`)
 
 ## Official Intent contract (implemented defaults)
 
@@ -100,7 +100,7 @@ adb install -r beautonomi-provider-terminal.apk
 ## Implementation map
 
 - Intent contract (server): `apps/web/src/lib/payments/paycloud-intent-contract.ts`
-- Native module: `apps/provider/modules/paycloud-same-terminal/`
+- Native module: `packages/paycloud-same-terminal/`
 - JS bridge: `apps/provider/src/lib/paycloud-same-terminal.ts`
 - UI: `PayCloudPaymentSheet`, `card-machines.tsx`
 - Settle path: webhook / poll / confirm → `reconcilePaycloudPayment` → `settlePaycloudPayment`

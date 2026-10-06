@@ -24,8 +24,14 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  CHECKOUT_SUCCESS_PATH,
+  getBookingCheckoutPaystackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
@@ -2720,8 +2726,11 @@ export default function BookCheckoutScreen() {
       if (subscribeRecurring && user && !routeRescheduleBookingId && !isGroupBooking) {
         payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
       }
-      if (Platform.OS !== "web" && paymentMethod === "card") {
-        payload.paystack_callback_url = ExpoLinking.createURL("book/paystack");
+      if (paymentMethod === "card") {
+        payload.paystack_callback_url =
+          Platform.OS !== "web"
+            ? ExpoLinking.createURL("book/paystack")
+            : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
       }
 
       const res = await api.post<ConsumeResponse>(
@@ -2883,7 +2892,7 @@ export default function BookCheckoutScreen() {
           // Two RN modals competing can leave users stuck on "opening payment page".
           setProcessingPayment(false);
           setProcessingStep(undefined);
-          const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
+          const paystackReturnUrl = getBookingCheckoutPaystackAuthPrefix();
           // Mark before opening browser so the deep-link return screen cooperates
           // if Android mounts book/paystack before waitForCheckout resolves.
           if (returnedPaymentReference) {
@@ -2893,7 +2902,9 @@ export default function BookCheckoutScreen() {
             title: t("checkout.securePaymentTitle", "Secure payment") as string,
             returnUrl: paystackReturnUrl,
             matchSuccess: (u) =>
-              matchesExpoReturnUrl(u, paystackReturnUrl) && !isCancelledPaystackUrl(u),
+              (matchesPaystackAuthSessionReturn(u, paystackReturnUrl) ||
+                matchesCheckoutSuccessReturnUrl(u, { bookingId: bookingId ?? undefined })) &&
+              !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
 

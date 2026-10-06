@@ -75,4 +75,12 @@ test.describe("money path APIs", () => {
     });
     expect([400, 401, 403, 422]).toContain(res.status());
   });
+
+  test("paystack verify requires reference query param", async ({ request }) => {
+    const res = await request.get("/api/paystack/verify", { failOnStatusCode: false });
+    expect(res.status()).toBe(200);
+    const json = await res.json();
+    expect(json.data?.status).toBe("error");
+    expect(String(json.data?.message ?? "")).toMatch(/reference/i);
+  });
 });

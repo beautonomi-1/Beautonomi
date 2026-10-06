@@ -1,4 +1,5 @@
-import type { Href, Router } from "expo-router";
+import type { Href } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import * as Linking from "expo-linking";
 import { isAllowedInAppWebViewUrl } from "@/lib/webview-allowlist";
 
@@ -20,7 +21,7 @@ export function hrefInAppBrowser(url: string, title: string): Href {
   } as Href;
 }
 
-export function pushInAppBrowser(router: Router, url: string, title: string): void {
+export function pushInAppBrowser(router: ExpoRouter, url: string, title: string): void {
   if (!isAllowedInAppWebViewUrl(url)) {
     Linking.openURL(url).catch(() => {});
     return;
@@ -28,7 +29,7 @@ export function pushInAppBrowser(router: Router, url: string, title: string): vo
   router.push(hrefInAppBrowser(url, title) as never);
 }
 
-export function replaceInAppBrowser(router: Router, url: string, title: string): void {
+export function replaceInAppBrowser(router: ExpoRouter, url: string, title: string): void {
   if (!isAllowedInAppWebViewUrl(url)) {
     Linking.openURL(url).catch(() => {});
     return;

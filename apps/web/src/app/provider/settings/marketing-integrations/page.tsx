@@ -1,7 +1,10 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import { paystackReferenceFromSearchParams } from "@/lib/payments/paystack-return-reference";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -43,6 +46,9 @@ type MarketingStatus = {
 
 export default function MarketingIntegrationsPage() {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const topupReturnHandled = useRef(false);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [status, setStatus] = useState<MarketingStatus | null>(null);
   const [topupAmount, setTopupAmount] = useState("50");
@@ -52,6 +58,39 @@ export default function MarketingIntegrationsPage() {
     void loadCredits();
     void loadStatus();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("topup") !== "success") return;
+    if (topupReturnHandled.current) return;
+    topupReturnHandled.current = true;
+
+    const reference = paystackReferenceFromSearchParams(searchParams);
+    if (!reference) {
+      toast.info(t("web.provider.settings.pages.marketing-integrations.topUpPending"));
+      router.replace("/provider/settings/marketing-integrations");
+      return;
+    }
+
+    void (async () => {
+      try {
+        const verifyResult = await verifyWithRetry(reference, { maxAttempts: 5, delayMs: 1500 });
+        await loadCredits();
+        await loadStatus();
+        if (verifyResult.status === "success") {
+          toast.success(t("web.provider.settings.pages.marketing-integrations.topUpSuccess"));
+        } else if (verifyResult.status === "failed") {
+          toast.error(
+            verifyResult.errorMessage ??
+              t("web.provider.settings.pages.marketing-integrations.topUpFailed"),
+          );
+        } else {
+          toast.info(t("web.provider.settings.pages.marketing-integrations.topUpPending"));
+        }
+      } finally {
+        router.replace("/provider/settings/marketing-integrations");
+      }
+    })();
+  }, [searchParams, router, t]);
 
   const loadCredits = async () => {
     try {

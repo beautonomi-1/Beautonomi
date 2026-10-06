@@ -140,10 +140,12 @@ async function submitPasswordLogin(page: Page, email: string, password: string) 
       res.url().includes("/api/auth/sign-in") &&
       res.request().method() === "POST" &&
       res.status() === 200,
+    { timeout: 180_000 },
   );
   const loginButton = page
     .getByTestId("login-submit")
     .or(page.getByRole("button", { name: /^log in$/i }));
+  await expect(loginButton).toBeEnabled({ timeout: 60_000 });
   await loginButton.click();
   await signInResponse;
   await page.waitForURL(/\/booking/, { timeout: 120_000 }).catch(() => {});
@@ -163,6 +165,12 @@ test.describe("auth journeys", () => {
 
   test.beforeAll(async ({ request }) => {
     await request.get("/login", { timeout: 120_000, failOnStatusCode: false });
+    // Warm the auth API route so the first password-login test is not blocked on Turbopack compile.
+    await request.post("/api/auth/sign-in", {
+      timeout: 120_000,
+      failOnStatusCode: false,
+      data: { email: "warm@example.com", password: "warm" },
+    });
   });
 
   test("password login happy path (mocked)", async ({ page }) => {
@@ -185,6 +193,14 @@ test.describe("auth journeys", () => {
     expect(decodeURIComponent(page.url())).toContain("/booking");
     expect(page.url()).toMatch(/hold_id/);
     await expect(page.locator("#forgot-heading")).toBeVisible({ timeout: 60_000 });
+  });
+
+  test("booking return banner on login with next=/booking", async ({ page }) => {
+    const next = "/booking?slug=e2e-salon&step=time&auth_return=1";
+    await gotoLogin(page, next);
+    await waitForLoginShell(page);
+    await expect(page.getByRole("status")).toContainText(/finish your booking/i);
+    await expect(page.getByLabel("Continue booking").first()).toHaveAttribute("href", next);
   });
 
   test("gate-to-booking next param survives login", async ({ page }) => {

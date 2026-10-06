@@ -1,4 +1,4 @@
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { APP_URL } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 
@@ -32,22 +32,22 @@ export function webLearningCenterUrl(): string {
   return `${webOrigin()}/learn`;
 }
 
-export function pushWebPrivacyPolicy(router: Router): void {
+export function pushWebPrivacyPolicy(router: ExpoRouter): void {
   pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy policy");
 }
 
-export function pushWebTermsOfService(router: Router): void {
+export function pushWebTermsOfService(router: ExpoRouter): void {
   pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Use");
 }
 
-export function pushWebPartnerEula(router: Router): void {
+export function pushWebPartnerEula(router: ExpoRouter): void {
   pushInAppBrowser(router, webPartnerEulaUrl(), "Partner EULA");
 }
 
-export function pushWebAgeSuitability(router: Router): void {
+export function pushWebAgeSuitability(router: ExpoRouter): void {
   pushInAppBrowser(router, webAgeSuitabilityUrl(), "Age suitability");
 }
 
-export function pushWebLearningCenter(router: Router): void {
+export function pushWebLearningCenter(router: ExpoRouter): void {
   pushInAppBrowser(router, webLearningCenterUrl(), "Learning Centre");
 }

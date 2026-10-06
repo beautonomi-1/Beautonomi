@@ -5,6 +5,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -59,16 +60,17 @@ export async function POST(request: NextRequest) {
     if (topupError) throw topupError;
 
     const reference = `wallet_topup_${(topup as any).id}`;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const callbackFromClient = body.callback_url?.trim();
-    const callbackUrl =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_type=wallet_topup`
-        : `${appUrl}/checkout/success?payment_type=wallet_topup`;
-    const cancelAction =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}topup_cancelled=1`
-        : `${appUrl}/wallet?topup_cancelled=1`;
+    const hosted = resolveHostedCheckoutCallbacks({
+      baseUrl: appUrl,
+      clientCallbackUrl: callbackFromClient,
+      defaultSuccessPath: "/checkout/success",
+      defaultCancelPath: "/account-settings/wallet",
+      query: { payment_type: "wallet_topup" },
+    });
+    const callbackUrl = hosted.successUrl;
+    const cancelAction = `${hosted.cancelUrl}${hosted.cancelUrl.includes("?") ? "&" : "?"}topup_cancelled=1`;
 
     const paystackData = await initializePaystackTransaction({
       email,

@@ -8,30 +8,23 @@ import MasterCard from "./../../../../../public/images/logo_mastercard.f18379cf1
 import Discover from "./../../../../../public/images/logo_discover.7f05c82f07d62a0f8a69d54dbcd7c8be.svg";
 import Amex from "./../../../../../public/images/logo_amex.84088b520ca1b3384cb71398095627da.svg";
 import Link from "next/link";
-import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
+import { startWebCardVerification } from "@/lib/payments/card-verification-web";
 
-const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; onClose: () => void; onCardAdded?: () => void }) => {
+const AddPaymentModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { t } = useTranslation();
   const [addingCard, setAddingCard] = useState(false);
 
   const handleAddCardNow = async () => {
     setAddingCard(true);
     try {
-      const res = await fetcher.post<{ data?: { authorization_url?: string }; error?: { message?: string } }>(
-        "/api/me/payment-methods/initialize-verification",
-        { set_as_default: false }
-      );
-      const url = res?.data?.authorization_url;
-      if (!url) {
-        toast.error(res?.error?.message || t("web.accountSettings.payments.startVerificationFailed"));
+      const started = await startWebCardVerification({ setAsDefault: false });
+      if (started.ok === false) {
+        toast.error(started.message || t("web.accountSettings.payments.startVerificationFailed"));
+        setAddingCard(false);
         return;
       }
-      window.open(url, "_blank", "noopener,noreferrer");
-      toast.info(t("web.accountSettings.payments.completeVerification"));
-      onClose();
-      onCardAdded?.();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("web.accountSettings.payments.addCardFailed"));
     } finally {

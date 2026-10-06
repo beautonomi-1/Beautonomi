@@ -12,6 +12,8 @@ export type PaystackInitParams = {
   metadata?: Record<string, any>;
   split_code?: string;
   subaccount?: string;
+  /** When set (e.g. ["card"]), restricts Paystack hosted checkout methods. Omit for all enabled methods. */
+  channels?: string[];
   tenantId?: string | null;
 };
 
@@ -169,6 +171,7 @@ export async function initializePaystackTransaction(params: PaystackInitParams) 
       metadata: params.metadata,
       ...(params.split_code ? { split_code: params.split_code } : {}),
       ...(params.subaccount ? { subaccount: params.subaccount } : {}),
+      ...(params.channels && params.channels.length > 0 ? { channels: params.channels } : {}),
     }),
   });
 

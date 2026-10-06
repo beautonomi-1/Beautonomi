@@ -67,7 +67,11 @@
     },
     "discard": "Discard",
     "tryAgain": "Try again.",
-    "duration": "Duration"
+    "duration": "Duration",
+    "hints": {
+      "gotIt": "Got it",
+      "dismissA11y": "Dismiss tip"
+    }
   },
   "authGate": {
     "checkingAccess": "Inathibitisha akaunti yako…",
@@ -231,7 +235,8 @@
       "loading": "Inapakia ada ya usafiri estimate",
       "finalAmountAtCheckout": "Final amount imethibitishwa at checkout",
       "errorGeneric": "Imeshindwa get ada ya usafiri estimate.",
-      "outsideServiceArea": "Anwani hii iko nje ya eneo la huduma."
+      "outsideServiceArea": "Anwani hii iko nje ya eneo la huduma.",
+      "outsideServiceAreaNoSalon": "This provider doesn't travel to this address. Try another address."
     },
     "houseCallPricing": {
       "venueStepHint": "Chagua mahali pa miadi. Bei za hatua ifuatayo zinaonyesha chaguo hili.",
@@ -240,7 +245,8 @@
       "includesHouseCallFee": "Inajumuisha ada ya ziara ya nyumbani {{currency}} {{amount}}",
       "houseCallFeeLine": "House-call ada ya huduma",
       "houseCallFeeSummary": "Ada za ziara ya nyumbani (huduma {{count}})",
-      "travelFeeSeparateNote": "Ada ya usafiri is calculated from your ongezaress and shown separately."
+      "travelFeeSeparateNote": "Ada ya usafiri is calculated from your ongezaress and shown separately.",
+      "atHomeVenueCombined": "At-home bookings can include a house-call fee on some services, plus a travel fee based on your address."
     },
     "providerNotFound": "Mtoa huduma haijapatikana",
     "providerUnavailableTitle": "This professional is hapana longer inapatikana",
@@ -286,7 +292,10 @@
     "addressRequired": "Address required",
     "addressRequiredBody": "Please enter your address for this at-home appointment before continuing.",
     "loadingPackage": "Loading package…",
-    "packageNoLineItems": "Package details will appear here when available."
+    "packageNoLineItems": "Package details will appear here when available.",
+    "contextualHints": {
+      "waitlistJoin": "Joining doesn't reserve a time. We'll let you know if one opens."
+    }
   },
   "provider": {
     "dashboard": "Dashibodi",
@@ -1830,7 +1839,8 @@
           "chargeNoteApple": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.",
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "Opening App Store purchase…",
-          "openingCheckout": "Opening secure checkout…"
+          "openingCheckout": "Opening secure checkout…",
+          "introHint": "Sponsored listings appear on the customer home screen and in search results."
         },
         "waitingRoom": {
           "title": "Dawati la mbele",
@@ -1888,7 +1898,8 @@
           "serviceFallback": "Huduma",
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "Nimechelewa",
-          "runningLateMinutes": "Nimechelewa {{minutes}}m"
+          "runningLateMinutes": "Nimechelewa {{minutes}}m",
+          "introHint": "Today at a glance: confirm new requests, check clients in when they arrive, and start their service."
         },
         "groupBookings": {
           "statusAll": "Zote",
@@ -2539,7 +2550,8 @@
           "selectCurrencyA11y": "Chagua currency {{code}}",
           "savePaymentSettings": "Hifadhi Malipo Mipangilio",
           "saving": "Inahifadhi…",
-          "unsavedChanges": "You have unsaved changes"
+          "unsavedChanges": "You have unsaved changes",
+          "noShowFeeAmountHint": "Taken only from what the client has already paid online, up to this amount."
         },
         "bookingsList": {
           "title": "Uhifadhi",
@@ -3412,7 +3424,10 @@
           "giftCardsLabel": "Kadi za zawadi",
           "giftCardsSubtitle": "Accept platform gift cards",
           "terminalShopLabel": "Duka la vituo",
-          "terminalShopSubtitle": "Order card machines from the Beautonomi catalog"
+          "terminalShopSubtitle": "Order card machines from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco card reader.",
+          "hintCardMachines": "Card machines: PayCloud terminals for in-person card payments.",
+          "hintPaystackTerminal": "Paystack Terminal: take payment on your phone with a QR code."
         },
         "businessSettings": {
           "title": "Business details",
@@ -5264,7 +5279,8 @@
           "productCartJson": "Bidhaa cart (JSON)",
           "productCartHint": "JSON array: product_id (UUID), quantity (1–999), optional product_variant_id.",
           "clearAllPrefillA11y": "Futa all prefill",
-          "clearAllPrefill": "Futa all prefill"
+          "clearAllPrefill": "Futa all prefill",
+          "introHint": "Express links open booking with your chosen services, staff and location already filled in. You can set an expiry date or a usage limit."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Selected photo preview",
@@ -5913,7 +5929,8 @@
           "deleteBody": "Ondoa \"{{name}}\"?",
           "cancel": "Ghairi",
           "delete": "Futa",
-          "copySuffix": "{{name}} (nakala)"
+          "copySuffix": "{{name}} (nakala)",
+          "introHint": "Members get their discount automatically when they book with you. They don't need a promo code."
         },
         "payoutAccounts": {
           "title": "Akaunti za malipo",
@@ -6326,7 +6343,8 @@
           "expressLinks": "Express short links & checkout prefill",
           "visits": "Ziara",
           "bookings": "Uhifadhi",
-          "convRate": "Conv. Rate"
+          "convRate": "Conv. Rate",
+          "copyIframe": "Copy iframe code"
         },
         "closedPeriods": {
           "title": "Vipindi vilivyofungwa",
@@ -6905,7 +6923,8 @@
           "deleteServiceA11y": "Futa huduma",
           "deleting": "Inafuta…",
           "deleteService": "Futa huduma",
-          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons."
+          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons.",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "daysOff": {
           "staffFallback": "Wafanyakazi",
@@ -7991,7 +8010,11 @@
           "methodGiftCard": "Kadi ya zawadi",
           "methodWallet": "Pochi",
           "methodOther": "Nyingine",
-          "methodCashback": "Cashback"
+          "methodCashback": "Cashback",
+          "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+          "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for full totals.",
+          "membershipEarnings": "Membership earnings (ledger)",
+          "providerCollectedByMethod": "Provider-collected (cash / EFT / card)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Facts & definitions",
@@ -8115,7 +8138,10 @@
           "setAsDefault": "Set as Default Policy",
           "toggleDefaultA11y": "Toggle default policy",
           "saving": "Inahifadhi…",
-          "updatePolicy": "Sasisha Policy"
+          "updatePolicy": "Sasisha Policy",
+          "hoursBeforeHint": "Cancellations closer to the appointment than this count as late.",
+          "refundPercentageHint": "How much of what the client paid is refunded for a late cancellation.",
+          "feeAmountHint": "Only used when the refund is 0%."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will review it shortly.",
@@ -9190,7 +9216,10 @@
           "notes": "Maelezo",
           "notesPlaceholder": "Si lazima notes...",
           "updateZone": "Sasisha Zone",
-          "addZone": "Ongeza Zone"
+          "addZone": "Ongeza Zone",
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone."
         },
         "staffNotifications": {
           "saveFailedTitle": "Imeshindwa hifadhi",
@@ -9882,7 +9911,9 @@
           "signOut": "Toka",
           "signOutTitle": "Toka?",
           "signOutBody": "You can finish setup later. Your progress is saved to your account.",
-          "cancel": "Ghairi"
+          "cancel": "Ghairi",
+          "verificationRequiredTitle": "Identity verification required to go live",
+          "verificationRequiredBody": "Complete identity verification so we can approve your listing for public bookings."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10156,7 +10187,9 @@
           "thisMonth": "This Mwezi",
           "avgFee": "Avg Fee",
           "trips": "Trips",
-          "saveSettings": "Hifadhi Mipangilio"
+          "saveSettings": "Hifadhi Mipangilio",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone.",
+          "actionChooseZones": "Choose zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.",
@@ -10628,7 +10661,15 @@
           "acceptInvite": "Accept invite",
           "getApp": "Get the Mtoa huduma app",
           "downloadIos": "Download for iPhone",
-          "downloadAndroid": "Download for Android"
+          "downloadAndroid": "Download for Android",
+          "setPasswordTitle": "Create your password",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters"
         },
         "search": {
           "title": "Tafuta",
@@ -10884,7 +10925,8 @@
           "myEarnings": "My earnings",
           "title": "Timu na malipo",
           "subtitleOwner": "Payroll & staff performance",
-          "subtitleStaff": "Your pay stubs"
+          "subtitleStaff": "Your pay stubs",
+          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Confirming malipo",
@@ -11417,7 +11459,9 @@
           "delete": "Futa",
           "typeNameRequired": "Weka a type jina.",
           "deleteTypeTitle": "Futa blocked muda type",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category.",
+          "introHint": "Blocks close time on the calendar so clients can't book it. For staff leave, use Days off.",
+          "actionDaysOff": "Days off"
         },
         "authLogin": {
           "accountSuspended": "Your account has been suspended. Wasiliana na msaada if you believe this is an error.",
@@ -12465,7 +12509,8 @@
           "customerFallback": "Mteja",
           "atHome": "Nyumbani",
           "atSalon": "Saluni",
-          "budgetRange": " · Budget {{min}} – {{max}}"
+          "budgetRange": " · Budget {{min}} – {{max}}",
+          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Tafadhali subiri",
@@ -13701,6 +13746,11 @@
         },
         "chipCombobox": {
           "loading": "Inapakia…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You paid for the group",
+          "paidBy": "Paid by {{name}}",
+          "covered": "Covered"
         }
       },
       "tabs": {
@@ -16417,7 +16467,13 @@
           "missingRequestId": "Kitambulisho cha ombi hakipo",
           "back": "Rudi",
           "retry": "Jaribu tena",
-          "help": "Msaada"
+          "help": "Msaada",
+          "waitingTitle": "Request sent",
+          "waitingHeadline": "Waiting for your provider",
+          "waitingProviderMessage": "This isn't confirmed yet. We'll book it as soon as {{provider}} accepts.",
+          "providerFallbackName": "your provider",
+          "waitingTimerLabel": "Time remaining",
+          "waitingCancelCta": "Cancel request"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Imeshindwa load booking details. Check your bookings list.",
@@ -16680,7 +16736,8 @@
           "budgetInvalid": "Bajeti lazima iwe nambari chanya.",
           "budgetMaxLessThanMin": "Bajeti ya juu lazima iwe kubwa au sawa na bajeti ya chini.",
           "durationOutOfRange": "Muda lazima uwe kati ya dakika {{min}} na {{max}}.",
-          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat."
+          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat.",
+          "hintOnce": "Nothing is booked yet. The provider replies with a price and time, and it's confirmed when you pay their offer. Requests close after {{days}} days."
         },
         "notificationPreferences": {
           "loadFailed": "Imeshindwa load preferences.",
@@ -17511,7 +17568,24 @@
     "platformFeeInclusive": " (incl. platform fee {{amount}})",
     "securePaymentTitle": "Secure payment",
     "paymentCancelledTitle": "Payment cancelled",
-    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed."
+    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed.",
+    "packageDiscount": "Package discount",
+    "packageApplied": "Package applied",
+    "redeemPackage": "Redeem a prepaid package (optional)",
+    "packageCredit": "Package credit",
+    "prepaidSessionsRemaining": "{{count}} session(s) remaining",
+    "contextualHints": {
+      "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
+      "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
+      "depositLateCancel": "A late-cancellation fee comes out of what you've paid.",
+      "groupBooking": "You pay for everyone in one payment. Guests only need a name.",
+      "customOfferConfirm": "Paying this offer confirms your booking.",
+      "customOfferExpires": "Offer expires {{date}}.",
+      "groupSwitchOn": "On",
+      "groupSwitchOff": "Off",
+      "groupGuestsLimit_one": "Add up to {{count}} guest.",
+      "groupGuestsLimit_other": "Add up to {{count}} guests."
+    }
   },
   "payments": {
     "pay": "Pay",
@@ -17883,7 +17957,9 @@
         "loadingBooking": "Inapakia uhifadhi...",
         "onlineBookingUnavailable": "Online uhifadhi is not inapatikana",
         "onlineBookingDisabled": "{{name}} has not enabled online booking. Please contact them directly to book.",
-        "findAnotherProvider": "Find another mtoa huduma"
+        "findAnotherProvider": "Find another mtoa huduma",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found"
       },
       "continue": {
         "slotExpiredToast": "Your reserved slot has expired. Please go back and pick a new time.",
@@ -18038,7 +18114,11 @@
         "enterSmsCode": "Weka msimbo wa tarakimu {{digits}} kutoka SMS",
         "invalidCode": "Msimbo si sahihi",
         "emailOtpSentToast": "Check your email for the {{digits}}-digit code (valid about {{minutes}} minutes).",
-        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}})."
+        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).",
+        "passwordSignInPrompt": "Prefer email and password?",
+        "passwordSignInLink": "Sign in with password",
+        "noAccountPrompt": "New to Beautonomi?",
+        "createAccountLink": "Create an account"
       },
       "legacyFlow": {
         "bookWith": "Book with {{providerName}}",
@@ -18148,7 +18228,8 @@
         "tip": "Bahashishi",
         "total": "Jumla",
         "continue": "Endelea",
-        "continueAriaLabel": "Continue to ifuatayo step"
+        "continueAriaLabel": "Continue to ifuatayo step",
+        "packageDiscount": "Package discount"
       },
       "confirmation": {
         "loadingMessage": "Inapakia uhifadhi thibitishaation...",
@@ -18538,7 +18619,10 @@
         "payWithCardEnding": "Lipa {{amount}} kwa •••• {{last4}}",
         "payDeposit": "Lipa depositi {{amount}}",
         "completeBooking": "Kamilisha uhifadhi",
-        "payAmount": "Lipa {{amount}}"
+        "payAmount": "Lipa {{amount}}",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time"
       },
       "addToWaitlist": {
         "enterName": "Tafadhali weka your jina",
@@ -18723,7 +18807,9 @@
         "capacity": "Capacity: {{count}}",
         "notAvailable": "Not inapatikana at this muda",
         "selected_one": "{{count}} resource selected",
-        "selected_other": "{{count}} resources selected"
+        "selected_other": "{{count}} resources selected",
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment."
       },
       "virtualWaitingRoom": {
         "title": "Virtual Waiting Room",
@@ -18757,6 +18843,16 @@
         "cancelledDescription": "This uhifadhi has been imeghairiwa",
         "unknownTitle": "Unknown Hali",
         "unknownDescription": "Unable to determine uhifadhi hali"
+      },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
       }
     },
     "search": {
@@ -20875,7 +20971,11 @@
           "secureBody": "All payment information is encrypted and processed securely. We never store your full card details.",
           "addCardNow": "Ongeza card now",
           "browseServices": "Browse Huduma"
-        }
+        },
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled."
       },
       "referrals": {
         "loadFailed": "Imeshindwa load referral information",
@@ -21470,7 +21570,19 @@
         "checkNeeded": "Ukaguzi wa akaunti unahitajika"
       },
       "marketingConsent": "Nitumie vidokezo, ofa na sasisho. Unaweza kujiondoa wakati wowote.",
-      "passkeyComingSoon": "Passkey (inakuja hivi karibuni)"
+      "passkeyComingSoon": "Passkey (inakuja hivi karibuni)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -23863,6 +23975,10 @@
           "plan": {
             "title": "Choose Your Plan",
             "description": "Chagua a subscription plan"
+          },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
           }
         },
         "toast": {
@@ -23929,7 +24045,8 @@
           "setHours": "Please set your operating saa",
           "oneDayOpen": "At least one day must be open",
           "selectPlan": "Tafadhali chagua a subscription plan",
-          "andMoreSeeConsole": " (and {{count}} more - see console)"
+          "andMoreSeeConsole": " (and {{count}} more - see console)",
+          "dobRequired": "Date of birth is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "Continue to verification",
@@ -23980,7 +24097,8 @@
           "ownerContactTitle": "Owner and contact details",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Your Jina",
-          "emailAddress": "Anwani ya barua pepe"
+          "emailAddress": "Anwani ya barua pepe",
+          "dateOfBirth": "Date of birth"
         },
         "photos": {
           "yourPhoto": "Your Photo",
@@ -24216,7 +24334,9 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "Categories help clients discover you in search and filters.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
-          "noCategoriesAvailable": "Hapana categories inapatikana. Please wasiliana na msaada."
+          "noCategoriesAvailable": "Hapana categories inapatikana. Please wasiliana na msaada.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name"
         },
         "catalog": {
           "atSalon": "Saluni",
@@ -24337,6 +24457,9 @@
           "locationBookingWindowTitle": "Mahali Uhifadhi Window:",
           "locationBookingWindowBody": "Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.",
           "hoursTo": "hadi"
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         }
       },
       "dashboard": {
@@ -25330,7 +25453,10 @@
             "depositPercent": "Deposit % (alternate)",
             "useAmountOrPct": "Use either amount or %",
             "saveBookingFlow": "Hifadhi uhifadhi flow mipangilio",
-            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online."
+            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share"
           },
           "appointment-activity/resources": {
             "resources": "Rasilimali",
@@ -26193,7 +26319,9 @@
             "topUpViaPaystack": "Top up via Paystack",
             "refresh": "Onyesha upya",
             "ownIntegrations": "Own integrations",
-            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits."
+            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
             "noteTemplates": "Hapanate Templates",
@@ -27741,6 +27869,10 @@
             "nativeCancelled": "You cancelled the payment. No charge was made.",
             "nativeInvalid": "This malipo return link is invalid or inkamilisha."
           }
+        },
+        "serviceZones": {
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27890,7 +28022,16 @@
           "getApp": "Get the Mtoa huduma app",
           "downloadIos": "Download for iPhone",
           "downloadAndroid": "Download for Android",
-          "logoAlt": "Beautonomi"
+          "logoAlt": "Beautonomi",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters"
         },
         "notifications": {
           "subtitle": "Angalia and simamia your arifa",
@@ -29300,7 +29441,13 @@
             "paymentsByStatus": "Malipo by Hali",
             "noPaymentStatusData": "No payment status data available for the selected period.",
             "cashStyle": "Cash Style",
-            "transactionsCount": "{{count}} transactions"
+            "transactionsCount": "{{count}} transactions",
+            "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
+            "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30389,7 +30536,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "Description (Si lazima)",
           "descriptionPlaceholder": "Ongeza a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "serviceDialog": {
           "shortHair": "Short Hair",
@@ -32232,7 +32380,8 @@
         "services": "Huduma",
         "expiresCol": "Inaisha",
         "clicks": "Clicks",
-        "itemsSelected": "Items Selected"
+        "itemsSelected": "Items Selected",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Huduma",
@@ -32548,7 +32697,9 @@
         "boostProfile": "Boost your wasifu",
         "completeLater": "Kamilisha later",
         "setUp": "Sanidi",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
         "failedToLoad": "Imeshindwa load shifts",
@@ -33152,6 +33303,22 @@
         "optionalParen": "(Si lazima)",
         "nameRequired": "Jina *",
         "other": "Nyingine"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {

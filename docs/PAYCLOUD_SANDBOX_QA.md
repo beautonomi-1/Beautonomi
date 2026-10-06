@@ -169,7 +169,7 @@ Beautonomi does **not** subscribe clients to PayCloud payment realtime (RLS is s
 
 - Feature flag: `payment_paycloud_same_terminal` (off until hardware spike passes).
 - Spike checklist: `docs/PAYCLOUD_SAME_TERMINAL_SPIKE.md`.
-- Native module: `apps/provider/modules/paycloud-same-terminal` (Expo Android module → WiseCashier Intent).
+- Native module: `packages/paycloud-same-terminal` (Expo Android module → WiseCashier Intent).
 - APIs: `channel: same_terminal` on create → `intent_payload` (includes `app_id` + optional `intent_contract` from `tenant_paycloud_apps.metadata`); `device_serial` optional for terminal_sn validation; `POST .../confirm` + poll after Intent.
 - Close/cancel: same-terminal pending rows skip cloud `ecrclose` — local close clears `in_flight_payment_id`.
 - Settle path unchanged: webhook / poll / confirm / cron → `settlePaycloudPayment`.

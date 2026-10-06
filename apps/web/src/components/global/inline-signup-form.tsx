@@ -46,7 +46,8 @@ import { isCompleteE164 } from "@/lib/phone";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { MarketingConsentCheckbox } from "@/components/auth/MarketingConsentCheckbox";
 import { AccountLinkOffer } from "@/components/auth/AccountLinkOffer";
-import { sendAuthOtp, verifyAuthOtp, lookupAccountLinkMethods } from "@/lib/auth/auth-otp-client";
+import { sendAuthOtp, verifyAuthOtp, lookupAccountLinkMethods, AuthOtpError } from "@/lib/auth/auth-otp-client";
+import { AuthTurnstile } from "@/components/auth/AuthTurnstile";
 import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
 import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
 
@@ -160,6 +161,18 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     google: true,
     apple: true,
   });
+  const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+
+  const noteSignupOtpError = (err: unknown): boolean => {
+    if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+    if (err instanceof AuthOtpError && err.status === 429 && err.retryAfterSeconds) {
+      toast.error(t("web.auth.bookingReturn.rateLimitWait", { seconds: err.retryAfterSeconds }));
+      return true;
+    }
+    return false;
+  };
+
   const { t } = useTranslation();
   const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
@@ -542,13 +555,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setIsLoading(true);
     try {
       const normalized = normalizeSupabaseAuthPhone(trimmed);
-      await sendAuthOtp({ phone: normalized });
+      await sendAuthOtp({ phone: normalized, captchaToken });
+      setCaptchaRequired(false);
       setSentPhoneE164Signup(normalized);
       setSignupPhoneOtpSent(true);
       setSignupPhoneOtpCode("");
       setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.auth.inlineSignup.checkPhoneForCode"));
     } catch (e: unknown) {
+      if (noteSignupOtpError(e)) return;
       const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.sendCodeFailed");
       setError(msg);
       toast.error(msg);
@@ -562,11 +577,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setSignupPhoneResending(true);
     setError(null);
     try {
-      await sendAuthOtp({ phone: sentPhoneE164Signup });
+      await sendAuthOtp({ phone: sentPhoneE164Signup, captchaToken });
+      setCaptchaRequired(false);
       setSignupPhoneOtpCode("");
       setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.auth.inlineSignup.newCodeSent"));
     } catch (e: unknown) {
+      if (noteSignupOtpError(e)) return;
       const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.resendCodeFailed");
       setError(msg);
       toast.error(msg);
@@ -580,11 +597,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setSignupEmailResending(true);
     setError(null);
     try {
-      await sendAuthOtp({ email: sentEmailSignupOtp });
+      await sendAuthOtp({ email: sentEmailSignupOtp, captchaToken });
+      setCaptchaRequired(false);
       setSignupEmailOtpCode("");
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.auth.inlineSignup.newCodeSent"));
     } catch (e: unknown) {
+      if (noteSignupOtpError(e)) return;
       const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.resendCodeFailed");
       setError(msg);
       toast.error(msg);
@@ -626,13 +645,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
     setIsLoading(true);
     try {
-      await sendAuthOtp({ email: trimmedEmail });
+      await sendAuthOtp({ email: trimmedEmail, captchaToken });
+      setCaptchaRequired(false);
       setSentEmailSignupOtp(trimmedEmail);
       setSignupEmailOtpSent(true);
       setSignupEmailOtpCode("");
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.auth.inlineSignup.checkEmailForCode"));
     } catch (e: unknown) {
+      if (noteSignupOtpError(e)) return;
       const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.sendEmailCodeFailed");
       setError(msg);
       toast.error(msg);
@@ -742,6 +763,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           </div>
         </div>
       )}
+
+      {captchaRequired && !awaitingEmailVerification ? (
+        <div className="mb-4">
+          <AuthTurnstile onToken={setCaptchaToken} />
+        </div>
+      ) : null}
 
       {/* Unified welcome — phone OTP, social, email code */}
       {!showEmailForm && !awaitingEmailVerification && (

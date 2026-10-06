@@ -37,7 +37,7 @@ Quick check (no build): `pnpm run release:check`
 
 2. **Config**: No manual change for OneSignal; `--profile production` sets `APP_ENV=production` in `eas.json`.
 
-3. **Pre-build**: From each app dir run `npx expo-doctor`.
+3. **Pre-build**: From repo root run `pnpm run audit:expo-doctor` (monorepo-safe; do not rely on raw `npx expo-doctor` alone). Optionally `npx expo install --check` in each app dir.
 
 4. **Build**: From app dir `eas build --profile production --platform ios` (and/or `android`), or from root: `pnpm run build:customer:ios`, `pnpm run build:provider:ios`, etc.
 
@@ -67,7 +67,7 @@ Never commit `.env.local` or any file containing real secrets.
 
 ## 5. Optional verification
 
-- **Expo Doctor**: In `apps/customer` and `apps/provider`, run `npx expo-doctor`. Both apps are set up to pass 17/17 (function-export in `app.config.js`, provider has `@react-native-community/slider` pinned to Expo SDK–expected 5.0.1). Use `--verbose` if you need details. If duplicate-deps or version checks fail after a dependency change, run `npx expo install --check` in that app or align versions per the tool’s advice.
+- **Expo Doctor**: Run **`pnpm run audit:expo-doctor`** from the repo root (`tooling/audit/check-expo-doctor.mjs`). Raw `npx expo-doctor` may report duplicate pnpm paths in a monorepo; the audit script is the ship gate. After dependency changes, run `npx expo install --check` in each app and re-run the audit.
 - **EAS secrets**: Confirm in expo.dev that production secrets are set for the correct project (customer vs provider).
 - **Web bundle**: If testing customer/provider web, run `node tooling/expo-dev/verify-web-bundle.js` while the dev server is running.
 

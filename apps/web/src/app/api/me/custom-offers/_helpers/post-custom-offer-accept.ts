@@ -10,6 +10,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { computeCustomOfferPricing } from "./custom-offer-pricing";
 import { computeCustomOfferSplits } from "./custom-offer-splits";
@@ -393,21 +397,20 @@ export async function postCustomOfferAccept(
     }
 
     const reference = `co_${id}_${Date.now()}`;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
-    const webSuccessUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const rawCallback =
       typeof body.callback_url === "string" && body.callback_url.trim().length > 0
         ? body.callback_url.trim()
         : "";
-    const callbackUrl =
-      rawCallback.length > 0 && rawCallback.length <= 2048 ? rawCallback : webSuccessUrl;
-
-    // cancel_action: mobile callback gets `?cancelled=1`; web falls back to /checkout/cancelled
-    const isMobileCallback =
-      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
-    const cancelAction = isMobileCallback
-      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-      : `${appUrl}/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
+    const hostedOffer = resolveHostedCheckoutCallbacks({
+      baseUrl: appUrl,
+      clientCallbackUrl: rawCallback.length > 0 && rawCallback.length <= 2048 ? rawCallback : undefined,
+      defaultSuccessPath: "/checkout/success",
+      defaultCancelPath: "/checkout/cancelled",
+      query: { payment_type: "custom_offer", offer_id: id },
+    });
+    const callbackUrl = hostedOffer.successUrl;
+    const cancelAction = `${appUrl}/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}${hostedOffer.inApp ? "&context=app" : ""}`;
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
 
@@ -730,6 +733,10 @@ export async function postCustomOfferAccept(
         callback_url: callbackUrl,
         metadata: { ...pricingMetadata, cancel_action: cancelAction },
         tenantId,
+        ...(() => {
+          const ch = paystackChannelsForInitialize({ saveCard: saveCardRequested });
+          return ch.channels ? { channels: ch.channels } : {};
+        })(),
       });
     } catch (initErr) {
       for (const rb of reservedRollbacks) await rb();

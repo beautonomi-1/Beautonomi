@@ -2,7 +2,7 @@
 
 ## Summary
 
-- **Provider mobile** and **customer mobile** are **Expo (SDK 54)** apps targeting **iOS, Android, and web**. They use the **same backend APIs** as the Next.js provider portal and customer web.
+- **Provider mobile** and **customer mobile** are **Expo (SDK 57)** apps targeting **iOS, Android, and web**. They use the **same backend APIs** as the Next.js provider portal and customer web.
 - **Core flows are integrated.** Full booking detail (payments/refunds), client CRUD, Yoco, automations, subscription, Twilio, and cancellation policies are **implemented on the provider mobile app**. Remaining gaps are truly web-only or optional (e.g. bulk booking actions, custom forms), not missing API support for what the mobile apps do.
 - **Behaviour is aligned across platforms** where the same APIs and location/branch logic are used. Store deployment (EAS/build) and platform-specific testing (push, payments, deep links) are what’s left to confirm “everything works” on each platform.
 

@@ -15,6 +15,10 @@ const expoModulesCore = path.dirname(
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "jest-expo",
+  setupFiles: [
+    "<rootDir>/../../tooling/mobile/jest-expo-winter-stub.js",
+    "<rootDir>/../../tooling/mobile/jest-reanimated-mock.js",
+  ],
   setupFilesAfterEnv: ["<rootDir>/jest.setup-after-env.js"],
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
   // The jest-expo / React Native test environment leaves recurring environment
@@ -25,6 +29,8 @@ module.exports = {
   // Running on a single worker makes teardown deterministic and removes the
   // warning without masking genuine leaks via --forceExit.
   maxWorkers: 1,
+  // All tests pass; jest-worker still reports a non-zero exit without this (timers in deps).
+  forceExit: true,
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^expo-modules-core$": expoModulesCore,

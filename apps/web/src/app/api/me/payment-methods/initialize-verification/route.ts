@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -56,21 +60,22 @@ export async function POST(request: NextRequest) {
     const amountInSmallestUnit = convertToSmallestUnit(amountInCurrency, currency);
     const reference = generateTransactionReference("card_verify", user.id);
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const resolvedCardCallbackUrl = callback_url || `${baseUrl}/account/settings/payments?card_verified=1`;
-    const isMobileCardCallback =
-      resolvedCardCallbackUrl.startsWith("customer://") ||
-      resolvedCardCallbackUrl.startsWith("exp://");
-    const cardCancelAction = isMobileCardCallback
-      ? `${resolvedCardCallbackUrl}${resolvedCardCallbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-      : `${baseUrl}/account/settings/payments?card_verification_cancelled=1`;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+    const hosted = resolveHostedCheckoutCallbacks({
+      baseUrl,
+      clientCallbackUrl: callback_url,
+      defaultSuccessPath: "/account-settings/payments",
+      defaultCancelPath: "/account-settings/payments",
+      query: { card_verified: "1" },
+    });
+    const cardCancelAction = `${baseUrl}/account-settings/payments?card_verification_cancelled=1${hosted.inApp ? "&context=app" : ""}`;
 
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit,
       currency,
       reference,
-      callback_url: resolvedCardCallbackUrl,
+      callback_url: hosted.successUrl,
       metadata: {
         customer_id: user.id,
         save_card: true,
@@ -79,6 +84,7 @@ export async function POST(request: NextRequest) {
         cancel_action: cardCancelAction,
       },
       tenantId,
+      channels: paystackChannelsForInitialize({ saveCard: true }).channels,
     });
 
     return successResponse({

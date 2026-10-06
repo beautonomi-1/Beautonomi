@@ -10,7 +10,8 @@ We use **Paystack’s charge flow** ([Paystack Charge API](https://paystack.com/
 - **Where:**  
   - **Booking payment (new card):** `processPayment()` in `apps/web/src/app/api/public/bookings/_helpers/process-payment.ts` (public booking)  
   - **Existing booking / checkout:** `POST /api/payments/initialize` in `apps/web/src/app/api/payments/initialize/route.ts`
-- **What we send:** `email`, `amount`, `currency`, `reference`, `callback_url`, `metadata`. We do **not** currently send `payment_channels`; Paystack’s hosted page shows the channels (card, bank, etc.) per their configuration.
+- **What we send:** `email`, `amount`, `currency`, `reference`, `callback_url`, `metadata`, and **`channels` only when save-card is requested** (`["card"]`). For normal checkout we **omit** `channels` so Paystack’s hosted page shows every channel enabled on the merchant account (card, EFT, bank, QR, Apple Pay, etc.).
+- **Mobile returns:** Paystack `callback_url` is always **HTTPS** (bridge pages such as `/checkout/success?context=app`). The customer app opens hosted checkout with `WebBrowser.openAuthSessionAsync` and a **matching HTTPS `returnUrl` prefix**; legacy deep links (`paystack-callback`, `book/paystack`, etc.) remain for cold start.
 - **Metadata we pass for “save card”:**  
   - `save_card: true` when the customer opts in  
   - `customer_id` (our user id)  

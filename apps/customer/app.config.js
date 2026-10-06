@@ -83,11 +83,10 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.96",
+  version: "1.0.98",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
   splash: {
     image: "./assets/splash-icon.png",
     resizeMode: "contain",
@@ -98,7 +97,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "290",
+    buildNumber: "292",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -176,8 +175,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 290,
-    edgeToEdgeEnabled: true,
+    versionCode: 292,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
     intentFilters: [
@@ -234,7 +232,7 @@ const BASE_EXPO_CONFIG = {
       "expo-build-properties",
       {
         ios: {
-          deploymentTarget: "15.1",
+          deploymentTarget: "16.4",
           privacyManifestAggregationEnabled: true,
         },
         android: {
@@ -263,6 +261,7 @@ const BASE_EXPO_CONFIG = {
     "expo-router",
     "expo-apple-authentication",
     "expo-font",
+    "expo-asset",
     [
       "expo-tracking-transparency",
       {

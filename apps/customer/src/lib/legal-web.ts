@@ -1,4 +1,4 @@
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { APP_URL } from "@/config/public-env";
 
 function webOrigin(): string {
@@ -76,49 +76,49 @@ function learningCenterParams(): LegalParams {
 }
 
 /** In-app WebView: canonical marketing-site privacy policy. */
-export function pushWebPrivacyPolicy(router: Router): void {
+export function pushWebPrivacyPolicy(router: ExpoRouter): void {
   const { url, title } = privacyParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
 /** Replace current screen (e.g. stub route) with the same WebView. */
-export function replaceWebPrivacyPolicy(router: Router): void {
+export function replaceWebPrivacyPolicy(router: ExpoRouter): void {
   const { url, title } = privacyParams();
   router.replace({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function pushWebTermsOfService(router: Router): void {
+export function pushWebTermsOfService(router: ExpoRouter): void {
   const { url, title } = termsParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function replaceWebTermsOfService(router: Router): void {
+export function replaceWebTermsOfService(router: ExpoRouter): void {
   const { url, title } = termsParams();
   router.replace({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function pushWebCustomerEula(router: Router): void {
+export function pushWebCustomerEula(router: ExpoRouter): void {
   const { url, title } = customerEulaParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function pushWebCookiePolicy(router: Router): void {
+export function pushWebCookiePolicy(router: ExpoRouter): void {
   const { url, title } = cookieParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function pushWebAgeSuitability(router: Router): void {
+export function pushWebAgeSuitability(router: ExpoRouter): void {
   const { url, title } = ageSuitabilityParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
-export function replaceWebAgeSuitability(router: Router): void {
+export function replaceWebAgeSuitability(router: ExpoRouter): void {
   const { url, title } = ageSuitabilityParams();
   router.replace({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
 /** In-app WebView: guides & help articles on the public site. */
-export function pushWebLearningCenter(router: Router): void {
+export function pushWebLearningCenter(router: ExpoRouter): void {
   const { url, title } = learningCenterParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }

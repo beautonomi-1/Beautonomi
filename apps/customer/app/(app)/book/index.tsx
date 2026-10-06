@@ -3897,7 +3897,7 @@ export default function BookScreen() {
           >
             <View style={{ flex: 1, justifyContent: "center", padding: contentPadding }}>
               <Pressable
-                style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.45)" }]}
+                style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.45)" }]}
                 onPress={() => setCalendarModalVisible(false)}
               />
               <View

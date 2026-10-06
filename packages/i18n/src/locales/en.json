@@ -20927,6 +20927,10 @@
         "setDefaultCardFailed": "Failed to set default card",
         "startVerificationFailed": "Could not start card verification",
         "completeVerification": "Complete verification in the new tab, then refresh this page.",
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled.",
         "addCardFailed": "Could not add card",
         "loadingMethods": "Loading payment methods...",
         "retry": "Retry",
@@ -21567,7 +21571,19 @@
         "checkNeeded": "Account check needed"
       },
       "marketingConsent": "Send me tips, offers, and product updates. You can unsubscribe anytime.",
-      "passkeyComingSoon": "Passkey (coming soon)"
+      "passkeyComingSoon": "Passkey (coming soon)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -26276,6 +26292,8 @@
             "minimumTopUpIsR10": "Minimum top-up is R10",
             "couldNotStartPaystackCheckout": "Could not start Paystack checkout",
             "topUpFailed": "Top-up failed",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated.",
             "emailIntegration": "Email Integration",
             "emailIntegrationHint": "Connect SendGrid or Mailchimp for email marketing campaigns",
             "twilioIntegration": "Twilio Integration",

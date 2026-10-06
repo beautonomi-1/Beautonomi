@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
+import { resolveBookingReturnContext } from "@/lib/booking/booking-return-context";
+import { BookingAuthReturnBanner } from "@/components/auth/BookingAuthReturnBanner";
 import { motion } from "framer-motion";
 import { Users, Briefcase, ArrowRight, CreditCard, Globe } from "lucide-react";
 import LoginModal from "@/components/global/login-modal";
@@ -45,6 +47,7 @@ export default function SignupPage() {
   const [_isLoadingContent, setIsLoadingContent] = useState(true);
   const [highlightedCard, setHighlightedCard] = useState<"customer" | "provider" | null>(null);
   const signupReturnUrl = sanitizeRelativeRedirect(searchParams.get("next") ?? searchParams.get("redirect"));
+  const bookingReturn = resolveBookingReturnContext(signupReturnUrl);
 
   // Determine which card to highlight and auto-select based on referrer or query parameter
   useEffect(() => {
@@ -144,9 +147,14 @@ export default function SignupPage() {
       <div className="w-full md:w-[38.2%] bg-[#FBFBFB] flex flex-col">
         {/* Logo */}
         <div className="p-6 md:p-8">
-          <Link href="/" className="inline-block">
+          <Link href={bookingReturn?.continueHref ?? "/"} className="inline-block">
             <Image src={logo} alt="Beautonomi Logo" className="h-8 w-auto" />
           </Link>
+          {bookingReturn ? (
+            <div className="px-6 md:px-8 -mt-2 pb-2">
+              <BookingAuthReturnBanner context={bookingReturn} variant="signup" />
+            </div>
+          ) : null}
         </div>
 
         {/* Centered Selection Area */}

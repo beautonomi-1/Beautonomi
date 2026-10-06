@@ -1,4 +1,4 @@
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import {
   applyProviderNotificationRoute,
   isProviderCloseOutNotification,
@@ -55,7 +55,7 @@ function getUuidAfterSegment(link: string, segment: string): string {
  * Map notification link/data to provider app route and navigate.
  * Shared by the header dropdown and any legacy entry points.
  */
-export function navigateFromProviderNotification(router: Router, n: ProviderNotificationNavPayload): boolean {
+export function navigateFromProviderNotification(router: ExpoRouter, n: ProviderNotificationNavPayload): boolean {
   const link = n.link ?? n.action_url ?? "";
   const data = n.data ?? {};
   const nTypeLc = (n.type ?? "").toLowerCase();

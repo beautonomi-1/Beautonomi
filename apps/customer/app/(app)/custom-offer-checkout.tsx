@@ -17,8 +17,14 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  CHECKOUT_SUCCESS_PATH,
+  getBookingCheckoutPaystackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
 import { tabBarBottomInset } from "@/constants/layout";
@@ -420,7 +426,7 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         const paystackReturnPath =
-          Platform.OS === "web" ? undefined : ExpoLinking.createURL("custom-offer-paystack");
+          Platform.OS === "web" ? undefined : getBookingCheckoutPaystackAuthPrefix();
 
         if (Platform.OS === "web") {
           setProcessingPayment(false);
@@ -436,7 +442,8 @@ export default function CustomOfferCheckoutScreen() {
           returnUrl: paystackReturnPath ?? undefined,
           matchSuccess: (u) =>
             !!paystackReturnPath &&
-            matchesExpoReturnUrl(u, paystackReturnPath) &&
+            (matchesPaystackAuthSessionReturn(u, paystackReturnPath) ||
+              matchesCheckoutSuccessReturnUrl(u)) &&
             !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });
@@ -615,10 +622,15 @@ export default function CustomOfferCheckoutScreen() {
     }
 
     const callbackUrl =
-      Platform.OS === "web" ? undefined : ExpoLinking.createURL("custom-offer-paystack");
+      Platform.OS === "web"
+        ? getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+            payment_type: "custom_offer",
+            offer_id: offerId,
+          })
+        : ExpoLinking.createURL("custom-offer-paystack");
     await runAcceptThenNavigate({
       payment_option: opt,
-      ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+      callback_url: callbackUrl,
       ...splitTenderBody,
       // §custom-offer-save-card: only opt into card tokenization when the
       // customer is paying with a new card. Existing saved-card charges

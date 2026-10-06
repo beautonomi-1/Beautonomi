@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { checkOtpVerifyRateLimit } from "@/lib/rate-limit/otp-verify";
+import { jsonRateLimited } from "@/lib/rate-limit/rate-limit-response";
 
 const GENERIC_VERIFY_ERROR = "Invalid or expired code.";
 const GENERIC_RATE_LIMIT = "Too many attempts. Please try again later.";
@@ -41,16 +42,7 @@ export async function POST(request: NextRequest) {
 
   const rateLimit = await checkOtpVerifyRateLimit(request, identity);
   if (rateLimit.allowed === false) {
-    return NextResponse.json(
-      { error: GENERIC_RATE_LIMIT },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(rateLimit.retryAfterSeconds ?? 60),
-          "X-RateLimit-Remaining": "0",
-        },
-      },
-    );
+    return jsonRateLimited(GENERIC_RATE_LIMIT, rateLimit.retryAfterSeconds ?? 60, "otp-verify");
   }
 
   try {

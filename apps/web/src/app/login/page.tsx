@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -37,42 +37,17 @@ import {
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
 import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
+import { resolveBookingReturnContext } from "@/lib/booking/booking-return-context";
+import { BookingAuthReturnBanner } from "@/components/auth/BookingAuthReturnBanner";
 import { isCompleteE164 } from "@/lib/phone";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { DEFAULT_PUBLIC_AUTH, finalizePublicAuth, type PublicAuthPolicy } from "@/lib/config/auth-policy-public";
 
-/**
- * Translate Supabase auth error strings to user-friendly copy.
- * Falls back to the original message so engineers can still debug.
- */
-function friendlyAuthErrorMessage(raw: string, channel: "phone" | "email", t: (key: string) => string): string {
-  const lower = raw.toLowerCase();
-  if (
-    lower.includes("for security purposes") ||
-    lower.includes("rate limit") ||
-    lower.includes("too many requests")
-  ) {
-    return t("web.login.errors.tooManyAttempts");
-  }
-  if (lower.includes("invalid phone")) return t("web.login.errors.invalidPhone");
-  if (lower.includes("invalid email")) return t("web.login.errors.invalidEmail");
-  if (lower.includes("signups not allowed") || lower.includes("signup is disabled")) {
-    return channel === "phone"
-      ? t("web.login.errors.phoneSignupDisabled")
-      : t("web.login.errors.emailSignupDisabled");
-  }
-  if (lower.includes("user not found")) {
-    return t("web.login.errors.userNotFound");
-  }
-  if (lower.includes("token has expired") || lower.includes("otp_expired")) {
-    return t("web.login.errors.codeExpired");
-  }
-  if (lower.includes("invalid otp") || lower.includes("invalid token") || lower.includes("otp_invalid")) {
-    return t("web.login.errors.codeInvalid");
-  }
-  return raw;
-}
+import { friendlyAuthErrorMessage } from "@/lib/auth/friendly-auth-errors";
+import { rateLimitUntilFromError, useRateLimitCooldown } from "@/lib/auth/use-rate-limit-cooldown";
+import { AuthRateLimitError } from "@/lib/auth/auth-errors";
+import * as Sentry from "@sentry/nextjs";
 
 type LoginMethod = "phone" | "email";
 type EmailMode = "otp" | "password";
@@ -90,7 +65,32 @@ export default function LoginPage() {
     searchParams.get("return_to") ||
     "";
   const nextUrl = sanitizeRelativeRedirect(rawNext) ?? "";
+  const bookingReturn = resolveBookingReturnContext(nextUrl || rawNext);
+  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
+  const rateLimitSecondsLeft = useRateLimitCooldown(rateLimitUntil);
   const initialAuthError = searchParams.get("error")?.trim() || null;
+
+  useEffect(() => {
+    if (!bookingReturn || typeof window === "undefined") return;
+    Sentry.addBreadcrumb({
+      category: "auth",
+      message: "booking_return_login",
+      level: "info",
+      data: { booking_return: 1, step: bookingReturn.stepLabelKey },
+    });
+  }, [bookingReturn]);
+
+  const noteAuthFailure = (err: unknown) => {
+    const until = rateLimitUntilFromError(err);
+    if (until) setRateLimitUntil(until);
+    if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+    if (err instanceof AuthRateLimitError) setRateLimitUntil(Date.now() + err.retryAfterSeconds * 1000);
+  };
+
+  const authSubmitBlocked = rateLimitSecondsLeft > 0;
+  const rateLimitMessage = authSubmitBlocked
+    ? t("web.auth.bookingReturn.rateLimitWait", { seconds: rateLimitSecondsLeft })
+    : null;
 
   /** Journey: Phone | Email segmented control; email defaults to passwordless code. */
   const [selectedMethod, setMethod] = useState<LoginMethod>("phone");
@@ -374,7 +374,7 @@ export default function LoginPage() {
         }),
       );
     } catch (err: unknown) {
-      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+      noteAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.login.errors.failedSendOtp");
       setFormError(friendlyAuthErrorMessage(msg, "phone", t));
     } finally {
@@ -396,9 +396,9 @@ export default function LoginPage() {
       }
       await routeAfterAuth("phone");
     } catch (err: unknown) {
+      noteAuthFailure(err);
       const raw = err instanceof Error ? err.message : t("web.login.errors.invalidCode");
-      const msg = friendlyAuthErrorMessage(raw, "phone", t);
-      setFormError(msg);
+      setFormError(friendlyAuthErrorMessage(raw, "phone", t));
       setOtpCode("");
     } finally {
       setLoading(false);
@@ -449,6 +449,7 @@ export default function LoginPage() {
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setInfoBanner(t("web.login.codeSentCheckInbox"));
     } catch (err: unknown) {
+      noteAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.login.errors.failedSendEmail");
       setFormError(friendlyAuthErrorMessage(msg, "email", t));
     } finally {
@@ -469,9 +470,9 @@ export default function LoginPage() {
       }
       await routeAfterAuth("email");
     } catch (err: unknown) {
+      noteAuthFailure(err);
       const raw = err instanceof Error ? err.message : t("web.login.errors.invalidCode");
-      const msg = friendlyAuthErrorMessage(raw, "email", t);
-      setFormError(msg);
+      setFormError(friendlyAuthErrorMessage(raw, "email", t));
       setEmailOtpCode("");
     } finally {
       setLoading(false);
@@ -489,6 +490,7 @@ export default function LoginPage() {
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setInfoBanner(t("web.login.newCodeSent"));
     } catch (err: unknown) {
+      noteAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.login.errors.failedResend");
       setFormError(friendlyAuthErrorMessage(msg, "email", t));
     } finally {
@@ -507,6 +509,7 @@ export default function LoginPage() {
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setInfoBanner(t("web.login.newCodeSent"));
     } catch (err: unknown) {
+      noteAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.login.errors.failedResend");
       setFormError(friendlyAuthErrorMessage(msg, "phone", t));
     } finally {
@@ -534,9 +537,7 @@ export default function LoginPage() {
       setFormError(null);
       await routeAfterAuth("email");
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "captchaRequired" in err && (err as { captchaRequired?: boolean }).captchaRequired) {
-        setCaptchaRequired(true);
-      }
+      noteAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.login.errors.loginFailed");
       const lower = msg.toLowerCase();
       // Accounts created via OTP/social have no password — guide users to email-code login.
@@ -601,9 +602,18 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white via-white to-primary/[0.04] px-4 py-12">
       <main className="w-full max-w-[420px]" aria-labelledby="login-heading">
         <div className="text-center">
-          <Link href="/" className="inline-block mb-6" aria-label={t("web.a11y.beautonomiHome")}>
+          <Link
+            href={bookingReturn?.continueHref ?? "/"}
+            className="inline-block mb-6"
+            aria-label={
+              bookingReturn
+                ? t("web.auth.bookingReturn.continueBooking")
+                : t("web.a11y.beautonomiHome")
+            }
+          >
             <Image src={logo} alt="Beautonomi" className="h-8 w-auto" />
           </Link>
+          {bookingReturn ? <BookingAuthReturnBanner context={bookingReturn} variant="login" /> : null}
           <SetPasswordOffer
             open={offerSetPassword}
             onSkip={() => {
@@ -622,6 +632,11 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {rateLimitMessage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 mb-4 text-sm text-amber-900" role="alert">
+            {rateLimitMessage}
+          </div>
+        ) : null}
         {/* Live region: errors */}
         {formError && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 mb-4" role="alert">
@@ -735,7 +750,7 @@ export default function LoginPage() {
               )}
             </div>
             {captchaRequired ? <AuthTurnstile onToken={setCaptchaToken} /> : null}
-            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
+            <Button type="submit" disabled={loading || authSubmitBlocked} aria-busy={loading} className={primaryCtaClasses}>
               {loading ? (
                 <span className="flex items-center gap-2">{spinner} {t("web.global.loginModal.sendingCode")}</span>
               ) : (
@@ -780,7 +795,7 @@ export default function LoginPage() {
               onComplete={(code) => {
                 if (!loading && isCompleteOtpForLength(code, publicAuth.sms_otp_length)) void handleVerifyPhoneOtp(code);
               }}
-              disabled={loading}
+              disabled={loading || authSubmitBlocked}
               autoFocus
               label={t("web.global.loginModal.phoneVerificationCodeLabel")}
               length={publicAuth.sms_otp_length}
@@ -799,7 +814,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => void handleResendPhoneOtp()}
-                disabled={otpResending || loading || otpResendCooldown > 0}
+                disabled={otpResending || loading || authSubmitBlocked || otpResendCooldown > 0}
                 className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
               >
                 {otpResending
@@ -811,7 +826,7 @@ export default function LoginPage() {
             </div>
             <Button
               type="button"
-              disabled={loading || !isCompleteOtpForLength(otpCode, publicAuth.sms_otp_length)}
+              disabled={loading || authSubmitBlocked || !isCompleteOtpForLength(otpCode, publicAuth.sms_otp_length)}
               aria-busy={loading}
               onClick={() => void handleVerifyPhoneOtp()}
               className={primaryCtaClasses}
@@ -877,7 +892,7 @@ export default function LoginPage() {
                 </p>
               )}
             </div>
-            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
+            <Button type="submit" disabled={loading || authSubmitBlocked} aria-busy={loading} className={primaryCtaClasses}>
               {loading ? (
                 <span className="flex items-center gap-2">{spinner} {t("web.global.loginModal.sendingCode")}</span>
               ) : (
@@ -926,7 +941,7 @@ export default function LoginPage() {
               onComplete={(code) => {
                 if (!loading && isCompleteOtpForLength(code, publicAuth.email_otp_length)) void handleVerifyEmailOtp(code);
               }}
-              disabled={loading}
+              disabled={loading || authSubmitBlocked}
               autoFocus
               label={t("web.global.loginModal.emailVerificationCodeLabel")}
               length={publicAuth.email_otp_length}
@@ -945,7 +960,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => void handleResendEmailOtp()}
-                disabled={emailOtpResending || loading || emailOtpResendCooldown > 0}
+                disabled={emailOtpResending || loading || authSubmitBlocked || emailOtpResendCooldown > 0}
                 className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
               >
                 {emailOtpResending
@@ -957,7 +972,7 @@ export default function LoginPage() {
             </div>
             <Button
               type="button"
-              disabled={loading || !isCompleteOtpForLength(emailOtpCode, publicAuth.email_otp_length)}
+              disabled={loading || authSubmitBlocked || !isCompleteOtpForLength(emailOtpCode, publicAuth.email_otp_length)}
               aria-busy={loading}
               onClick={() => void handleVerifyEmailOtp()}
               className={primaryCtaClasses}
@@ -1058,7 +1073,7 @@ export default function LoginPage() {
               </label>
             </div>
             {captchaRequired ? <AuthTurnstile onToken={setCaptchaToken} /> : null}
-            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses} data-testid="login-submit">
+            <Button type="submit" disabled={loading || authSubmitBlocked} aria-busy={loading} className={primaryCtaClasses} data-testid="login-submit">
               {loading ? (
                 <span className="flex items-center gap-2">{spinner} {t("web.login.signingIn")}</span>
               ) : (
@@ -1093,7 +1108,7 @@ export default function LoginPage() {
                   type="button"
                   variant="outline"
                   onClick={() => void handleSocialOAuth("google")}
-                  disabled={loading}
+                  disabled={loading || authSubmitBlocked}
                   className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5 hover:bg-gray-50"
                 >
                   <FaGoogle className="text-lg text-[#4285F4]" aria-hidden />
@@ -1105,7 +1120,7 @@ export default function LoginPage() {
                   type="button"
                   variant="outline"
                   onClick={() => void handleSocialOAuth("apple")}
-                  disabled={loading}
+                  disabled={loading || authSubmitBlocked}
                   className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5 hover:bg-gray-50"
                 >
                   <FaApple className="text-lg" aria-hidden />

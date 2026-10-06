@@ -153,6 +153,16 @@ export function BeautonomiGateModal({
   const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
   const [captchaRequired, setCaptchaRequired] = useState(false);
 
+  /** Captcha flag + 429 toast (fixed seconds — no live countdown in gate). Returns true when fully handled. */
+  const noteGateOtpError = (err: unknown): boolean => {
+    if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+    if (err instanceof AuthOtpError && err.status === 429 && err.retryAfterSeconds) {
+      toast.error(t("web.auth.bookingReturn.rateLimitWait", { seconds: err.retryAfterSeconds }));
+      return true;
+    }
+    return false;
+  };
+
   const { bundle: configBundle } = useConfigBundle();
   const tenantPhoneDial = (() => {
     const raw = configBundle?.meta?.tenant_region?.phone_country_code?.trim();
@@ -251,7 +261,7 @@ export function BeautonomiGateModal({
         t("web.book.gate.emailOtpSentToast", { digits: emailOtpLen, minutes: emailOtpExpiryMin }),
       );
     } catch (err) {
-      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+      if (noteGateOtpError(err)) return;
       toast.error(err instanceof Error ? err.message : t("web.book.gate.emailSendFailed"));
     } finally {
       setLoading(null);
@@ -287,7 +297,7 @@ export function BeautonomiGateModal({
         }),
       );
     } catch (err) {
-      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+      if (noteGateOtpError(err)) return;
       toast.error(err instanceof Error ? err.message : t("web.book.gate.smsSendFailed"));
     } finally {
       setLoading(null);
@@ -334,6 +344,7 @@ export function BeautonomiGateModal({
       }
       window.location.href = redirectUrl;
     } catch (err) {
+      if (noteGateOtpError(err)) return;
       toast.error(err instanceof Error ? err.message : t("web.book.gate.invalidCode"));
     } finally {
       setLoading(null);

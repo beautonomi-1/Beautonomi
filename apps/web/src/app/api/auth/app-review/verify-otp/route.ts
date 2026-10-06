@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { checkSignInRateLimit } from "@/lib/rate-limit/sign-in";
+import { checkAppReviewVerifyRateLimit } from "@/lib/rate-limit/app-review-verify";
+import { jsonRateLimited } from "@/lib/rate-limit/rate-limit-response";
 import {
   isAppReviewDemoEndpointEnabled,
   isAppReviewDemoIdentifier,
@@ -28,14 +29,12 @@ export async function POST(request: NextRequest) {
       return errorResponse("Not available", "NOT_FOUND", 404);
     }
 
-    const rateLimit = await checkSignInRateLimit(request);
+    const rateLimit = await checkAppReviewVerifyRateLimit(request);
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: "Too many attempts. Please try again later.", code: "RATE_LIMITED" },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) },
-        },
+      return jsonRateLimited(
+        "Too many attempts. Please try again later.",
+        rateLimit.retryAfterSeconds ?? 60,
+        "app-review-verify",
       );
     }
 

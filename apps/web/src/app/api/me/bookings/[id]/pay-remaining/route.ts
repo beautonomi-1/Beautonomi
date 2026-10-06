@@ -9,6 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import {
   convertToSmallestUnit,
   generateTransactionReference,
@@ -250,15 +251,16 @@ export async function POST(
 
     const amountInSmallestUnit = convertToSmallestUnit(paystackAmount, currency);
 
-    const remainingAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
-    const remainingCallbackUrl =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}pay_remaining=1`
-        : `${remainingAppUrl}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`;
-    const remainingCancelAction =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}pay_remaining_cancelled=1`
-        : `${remainingAppUrl}/account-settings/bookings/${bookingId}?pay_remaining_cancelled=1`;
+    const remainingAppUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+    const hostedRemaining = resolveHostedCheckoutCallbacks({
+      baseUrl: remainingAppUrl,
+      clientCallbackUrl: callbackFromClient,
+      defaultSuccessPath: `/account-settings/bookings/${bookingId}/payment-callback`,
+      defaultCancelPath: `/account-settings/bookings/${bookingId}`,
+      query: { pay_remaining: "1" },
+    });
+    const remainingCallbackUrl = hostedRemaining.successUrl;
+    const remainingCancelAction = `${hostedRemaining.cancelUrl}${hostedRemaining.cancelUrl.includes("?") ? "&" : "?"}pay_remaining_cancelled=1`;
 
     let paystackResponse: Awaited<ReturnType<typeof initializePaystackTransaction>>;
     try {

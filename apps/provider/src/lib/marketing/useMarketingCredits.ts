@@ -13,6 +13,8 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { getProviderPaystackReturnBaseUrl } from "@/lib/payments/providerPaystackReturn";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 
 export interface MarketingBalance {
   included_balance_zar: number;
@@ -117,9 +119,39 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
           matchCancel: (u) => u.includes("cancelled=1") || u.includes("payment_cancelled=1"),
         });
         if (outcome.outcome === "success") {
-          await pollBalanceIncrease(balanceBefore);
+          let reference =
+            typeof res.data.paystack_reference === "string"
+              ? res.data.paystack_reference.trim()
+              : "";
+          if (outcome.url) {
+            const extracted = extractPaystackReferenceFromUrl(outcome.url);
+            if (extracted) reference = extracted;
+          }
+          let verifyStatus: Awaited<ReturnType<typeof verifyPaystackWithRetry>>["status"] =
+            "unknown";
+          if (reference) {
+            const verifyResult = await verifyPaystackWithRetry(reference);
+            verifyStatus = verifyResult.status;
+            if (verifyResult.status === "failed") {
+              await refresh();
+              return {
+                ok: false,
+                message:
+                  verifyResult.errorMessage ??
+                  "Payment verification failed. If you were charged, pull to refresh or contact support.",
+              };
+            }
+          }
+          const increased = await pollBalanceIncrease(balanceBefore);
           await refresh();
-          return { ok: true };
+          if (increased || verifyStatus === "success") {
+            return { ok: true };
+          }
+          return {
+            ok: false,
+            message:
+              "Payment was received but credits haven't appeared yet. Pull to refresh — your balance should update shortly.",
+          };
         }
         if (outcome.outcome === "cancel") {
           return { ok: false, cancelled: true, message: "Top-up cancelled." };

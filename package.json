@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=20.19.0",
+    "node": ">=22.13.0",
     "pnpm": ">=10.33.0"
   },
   "pnpm": {
@@ -22,14 +22,18 @@
     "overrides": {
       "@babel/core": "7.29.0",
       "@sentry/core": "10.50.0",
-      "react": "19.1.0",
-      "react-dom": "19.1.0",
-      "react-test-renderer": "19.1.0",
-      "react-native": "0.81.5",
+      "react": "19.2.3",
+      "react-dom": "19.2.3",
+      "react-test-renderer": "19.2.3",
+      "react-native": "0.86.3",
       "@react-native-async-storage/async-storage": "2.2.0",
-      "@amplitude/analytics-react-native>react": "19.1.0",
-      "@amplitude/analytics-react-native>react-native": "0.81.5",
-      "@amplitude/plugin-engagement-react-native>react": "19.1.0",
+      "@amplitude/analytics-react-native>react": "19.2.3",
+      "@amplitude/analytics-react-native>react-native": "0.86.3",
+      "@amplitude/plugin-engagement-react-native>react": "19.2.3",
+      "@beautonomi/expo-sms-user-consent>expo": "~57.0.26",
+      "@beautonomi/expo-sms-user-consent>expo-modules-core": "~57.0.20",
+      "@beautonomi/paycloud-same-terminal>expo": "~57.0.26",
+      "@beautonomi/paycloud-same-terminal>expo-modules-core": "~57.0.20",
       "lodash": "4.18.0",
       "lodash-es": "4.18.0",
       "rollup": "4.59.0",
@@ -72,11 +76,12 @@
       "protobufjs@8": "8.4.1",
       "@grpc/grpc-js": "1.14.5",
       "ws@7": "7.5.11",
-      "ws@8": "8.21.0"
+      "ws@8": "8.21.0",
+      "proxy-addr": "2.0.8"
     }
   },
   "scripts": {
-    "postinstall": "pnpm run build:packages && node tooling/patch-amplitude-android-gradle.mjs",
+    "postinstall": "pnpm run build:packages && node tooling/patch-amplitude-android-gradle.mjs && node tooling/pnpm/prune-workspace-expo-peer-node-modules.mjs",
     "dev": "pnpm exec turbo run dev",
     "dev:web": "pnpm exec turbo run dev --filter=web",
     "dev:admin": "pnpm exec turbo run dev --filter=admin-web",
@@ -110,7 +115,7 @@
     "i18n:translate-wave-a": "node packages/i18n/scripts/apply-wave-a-translations.mjs",
     "i18n:merge": "pnpm --filter @beautonomi/i18n run i18n:merge",
     "release:check": "pnpm run typecheck && pnpm run lint && pnpm run i18n:check && pnpm run i18n:scan:keys && pnpm run test",
-    "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check",
+    "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check && pnpm run audit:expo-doctor && pnpm run audit:mobile-gradle-resilience",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
     "grc:seed": "pnpm --filter @beautonomi/grc-catalog build && node scripts/grc-seed.mjs",
@@ -120,6 +125,9 @@
     "audit:tenant-api-hints:strict": "node docs/scripts/run-tenant-api-hints-strict.mjs",
     "audit:deps": "node tooling/audit/npm-audit-lockfile.mjs high",
     "audit:mobile-gradle-resilience": "node tooling/audit/check-mobile-gradle-resilience.mjs",
+    "audit:expo-doctor": "node tooling/audit/check-expo-doctor.mjs",
+    "verify:mobile-store-versions": "node tooling/audit/verify-mobile-store-versions.mjs",
+    "release:eas-preflight": "node scripts/release/eas-build-preflight.mjs",
     "audit:multi-tenant": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints",
     "audit:multi-tenant:strict": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints:strict",
     "verify:cron-schedule": "node docs/scripts/verify-cron-schedule.mjs",

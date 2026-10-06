@@ -520,6 +520,17 @@ function buildChecks() {
       },
     },
     {
+      id: "repo.audit_expo_doctor",
+      area: "repo",
+      severity: "blocker",
+      run: () => {
+        const r = pnpm(["run", "audit:expo-doctor"], "audit:expo-doctor");
+        return r.code === 0
+          ? { status: "pass", evidence: "audit:expo-doctor pass." }
+          : { status: "fail", evidence: (r.stderr || r.stdout).slice(0, 400), fix: "pnpm run audit:expo-doctor" };
+      },
+    },
+    {
       id: "repo.typecheck_lint",
       area: "repo",
       severity: "blocker",
@@ -564,6 +575,24 @@ function buildChecks() {
         return r.code === 0
           ? { status: "pass", evidence: "verify-observability-gates pass." }
           : { status: "fail", evidence: (r.stderr || r.stdout).slice(0, 300), fix: "Set NEXT_PUBLIC_SENTRY_DSN in apps/web/.env.local or env." };
+      },
+    },
+    {
+      id: "repo.upstash_auth",
+      area: "repo",
+      severity: "warning",
+      run: () => {
+        const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+        const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+        if (url && token) {
+          return { status: "pass", evidence: "Upstash REST credentials present in runner env." };
+        }
+        return {
+          status: "warn",
+          evidence:
+            "UPSTASH_REDIS_REST_URL/TOKEN not visible to go-live runner — confirm in Vercel Production.",
+          fix: "docs/go-live/AUTH_RATE_LIMITS.md",
+        };
       },
     },
     {

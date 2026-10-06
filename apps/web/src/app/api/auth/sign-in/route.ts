@@ -9,7 +9,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { checkSignInRateLimit, incrementSignInAttempts } from "@/lib/rate-limit/sign-in";
+import {
+  checkSignInPasswordRateLimit,
+  noteSignInPasswordFailure,
+} from "@/lib/rate-limit/sign-in-password";
+import { jsonRateLimited } from "@/lib/rate-limit/rate-limit-response";
+import { hashIpForLog, logAuthMetric } from "@/lib/auth/auth-metrics";
+import { getClientIp } from "@/lib/rate-limit/sign-in-password";
 import { noteAuthAttemptAndShouldChallenge, authCaptchaConfigured } from "@/lib/auth/auth-risk";
 import { verifyAuthCaptcha } from "@/lib/auth/verify-auth-captcha";
 import {
@@ -19,17 +25,12 @@ import {
 } from "@/lib/auth/remember-me";
 
 export async function POST(request: NextRequest) {
-  const rateLimit = await checkSignInRateLimit(request);
+  const rateLimit = await checkSignInPasswordRateLimit(request);
   if (rateLimit.allowed === false) {
-    return NextResponse.json(
-      { error: "Too many sign-in attempts. Please try again later." },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(rateLimit.retryAfterSeconds ?? 60),
-          "X-RateLimit-Remaining": "0",
-        },
-      }
+    return jsonRateLimited(
+      "Too many sign-in attempts. Please try again later.",
+      rateLimit.retryAfterSeconds ?? 60,
+      "sign-in",
     );
   }
 
@@ -50,6 +51,10 @@ export async function POST(request: NextRequest) {
     if (requireCaptcha && authCaptchaConfigured()) {
       const captcha = await verifyAuthCaptcha(request, body);
       if (captcha.ok === false) {
+        logAuthMetric("auth_captcha_required", {
+          route: "sign-in",
+          ip_hash: hashIpForLog(getClientIp(request)),
+        });
         return NextResponse.json(
           { error: captcha.reason, captcha_required: true },
           { status: captcha.status },
@@ -67,7 +72,6 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      incrementSignInAttempts(request);
       const code = (error as { code?: string }).code;
       if (
         code === "email_not_confirmed" ||
@@ -81,19 +85,24 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      if (
+      const isInvalidCreds =
         error.message.toLowerCase().includes("invalid login credentials") ||
-        error.message.toLowerCase().includes("invalid credentials")
-      ) {
+        error.message.toLowerCase().includes("invalid credentials");
+      if (isInvalidCreds) {
+        const failLimit = await noteSignInPasswordFailure(request);
+        if (failLimit.allowed === false) {
+          return jsonRateLimited(
+            "Too many failed sign-in attempts. Please try again later.",
+            failLimit.retryAfterSeconds ?? 60,
+            "sign-in-fail",
+          );
+        }
         return NextResponse.json(
           { error: "Invalid login credentials. Please check your email and password." },
-          { status: 401 }
+          { status: 401 },
         );
       }
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
     const cookieStore = await cookies();

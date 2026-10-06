@@ -1,0 +1,220 @@
+{
+  "date": "2026-10-06",
+  "verdict": "No-Go",
+  "mode": "quick",
+  "skipLive": true,
+  "headSha": "ab0c1323a91fb0b96402bc2fbfc10b534071d6e4",
+  "results": [
+    {
+      "id": "git.tracked_clean",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 405,
+      "status": "fail",
+      "evidence": "M .npmrc;  M apps/customer/app.config.js;  M apps/customer/app/(app)/(tabs)/_layout.tsx;  M apps/customer/app/(app)/(tabs)/shop/product-checkout.tsx;  M apps/customer/app/(app)/account-settings/payments.tsx;  M apps/customer/app/(app)/account-settings/wallet.tsx;  M apps/customer/app/(app)/announcements/[id].tsx;  M apps/customer/app/(app)/book-checkout.tsx",
+      "fix": "Commit or stash tracked changes before go-live.",
+      "ms": 405
+    },
+    {
+      "id": "git.head_origin_main",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 2154,
+      "status": "fail",
+      "evidence": "HEAD ab0c132 != origin/main 108de9b",
+      "fix": "Push and merge to main, then re-run from updated main.",
+      "ms": 2154
+    },
+    {
+      "id": "repo.migrations",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 283,
+      "status": "pass",
+      "evidence": "Migration hygiene OK — canonical=975, allowedDuplicates=0, allowedGaps=11",
+      "ms": 283
+    },
+    {
+      "id": "repo.audit_deps",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 4565,
+      "status": "pass",
+      "evidence": "audit:deps pass.",
+      "ms": 4565
+    },
+    {
+      "id": "repo.audit_expo_doctor",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 174715,
+      "status": "pass",
+      "evidence": "audit:expo-doctor pass.",
+      "ms": 174715
+    },
+    {
+      "id": "repo.typecheck_lint",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 39575,
+      "status": "fail",
+      "evidence": "• turbo 2.9.6\n ERROR  web#typecheck: command (C:\\Users\\NoloSehlolo\\Documents\\Beautonomi\\apps\\web) C:\\Users\\NoloSehlolo\\AppData\\Local\\pnpm\\.tools\\pnpm\\10.33.0\\bin\\pnpm.CMD run typecheck exited (2)\n ERROR  run failed: command  exited (2)",
+      "fix": "Fix typecheck/lint errors.",
+      "ms": 39575
+    },
+    {
+      "id": "repo.multi_tenant",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 3590,
+      "status": "pass",
+      "evidence": "audit:multi-tenant:strict pass.",
+      "ms": 3590
+    },
+    {
+      "id": "repo.cron_schedule",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 471,
+      "status": "pass",
+      "evidence": "verify:cron-schedule pass.",
+      "ms": 471
+    },
+    {
+      "id": "repo.observability",
+      "area": "repo",
+      "severity": "blocker",
+      "_ms": 481,
+      "status": "pass",
+      "evidence": "verify-observability-gates pass.",
+      "ms": 481
+    },
+    {
+      "id": "repo.upstash_auth",
+      "area": "repo",
+      "severity": "warning",
+      "_ms": 0,
+      "status": "warn",
+      "evidence": "UPSTASH_REDIS_REST_URL/TOKEN not visible to go-live runner — confirm in Vercel Production.",
+      "fix": "docs/go-live/AUTH_RATE_LIMITS.md",
+      "ms": 0
+    },
+    {
+      "id": "ci.main",
+      "area": "ci",
+      "severity": "blocker",
+      "_ms": 3152,
+      "status": "fail",
+      "evidence": "CI: no run on this SHA; E2E: success; Finance drift (latest on main branch): success",
+      "fix": "Wait for CI success on main or fix failing jobs.",
+      "ms": 3152
+    },
+    {
+      "id": "ci.e2e_warning",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 90,
+      "status": "pass",
+      "evidence": "E2E (Preview + Staging) success.",
+      "ms": 90
+    },
+    {
+      "id": "ci.finance_drift",
+      "area": "ci",
+      "severity": "warning",
+      "_ms": 673,
+      "status": "pass",
+      "evidence": "Latest finance drift: success (2026-10-06T08:29:27Z).",
+      "ms": 673
+    },
+    {
+      "id": "db.readiness",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 22181,
+      "status": "pass",
+      "evidence": "readiness:supabase:check pass.",
+      "ms": 22181
+    },
+    {
+      "id": "db.compare",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 9567,
+      "status": "pass",
+      "evidence": "compare:supabase gaps empty.",
+      "ms": 9567
+    },
+    {
+      "id": "db.handle_new_user",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1831,
+      "status": "pass",
+      "evidence": "handle_new_user proconfig includes search_path=public.",
+      "ms": 1831
+    },
+    {
+      "id": "db.za_domains",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 1976,
+      "status": "pass",
+      "evidence": "za tenant active; domains: www.beautonomi.com, beautonomi.co.za, admin.beautonomi.com",
+      "ms": 1976
+    },
+    {
+      "id": "db.paystack_no_test",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 3702,
+      "status": "pass",
+      "evidence": "No sk_test in platform_secrets/region_secrets (sampled).",
+      "ms": 3702
+    },
+    {
+      "id": "db.staging_signup",
+      "area": "supabase",
+      "severity": "blocker",
+      "_ms": 2416,
+      "status": "pass",
+      "evidence": "Staging auth.admin.createUser + delete succeeded.",
+      "ms": 2416
+    },
+    {
+      "id": "db.staging_seed",
+      "area": "supabase",
+      "severity": "warning",
+      "_ms": 6610,
+      "status": "pass",
+      "evidence": "Seed stdout slug: e2e-test-provider-beautonomi",
+      "ms": 6610
+    },
+    {
+      "id": "mobile.release_check",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 212211,
+      "status": "pass",
+      "evidence": "release:check:mobile pass.",
+      "ms": 212211
+    },
+    {
+      "id": "mobile.expo_config",
+      "area": "mobile",
+      "severity": "warning",
+      "_ms": 6066,
+      "status": "pass",
+      "evidence": "customer + provider expo config OK.",
+      "ms": 6066
+    }
+  ],
+  "manualChecklist": [
+    "Vercel Production: PAYSTACK_SECRET_KEY (sk_live_…), public Paystack key, CRON_SECRET, CSRF_SECRET, NEXT_PUBLIC_SENTRY_DSN",
+    "Supabase Production: Pro plan + point-in-time recovery enabled",
+    "Paystack dashboard: live webhook URL registered and reachable",
+    "DNS/TLS: apex → www, admin host, provider hosts",
+    "Rotate VERCEL_AUTOMATION_BYPASS_SECRET if ever exposed; store only in GitHub Actions",
+    "On-call / rollback: docs/PLAYBOOKS/secret-rotation.md and deploy rollback owner"
+  ]
+}

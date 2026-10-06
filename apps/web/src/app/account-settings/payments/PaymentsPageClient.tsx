@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import AddPaymentModal from "./components/add-payment-modal";
 import Link from "next/link";
@@ -16,10 +17,17 @@ import { useAuth } from "@/providers/AuthProvider";
 import GiftCardsSection from "./components/GiftCardsSection";
 import type { PaymentMethodRow, PaymentsPageInitial } from "./payments-initial-types";
 import { useTranslation } from "@beautonomi/i18n";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  paystackReferenceFromSearchParams,
+  startWebCardVerification,
+} from "@/lib/payments/card-verification-web";
 
 type PaymentMethod = PaymentMethodRow;
 
 const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("payments");
@@ -48,6 +56,70 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   } | null>(() => initial?.paymentSafetyCopy ?? null);
 
   const skipHydrateLoadOnce = useRef(Boolean(initial));
+  const cardReturnVerifyStarted = useRef(false);
+
+  const postCardVerificationToNativeApp = (status: "success" | "failed" | "pending" | "cancelled") => {
+    if (searchParams.get("context") !== "app") return;
+    if (typeof window === "undefined") return;
+    const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+    if (!w.ReactNativeWebView?.postMessage) return;
+    try {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: status === "success" ? "card_verification_success" : "card_verification_done",
+          status,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (searchParams.get("card_verification_cancelled") === "1") {
+      toast.info(t("web.accountSettings.payments.cardVerificationCancelled"));
+      postCardVerificationToNativeApp("cancelled");
+      router.replace("/account-settings/payments");
+      return;
+    }
+    if (searchParams.get("card_verified") !== "1") return;
+
+    if (cardReturnVerifyStarted.current) return;
+    cardReturnVerifyStarted.current = true;
+
+    const reference = paystackReferenceFromSearchParams(searchParams);
+    if (!reference) {
+      toast.info(t("web.accountSettings.payments.cardVerificationPending"));
+      postCardVerificationToNativeApp("pending");
+      router.replace("/account-settings/payments");
+      return;
+    }
+
+    void (async () => {
+      try {
+        const verifyResult = await verifyWithRetry<{ type?: string }>(reference, {
+          maxAttempts: 5,
+          delayMs: 1500,
+        });
+        if (verifyResult.status === "success") {
+          toast.success(t("web.accountSettings.payments.cardVerifiedSuccess"));
+          await loadPaymentMethods();
+          postCardVerificationToNativeApp("success");
+        } else if (verifyResult.status === "failed") {
+          toast.error(
+            verifyResult.errorMessage ?? t("web.accountSettings.payments.cardVerificationFailed"),
+          );
+          postCardVerificationToNativeApp("failed");
+        } else {
+          toast.info(t("web.accountSettings.payments.cardVerificationPending"));
+          await loadPaymentMethods();
+          postCardVerificationToNativeApp("pending");
+        }
+      } finally {
+        router.replace("/account-settings/payments");
+      }
+    })();
+  }, [searchParams, router, t]); // eslint-disable-line react-hooks/exhaustive-deps -- return handler
 
   useEffect(() => {
     if (skipHydrateLoadOnce.current) {
@@ -162,29 +234,23 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   const handleAddCard = async () => {
     setAddingCard(true);
     try {
-      const res = await fetcher.post<{
-        data?: { authorization_url?: string };
-        error?: { message?: string };
-      }>("/api/me/payment-methods/initialize-verification", {
-        set_as_default: paymentMethods.length === 0,
+      const started = await startWebCardVerification({
+        setAsDefault: paymentMethods.length === 0,
       });
-      const url = res?.data?.authorization_url;
-      if (!url) {
-        toast.error(res?.error?.message || t("web.accountSettings.payments.startVerificationFailed"));
-        return;
+      if (started.ok === false) {
+        toast.error(
+          started.message || t("web.accountSettings.payments.startVerificationFailed"),
+        );
+        setAddingCard(false);
       }
-      window.open(url, "_blank", "noopener,noreferrer");
-      toast.info(t("web.accountSettings.payments.completeVerification"));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("web.accountSettings.payments.addCardFailed"));
-    } finally {
       setAddingCard(false);
     }
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    loadPaymentMethods(); // Refresh list after adding
   };
   const handleAddCouponClick = () => setShowCouponInput(true);
   const handleCancelCoupon = () => {
@@ -549,11 +615,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
         </Tabs>
 
         {/* Add Payment Modal */}
-        <AddPaymentModal
-          isOpen={isModalOpen}
-          onClose={handleCloseModal}
-          onCardAdded={loadPaymentMethods}
-        />
+        <AddPaymentModal isOpen={isModalOpen} onClose={handleCloseModal} />
       </div>
     </div>
   );

@@ -25,12 +25,11 @@ import {
 
 async function playBookingAlert(): Promise<{ stop: () => void }> {
   try {
-    const { Audio } = await import("expo-av");
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    const { setAudioModeAsync } = await import("expo-audio");
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      interruptionMode: "duckOthers",
     });
     if (Platform.OS !== "web") {
       Vibration.vibrate([0, 400, 200, 400]);

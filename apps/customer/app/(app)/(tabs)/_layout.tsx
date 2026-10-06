@@ -8,6 +8,7 @@ import {
   Text,
   useWindowDimensions,
   InteractionManager,
+  type ColorValue,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -61,11 +62,12 @@ const TabIconBox = memo(function TabIconBox({
   name: keyof typeof Ionicons.glyphMap;
   nameOutline: keyof typeof Ionicons.glyphMap;
   focused: boolean;
-  color: string;
+  color: ColorValue;
 }) {
+  const iconColor = typeof color === "string" ? color : Colors.primary;
   return (
     <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
-      <Ionicons name={focused ? name : nameOutline} size={24} color={color} />
+      <Ionicons name={focused ? name : nameOutline} size={24} color={iconColor} />
     </View>
   );
 });
@@ -76,12 +78,13 @@ const CartTabIcon = memo(function CartTabIcon({
   cartCount,
 }: {
   focused: boolean;
-  color: string;
+  color: ColorValue;
   cartCount: number;
 }) {
+  const iconColor = typeof color === "string" ? color : Colors.primary;
   return (
     <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
-      <Ionicons name={focused ? "cart" : "cart-outline"} size={24} color={color} />
+      <Ionicons name={focused ? "cart" : "cart-outline"} size={24} color={iconColor} />
       {cartCount > 0 && (
         <View
           style={{
@@ -112,12 +115,13 @@ const ChatsTabIcon = memo(function ChatsTabIcon({
   chatUnreadCount,
 }: {
   focused: boolean;
-  color: string;
+  color: ColorValue;
   chatUnreadCount: number;
 }) {
+  const iconColor = typeof color === "string" ? color : Colors.primary;
   return (
     <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
-      <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+      <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={iconColor} />
       {chatUnreadCount > 0 && (
         <View
           style={{
@@ -225,7 +229,15 @@ export default function TabsLayout() {
         alignItems: "center" as const,
         paddingVertical: 2,
       },
-      tabBarLabel: ({ color, children }: { color: string; children: string }) => (
+      tabBarLabel: ({
+        color,
+        children,
+      }: {
+        focused: boolean;
+        color: ColorValue;
+        position: "beside-icon" | "below-icon";
+        children: string;
+      }) => (
         <TabLabel
           style={{
             color: typeof color === "string" ? color : Colors.gray[400],

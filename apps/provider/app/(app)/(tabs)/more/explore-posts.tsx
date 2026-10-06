@@ -14,7 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Video, ResizeMode } from "expo-av";
+import { ExpoVideoPreview } from "@/components/ExpoVideoPreview";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -123,7 +123,7 @@ function mapPickerAsset(a: {
   };
 }
 
-/** Local file preview for create/edit strips — uses expo-av for video, expo-image for photos. */
+/** Local file preview for create/edit strips — uses expo-video for video, expo-image for photos. */
 function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }) {
   const { t } = useTranslation();
   const [imageFailed, setImageFailed] = useState(false);
@@ -131,18 +131,17 @@ function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }
   if (video) {
     return (
       <View style={{ width: size, height: size, backgroundColor: "#111" }}>
-        <Video
-          source={{ uri: asset.uri }}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay={false}
-          isMuted
-          useNativeControls={false}
+        <ExpoVideoPreview
+          uri={asset.uri}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          paused
+          muted
         />
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <View
             style={[
-              StyleSheet.absoluteFillObject,
+              StyleSheet.absoluteFill,
               { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
             ]}
           >
@@ -204,7 +203,7 @@ function explorePublicBase(): string {
   return getWebProviderBaseUrl().replace(/\/$/, "");
 }
 
-/** Square media preview for feed cards — video shows native preview via expo-av. */
+/** Square media preview for feed cards — video shows native preview via expo-video. */
 function ExploreFeedMediaThumb({
   uri,
   height,
@@ -226,16 +225,15 @@ function ExploreFeedMediaThumb({
   }
   return (
     <View style={{ width: "100%", height, backgroundColor: "#111" }}>
-      <Video
-        source={{ uri }}
-        style={StyleSheet.absoluteFillObject}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay={false}
-        isMuted
-        useNativeControls={false}
+      <ExpoVideoPreview
+        uri={uri}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        paused
+        muted
       />
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFillObject, { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }]}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }]}>
           <Ionicons name="play-circle" size={52} color="rgba(255,255,255,0.95)" />
         </View>
       </View>
@@ -284,6 +282,7 @@ export default function ExplorePostsScreen() {
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
   const [viewPost, setViewPost] = useState<ExplorePost | null>(null);
+  const [viewDetailMediaIndex, setViewDetailMediaIndex] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [editCaption, setEditCaption] = useState("");
   const [editSubmittingMode, setEditSubmittingMode] = useState<"publish" | "draft" | null>(null);
@@ -357,6 +356,10 @@ export default function ExplorePostsScreen() {
       ],
     );
   }, [openContentReport, t, viewPost]);
+
+  useEffect(() => {
+    setViewDetailMediaIndex(0);
+  }, [viewPost?.id]);
 
   const showCommentSafetyMenu = useCallback(
     (comment: ExploreComment) => {
@@ -1586,6 +1589,9 @@ export default function ExplorePostsScreen() {
                       pagingEnabled
                       showsHorizontalScrollIndicator={false}
                       style={{ width: pageW, height: pageW }}
+                      onMomentumScrollEnd={(e) => {
+                        setViewDetailMediaIndex(Math.round(e.nativeEvent.contentOffset.x / pageW));
+                      }}
                     >
                       {urls.map((url, idx) => (
                         <View key={`${url}-${idx}`} style={{ width: pageW, height: pageW }}>
@@ -1599,13 +1605,13 @@ export default function ExplorePostsScreen() {
                             }}
                           >
                             {isVideoUrl(url) ? (
-                              <Video
-                                source={{ uri: url }}
+                              <ExpoVideoPreview
+                                uri={url}
                                 style={{ width: pageW, height: pageW }}
-                                resizeMode={ResizeMode.CONTAIN}
-                                useNativeControls
-                                shouldPlay={false}
-                                isLooping
+                                contentFit="contain"
+                                nativeControls
+                                loop
+                                paused={viewDetailMediaIndex !== idx}
                               />
                             ) : (
                               <ExploreFeedMediaThumb

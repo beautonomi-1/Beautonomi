@@ -15,6 +15,10 @@ import { resolveBookingPaystackAmount } from "@/lib/payments/resolve-paystack-in
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { checkPaymentInitRateLimit } from "@/lib/rate-limit/payment-initialize";
 import { getRateLimitHeaders } from "@/lib/rate-limit/headers";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 
 /**
  * POST /api/payments/initialize
@@ -165,50 +169,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get platform settings for split code (transaction split for commission)
-    const { data: platformSettings } = await (supabase
-      .from("platform_settings") as any)
-      .select("settings")
-      .single();
-
-    const payoutSettings = platformSettings?.settings?.payouts;
-    let splitCode: string | undefined;
-
-    // Get active split code if transaction splits are configured
-    if (payoutSettings?.use_transaction_splits) {
-      const { data: activeSplit } = await (supabase
-        .from("paystack_splits") as any)
-        .select("split_code")
-        .eq("active", true)
-        .eq("currency", currency || lastResortCurrency)
-        .single();
-
-      if (activeSplit) {
-        splitCode = activeSplit.split_code;
-      }
-    }
-
-    // Get provider subaccount if provider-specific split is needed
     const { data: bookingDetails } = await (supabase
       .from("bookings") as any)
       .select("provider_id")
       .eq("id", booking_id)
       .single();
 
-    let subaccount: string | undefined;
     let stripeConnectAccountId: string | undefined;
     if (bookingDetails?.provider_id) {
-      const { data: providerSubaccount } = await (supabase
-        .from("provider_paystack_subaccounts") as any)
-        .select("subaccount_code")
-        .eq("provider_id", bookingDetails.provider_id)
-        .eq("active", true)
-        .single();
-
-      if (providerSubaccount) {
-        subaccount = providerSubaccount.subaccount_code;
-      }
-
       const { data: providerStripe } = await (supabase
         .from("providers") as any)
         .select("stripe_connect_account_id")
@@ -221,16 +189,17 @@ export async function POST(request: Request) {
       }
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const resolvedCallbackUrl = callback_url || `${appUrl}/checkout/success`;
-
-    // cancel_action: mobile callback gets `?cancelled=1` appended; web falls back to /checkout/cancelled
-    const isMobileCallback =
-      resolvedCallbackUrl.startsWith("customer://") ||
-      resolvedCallbackUrl.startsWith("exp://");
-    const cancelAction = isMobileCallback
-      ? `${resolvedCallbackUrl}${resolvedCallbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-      : `${appUrl}/checkout/cancelled?booking_id=${encodeURIComponent(booking_id)}`;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+    const hosted = resolveHostedCheckoutCallbacks({
+      baseUrl: appUrl,
+      clientCallbackUrl: callback_url,
+      defaultSuccessPath: "/checkout/success",
+      defaultCancelPath: `/checkout/cancelled?booking_id=${encodeURIComponent(booking_id)}`,
+      query: { booking_id },
+    });
+    const resolvedCallbackUrl = hosted.successUrl;
+    const cancelAction = hosted.cancelUrl;
+    const channelExtras = paystackChannelsForInitialize({ saveCard });
 
     // Initialize transaction with split if configured (Paystack) or PaymentIntent (Stripe).
     const psp = await getPaymentProviderForTenant(paymentTenantId);
@@ -293,8 +262,7 @@ export async function POST(request: Request) {
           },
         ],
       },
-      ...(splitCode ? { split_code: splitCode } : {}),
-      ...(subaccount ? { subaccount } : {}),
+      ...(channelExtras.channels ? { channels: channelExtras.channels } : {}),
       tenantId: paymentTenantId,
     });
 

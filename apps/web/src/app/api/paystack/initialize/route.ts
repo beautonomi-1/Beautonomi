@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { successResponse, handleApiError, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { isPaystackEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
-import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
+import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+  resolveSaveCardForInitialize,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
@@ -104,39 +109,54 @@ export async function POST(request: NextRequest) {
       (typeof rawMeta.booking_id === "string" && rawMeta.booking_id.trim()
         ? rawMeta.booking_id.trim()
         : null);
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
-    const defaultCallbackUrl =
-      rawMeta.type === "product_order"
-        ? `${appBaseUrl}/shop/payment-callback`
-        : bookingIdForCallback
-          ? `${appBaseUrl}/checkout/success?booking_id=${encodeURIComponent(bookingIdForCallback)}`
-          : `${appBaseUrl}/checkout/success`;
-    const callbackUrl = body.callback_url?.trim() || defaultCallbackUrl;
-
-    // cancel_action: respect explicitly supplied value; otherwise default by type
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const customOfferIdRaw =
       typeof rawMeta.custom_offer_id === "string" && rawMeta.custom_offer_id.trim()
         ? rawMeta.custom_offer_id.trim()
         : null;
-    const isMobileCallback =
-      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
-    const defaultCancelAction = isMobileCallback
-      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-      : rawMeta.type === "product_order"
-        ? `${appBaseUrl}/shop/cancelled`
+    const productOrderIdForCallback =
+      typeof rawMeta.product_order_id === "string" && rawMeta.product_order_id.trim()
+        ? rawMeta.product_order_id.trim()
+        : null;
+    const isProductOrder = rawMeta.type === "product_order" || Boolean(productOrderIdForCallback);
+
+    const successQuery: Record<string, string | undefined> = {};
+    if (bookingIdForCallback) successQuery.booking_id = bookingIdForCallback;
+    if (productOrderIdForCallback) successQuery.product_order_id = productOrderIdForCallback;
+    const orderNumberRaw =
+      typeof rawMeta.order_number === "string" && rawMeta.order_number.trim()
+        ? rawMeta.order_number.trim()
+        : undefined;
+    if (orderNumberRaw) successQuery.order_number = orderNumberRaw;
+    if (customOfferIdRaw) {
+      successQuery.payment_type = "custom_offer";
+      successQuery.offer_id = customOfferIdRaw;
+    }
+
+    const hosted = resolveHostedCheckoutCallbacks({
+      baseUrl: appBaseUrl,
+      clientCallbackUrl: body.callback_url,
+      defaultSuccessPath: isProductOrder ? "/shop/payment-callback" : "/checkout/success",
+      defaultCancelPath: isProductOrder
+        ? "/shop/cancelled"
         : customOfferIdRaw
-          ? `${appBaseUrl}/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(customOfferIdRaw)}`
+          ? `/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(customOfferIdRaw)}`
           : bookingIdForCallback
-            ? `${appBaseUrl}/checkout/cancelled?booking_id=${encodeURIComponent(bookingIdForCallback)}`
-            : `${appBaseUrl}/checkout/cancelled`;
+            ? `/checkout/cancelled?booking_id=${encodeURIComponent(bookingIdForCallback)}`
+            : "/checkout/cancelled",
+      query: Object.keys(successQuery).length > 0 ? successQuery : undefined,
+    });
+    const callbackUrl = hosted.successUrl;
+
     const rawCancelAction =
       typeof rawMeta.cancel_action === "string" ? rawMeta.cancel_action.trim() : "";
-    // Resolve relative paths ("/shop/cancelled?…") to absolute URLs for Paystack.
     const cancelAction = rawCancelAction
       ? rawCancelAction.startsWith("/")
         ? `${appBaseUrl}${rawCancelAction}`
-        : rawCancelAction
-      : defaultCancelAction;
+        : rawCancelAction.startsWith("customer://") || rawCancelAction.startsWith("exp://")
+          ? hosted.cancelUrl
+          : rawCancelAction
+      : hosted.cancelUrl;
     const supabase = await getSupabaseServer(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = (tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY).toUpperCase();
@@ -288,95 +308,40 @@ export async function POST(request: NextRequest) {
       return errorResponse(fxReady.message, fxReady.code, 503);
     }
 
-    const PAYSTACK_SECRET_KEY = await getPaystackSecretKey({ tenantId });
-    
-    if (!PAYSTACK_SECRET_KEY) {
-      throw new Error("Paystack secret key not configured");
-    }
-
-    const saveCard = rawMeta.saveCard === "true" || rawMeta.saveCard === true;
+    const saveCard = resolveSaveCardForInitialize(rawMeta);
     const setAsDefault = rawMeta.setAsDefault === "true" || rawMeta.setAsDefault === true;
+    const channelExtras = paystackChannelsForInitialize({ saveCard });
 
-    // Resolve split_code and subaccount for booking/order payments (matches payments/initialize)
-    let splitCode: string | undefined;
-    let subaccount: string | undefined;
-
-    if (bookingIdFromMeta || productOrderIdRaw) {
-      const { data: payoutSettings } = await admin
-        .from("platform_settings")
-        .select("settings")
-        .eq("key", "payouts")
-        .maybeSingle();
-      const settings = (payoutSettings as any)?.settings;
-      if (settings?.use_transaction_splits) {
-        const { data: activeSplit } = await admin
-          .from("paystack_splits")
-          .select("split_code")
-          .eq("active", true)
-          .maybeSingle();
-        if (activeSplit) splitCode = (activeSplit as any).split_code;
-      }
-    }
-
-    if (bookingIdFromMeta) {
-      const { data: bRow } = await admin
-        .from("bookings")
-        .select("provider_id")
-        .eq("id", bookingIdFromMeta)
-        .maybeSingle();
-      if ((bRow as any)?.provider_id) {
-        const { data: provSub } = await admin
-          .from("provider_paystack_subaccounts")
-          .select("subaccount_code")
-          .eq("provider_id", (bRow as any).provider_id)
-          .eq("active", true)
-          .maybeSingle();
-        if (provSub) subaccount = (provSub as any).subaccount_code;
-      }
-    }
-
-    const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-        "Content-Type": "application/json",
+    const data = await initializePaystackTransaction({
+      email: body.email,
+      amountInSmallestUnit: paystackAmount,
+      currency: chargeCurrency,
+      callback_url: callbackUrl,
+      metadata: {
+        ...rawMeta,
+        ...(bookingIdFromMeta ? { booking_id: bookingIdFromMeta } : {}),
+        save_card: saveCard,
+        set_as_default: setAsDefault,
+        customer_id: user.id,
+        cancel_action: cancelAction,
+        custom_fields: [
+          ...(rawMeta.bookingId || rawMeta.booking_id
+            ? [
+                {
+                  display_name: "Booking ID",
+                  variable_name: "booking_id",
+                  value: (typeof rawMeta.bookingId === "string" && rawMeta.bookingId
+                    ? rawMeta.bookingId
+                    : rawMeta.booking_id) as string,
+                },
+              ]
+            : []),
+        ],
       },
-      body: JSON.stringify({
-        email: body.email,
-        amount: paystackAmount,
-        metadata: {
-          ...rawMeta,
-          ...(bookingIdFromMeta ? { booking_id: bookingIdFromMeta } : {}),
-          save_card: saveCard,
-          set_as_default: setAsDefault,
-          customer_id: user.id,
-          cancel_action: cancelAction,
-          custom_fields: [
-            ...(rawMeta.bookingId || rawMeta.booking_id
-              ? [
-                  {
-                    display_name: "Booking ID",
-                    variable_name: "booking_id",
-                    value: (typeof rawMeta.bookingId === "string" && rawMeta.bookingId
-                      ? rawMeta.bookingId
-                      : rawMeta.booking_id) as string,
-                  },
-                ]
-              : []),
-          ],
-        },
-        ...(splitCode ? { split_code: splitCode } : {}),
-        ...(subaccount ? { subaccount } : {}),
-        callback_url: callbackUrl,
-      }),
+      tenantId,
+      ...(channelExtras.channels ? { channels: channelExtras.channels } : {}),
     });
 
-    if (!paystackResponse.ok) {
-      const error = await paystackResponse.json();
-      throw new Error(error.message || "Failed to initialize payment");
-    }
-
-    const data = await paystackResponse.json();
     const paystackReference: string = data.data.reference;
 
     // M1 guard: persist Paystack reference back to source rows so reconciliation

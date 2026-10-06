@@ -65,8 +65,14 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  CHECKOUT_SUCCESS_PATH,
+  getBookingCheckoutPaystackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import type {
@@ -1686,7 +1692,9 @@ export default function PartnerProfileScreen() {
     const subscribe = async (tender: "paystack" | "wallet") => {
             try {
               const membershipReturnUrl =
-                Platform.OS !== "web" ? ExpoLinking.createURL("membership-paystack") : undefined;
+                Platform.OS !== "web"
+                  ? ExpoLinking.createURL("membership-paystack")
+                  : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
               const membershipIdempotencyKey =
                 typeof crypto !== "undefined" && "randomUUID" in crypto
                   ? crypto.randomUUID()
@@ -1698,7 +1706,7 @@ export default function PartnerProfileScreen() {
                 source: "customer_app_partner_profile",
                 campaign_id: paramCampaignId,
                 idempotency_key: membershipIdempotencyKey,
-                ...(membershipReturnUrl ? { callback_url: membershipReturnUrl } : {}),
+                callback_url: membershipReturnUrl,
               }, {
                 timeout: 120_000,
                 headers: { "Idempotency-Key": membershipIdempotencyKey },
@@ -1778,11 +1786,14 @@ export default function PartnerProfileScreen() {
               let paystackRef = subscribeReference;
 
               if (Platform.OS !== "web") {
-                const returnUrl = ExpoLinking.createURL("membership-paystack");
+                const returnUrl = getBookingCheckoutPaystackAuthPrefix();
                 const pr = await membershipPaystackCheckout.waitForCheckout(url, {
                   title: pp("membershipPaystackTitle"),
                   returnUrl,
-                  matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+                  matchSuccess: (u) =>
+                    (matchesPaystackAuthSessionReturn(u, returnUrl) ||
+                      matchesCheckoutSuccessReturnUrl(u)) &&
+                    !isCancelledPaystackUrl(u),
                   matchCancel: (u) => isCancelledPaystackUrl(u),
                 });
                 if (pr.outcome === "cancel") {
@@ -1795,10 +1806,8 @@ export default function PartnerProfileScreen() {
                   if (extracted) paystackRef = extracted;
                 }
               } else {
-                const WebBrowser = await import("expo-web-browser");
-                await WebBrowser.openBrowserAsync(url, {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                });
+                window.location.assign(url);
+                return;
               }
 
               if (paystackRef) {
